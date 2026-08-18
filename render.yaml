@@ -4,16 +4,21 @@ services:
     runtime: python
     plan: free
     region: frankfurt
+
     buildCommand: pip install -r requirements.txt
-    preDeployCommand: python scripts/cloud_preflight.py --init-tenants
-    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
+
+    startCommand: python scripts/cloud_preflight.py --init-tenants && gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
+
     healthCheckPath: /readyz
     autoDeployTrigger: commit
+
     envVars:
       - key: PROFITOS_ENV
         value: production
+
       - key: PROFITOS_SECRET_KEY
         generateValue: true
+
       - key: DATABASE_URL
         fromDatabase:
           name: profitos-db
