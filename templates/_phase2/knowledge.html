@@ -1,0 +1,82 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">COMPANY KNOWLEDGE</div>
+<h1>La mémoire opérationnelle de l'entreprise.</h1>
+<p class="muted">ProfitOS utilisera uniquement ces éléments déclarés pour personnaliser les candidatures.</p>
+
+<div class="cards four">
+<div class="card"><div class="label">RÉFÉRENCES</div><div class="big">{{ refs|length }}</div></div>
+<div class="card"><div class="label">ÉQUIPE</div><div class="big">{{ team|length }}</div></div>
+<div class="card"><div class="label">MOYENS</div><div class="big">{{ assets|length }}</div></div>
+<div class="card"><div class="label">MÉTHODES</div><div class="big">{{ methods|length }}</div></div>
+</div>
+
+<div class="twocol">
+<section class="panel">
+<h2>Ajouter une référence</h2>
+<form method="post" action="{{ url_for('knowledge_reference_add') }}" class="stack">
+<input name="title" placeholder="Nom du chantier / projet" required>
+<input name="client" placeholder="Client">
+<div class="formgrid"><input name="year" type="number" placeholder="Année"><input name="value" type="number" placeholder="Montant €"></div>
+<input name="location" placeholder="Localisation">
+<input name="activities" placeholder="Activités : rénovation, CVC...">
+<textarea name="description" rows="4" placeholder="Travaux réalisés, contexte, résultats"></textarea>
+<input name="outcome" placeholder="Résultat / réception / satisfaction">
+<button>Ajouter la référence</button>
+</form>
+</section>
+
+<section class="panel">
+<h2>Ajouter un membre d'équipe</h2>
+<form method="post" action="{{ url_for('knowledge_team_add') }}" class="stack">
+<input name="name" placeholder="Nom" required>
+<input name="role" placeholder="Rôle" required>
+<input name="years_experience" type="number" placeholder="Années d'expérience">
+<input name="qualifications" placeholder="Qualifications / habilitations">
+<textarea name="skills" rows="4" placeholder="Compétences"></textarea>
+<button>Ajouter</button>
+</form>
+</section>
+</div>
+
+<div class="twocol">
+<section class="panel">
+<h2>Ajouter un moyen matériel</h2>
+<form method="post" action="{{ url_for('knowledge_asset_add') }}" class="stack">
+<input name="asset_type" placeholder="Type : véhicule, engin, logiciel...">
+<input name="name" placeholder="Nom" required>
+<input name="quantity" type="number" value="1">
+<textarea name="details" rows="3" placeholder="Capacité, modèle, caractéristiques"></textarea>
+<button>Ajouter</button>
+</form>
+</section>
+
+<section class="panel">
+<h2>Ajouter une méthode interne</h2>
+<form method="post" action="{{ url_for('knowledge_method_add') }}" class="stack">
+<input name="title" placeholder="Ex. Gestion des déchets chantier" required>
+<input name="category" placeholder="QSE, Méthode, Planning...">
+<textarea name="content" rows="6" placeholder="Décrire la méthode réellement utilisée"></textarea>
+<button>Ajouter</button>
+</form>
+</section>
+</div>
+
+<section class="panel">
+<h2>Importer un ancien document</h2>
+<p class="muted">Ancien mémoire, procédure, présentation d'entreprise, dossier de références… PDF/DOCX/TXT.</p>
+<form method="post" action="{{ url_for('knowledge_upload') }}" enctype="multipart/form-data" class="stack">
+<input type="file" name="file" accept=".pdf,.docx,.txt,.md" required>
+<button>Ajouter à Company Knowledge</button>
+</form>
+</section>
+
+<div class="twocol">
+<section class="panel"><h2>Références enregistrées</h2>
+{% for r in refs %}<div class="simpleline"><div><strong>{{ r.title }}</strong><small>{{ r.client }} · {{ r.year }} · {{ "{:,.0f}".format(r.value) }} €</small></div></div>{% else %}<p class="muted">Aucune référence.</p>{% endfor %}
+</section>
+<section class="panel"><h2>Équipe enregistrée</h2>
+{% for t in team %}<div class="simpleline"><div><strong>{{ t.name }}</strong><small>{{ t.role }} · {{ t.years_experience }} ans</small></div></div>{% else %}<p class="muted">Aucun membre.</p>{% endfor %}
+</section>
+</div>
+{% endblock %}

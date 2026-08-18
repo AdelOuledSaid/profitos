@@ -1,0 +1,75 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div>
+<div class="eyebrow green">BID PROJECT</div>
+<h1>{{ project.title }}</h1>
+<p class="muted">{{ opp.buyer }} · {{ fmt_deadline(project.deadline) or "Deadline non renseignée" }}</p>
+</div>
+<div class="heroScore">{{ project.bid_score }}/100<span>{{ project.go_no_go }}</span></div>
+</div>
+
+<div class="cards detailcards">
+<div class="card"><div class="label">DECISION</div><div class="big">{{ project.go_no_go }}</div></div>
+<div class="card"><div class="label">SOURCE</div><div class="medium">{{ project.source_filename }}</div></div>
+</div>
+
+<div class="twocol">
+<section class="panel">
+<h2>Executive Brief</h2>
+<pre>{{ project.executive_brief }}</pre>
+</section>
+<section class="panel">
+<h2>Plan du mémoire technique</h2>
+<pre>{{ project.technical_memory_plan }}</pre>
+</section>
+</div>
+
+<div class="twocol">
+<section class="panel">
+<h2>Exigences détectées</h2>
+{% for x in json_list(project.detected_requirements) %}<div class="bullet goodtext">✓ {{ x }}</div>{% else %}<p class="muted">Aucune certification détectée.</p>{% endfor %}
+<h3>Critères</h3>
+{% for x in json_list(project.criteria) %}<div class="bullet">• {{ x }}</div>{% else %}<p class="muted">À confirmer.</p>{% endfor %}
+<h3>Risques</h3>
+{% for x in json_list(project.risks) %}<div class="bullet warntext">⚠ {{ x }}</div>{% else %}<p class="muted">Aucun risque explicite détecté.</p>{% endfor %}
+</section>
+
+<section class="panel">
+<h2>Pièces du dossier</h2>
+{% for d in docs %}
+<div class="simpleline">
+<div><strong>{{ d.title }}</strong><small>{{ d.status }}</small></div>
+<form method="post" action="{{ url_for('bid_document_status',doc_id=d.id) }}">
+<select name="status" onchange="this.form.submit()">
+<option {% if d.status=='MISSING' %}selected{% endif %}>MISSING</option>
+<option {% if d.status=='READY' %}selected{% endif %}>READY</option>
+<option {% if d.status=='VALIDATED' %}selected{% endif %}>VALIDATED</option>
+</select>
+</form>
+</div>
+{% else %}<p class="muted">Aucune pièce explicite détectée.</p>{% endfor %}
+</section>
+</div>
+
+<section class="panel">
+<div class="headerflex"><div><h2>Bid Plan</h2><p class="muted">Checklist avant dépôt.</p></div>
+<div style="display:flex;gap:10px"><a class="button" href="{{ url_for('bid_workspace',project_id=project.id) }}">Autonomous Workspace</a><a class="button secondary" href="{{ url_for('bid_export',project_id=project.id) }}">Exporter le brief</a></div></div>
+{% for t in tasks %}
+<div class="row">
+<div><span class="type">{{ t.category }}</span><strong>{{ t.title }}</strong><small>{{ t.due_date or '' }}</small></div>
+<div></div>
+<div>
+<form method="post" action="{{ url_for('bid_task_status',task_id=t.id) }}">
+<select name="status" onchange="this.form.submit()">
+<option {% if t.status=='TODO' %}selected{% endif %}>TODO</option>
+<option {% if t.status=='DOING' %}selected{% endif %}>DOING</option>
+<option {% if t.status=='DONE' %}selected{% endif %}>DONE</option>
+<option {% if t.status=='BLOCKED' %}selected{% endif %}>BLOCKED</option>
+</select>
+</form>
+</div>
+</div>
+{% endfor %}
+</section>
+{% endblock %}

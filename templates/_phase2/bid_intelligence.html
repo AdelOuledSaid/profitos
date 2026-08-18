@@ -1,0 +1,70 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div>
+<div class="eyebrow green">BID INTELLIGENCE ENGINE</div>
+<h1>{{ project.title }}</h1>
+<p class="muted">{{ opp.buyer }} · {{ fmt_deadline(project.deadline) or "Deadline non renseignée" }}</p>
+</div>
+<div class="decisionbox {{ report.decision|lower|replace('-','') }}">
+<div class="decision">{{ report.decision }}</div>
+<div class="viability">{{ report.viability_score }}/100</div>
+<span>Bid Viability</span>
+</div>
+</div>
+
+<div class="cards four">
+<div class="card"><div class="label">COMPLIANCE</div><div class="big">{{ report.compliance_score }}</div></div>
+<div class="card"><div class="label">CAPABILITY</div><div class="big">{{ report.capability_score }}</div></div>
+<div class="card"><div class="label">TIMING</div><div class="big">{{ report.timing_score }}</div></div>
+<div class="card"><div class="label">EVIDENCE</div><div class="big">{{ report.evidence_score }}</div></div>
+</div>
+
+{% if report.partner_needed %}
+<div class="partnerbanner">
+<strong>PARTNER STRATEGY RECOMMENDED</strong>
+<span>ProfitOS détecte qu'une réponse en groupement ou avec sous-traitance peut être plus viable.</span>
+</div>
+{% endif %}
+
+<div class="twocol">
+<section class="panel">
+<h2>Forces</h2>
+{% for x in json_list(report.strengths) %}
+<div class="bullet goodtext">✓ {{ x }}</div>
+{% else %}<p class="muted">Aucune force forte détectée.</p>{% endfor %}
+</section>
+
+<section class="panel">
+<h2>Gaps & Blockers</h2>
+{% for x in json_list(report.blockers) %}
+<div class="bullet badtext">⛔ {{ x }}</div>
+{% endfor %}
+{% for x in json_list(report.gaps) %}
+<div class="bullet warntext">⚠ {{ x }}</div>
+{% else %}{% if not json_list(report.blockers) %}<p class="muted">Aucun écart majeur détecté.</p>{% endif %}{% endfor %}
+</section>
+</div>
+
+{% if json_list(report.partner_needs) %}
+<section class="panel">
+<h2>Partner Needs</h2>
+<p class="muted">Compétences ou certifications à couvrir pour rendre la candidature plus solide.</p>
+{% for x in json_list(report.partner_needs) %}
+<div class="partnerneed">🤝 {{ x }}</div>
+{% endfor %}
+</section>
+{% endif %}
+
+<section class="panel">
+<h2>Decision Rationale</h2>
+<pre>{{ report.rationale }}</pre>
+</section>
+
+<div class="decision-help">
+<div><strong>GO</strong><span>Capacité suffisante, peu de blocages.</span></div>
+<div><strong>REVIEW</strong><span>Dossier possible mais nécessite vérifications.</span></div>
+<div><strong>PARTNER</strong><span>Marché intéressant, mais une compétence/certification manque.</span></div>
+<div><strong>NO-GO</strong><span>Écarts ou contraintes rendent la réponse peu viable.</span></div>
+</div>
+{% endblock %}

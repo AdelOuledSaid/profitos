@@ -1,0 +1,90 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div><div class="eyebrow green">AUTONOMOUS BID WORKSPACE</div>
+<h1>{{ project.title }}</h1>
+<p class="muted">{{ opp.buyer }} · {{ fmt_deadline(project.deadline) or "Deadline non renseignée" }}</p></div>
+<div class="readiness">{{ readiness }}%<span>Readiness</span></div>
+</div>
+
+<div class="cards four">
+<div class="card"><div class="label">GO / NO-GO</div><div class="big">{{ project.go_no_go or "—" }}</div></div>
+<div class="card"><div class="label">BID SCORE</div><div class="big">{{ project.bid_score }}/100</div></div>
+<div class="card"><div class="label">SOURCE DOCS</div><div class="big">{{ source_docs|length }}</div></div>
+<div class="card"><div class="label">COMPLIANCE</div><div class="big">{{ compliance|length }}</div></div>
+</div>
+
+<section class="panel">
+<h2>Ajouter plusieurs documents du DCE</h2>
+<p class="muted">Tu peux importer RC + CCTP + CCAP + AE + BPU/DPGF ensemble. ProfitOS fusionne les exigences.</p>
+<form method="post" enctype="multipart/form-data" class="stack">
+<input type="file" name="files" multiple accept=".pdf,.docx,.txt,.md" required>
+<button>Fusionner et ré-analyser le workspace</button>
+</form>
+{% if source_docs %}
+<div class="docgrid">
+{% for d in source_docs %}<div class="docpill"><strong>{{ d.document_role }}</strong><span>{{ d.filename }}</span></div>{% endfor %}
+</div>
+{% endif %}
+</section>
+
+<div class="twocol">
+<section class="panel">
+<h2>Compliance Matrix</h2>
+{% for c in compliance %}
+<div class="compliance">
+<div><span class="type">{{ c.category }}</span><strong>{{ c.requirement }}</strong>
+<small>Source : {{ c.source_document }} · Preuve : {{ c.evidence_needed }}</small></div>
+<div><span class="risk {{ c.risk_level|lower }}">{{ c.risk_level }}</span></div>
+<form method="post" action="{{ url_for('compliance_status',item_id=c.id) }}">
+<select name="status" onchange="this.form.submit()">
+<option {% if c.status=='TO_VERIFY' %}selected{% endif %}>TO_VERIFY</option>
+<option {% if c.status=='COMPLIANT' %}selected{% endif %}>COMPLIANT</option>
+<option {% if c.status=='MISSING' %}selected{% endif %}>MISSING</option>
+<option {% if c.status=='NOT_APPLICABLE' %}selected{% endif %}>NOT_APPLICABLE</option>
+</select>
+</form>
+</div>
+{% else %}<p class="muted">Importe plusieurs documents pour construire la matrice de conformité.</p>{% endfor %}
+</section>
+
+<section class="panel">
+<h2>Bid Plan</h2>
+{% for t in tasks %}
+<div class="simpleline"><div><strong>{{ t.title }}</strong><small>{{ t.category }} · {{ t.due_date or '' }}</small></div>
+<form method="post" action="{{ url_for('bid_task_status',task_id=t.id) }}">
+<select name="status" onchange="this.form.submit()">
+<option {% if t.status=='TODO' %}selected{% endif %}>TODO</option>
+<option {% if t.status=='DOING' %}selected{% endif %}>DOING</option>
+<option {% if t.status=='DONE' %}selected{% endif %}>DONE</option>
+<option {% if t.status=='BLOCKED' %}selected{% endif %}>BLOCKED</option>
+</select>
+</form></div>
+{% else %}<p class="muted">Le planning sera construit lors de l'analyse.</p>{% endfor %}
+</section>
+</div>
+
+
+<section class="panel">
+<div class="headerflex">
+<div><h2>Smart Bid Writer</h2>
+<p class="muted">Personnalise le mémoire avec les références, équipes, méthodes et moyens enregistrés dans Company Knowledge.</p></div>
+<div style="display:flex;gap:10px">
+<a class="button" href="{{ url_for('smart_write',project_id=project.id) }}">Générer mémoire personnalisé</a>
+<a class="button secondary" href="{{ url_for('bid_intelligence',project_id=project.id) }}">Bid Intelligence</a>
+<a class="button secondary" href="{{ url_for('bid_partner_intelligence',project_id=project.id) }}">Partner Intelligence</a>
+<a class="button secondary" href="{{ url_for('partner_discovery',project_id=project.id) }}">Partner Discovery</a>
+<a class="button secondary" href="{{ url_for('evidence_map',project_id=project.id) }}">Evidence Map</a>
+</div>
+</div>
+</section>
+
+<section class="panel">
+<h2>Mémoire technique</h2>
+<p class="muted">Première version structurée automatiquement. Elle doit être enrichie avec les preuves, références et éléments réels de l'entreprise.</p>
+{% for d in drafts %}
+<div class="simpleline"><div><strong>{{ d.title }}</strong><small>Version {{ d.version }} · {{ d.status }}</small></div>
+<a class="button secondary" href="{{ url_for('bid_draft_view',draft_id=d.id) }}">Ouvrir / modifier</a></div>
+{% else %}<p class="muted">Aucun brouillon généré.</p>{% endfor %}
+</section>
+{% endblock %}

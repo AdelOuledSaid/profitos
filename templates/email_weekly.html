@@ -1,0 +1,60 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your Weekly Profit Report</title></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+{% if preview %}
+<div style="max-width:640px;margin:16px auto 0;padding:10px 16px;background:#fff3cd;border:1px solid #ffe58f;border-radius:8px;font-size:13px;color:#7a5c00;">
+  Aperçu — cet écran montre ce que {{ org.name if org else "votre organisation" }} recevrait par email.
+  <form method="post" action="{{ url_for('weekly_report_send') }}" style="display:inline;margin-left:8px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button style="background:#111827;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;">Envoyer maintenant</button>
+  </form>
+</div>
+{% endif %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+  <tr><td style="background:#111827;padding:28px 32px;">
+    <div style="color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase;">ProfitOS</div>
+    <div style="color:#ffffff;font-size:22px;font-weight:600;margin-top:6px;">Your Weekly Profit Report</div>
+  </td></tr>
+
+  <tr><td style="padding:28px 32px 8px;">
+    <div style="color:#374151;font-size:14px;">Bonjour, voici les nouveautés détectées cette semaine chez <strong>{{ org.name if org else '' }}</strong> :</div>
+  </td></tr>
+
+  {% if digest.has_signal %}
+  <tr><td style="padding:12px 32px;">
+    {% if digest.recover_count %}
+    <div style="padding:14px 16px;background:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:10px;">
+      <div style="font-size:20px;font-weight:700;color:#111827;">+{{ '{:,.0f}'.format(digest.recover_total).replace(',',' ') }} €</div>
+      <div style="font-size:13px;color:#6b7280;">recoverable — {{ digest.recover_count }} nouvelle(s) facture(s) en retard</div>
+    </div>
+    {% endif %}
+    {% if digest.grow_count %}
+    <div style="padding:14px 16px;background:#f0fdf4;border-left:4px solid #16a34a;border-radius:6px;margin-bottom:10px;">
+      <div style="font-size:20px;font-weight:700;color:#111827;">+{{ digest.grow_count }} opportunité(s)</div>
+      <div style="font-size:13px;color:#6b7280;">nouveaux appels d'offres correspondant à votre profil</div>
+      {% for g in digest.grow_top %}<div style="font-size:13px;color:#374151;margin-top:4px;">• {{ g.title }}{% if g.buyer %} — {{ g.buyer }}{% endif %}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% if digest.save_count %}
+    <div style="padding:14px 16px;background:#fffbeb;border-left:4px solid #d97706;border-radius:6px;margin-bottom:10px;">
+      <div style="font-size:20px;font-weight:700;color:#111827;">{{ digest.save_count }} signal(aux) SAVE</div>
+      <div style="font-size:13px;color:#6b7280;">économie potentielle détectée : {{ '{:,.0f}'.format(digest.save_total).replace(',',' ') }} €/an</div>
+      {% for s in digest.save_top %}<div style="font-size:13px;color:#374151;margin-top:4px;">• {{ s.title }}</div>{% endfor %}
+    </div>
+    {% endif %}
+  </td></tr>
+  {% else %}
+  <tr><td style="padding:12px 32px;">
+    <div style="padding:16px;background:#f9fafb;border-radius:6px;color:#6b7280;font-size:14px;">
+      Aucune nouveauté détectée cette semaine. ProfitOS continue de surveiller vos factures, dépenses et marchés publics en arrière-plan.
+    </div>
+  </td></tr>
+  {% endif %}
+
+  <tr><td style="padding:20px 32px 32px;">
+    <a href="{{ app_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">Open ProfitOS</a>
+  </td></tr>
+
+  <tr><td style="padding:16px 32px;border-top:1px solid #f0f0f0;">
+    <div style="font-size:12px;color:#9ca3af;">Vous recevez cet email en tant que propriétaire du compte ProfitOS de {{ org.name if org else '' }}. Vous pouvez ajuster la fréquence dans Settings.</div>
+  </td></tr>
+</table>
+</body></html>

@@ -1,0 +1,83 @@
+# ProfitOS V1.2 — PostgreSQL + Cloud Deployment
+
+This release refactors the cleaned V1.0 into a modular production-oriented Flask structure while preserving the existing product behavior.
+
+## Local start (same simple workflow)
+
+```cmd
+cd Z:\ProfitOS_V1_1_Production_Architecture
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
+
+Open:
+
+`http://127.0.0.1:5050`
+
+## Production-style local start on Windows
+
+```cmd
+RUN_PRODUCTION_WINDOWS.bat
+```
+
+This runs Waitress instead of Flask's development server.
+
+## Cloud WSGI
+
+Linux / Railway / Render style command:
+
+```bash
+gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
+```
+
+## Health check
+
+`GET /healthz`
+
+returns:
+
+```json
+{"status":"ok","service":"profitos","version":"1.1"}
+```
+
+## Tests
+
+```cmd
+pytest -q
+```
+
+## Architecture
+
+See `ARCHITECTURE.md`.
+
+## Important
+
+For a public launch, configure at minimum:
+
+- `PROFITOS_ENV=production`
+- `PROFITOS_SECRET_KEY`
+- `DATABASE_URL` (PostgreSQL recommended)
+- Stripe variables if billing is enabled
+- SMTP variables for transactional mail
+- HTTPS at the hosting/reverse-proxy layer
+
+The existing PostgreSQL compatibility layer is preserved, but it still needs integration testing against the exact managed PostgreSQL target before a public production launch.
+
+
+## V1.2 — PostgreSQL + Cloud Deployment
+
+Cette version garde **exactement le dossier `ProfitOS_V1_0_Commercial_MVP`** et ajoute :
+
+- PostgreSQL comme backend de production via `DATABASE_URL` ;
+- schéma `public` pour l'auth et un schéma `org_<id>` par organisation ;
+- `/readyz` qui valide réellement la connexion base ;
+- `scripts/cloud_preflight.py` ;
+- migration SQLite → PostgreSQL ;
+- `railway.json` ;
+- `render.yaml` ;
+- Python 3.12 pour le cloud ;
+- tests de traduction SQL SQLite/PostgreSQL.
+
+Documentation : `MIGRATION_POSTGRES.md` et `CLOUD_DEPLOYMENT.md`.

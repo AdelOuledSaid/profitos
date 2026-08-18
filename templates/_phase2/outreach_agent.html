@@ -1,0 +1,62 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">OUTREACH AGENT</div>
+<h1>{{ d.company_name }}</h1>
+<p class="muted">Besoin ciblé : {{ d.matched_need }}</p>
+
+<div class="twocol">
+<section class="panel">
+<h2>Pourquoi ce partenaire ?</h2>
+<div class="big">{{ d.discovery_score }}/100</div>
+<p>{{ d.rationale }}</p>
+<p><strong>SIREN :</strong> {{ d.siren or "—" }}</p>
+<p><strong>Activité :</strong> {{ d.activity_label or d.naf_code or "—" }}</p>
+<p><strong>Localisation :</strong> {{ d.city }} {{ d.department }}</p>
+</section>
+
+<section class="panel">
+<h2>Préparer le contact</h2>
+<form method="post">
+<input type="hidden" name="action" value="generate">
+<button>Générer le message</button>
+</form>
+<p class="muted">Le message n'est pas envoyé automatiquement.</p>
+</section>
+</div>
+
+{% if latest %}
+<section class="panel">
+<h2>Message</h2>
+<form method="post" class="stack">
+<input type="hidden" name="action" value="save">
+<label>Objet<input name="subject" value="{{ latest.subject }}"></label>
+<label>Corps<textarea name="body" rows="18">{{ latest.body }}</textarea></label>
+<button>Enregistrer le brouillon</button>
+</form>
+</section>
+
+<section class="panel">
+<h2>Suivi</h2>
+<form method="post" action="{{ url_for('outreach_status',message_id=latest.id) }}" class="formgrid">
+<label>Statut
+<select name="status">
+<option {% if latest.status=='DRAFT' %}selected{% endif %}>DRAFT</option>
+<option {% if latest.status=='READY' %}selected{% endif %}>READY</option>
+<option {% if latest.status=='SENT' %}selected{% endif %}>SENT</option>
+<option {% if latest.status=='CANCELLED' %}selected{% endif %}>CANCELLED</option>
+</select></label>
+<label>Réponse
+<select name="response_status">
+<option {% if latest.response_status=='NO_RESPONSE' %}selected{% endif %}>NO_RESPONSE</option>
+<option {% if latest.response_status=='INTERESTED' %}selected{% endif %}>INTERESTED</option>
+<option {% if latest.response_status=='NOT_INTERESTED' %}selected{% endif %}>NOT_INTERESTED</option>
+<option {% if latest.response_status=='FOLLOW_UP' %}selected{% endif %}>FOLLOW_UP</option>
+</select></label>
+<label class="wide">Note<textarea name="response_note" rows="3">{{ latest.response_note or '' }}</textarea></label>
+<div class="wide"><button>Mettre à jour le suivi</button></div>
+</form>
+</section>
+{% endif %}
+
+<div class="flash">V0.9 prépare et suit les messages. Elle n'envoie aucun email automatiquement.</div>
+{% endblock %}

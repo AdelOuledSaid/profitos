@@ -1,0 +1,41 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div><div class="eyebrow green">PARTNER INTELLIGENCE</div><h1>{{ project.title }}</h1>
+<p class="muted">Chercher qui peut combler les gaps détectés.</p></div>
+<form method="post" action="{{ url_for('consortium_create',project_id=project.id) }}">
+<input name="name" placeholder="Nom du consortium">
+<input name="strategy" type="hidden" value="Consortium complémentaire construit à partir des gaps ProfitOS">
+<button>Créer un consortium</button>
+</form>
+</div>
+
+{% if report %}
+<div class="partnerbanner">
+<strong>{{ report.decision }}</strong>
+<span>{{ json_list(report.partner_needs)|length }} besoin(s) partenaire détecté(s)</span>
+</div>
+{% endif %}
+
+<section class="panel">
+<h2>Partner Matches</h2>
+{% for p,m in matches %}
+<div class="partner-match">
+<div>
+<div class="match">{{ m.match_score }}/100 MATCH</div>
+<h3>{{ p.company_name }}</h3>
+<p class="muted">{{ p.city }} · Trust {{ p.trust_score }}/100</p>
+<div class="chips">
+{% for x in m.matched_needs %}<span class="chip good">✓ {{ x }}</span>{% endfor %}
+{% for x in m.uncovered_needs %}<span class="chip warn">⚠ {{ x }}</span>{% endfor %}
+</div>
+</div>
+<div class="matchmetrics">
+<span>Coverage {{ m.coverage_score }}</span>
+<span>Geo {{ m.geography_score }}</span>
+<span>Trust {{ m.trust_score }}</span>
+</div>
+</div>
+{% else %}<p class="muted">Ajoute des partenaires au Partner Network.</p>{% endfor %}
+</section>
+{% endblock %}

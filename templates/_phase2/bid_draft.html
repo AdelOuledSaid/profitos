@@ -1,0 +1,12 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">TECHNICAL MEMORY DRAFT</div>
+<h1>{{ draft.title }}</h1>
+<p class="muted">{{ project.title }}</p>
+<section class="panel">
+<form method="post" action="{{ url_for('bid_draft_update',draft_id=draft.id) }}" class="stack">
+<textarea name="content" rows="34" class="editor">{{ draft.content }}</textarea>
+<button>Enregistrer les modifications</button>
+</form>
+</section>
+{% endblock %}

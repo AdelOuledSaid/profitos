@@ -1,0 +1,31 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+tenant_data/
+
+# User/customer uploads
+uploads/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / temporary files
+*.log
+*.tmp

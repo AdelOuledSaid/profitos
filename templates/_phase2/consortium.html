@@ -1,0 +1,44 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div><div class="eyebrow green">CONSORTIUM BUILDER</div><h1>{{ consortium.name }}</h1>
+<p class="muted">{{ project.title }}</p></div>
+<div class="readiness">{{ coverage }}%<span>Coverage</span></div>
+</div>
+
+<div class="cards detailcards">
+<div class="card"><div class="label">LEAD</div><div class="medium">{{ consortium.lead_company }}</div></div>
+<div class="card"><div class="label">STATUS</div><div class="medium">{{ consortium.status }}</div></div>
+</div>
+
+<section class="panel">
+<h2>Ajouter un partenaire</h2>
+<form method="post" action="{{ url_for('consortium_add_member',consortium_id=consortium.id) }}" class="inlineform">
+<select name="partner_id" required>
+{% for p in partners %}<option value="{{ p.id }}">{{ p.company_name }} — {{ p.activities }}</option>{% endfor %}
+</select>
+<button>Ajouter</button>
+</form>
+</section>
+
+<section class="panel">
+<div class="headerflex"><div><h2>Répartition du groupement</h2><p class="muted">Rôles, lots, responsabilités, contribution et preuves.</p></div>
+<a class="button secondary" href="{{ url_for('consortium_export',consortium_id=consortium.id) }}">Exporter</a></div>
+
+{% for m in members %}
+<form method="post" action="{{ url_for('consortium_member_update',member_id=m.id) }}" class="consortium-member">
+<div class="membertitle"><strong>{{ m.company_name }}</strong><span class="type">{{ m.member_type }}</span></div>
+<label>Rôle<input name="role" value="{{ m.role }}"></label>
+<label>Lots<input name="lots" value="{{ m.lots }}"></label>
+<label>Responsabilités<textarea name="responsibilities" rows="2">{{ m.responsibilities }}</textarea></label>
+<label>Contribution %<input name="contribution_percent" type="number" step="1" value="{{ m.contribution_percent }}"></label>
+<label>Preuves<textarea name="evidence" rows="2">{{ m.evidence }}</textarea></label>
+<div><button>Mettre à jour</button></div>
+</form>
+{% endfor %}
+</section>
+
+<div class="flash">
+Le Coverage Score mesure la couverture des besoins identifiés par Bid Intelligence. Il ne constitue pas une validation juridique du groupement.
+</div>
+{% endblock %}
