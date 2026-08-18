@@ -2,11 +2,13 @@ services:
   - type: web
     name: profitos
     runtime: python
+    plan: free
+    region: frankfurt
     buildCommand: pip install -r requirements.txt
     preDeployCommand: python scripts/cloud_preflight.py --init-tenants
-    startCommand: gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
     healthCheckPath: /readyz
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     envVars:
       - key: PROFITOS_ENV
         value: production
@@ -16,28 +18,10 @@ services:
         fromDatabase:
           name: profitos-db
           property: connectionString
-      - key: APP_BASE_URL
-        sync: false
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PUBLISHABLE_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: STRIPE_PRICE_ID
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
-        sync: false
 
 databases:
   - name: profitos-db
     databaseName: profitos
     user: profitos
+    plan: free
+    region: frankfurt
