@@ -141,6 +141,7 @@ def _translate_ddl(script):
 class PGCursorResult:
     def __init__(self, cur):
         self._cur = cur
+        self.rowcount = cur.rowcount
         cols = [d[0] for d in cur.description] if cur.description else None
         self._cols = cols
 
@@ -232,6 +233,7 @@ class SQLiteCursorResult:
     à sqlite3.Row mais avec la classe Row commune aux deux backends)."""
     def __init__(self, cur):
         self._cur = cur
+        self.rowcount = cur.rowcount
         self._cols = [d[0] for d in cur.description] if cur.description else None
 
     def _wrap(self, raw):

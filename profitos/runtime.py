@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g
-import sqlite3, json, re, math, unicodedata, secrets, functools, os
+import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib
 try:
     from dotenv import load_dotenv
     load_dotenv()  # charge .env s'il existe (facultatif — ignoré silencieusement en son absence)
@@ -41,7 +41,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def init_auth_db():
     c=auth_cx(); c.executescript('''
     CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,slug TEXT UNIQUE,plan TEXT DEFAULT 'TRIAL',status TEXT DEFAULT 'ACTIVE',trial_ends_at TEXT,stripe_customer_id TEXT,stripe_subscription_id TEXT,created_at TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
     CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,organization_id INTEGER,user_id INTEGER,event_type TEXT,description TEXT,created_at TEXT);
     '''); c.commit()
@@ -53,6 +53,7 @@ def init_auth_db():
         ('verification_sent_at',"ALTER TABLE users ADD COLUMN verification_sent_at TEXT"),
         ('reset_token',"ALTER TABLE users ADD COLUMN reset_token TEXT"),
         ('reset_token_expires',"ALTER TABLE users ADD COLUMN reset_token_expires TEXT"),
+        ('auth_version',"ALTER TABLE users ADD COLUMN auth_version INTEGER DEFAULT 0"),
     ):
         if col not in cols: c.execute(ddl)
     org_cols=[r['name'] for r in c.execute('PRAGMA table_info(organizations)').fetchall()]
@@ -105,8 +106,24 @@ def log_status_change(entity_type, entity_id, kind, old_status, new_status, note
 
 def current_user():
     uid=session.get('user_id')
-    if not uid:return None
-    c=auth_cx(); r=c.execute('SELECT * FROM users WHERE id=? AND is_active=1',(uid,)).fetchone(); c.close(); return r
+    if not uid:
+        return None
+    c=auth_cx()
+    r=c.execute('SELECT * FROM users WHERE id=? AND is_active=1',(uid,)).fetchone()
+    c.close()
+    if not r:
+        return None
+
+    # V1.3.3: chaque changement de mot de passe incrémente auth_version.
+    # Les anciennes sessions sont alors invalidées à la requête suivante.
+    db_version=int(r.get('auth_version') or 0)
+    session_version=session.get('auth_version')
+    if session_version is None:
+        # Compatibilité douce avec les sessions ouvertes avant le déploiement V1.3.3.
+        session['auth_version']=db_version
+    elif int(session_version) != db_version:
+        return None
+    return r
 
 def current_org():
     oid=session.get('org_id')
@@ -687,26 +704,58 @@ def send_weekly_email(org, digest, dry_run=None):
     return send_email(to_email,subject,html,dry_run=dry_run)
 
 def gen_token():
+    # Le token brut n'est jamais stocké en base à partir de V1.3.3.
     return secrets.token_urlsafe(32)
+
+def token_digest(token):
+    if not token or not isinstance(token,str):
+        return ''
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+def _token_user(kind, raw_token):
+    """Retourne (user, stored_value).
+
+    Les nouveaux tokens sont stockés sous SHA-256. Le fallback plaintext permet
+    de ne pas casser immédiatement les liens émis avant le déploiement V1.3.3.
+    """
+    if kind not in ('verification','reset'):
+        raise ValueError('Unknown token kind')
+    column='verification_token' if kind=='verification' else 'reset_token'
+    digest=token_digest(raw_token)
+    c=auth_cx()
+    u=c.execute(f'SELECT * FROM users WHERE {column}=?',(digest,)).fetchone()
+    stored=digest
+    if not u:
+        # Compatibilité transitoire avec les anciens liens V1.3.2 stockés en clair.
+        u=c.execute(f'SELECT * FROM users WHERE {column}=?',(raw_token,)).fetchone()
+        stored=raw_token
+    c.close()
+    return u,stored
 
 def send_verification_email(user, dry_run=None):
     token=gen_token()
-    c=auth_cx(); c.execute('UPDATE users SET verification_token=?,verification_sent_at=? WHERE id=?',(token,now(),user['id'])); c.commit(); c.close()
+    digest=token_digest(token)
+    c=auth_cx()
+    c.execute('UPDATE users SET verification_token=?,verification_sent_at=? WHERE id=?',(digest,now(),user['id']))
+    c.commit(); c.close()
     base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
     link=f"{base}{url_for('verify_email',token=token)}"
     html=render_template('email_transactional.html',title='Confirm your email',
-        intro='Click below to confirm your ProfitOS account email address.',
+        intro='Click below to confirm your ProfitOS account email address. This link expires in 24 hours.',
         cta_label='Verify email',cta_url=link,footer='If you did not create a ProfitOS account, you can ignore this email.')
     return send_email(user['email'],'Confirm your ProfitOS account',html,dry_run=dry_run)
 
 def send_reset_email(user, dry_run=None):
     token=gen_token()
-    expires=(datetime.now(timezone.utc)+timedelta(hours=2)).isoformat()
-    c=auth_cx(); c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(token,expires,user['id'])); c.commit(); c.close()
+    digest=token_digest(token)
+    expires=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()
+    c=auth_cx()
+    c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(digest,expires,user['id']))
+    c.commit(); c.close()
     base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
     link=f"{base}{url_for('reset_password',token=token)}"
     html=render_template('email_transactional.html',title='Reset your password',
-        intro='Click below to choose a new password. This link expires in 2 hours.',
+        intro='Click below to choose a new password. This link expires in 1 hour.',
         cta_label='Reset password',cta_url=link,footer='If you did not request this, you can ignore this email — your password will not change.')
     return send_email(user['email'],'Reset your ProfitOS password',html,dry_run=dry_run)
 

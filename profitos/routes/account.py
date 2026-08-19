@@ -51,7 +51,7 @@ def register(app):
             c.execute('INSERT INTO users(email,password_hash,full_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)',(email,generate_password_hash(pw),name,now(),now())); uid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,'OWNER',?)",(uid,oid,now())); c.commit()
             user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone(); c.close()
-            session.clear(); session.permanent=True; session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; init_tenant_db()
+            session.clear(); session.permanent=True; session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; session['auth_version']=int(user.get('auth_version') or 0); init_tenant_db()
             tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
             log_activity('SIGNUP',f'Création organisation {company}')
             result=send_verification_email(user)
@@ -75,7 +75,7 @@ def register(app):
             if not u or not check_password_hash(u['password_hash'],pw): c.close(); flash('E-mail ou mot de passe incorrect.'); return redirect(request.url)
             m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone(); c.close()
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
-            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; init_tenant_db(); log_activity('LOGIN','Connexion')
+            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; session['auth_version']=int(u.get('auth_version') or 0); init_tenant_db(); log_activity('LOGIN','Connexion')
             return redirect(safe_next_url(request.args.get('next')) or url_for('home'))
         return render_template('login.html')
 
@@ -86,14 +86,35 @@ def register(app):
         session.clear(); return redirect(url_for('login'))
 
     @app.route('/verify/<token>')
+    @rate_limit(20,900)
     def verify_email(token):
-        c=auth_cx(); u=c.execute('SELECT * FROM users WHERE verification_token=?',(token,)).fetchone()
+        u,stored_token=_token_user('verification',token)
         if not u:
-            c.close(); flash("Lien de vérification invalide ou déjà utilisé."); return redirect(url_for('login'))
+            flash("Lien de vérification invalide, expiré ou déjà utilisé.")
+            return redirect(url_for('login'))
+
         sent_at=parse_dt(u['verification_sent_at'])
-        if sent_at and (datetime.now(timezone.utc)-sent_at).total_seconds()>86400*3:
-            c.close(); flash("Ce lien de vérification a expiré. Demandez-en un nouveau depuis votre compte."); return redirect(url_for('login'))
-        c.execute('UPDATE users SET email_verified=1,verification_token=NULL WHERE id=?',(u['id'],)); c.commit(); c.close()
+        expired = (not sent_at) or (datetime.now(timezone.utc)-sent_at).total_seconds()>86400
+        if expired:
+            # Expiration explicite : le token inutilisable est supprimé.
+            c=auth_cx()
+            c.execute('UPDATE users SET verification_token=NULL WHERE id=? AND verification_token=?',(u['id'],stored_token))
+            c.commit(); c.close()
+            flash("Ce lien de vérification a expiré. Demandez-en un nouveau depuis votre compte.")
+            return redirect(url_for('login'))
+
+        # Consommation atomique : un même lien ne peut être validé qu'une seule fois,
+        # même si deux requêtes arrivent quasiment en même temps.
+        c=auth_cx()
+        result=c.execute(
+            'UPDATE users SET email_verified=1,verification_token=NULL,verification_sent_at=NULL,updated_at=? '
+            'WHERE id=? AND verification_token=?',
+            (now(),u['id'],stored_token)
+        )
+        c.commit(); c.close()
+        if getattr(result,'rowcount',0)!=1:
+            flash("Lien de vérification invalide ou déjà utilisé.")
+            return redirect(url_for('login'))
         flash('Adresse email vérifiée. Merci !')
         return redirect(url_for('home') if session.get('user_id') else url_for('login'))
 
@@ -129,22 +150,48 @@ def register(app):
     @app.route('/reset-password/<token>',methods=['GET','POST'])
     @rate_limit(10,900)
     def reset_password(token):
-        c=auth_cx(); u=c.execute('SELECT * FROM users WHERE reset_token=?',(token,)).fetchone()
+        u,stored_token=_token_user('reset',token)
         expired=True
         if u and u['reset_token_expires']:
             exp=parse_dt(u['reset_token_expires'])
             expired = not exp or datetime.now(timezone.utc)>exp
+
         if not u or expired:
-            c.close(); flash("Ce lien de réinitialisation est invalide ou a expiré."); return redirect(url_for('forgot_password'))
+            if u and stored_token:
+                c=auth_cx()
+                c.execute('UPDATE users SET reset_token=NULL,reset_token_expires=NULL WHERE id=? AND reset_token=?',(u['id'],stored_token))
+                c.commit(); c.close()
+            flash("Ce lien de réinitialisation est invalide ou a expiré.")
+            return redirect(url_for('forgot_password'))
+
         if request.method=='POST':
             pw=request.form.get('password',''); pw2=request.form.get('password_confirm','')
             err=password_error(pw)
-            if err: c.close(); flash(err); return redirect(request.url)
-            if pw!=pw2: c.close(); flash('Les deux mots de passe ne correspondent pas.'); return redirect(request.url)
-            c.execute('UPDATE users SET password_hash=?,reset_token=NULL,reset_token_expires=?,updated_at=? WHERE id=?',(generate_password_hash(pw),None,now(),u['id'])); c.commit(); c.close()
-            flash('Mot de passe mis à jour. Vous pouvez vous connecter.')
+            if err:
+                flash(err); return redirect(request.url)
+            if pw!=pw2:
+                flash('Les deux mots de passe ne correspondent pas.'); return redirect(request.url)
+
+            # Consommation atomique + rotation de auth_version :
+            # 1) le lien devient immédiatement inutilisable ;
+            # 2) toutes les anciennes sessions de ce compte sont invalidées.
+            c=auth_cx()
+            result=c.execute(
+                'UPDATE users SET password_hash=?,reset_token=NULL,reset_token_expires=NULL,'
+                'auth_version=COALESCE(auth_version,0)+1,updated_at=? '
+                'WHERE id=? AND reset_token=?',
+                (generate_password_hash(pw),now(),u['id'],stored_token)
+            )
+            c.commit(); c.close()
+            if getattr(result,'rowcount',0)!=1:
+                flash("Ce lien de réinitialisation a déjà été utilisé.")
+                return redirect(url_for('forgot_password'))
+
+            # La session courante, si elle existe, ne doit pas survivre au changement.
+            session.clear()
+            flash('Mot de passe mis à jour. Toutes les anciennes sessions ont été invalidées. Vous pouvez vous reconnecter.')
             return redirect(url_for('login'))
-        c.close()
+
         return render_template('reset_password.html',token=token)
 
     @app.route('/onboarding',methods=['GET','POST'])
@@ -184,7 +231,9 @@ def register(app):
     def send_invite_email(user, org, role, dry_run=None):
         token=gen_token()
         expires=(datetime.now(timezone.utc)+timedelta(days=7)).isoformat()
-        c=auth_cx(); c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(token,expires,user['id'])); c.commit(); c.close()
+        c=auth_cx()
+        c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(token_digest(token),expires,user['id']))
+        c.commit(); c.close()
         base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
         link=f"{base}{url_for('reset_password',token=token)}"
         html=render_template('email_transactional.html',title='Vous avez été invité(e) sur ProfitOS',

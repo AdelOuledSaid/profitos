@@ -1,3 +1,5 @@
+# ProfitOS V1.3.3 — Secure Tokens & Account Recovery
+
 # ProfitOS — V1.3.2
 
 **Production Hardening: distributed rate limiting with Flask-Limiter + Render Key Value.**
