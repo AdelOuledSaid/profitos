@@ -11,9 +11,13 @@ def register(app):
         if request.method=='POST':
             f=request.files.get('file')
             if not f:return redirect(request.url)
-            path=UP/f.filename; f.save(path)
-            try:df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
-            except Exception as e:flash(str(e)); return redirect(request.url)
+            try:
+                path, original_name=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+            except Exception as e:
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+            finally:
+                if 'path' in locals(): cleanup_upload(path)
             aliases={'num':['invoice_number','invoice','number','numero','numéro','n° facture','facture'],'customer':['customer','client','customer_name','nom client'],'amount':['amount','montant','montant ttc','total'],'paid':['paid_amount','montant payé','montant paye'],'issue':['issue_date','date facture','date'],'due':['due_date','échéance','echeance',"date d'échéance"],'status':['status','statut','etat','état'],'itype':['type','nature','kind'],'release':['retention_release_date','date liberation','date de liberation','date de levée','date de levee','date liberation retenue'],'email':['customer_email','email','email client','courriel','mail client']}; m=map_cols(df,aliases); missing=[k for k in ('num','customer','amount','due') if k not in m]
             if missing:flash('Colonnes manquantes : '+', '.join(missing)); return redirect(request.url)
             RETENTION_KEYWORDS=('retenue','retention','garantie')
@@ -125,9 +129,13 @@ def register(app):
         if request.method=='POST':
             f=request.files.get('file')
             if not f:return redirect(request.url)
-            path=UP/f.filename; f.save(path)
-            try:df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
-            except Exception as e:flash(str(e)); return redirect(request.url)
+            try:
+                path, original_name=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+            except Exception as e:
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+            finally:
+                if 'path' in locals(): cleanup_upload(path)
             aliases={'vendor':['vendor','supplier','fournisseur'],'desc':['description','libelle','libellé'],'amount':['amount','montant','total'],'date':['date','expense_date','date dépense','date depense'],'cat':['category','categorie','catégorie']}; m=map_cols(df,aliases); missing=[k for k in ('vendor','amount','date') if k not in m]
             if missing:flash('Colonnes manquantes : '+', '.join(missing)); return redirect(request.url)
             c=cx(); c.execute('DELETE FROM expenses'); c.execute("DELETE FROM opportunities WHERE type='SAVE'"); clean=[]

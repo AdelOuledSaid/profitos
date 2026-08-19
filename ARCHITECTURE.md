@@ -1,8 +1,8 @@
-# ProfitOS V1.2 — Production Architecture
+# ProfitOS V1.1 — Production Architecture
 
 ## Goal
 
-V1.2 is a structural release: it keeps the V1.0 behavior while splitting the 1,455-line monolith into a Flask application factory, shared runtime/services, and domain route modules.
+V1.1 is a structural release: it keeps the V1.0 behavior while splitting the 1,455-line monolith into a Flask application factory, shared runtime/services, and domain route modules.
 
 ## Layout
 
@@ -43,9 +43,4 @@ ProfitOS_V1_1_Production_Architecture/
 
 ## Deliberate compatibility decision
 
-V1.2 does **not** rewrite every SQL statement or every domain helper. Shared logic lives in `runtime.py` so the refactor remains behavior-compatible. Future V1.2+ can move individual services (`recover`, `grow`, `email`, `billing`) out of runtime without another big-bang rewrite.
-
-
-## V1.2 database topology
-
-Production uses PostgreSQL: `public` for auth and `org_<id>` schemas for tenant data. Local development remains SQLite. `/readyz` is the deployment readiness probe.
+V1.1 does **not** rewrite every SQL statement or every domain helper. Shared logic lives in `runtime.py` so the refactor remains behavior-compatible. Future V1.2+ can move individual services (`recover`, `grow`, `email`, `billing`) out of runtime without another big-bang rewrite.

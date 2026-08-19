@@ -10,6 +10,8 @@ from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import Counter, defaultdict
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from urllib.parse import urlsplit
 import pandas as pd
 import requests
 from pypdf import PdfReader
@@ -115,6 +117,87 @@ def login_required(fn):
         if not session.get('user_id'): return redirect(url_for('login',next=request.path))
         return fn(*a,**kw)
     return wrapped
+
+# ---------------------------------------------------------------------------
+# Security helpers / uploads
+# ---------------------------------------------------------------------------
+ALLOWED_INVOICE_EXTENSIONS={'.csv','.xlsx','.xls'}
+ALLOWED_DCE_EXTENSIONS={'.pdf','.docx','.txt','.md'}
+WEBHOOK_HOST_SUFFIXES=('hooks.slack.com','webhook.office.com','logic.azure.com','outlook.office.com')
+
+
+def safe_next_url(target):
+    """N'autorise que les redirections relatives internes (anti open-redirect)."""
+    if not target or not isinstance(target,str): return None
+    parsed=urlsplit(target)
+    if parsed.scheme or parsed.netloc or not target.startswith('/') or target.startswith('//'):
+        return None
+    return target
+
+
+def password_error(password):
+    if len(password)<10: return 'Le mot de passe doit contenir au moins 10 caractères.'
+    if not re.search(r'[A-Za-z]',password) or not re.search(r'\d',password):
+        return 'Le mot de passe doit contenir au moins une lettre et un chiffre.'
+    return None
+
+
+def validate_webhook_url(url):
+    if not url: return True
+    try:
+        p=urlsplit(url)
+        host=(p.hostname or '').lower()
+        if p.scheme!='https' or not host: return False
+        return any(host==suffix or host.endswith('.'+suffix) for suffix in WEBHOOK_HOST_SUFFIXES)
+    except Exception:
+        return False
+
+
+def _signature_ok(path, ext):
+    try:
+        with path.open('rb') as fh:
+            head=fh.read(16)
+    except Exception:
+        return False
+    if ext=='.pdf': return head.startswith(b'%PDF-')
+    if ext in ('.xlsx','.docx'): return head.startswith(b'PK')
+    if ext=='.xls': return head.startswith(bytes.fromhex('D0CF11E0A1B11AE1'))
+    if ext in ('.csv','.txt','.md'):
+        return b'\x00' not in head
+    return False
+
+
+def save_upload(file_storage, category, allowed_extensions):
+    """Sauvegarde temporaire isolée par organisation avec nom aléatoire et validation légère."""
+    if not file_storage or not file_storage.filename:
+        raise ValueError('Fichier manquant.')
+    original=secure_filename(Path(file_storage.filename).name)
+    if not original:
+        raise ValueError('Nom de fichier invalide.')
+    ext=Path(original).suffix.lower()
+    if ext not in allowed_extensions:
+        raise ValueError('Type de fichier non autorisé.')
+    org_id=session.get('org_id')
+    if not org_id:
+        raise ValueError('Organisation non sélectionnée.')
+    target_dir=UP/f'org_{int(org_id)}'/category
+    target_dir.mkdir(parents=True,exist_ok=True)
+    target=target_dir/f'{secrets.token_hex(16)}{ext}'
+    file_storage.save(target)
+    try:
+        if not _signature_ok(target,ext):
+            raise ValueError('Le contenu du fichier ne correspond pas au format attendu.')
+        return target, original
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+
+
+def cleanup_upload(path):
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # Stripe — facturation. Import paresseux : ne plante jamais si la lib n'est
@@ -233,13 +316,20 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        # Exempté : le webhook Stripe est authentifié par signature cryptographique
-        # (Stripe-Signature), pas par cookie de session — un CSRF token n'a pas de sens ici.
         if request.path=='/billing/webhook':
             return
-        token=session.get('csrf_token'); sent=request.form.get('csrf_token')
+        token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or not sent or not secrets.compare_digest(token,sent):
             abort(400,description='CSRF token invalide ou manquant.')
+        # Défense supplémentaire en production : si Origin/Referer est présent, il doit être same-origin.
+        source=request.headers.get('Origin') or request.headers.get('Referer')
+        if source and os.environ.get('PROFITOS_ENV','development').lower()=='production':
+            try:
+                p=urlsplit(source)
+                if p.netloc and p.netloc.lower()!=request.host.lower():
+                    abort(400,description='Origine de requête refusée.')
+            except Exception:
+                abort(400,description='Origine de requête invalide.')
 
 
 # ---------------------------------------------------------------------------
@@ -490,9 +580,9 @@ def notify_org(text):
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close()
         if not s or not s['notifications_enabled']: return
         for url in (s['slack_webhook_url'],s['teams_webhook_url']):
-            if url:
-                try: requests.post(url,json={'text':text},timeout=5)
-                except Exception: pass  # notification best-effort, ne jamais faire planter l'upload
+            if url and validate_webhook_url(url):
+                try: requests.post(url,json={'text':text},timeout=5,allow_redirects=False)
+                except Exception: pass
     except Exception:
         pass
 
@@ -628,6 +718,11 @@ def commercial_context():
 
 
 
+
+def security_session_context():
+    if session.get('user_id'):
+        session.permanent=True
+
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
@@ -636,5 +731,6 @@ def init_runtime(app):
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.before_request(csrf_protect)
+    app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)
     app.context_processor(commercial_context)

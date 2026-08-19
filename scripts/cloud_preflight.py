@@ -1,4 +1,4 @@
-"""ProfitOS V1.2 — validation cloud + initialisation PostgreSQL.
+"""ProfitOS V1.3 — validation cloud + initialisation PostgreSQL.
 
 Usage:
   python scripts/cloud_preflight.py
@@ -37,6 +37,10 @@ def main():
     if args.init_tenants:
         count = initialize_all_tenant_schemas()
         print(f'[ProfitOS] schémas tenant initialisés: {count}')
+
+    app_url=os.environ.get('APP_BASE_URL','')
+    if env=='production' and app_url and not app_url.startswith('https://'):
+        raise SystemExit('[ProfitOS] ERREUR: APP_BASE_URL doit utiliser HTTPS en production.')
 
     secret = os.environ.get('PROFITOS_SECRET_KEY','')
     if env == 'production' and len(secret) < 32:

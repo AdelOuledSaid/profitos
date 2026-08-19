@@ -1,4 +1,4 @@
-# ProfitOS V1.2 — PostgreSQL + Cloud Deployment
+# ProfitOS V1.1 — Production Architecture
 
 This release refactors the cleaned V1.0 into a modular production-oriented Flask structure while preserving the existing product behavior.
 
@@ -66,18 +66,6 @@ For a public launch, configure at minimum:
 The existing PostgreSQL compatibility layer is preserved, but it still needs integration testing against the exact managed PostgreSQL target before a public production launch.
 
 
-## V1.2 — PostgreSQL + Cloud Deployment
+## V1.3 — Production Hardening
 
-Cette version garde **exactement le dossier `ProfitOS_V1_0_Commercial_MVP`** et ajoute :
-
-- PostgreSQL comme backend de production via `DATABASE_URL` ;
-- schéma `public` pour l'auth et un schéma `org_<id>` par organisation ;
-- `/readyz` qui valide réellement la connexion base ;
-- `scripts/cloud_preflight.py` ;
-- migration SQLite → PostgreSQL ;
-- `railway.json` ;
-- `render.yaml` ;
-- Python 3.12 pour le cloud ;
-- tests de traduction SQL SQLite/PostgreSQL.
-
-Documentation : `MIGRATION_POSTGRES.md` et `CLOUD_DEPLOYMENT.md`.
+Sécurité des sessions, headers HTTP, CSRF same-origin, uploads isolés et validés, anti open-redirect, validation des webhooks, request IDs, pages d’erreur sûres et tests de sécurité de base. Voir `SECURITY.md` et `PRODUCTION_CHECKLIST.md`.

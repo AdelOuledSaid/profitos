@@ -1,6 +1,26 @@
-from flask import Flask, jsonify
+import logging
+import os
+import secrets
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from flask import Flask, jsonify, g, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 from .config import get_config, APP_VERSION
 from .runtime import init_auth_db, init_runtime, database_readiness
+
+
+def _configure_logging(app):
+    if app.testing:
+        return
+    app.logger.setLevel(logging.INFO)
+    if os.environ.get('PROFITOS_ENV', 'development').lower() != 'production':
+        log_dir = Path(app.root_path).parent / 'logs'
+        log_dir.mkdir(exist_ok=True)
+        handler = RotatingFileHandler(log_dir / 'profitos.log', maxBytes=2_000_000, backupCount=3, encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+        app.logger.addHandler(handler)
 
 
 def create_app(config_object=None):
@@ -12,6 +32,15 @@ def create_app(config_object=None):
     )
     app.config.from_object(config_object or get_config())
 
+    is_production = os.environ.get('PROFITOS_ENV', 'development').lower() == 'production'
+    if is_production:
+        secret = app.config.get('SECRET_KEY') or ''
+        if secret == 'dev-only-change-me' or len(secret) < 32:
+            raise RuntimeError('PROFITOS_SECRET_KEY doit être défini avec au moins 32 caractères en production.')
+        # Render termine TLS en amont et fournit X-Forwarded-Proto / Host.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    _configure_logging(app)
     init_auth_db()
     init_runtime(app)
 
@@ -23,19 +52,73 @@ def create_app(config_object=None):
     reports.register(app)
     imports.register(app)
 
+    @app.before_request
+    def request_context():
+        incoming = request.headers.get('X-Request-ID', '')
+        g.request_id = incoming[:80] if incoming and re_safe_request_id(incoming) else secrets.token_hex(12)
+
+    @app.after_request
+    def security_headers(response):
+        response.headers['X-Request-ID'] = getattr(g, 'request_id', '')
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()'
+        response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+            "img-src 'self' data:; font-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            "connect-src 'self'; form-action 'self'"
+        )
+        if is_production:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        if request.path.startswith(('/login','/signup','/forgot-password','/reset-password','/verify')) or request.cookies:
+            response.headers.setdefault('Cache-Control', 'no-store, private')
+            response.headers.setdefault('Pragma', 'no-cache')
+        return response
+
+    @app.errorhandler(400)
+    def bad_request(error):
+        return render_template('error.html', code=400, title='Requête invalide', message='La requête a été refusée pour des raisons de sécurité ou de validation.'), 400
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template('error.html', code=403, title='Accès refusé', message="Vous n'avez pas l'autorisation d'accéder à cette ressource."), 403
+
+    @app.errorhandler(404)
+    def not_found(error):
+        return render_template('error.html', code=404, title='Page introuvable', message="La ressource demandée n'existe pas ou n'est plus disponible."), 404
+
+    @app.errorhandler(413)
+    def too_large(error):
+        return render_template('error.html', code=413, title='Fichier trop volumineux', message='Le fichier dépasse la taille maximale autorisée.'), 413
+
+    @app.errorhandler(429)
+    def too_many(error):
+        return render_template('error.html', code=429, title='Trop de requêtes', message='Trop de tentatives ont été effectuées. Réessayez plus tard.'), 429
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        app.logger.exception('Erreur interne request_id=%s path=%s', getattr(g, 'request_id', '-'), request.path)
+        return render_template('error.html', code=500, title='Erreur interne', message="Une erreur est survenue. L'identifiant de requête peut être communiqué au support.", request_id=getattr(g, 'request_id', None)), 500
+
     @app.get('/healthz')
     def healthz():
-        # Liveness : le process Flask/Gunicorn répond.
         return jsonify(status='ok', service='profitos', version=APP_VERSION)
 
     @app.get('/readyz')
     def readyz():
-        # Readiness : le process répond ET la base auth est joignable.
         ok, backend, error = database_readiness()
-        payload = dict(status='ready' if ok else 'not_ready', service='profitos',
-                       version=APP_VERSION, database=backend)
+        payload = dict(status='ready' if ok else 'not_ready', service='profitos', version=APP_VERSION, database=backend)
         if error:
-            payload['error'] = error[:300]
+            # Ne pas exposer les credentials / détails de connexion publiquement.
+            payload['error'] = 'database_unavailable'
+            app.logger.error('Readiness DB failure: %s', error)
         return jsonify(**payload), (200 if ok else 503)
 
     return app
+
+
+def re_safe_request_id(value):
+    return all(c.isalnum() or c in '-_.' for c in value)

@@ -39,7 +39,8 @@ def register(app):
         if request.method=='POST':
             name=request.form.get('full_name','').strip(); email=request.form.get('email','').strip().lower(); pw=request.form.get('password',''); company=request.form.get('company_name','').strip()
             if not name or not email or not pw or not company: flash('Tous les champs sont obligatoires.'); return redirect(request.url)
-            if len(pw)<8: flash('Le mot de passe doit contenir au moins 8 caractères.'); return redirect(request.url)
+            err=password_error(pw)
+            if err: flash(err); return redirect(request.url)
             c=auth_cx()
             if c.execute('SELECT id FROM users WHERE email=?',(email,)).fetchone(): c.close(); flash('Un compte existe déjà avec cet e-mail.'); return redirect(url_for('login'))
             slug=re.sub(r'[^a-z0-9]+','-',norm(company)).strip('-') or 'company'; base=slug; i=1
@@ -50,7 +51,7 @@ def register(app):
             c.execute('INSERT INTO users(email,password_hash,full_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)',(email,generate_password_hash(pw),name,now(),now())); uid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,'OWNER',?)",(uid,oid,now())); c.commit()
             user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone(); c.close()
-            session.clear(); session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; init_tenant_db()
+            session.clear(); session.permanent=True; session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; init_tenant_db()
             tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
             log_activity('SIGNUP',f'Création organisation {company}')
             result=send_verification_email(user)
@@ -69,8 +70,8 @@ def register(app):
             if not u or not check_password_hash(u['password_hash'],pw): c.close(); flash('E-mail ou mot de passe incorrect.'); return redirect(request.url)
             m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone(); c.close()
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
-            session.clear(); session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; init_tenant_db(); log_activity('LOGIN','Connexion')
-            return redirect(request.args.get('next') or url_for('home'))
+            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; init_tenant_db(); log_activity('LOGIN','Connexion')
+            return redirect(safe_next_url(request.args.get('next')) or url_for('home'))
         return render_template('login.html')
 
     @app.route('/logout')
@@ -92,6 +93,7 @@ def register(app):
 
     @app.route('/verify/resend',methods=['POST'])
     @login_required
+    @rate_limit(3,900)
     def verify_resend():
         u=current_user()
         if u['email_verified']:
@@ -125,7 +127,8 @@ def register(app):
             c.close(); flash("Ce lien de réinitialisation est invalide ou a expiré."); return redirect(url_for('forgot_password'))
         if request.method=='POST':
             pw=request.form.get('password',''); pw2=request.form.get('password_confirm','')
-            if len(pw)<8: c.close(); flash('Le mot de passe doit contenir au moins 8 caractères.'); return redirect(request.url)
+            err=password_error(pw)
+            if err: c.close(); flash(err); return redirect(request.url)
             if pw!=pw2: c.close(); flash('Les deux mots de passe ne correspondent pas.'); return redirect(request.url)
             c.execute('UPDATE users SET password_hash=?,reset_token=NULL,reset_token_expires=?,updated_at=? WHERE id=?',(generate_password_hash(pw),None,now(),u['id'])); c.commit(); c.close()
             flash('Mot de passe mis à jour. Vous pouvez vous connecter.')
@@ -149,6 +152,8 @@ def register(app):
         if request.method=='POST':
             currency=request.form.get('currency','EUR'); locale=request.form.get('locale','fr-FR'); notif=1 if request.form.get('notifications_enabled')=='on' else 0
             slack_url=request.form.get('slack_webhook_url','').strip() or None; teams_url=request.form.get('teams_webhook_url','').strip() or None
+            if slack_url and not validate_webhook_url(slack_url): flash('Webhook Slack invalide ou non autorisé.'); return redirect(request.url)
+            if teams_url and not validate_webhook_url(teams_url): flash('Webhook Teams invalide ou non autorisé.'); return redirect(request.url)
             c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,now(),now())); c.commit(); c.close(); log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close(); ac=auth_cx(); activity=ac.execute('SELECT * FROM activity_log WHERE organization_id=? ORDER BY id DESC LIMIT 30',(session['org_id'],)).fetchall(); ac.close(); return render_template('settings.html',app_settings=s,org=current_org(),user=current_user(),activity=activity)
 
@@ -179,6 +184,7 @@ def register(app):
     @app.route('/team/invite',methods=['POST'])
     @login_required
     @require_area('team')
+    @rate_limit(10,3600)
     def team_invite():
         if session.get('role')!='OWNER':
             flash("Seul le propriétaire peut inviter des membres."); return redirect(url_for('team'))

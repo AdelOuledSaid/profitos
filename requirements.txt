@@ -22,3 +22,6 @@ fpdf2==2.7.9
 gunicorn==22.0.0
 waitress==3.0.0
 pytest==8.3.5
+
+# Lecture sécurisée des anciens fichiers Excel .xls.
+xlrd==2.0.1
