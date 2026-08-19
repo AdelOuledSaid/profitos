@@ -66,6 +66,6 @@ For a public launch, configure at minimum:
 The existing PostgreSQL compatibility layer is preserved, but it still needs integration testing against the exact managed PostgreSQL target before a public production launch.
 
 
-## V1.3 — Production Hardening
+## V1.4 — Production Hardening
 
 Sécurité des sessions, headers HTTP, CSRF same-origin, uploads isolés et validés, anti open-redirect, validation des webhooks, request IDs, pages d’erreur sûres et tests de sécurité de base. Voir `SECURITY.md` et `PRODUCTION_CHECKLIST.md`.

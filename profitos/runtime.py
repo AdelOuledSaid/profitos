@@ -206,8 +206,22 @@ def cleanup_upload(path):
 STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_PUBLISHABLE_KEY=os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
-STRIPE_PRICE_ID=os.environ.get('STRIPE_PRICE_ID')
-BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
+STRIPE_PRICE_ID=os.environ.get('STRIPE_PRICE_ID')  # legacy single-plan fallback
+STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID') or STRIPE_PRICE_ID
+STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or STRIPE_PRICE_ID
+STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID') or STRIPE_PRICE_ID
+STRIPE_PRICES={
+    'STARTER': STRIPE_PRICE_STARTER_ID,
+    'PRO': STRIPE_PRICE_PRO_ID,
+    'BUSINESS': STRIPE_PRICE_BUSINESS_ID,
+}
+BILLING_ENABLED=bool(STRIPE_SECRET_KEY and any(STRIPE_PRICES.values()))
+
+def stripe_plan_from_price(price_id):
+    for plan,pid in STRIPE_PRICES.items():
+        if pid and pid==price_id: return plan
+    return 'PRO'
+
 
 def get_stripe():
     if not BILLING_ENABLED: return None

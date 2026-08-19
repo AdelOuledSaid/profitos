@@ -1,48 +1,12 @@
 {% extends "base.html" %}{% block content %}
-<div class="page">
-  <h1>Facturation</h1>
-
-  {% if not billing_enabled %}
-  <div class="panel" style="padding:20px;background:#f9fafb;border-radius:8px;color:#6b7280;">
-    Stripe n'est pas configuré sur cette instance. L'application reste utilisable sans limite
-    (mode démo/dev). Pour activer la facturation, renseigne <code>STRIPE_SECRET_KEY</code>,
-    <code>STRIPE_PRICE_ID</code> et <code>STRIPE_WEBHOOK_SECRET</code> dans <code>.env</code>.
-  </div>
-  {% else %}
-
-  <div class="panel" style="padding:20px;border-radius:8px;margin-bottom:20px;background:{{ '#fef2f2' if org.status=='CANCELED' else ('#f0fdf4' if org.status=='ACTIVE_PAID' else '#eff6ff') }};">
-    <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Statut actuel</div>
-    {% if org.status=='ACTIVE_PAID' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Plan PRO — actif</div>
-      <div style="color:#6b7280;font-size:14px;margin-top:4px;">Merci pour votre confiance.</div>
-    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</div>
-    {% elif org.status=='PAST_DUE' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Paiement en retard</div>
-      <div style="color:#6b7280;font-size:14px;margin-top:4px;">Merci de mettre à jour votre moyen de paiement.</div>
-    {% elif org.status=='CANCELED' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Abonnement annulé</div>
-    {% else %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Essai gratuit terminé</div>
-    {% endif %}
-  </div>
-
-  {% if org.status!='ACTIVE_PAID' %}
-  <div class="panel" style="padding:24px;border-radius:8px;border:1px solid #e5e7eb;max-width:420px;">
-    <div style="font-size:18px;font-weight:700;">ProfitOS Pro</div>
-    <div style="color:#6b7280;font-size:14px;margin:8px 0 16px;">Accès illimité à RECOVER, SAVE, GROW et au rapport hebdomadaire.</div>
-    <form method="post" action="{{ url_for('billing_checkout') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" style="background:#111827;color:#fff;border:none;border-radius:8px;padding:12px 22px;font-weight:600;cursor:pointer;">S'abonner</button>
-    </form>
-  </div>
-  {% else %}
-  <form method="post" action="{{ url_for('billing_portal') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" style="background:#111827;color:#fff;border:none;border-radius:8px;padding:12px 22px;font-weight:600;cursor:pointer;">Gérer mon abonnement</button>
-  </form>
-  {% endif %}
-
-  {% endif %}
+<div class="page"><div class="eyebrow">PLANS & BILLING</div><h1>Choisissez le plan adapté à votre entreprise</h1>
+<p class="muted">14 jours d’essai gratuit. Paiement sécurisé par Stripe. Gérez ou annulez votre abonnement depuis le portail client.</p>
+{% if not billing_enabled %}<div class="panel" style="padding:20px;margin:20px 0;">La facturation n’est pas encore activée. Configurez les variables Stripe sur Render pour ouvrir les abonnements.</div>{% endif %}
+<div class="panel" style="padding:18px;margin:20px 0;"><strong>Statut :</strong> {% if org.status=='ACTIVE_PAID' %}{{ org.plan }} — actif{% elif org.plan=='TRIAL' %}Essai gratuit — {{ trial_days }} jour(s) restant(s){% elif org.status=='PAST_DUE' %}Paiement en retard{% else %}{{ org.status }}{% endif %}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:18px;align-items:stretch;">
+{% for code,title,price,desc in [('STARTER','Starter','49 € / mois','Pour une petite équipe qui veut récupérer du cash et réduire ses dépenses.'),('PRO','Pro','99 € / mois','Pour les PME qui utilisent Recover, Save, Grow et le reporting complet.'),('BUSINESS','Business','249 € / mois','Pour les équipes avancées, appels d’offres, partenaires et collaboration.') ] %}
+<div class="panel" style="padding:24px;display:flex;flex-direction:column;"><div class="eyebrow">{{ code }}</div><h2 style="margin:8px 0;">{{ title }}</h2><div style="font-size:28px;font-weight:800;margin:8px 0 14px;">{{ price }}</div><p class="muted" style="flex:1;">{{ desc }}</p>
+{% if org.status=='ACTIVE_PAID' and org.plan==code %}<strong>Plan actuel ✓</strong>{% elif billing_enabled and plans.get(code) %}<form method="post" action="{{ url_for('billing_checkout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="plan" value="{{ code }}"><button type="submit">Choisir {{ title }}</button></form>{% else %}<button disabled>Configuration Stripe requise</button>{% endif %}</div>{% endfor %}
 </div>
-{% endblock %}
+{% if org.stripe_customer_id %}<form method="post" action="{{ url_for('billing_portal') }}" style="margin-top:22px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="secondary">Gérer mon abonnement Stripe</button></form>{% endif %}
+</div>{% endblock %}
