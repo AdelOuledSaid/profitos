@@ -1,3 +1,7 @@
+# ProfitOS — V1.3.2
+
+**Production Hardening: distributed rate limiting with Flask-Limiter + Render Key Value.**
+
 # ProfitOS V1.1 — Production Architecture
 
 This release refactors the cleaned V1.0 into a modular production-oriented Flask structure while preserving the existing product behavior.

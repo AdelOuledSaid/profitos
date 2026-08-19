@@ -8,7 +8,7 @@ from flask import Flask, jsonify, g, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import get_config, APP_VERSION
-from .runtime import init_auth_db, init_runtime, database_readiness
+from .runtime import init_auth_db, init_runtime, database_readiness, init_rate_limiter, limiter
 
 
 def _configure_logging(app):
@@ -41,6 +41,7 @@ def create_app(config_object=None):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     _configure_logging(app)
+    init_rate_limiter(app)
     init_auth_db()
     init_runtime(app)
 
@@ -104,10 +105,12 @@ def create_app(config_object=None):
         return render_template('error.html', code=500, title='Erreur interne', message="Une erreur est survenue. L'identifiant de requête peut être communiqué au support.", request_id=getattr(g, 'request_id', None)), 500
 
     @app.get('/healthz')
+    @limiter.exempt
     def healthz():
         return jsonify(status='ok', service='profitos', version=APP_VERSION)
 
     @app.get('/readyz')
+    @limiter.exempt
     def readyz():
         ok, backend, error = database_readiness()
         payload = dict(status='ready' if ok else 'not_ready', service='profitos', version=APP_VERSION, database=backend)

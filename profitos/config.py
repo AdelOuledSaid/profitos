@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 
 
 class BaseConfig:
@@ -17,6 +17,15 @@ class BaseConfig:
     DATABASE_URL = os.environ.get('DATABASE_URL')
     APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://127.0.0.1:5050')
     MAX_FORM_MEMORY_SIZE = 2 * 1024 * 1024
+    # Flask-Limiter: Redis/Valkey en production, mémoire uniquement en local.
+    RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'memory://')
+    RATELIMIT_HEADERS_ENABLED = True
+    RATELIMIT_HEADER_RETRY_AFTER_VALUE = 'delta-seconds'
+    # Si Key Value est temporairement indisponible, conserver une protection locale
+    # plutôt que de faire tomber l'application.
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
+    RATELIMIT_SWALLOW_ERRORS = False
+    RATELIMIT_KEY_PREFIX = 'profitos-v132'
 
 
 class DevelopmentConfig(BaseConfig):

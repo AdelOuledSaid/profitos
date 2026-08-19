@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 from collections import Counter, defaultdict
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from urllib.parse import urlsplit
 import pandas as pd
 import requests
@@ -320,31 +322,36 @@ def require_area(area):
 
 
 # ---------------------------------------------------------------------------
-# Rate limiting — implémentation en mémoire (par process), suffisante pour un
-# pilote sur une seule instance. En production multi-worker/multi-instance,
-# remplacer par Flask-Limiter + backend Redis (le stockage en mémoire locale
-# n'est pas partagé entre workers/processus).
+# Rate limiting distribué — Flask-Limiter + Render Key Value (Valkey/Redis).
+#
+# La clé est l'adresse IP cliente après ProxyFix. En production, REDIS_URL
+# pointe vers le connectionString privé du Key Value Render. En local,
+# memory:// reste disponible. Le fallback mémoire protège encore le service
+# si le datastore est brièvement indisponible.
 # ---------------------------------------------------------------------------
-_rate_buckets=defaultdict(list)
+limiter = Limiter(key_func=get_remote_address)
+
+def init_rate_limiter(app):
+    limiter.init_app(app)
+    storage = app.config.get('RATELIMIT_STORAGE_URI', 'memory://')
+    backend = 'render-key-value' if str(storage).startswith(('redis://','rediss://')) else 'memory'
+    app.logger.info('Rate limiter initialized backend=%s', backend)
+
+def _seconds_limit_string(max_calls, per_seconds):
+    return f"{int(max_calls)} per {int(per_seconds)} seconds"
 
 def rate_limit(max_calls, per_seconds):
-    """Limite uniquement les requêtes POST (tentatives réelles) ; les GET (affichage de page) ne sont jamais limités."""
-    def deco(fn):
-        @functools.wraps(fn)
-        def wrapped(*a,**kw):
-            if request.method!='POST':
-                return fn(*a,**kw)
-            key=f"{request.endpoint}:{request.remote_addr}"
-            t=datetime.now(timezone.utc).timestamp()
-            bucket=_rate_buckets[key]
-            bucket[:]=[x for x in bucket if t-x<per_seconds]
-            if len(bucket)>=max_calls:
-                flash("Trop de tentatives. Merci de réessayer dans quelques minutes.")
-                return redirect(request.referrer or url_for('login')), 429
-            bucket.append(t)
-            return fn(*a,**kw)
-        return wrapped
-    return deco
+    """Compatibilité avec les décorateurs historiques de ProfitOS.
+
+    Seules les requêtes POST sont comptabilisées, comme dans l'ancienne
+    implémentation. L'état est désormais partagé entre workers/instances
+    lorsque REDIS_URL est configuré.
+    """
+    return limiter.limit(
+        _seconds_limit_string(max_calls, per_seconds),
+        methods=['POST'],
+        override_defaults=True,
+    )
 
 # ---------------------------------------------------------------------------
 # CSRF — protection basique par token de session, appliquée à toutes les
