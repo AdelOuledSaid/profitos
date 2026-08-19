@@ -28,6 +28,8 @@ def register(app):
     def company():
         c=cx()
         if request.method=='POST':
+            if not can_access('settings'):
+                c.close(); flash('Seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
             dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep
             vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),now())
             c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
@@ -94,9 +96,10 @@ def register(app):
         if not p:return render_template('grow.html',rows=[],needs_profile=True,last=None,jlist=jlist,fmt_deadline=fmt_deadline,days_left=days_left)
         c=cx(); rows=c.execute("SELECT * FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall(); last=c.execute("SELECT * FROM audit_runs WHERE run_type='GROW' ORDER BY id DESC LIMIT 1").fetchone(); c.close(); return render_template('grow.html',rows=rows,needs_profile=False,last=last,jlist=jlist,fmt_deadline=fmt_deadline,days_left=days_left)
 
-    @app.route('/grow/refresh')
+    @app.route('/grow/refresh',methods=['POST'])
     @login_required
     @require_area('grow')
+    @rate_limit(6,300)
     def grow_refresh():
         try:flash(f'BOAMP actualisé : {sync_grow()} opportunités pertinentes.')
         except Exception as e:flash(f'Impossible d’actualiser BOAMP : {e}')

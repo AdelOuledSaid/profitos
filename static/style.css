@@ -29,3 +29,5 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a1428;border:1px sol
 @media(max-width:850px){.discoveryrow{grid-template-columns:1fr}}
 
 .accountbox{margin:18px 22px 4px;background:#0a1529;border:1px solid #294064;border-radius:12px;padding:12px}.accountbox strong,.accountbox span,.accountbox a{display:block}.accountbox span{font-size:11px;color:#8fa7cd;margin:5px 0}.accountbox a{font-size:11px;color:#a9c8fa;text-decoration:none}.sidebar{padding-bottom:24px}.authpage{min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#142548,#081020 55%)}.authcard{width:min(480px,92vw);background:#101d34;border:1px solid #2c456d;border-radius:22px;padding:34px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.authcard h1{font-size:34px}.authcard .brand{margin-bottom:22px}
+
+.logout-link{background:none;border:0;padding:0;color:#a9c8fa;font:inherit;font-size:11px;text-decoration:none;cursor:pointer;text-align:left}.logout-link:hover{text-decoration:underline}

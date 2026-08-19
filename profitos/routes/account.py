@@ -79,7 +79,8 @@ def register(app):
             return redirect(safe_next_url(request.args.get('next')) or url_for('home'))
         return render_template('login.html')
 
-    @app.route('/logout')
+    @app.route('/logout',methods=['POST'])
+    @login_required
     def logout():
         if session.get('user_id'): log_activity('LOGOUT','Déconnexion')
         session.clear(); return redirect(url_for('login'))
@@ -196,7 +197,7 @@ def register(app):
     @require_area('team')
     @rate_limit(10,3600)
     def team_invite():
-        if session.get('role')!='OWNER':
+        if current_role()!='OWNER':
             flash("Seul le propriétaire peut inviter des membres."); return redirect(url_for('team'))
         email=request.form.get('email','').strip().lower(); role=request.form.get('role','MEMBER').upper()
         if role not in ROLES: role='MEMBER'
@@ -225,7 +226,7 @@ def register(app):
     @login_required
     @require_area('team')
     def team_set_role(uid):
-        if session.get('role')!='OWNER':
+        if current_role()!='OWNER':
             flash("Seul le propriétaire peut modifier les rôles."); return redirect(url_for('team'))
         role=request.form.get('role','MEMBER').upper()
         if role not in ROLES: role='MEMBER'
@@ -239,7 +240,7 @@ def register(app):
     @login_required
     @require_area('team')
     def team_remove(uid):
-        if session.get('role')!='OWNER':
+        if current_role()!='OWNER':
             flash("Seul le propriétaire peut retirer des membres."); return redirect(url_for('team'))
         if uid==session['user_id']:
             flash("Vous ne pouvez pas vous retirer vous-même."); return redirect(url_for('team'))
@@ -258,6 +259,7 @@ def register(app):
 
     @app.route('/billing/checkout',methods=['POST'])
     @login_required
+    @require_area('billing')
     def billing_checkout():
         stripe=get_stripe()
         if not stripe:
@@ -284,6 +286,7 @@ def register(app):
 
     @app.route('/billing/portal',methods=['POST'])
     @login_required
+    @require_area('billing')
     def billing_portal():
         stripe=get_stripe(); org=current_org()
         if not stripe or not org['stripe_customer_id']:

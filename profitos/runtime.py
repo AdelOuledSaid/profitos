@@ -111,10 +111,53 @@ def current_org():
     if not oid:return None
     c=auth_cx(); r=c.execute('SELECT * FROM organizations WHERE id=?',(oid,)).fetchone(); c.close(); return r
 
+def current_membership():
+    """Return the membership stored in the auth DB for the active user/org.
+
+    Security rule: authorization is never trusted from the signed session alone.
+    The database is the source of truth, so role changes/removals take effect on
+    the very next request.
+    """
+    uid=session.get('user_id'); oid=session.get('org_id')
+    if not uid or not oid: return None
+    cached=getattr(g,'current_membership',None)
+    if cached is not None: return cached
+    c=auth_cx(); m=c.execute('SELECT * FROM memberships WHERE user_id=? AND organization_id=?',(uid,oid)).fetchone(); c.close()
+    g.current_membership=m
+    if m and session.get('role')!=m['role']:
+        session['role']=m['role']
+    return m
+
+def current_role(default='MEMBER'):
+    m=current_membership()
+    return m['role'] if m else default
+
+def _recover_valid_membership():
+    """If the active org membership disappeared, move to another valid org.
+    Returns True when a valid membership exists after recovery.
+    """
+    uid=session.get('user_id')
+    if not uid: return False
+    c=auth_cx(); m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(uid,)).fetchone(); c.close()
+    if not m: return False
+    session['org_id']=m['organization_id']; session['role']=m['role']
+    if hasattr(g,'current_membership'): delattr(g,'current_membership')
+    init_tenant_db(m['organization_id'])
+    return True
+
 def login_required(fn):
     @functools.wraps(fn)
     def wrapped(*a,**kw):
-        if not session.get('user_id'): return redirect(url_for('login',next=request.path))
+        if not session.get('user_id'):
+            return redirect(url_for('login',next=request.path))
+        if not current_user():
+            session.clear(); flash('Votre session n’est plus valide. Veuillez vous reconnecter.')
+            return redirect(url_for('login'))
+        if not current_membership():
+            if not _recover_valid_membership():
+                session.clear(); flash('Vous n’avez plus accès à cette organisation.')
+                return redirect(url_for('login'))
+            flash('Votre organisation active a changé car vos droits ont été mis à jour.')
         return fn(*a,**kw)
     return wrapped
 
@@ -261,7 +304,7 @@ AREA_ACCESS={
 KIND_TO_AREA={'RECOVER':'recover','SAVE':'save','GROW':'grow'}
 
 def can_access(area):
-    return area in AREA_ACCESS.get(session.get('role','MEMBER'),set())
+    return area in AREA_ACCESS.get(current_role(),set())
 
 def require_area(area):
     """Bloque l'accès à une route si le rôle actif n'a pas la permission sur ce module."""
