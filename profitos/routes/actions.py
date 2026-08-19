@@ -65,8 +65,11 @@ def register(app):
         subject,body=parse_email_draft(a['draft'])
         html='<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#111827;white-space:pre-wrap;">'+body.replace('<','&lt;').replace('>','&gt;')+'</div>'
         result=send_email(inv['customer_email'],subject,html)
-        if result.get('dry_run'):
-            flash(f"SMTP non configuré — email non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
+        if not result.get('sent'):
+            if result.get('dry_run'):
+                flash(f"Service email non configuré — email non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
+            else:
+                flash("Échec de l'envoi de l'email. L'action reste approuvée et peut être réessayée.")
             return redirect(url_for('actions'))
         c2=cx(); c2.execute("UPDATE actions SET status='SENT',sent_at=?,sent_to=? WHERE id=?",(now(),inv['customer_email'],aid)); c2.commit(); c2.close()
         log_status_change('ACTION',a['opportunity_id'],a['kind'],'APPROVED','SENT',note=f"Email envoyé à {inv['customer_email']}")

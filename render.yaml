@@ -14,32 +14,14 @@ services:
       - key: PROFITOS_SECRET_KEY
         generateValue: true
       - key: APP_BASE_URL
-        value: https://profitos.onrender.com
+        value: https://app.profitos.fr
       - key: MAX_UPLOAD_MB
         value: 15
       - key: SESSION_HOURS
         value: 12
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PUBLISHABLE_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: STRIPE_PRICE_STARTER_ID
-        sync: false
-      - key: STRIPE_PRICE_PRO_ID
-        sync: false
-      - key: STRIPE_PRICE_BUSINESS_ID
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
+      - key: RESEND_FROM_EMAIL
+        value: ProfitOS <noreply@profitos.fr>
+      - key: RESEND_API_KEY
         sync: false
       - key: DATABASE_URL
         fromDatabase:

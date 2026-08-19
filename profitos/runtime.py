@@ -206,22 +206,8 @@ def cleanup_upload(path):
 STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_PUBLISHABLE_KEY=os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
-STRIPE_PRICE_ID=os.environ.get('STRIPE_PRICE_ID')  # legacy single-plan fallback
-STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID') or STRIPE_PRICE_ID
-STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or STRIPE_PRICE_ID
-STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID') or STRIPE_PRICE_ID
-STRIPE_PRICES={
-    'STARTER': STRIPE_PRICE_STARTER_ID,
-    'PRO': STRIPE_PRICE_PRO_ID,
-    'BUSINESS': STRIPE_PRICE_BUSINESS_ID,
-}
-BILLING_ENABLED=bool(STRIPE_SECRET_KEY and any(STRIPE_PRICES.values()))
-
-def stripe_plan_from_price(price_id):
-    for plan,pid in STRIPE_PRICES.items():
-        if pid and pid==price_id: return plan
-    return 'PRO'
-
+STRIPE_PRICE_ID=os.environ.get('STRIPE_PRICE_ID')
+BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
 
 def get_stripe():
     if not BILLING_ENABLED: return None
@@ -568,21 +554,59 @@ def compute_weekly_digest(org_id, days=7):
     }
 
 def send_email(to_email, subject, html, dry_run=None):
-    """Envoie un email via SMTP si SMTP_HOST est configuré, sinon simule (dry-run).
-    Helper générique réutilisé par la vérification d'email, le reset mot de passe et le rapport hebdomadaire."""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    smtp_host=os.environ.get('SMTP_HOST')
-    if dry_run is None: dry_run = not smtp_host
+    """Envoie un email transactionnel.
+
+    Ordre de préférence en production :
+    1. Resend API si RESEND_API_KEY est configurée ;
+    2. SMTP historique si SMTP_HOST est configuré ;
+    3. dry-run local sinon.
+
+    La clé Resend reste uniquement dans les variables d'environnement Render.
+    """
+    resend_key=os.environ.get('RESEND_API_KEY','').strip()
+    smtp_host=os.environ.get('SMTP_HOST','').strip()
+    from_email=os.environ.get('RESEND_FROM_EMAIL','ProfitOS <noreply@profitos.fr>').strip()
+
+    if dry_run is None:
+        dry_run = not (resend_key or smtp_host)
     if dry_run:
-        return {'sent':False,'dry_run':True,'to':to_email,'subject':subject,'html':html}
-    msg=MIMEMultipart('alternative'); msg['Subject']=subject; msg['From']=os.environ.get('SMTP_FROM','reports@profitos.app'); msg['To']=to_email
-    msg.attach(MIMEText(html,'html'))
-    with smtplib.SMTP(smtp_host,int(os.environ.get('SMTP_PORT',587))) as s:
-        s.starttls(); s.login(os.environ.get('SMTP_USER',''),os.environ.get('SMTP_PASSWORD',''))
-        s.sendmail(msg['From'],[to_email],msg.as_string())
-    return {'sent':True,'to':to_email,'subject':subject}
+        return {'sent':False,'dry_run':True,'provider':'dry-run','to':to_email,'subject':subject,'html':html}
+
+    if resend_key:
+        try:
+            import resend
+            resend.api_key=resend_key
+            params: resend.Emails.SendParams = {
+                'from': from_email,
+                'to': [to_email],
+                'subject': subject,
+                'html': html,
+            }
+            result=resend.Emails.send(params)
+            email_id = result.get('id') if isinstance(result,dict) else getattr(result,'id',None)
+            return {'sent':True,'provider':'resend','id':email_id,'to':to_email,'subject':subject}
+        except Exception as exc:
+            current_app.logger.exception('Resend email failed for %s', to_email)
+            return {'sent':False,'provider':'resend','error':str(exc),'to':to_email,'subject':subject}
+
+    # Compatibilité SMTP conservée pour le développement ou un fournisseur secondaire.
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        msg=MIMEMultipart('alternative')
+        msg['Subject']=subject
+        msg['From']=os.environ.get('SMTP_FROM',from_email)
+        msg['To']=to_email
+        msg.attach(MIMEText(html,'html'))
+        with smtplib.SMTP(smtp_host,int(os.environ.get('SMTP_PORT',587))) as server:
+            server.starttls()
+            server.login(os.environ.get('SMTP_USER',''),os.environ.get('SMTP_PASSWORD',''))
+            server.sendmail(msg['From'],[to_email],msg.as_string())
+        return {'sent':True,'provider':'smtp','to':to_email,'subject':subject}
+    except Exception as exc:
+        current_app.logger.exception('SMTP email failed for %s', to_email)
+        return {'sent':False,'provider':'smtp','error':str(exc),'to':to_email,'subject':subject}
 
 def notify_org(text):
     """Envoie une notification Slack/Teams pour l'organisation courante, si un webhook

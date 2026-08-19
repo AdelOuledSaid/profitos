@@ -25,3 +25,6 @@ pytest==8.3.5
 
 # Lecture sécurisée des anciens fichiers Excel .xls.
 xlrd==2.0.1
+
+# Email transactionnel via Resend.
+resend==2.37.0

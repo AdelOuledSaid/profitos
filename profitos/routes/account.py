@@ -55,8 +55,13 @@ def register(app):
             tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
             log_activity('SIGNUP',f'Création organisation {company}')
             result=send_verification_email(user)
-            if result.get('dry_run'): flash("Compte créé. Vérification email : SMTP non configuré, aucun email envoyé (mode simulation).")
-            else: flash('Compte créé. Un email de confirmation a été envoyé.')
+            if result.get('sent'):
+                flash('Compte créé. Un email de confirmation a été envoyé.')
+            elif result.get('dry_run'):
+                flash("Compte créé. Vérification email : service email non configuré, aucun email envoyé (mode simulation).")
+            else:
+                current_app.logger.error('Verification email failed after signup: %s', result.get('error','unknown error'))
+                flash("Compte créé, mais l'email de confirmation n'a pas pu être envoyé. Utilisez « Renvoyer l'email de vérification » dans votre compte.")
             return redirect(url_for('onboarding'))
         return render_template('signup.html')
 
@@ -100,7 +105,12 @@ def register(app):
             flash('Votre email est déjà vérifié.')
         else:
             result=send_verification_email(u)
-            flash("Email de vérification renvoyé." if not result.get('dry_run') else "SMTP non configuré — email non envoyé (mode simulation).")
+            if result.get('sent'):
+                flash("Email de vérification renvoyé.")
+            elif result.get('dry_run'):
+                flash("Service email non configuré — email non envoyé (mode simulation).")
+            else:
+                flash("L'email n'a pas pu être envoyé pour le moment. Réessayez dans quelques minutes.")
         return redirect(request.referrer or url_for('home'))
 
     @app.route('/forgot-password',methods=['GET','POST'])
@@ -203,8 +213,12 @@ def register(app):
         c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,?,?)",(user['id'],session['org_id'],role,now())); c.commit(); c.close()
         org=current_org(); result=send_invite_email(user,org,role)
         log_activity('TEAM_INVITE',f'Invitation envoyée à {email} ({ROLE_LABELS.get(role,role)})')
-        if result.get('dry_run'): flash(f"Membre ajouté. SMTP non configuré — email d'invitation non envoyé (mode simulation) à {email}.")
-        else: flash(f"Invitation envoyée à {email}.")
+        if result.get('sent'):
+            flash(f"Invitation envoyée à {email}.")
+        elif result.get('dry_run'):
+            flash(f"Membre ajouté. Service email non configuré — email d'invitation non envoyé (mode simulation) à {email}.")
+        else:
+            flash(f"Membre ajouté, mais l'email d'invitation n'a pas pu être envoyé à {email}.")
         return redirect(url_for('team'))
 
     @app.route('/team/<int:uid>/role',methods=['POST'])
@@ -240,7 +254,7 @@ def register(app):
         org=current_org()
         return render_template('billing.html',org=org,billing_enabled=BILLING_ENABLED,
             trial_days=trial_days_left(org),has_access=org_has_access(org),
-            stripe_publishable_key=STRIPE_PUBLISHABLE_KEY, plans=STRIPE_PRICES)
+            stripe_publishable_key=STRIPE_PUBLISHABLE_KEY)
 
     @app.route('/billing/checkout',methods=['POST'])
     @login_required
@@ -250,11 +264,6 @@ def register(app):
             flash("La facturation Stripe n'est pas configurée sur cette instance (STRIPE_SECRET_KEY / STRIPE_PRICE_ID manquants).")
             return redirect(url_for('billing'))
         org=current_org(); user=current_user()
-        selected_plan=request.form.get('plan','PRO').strip().upper()
-        if selected_plan not in STRIPE_PRICES or not STRIPE_PRICES.get(selected_plan):
-            flash("Ce plan Stripe n'est pas configuré.")
-            return redirect(url_for('billing'))
-        price_id=STRIPE_PRICES[selected_plan]
         customer_id=org['stripe_customer_id']
         if not customer_id:
             customer=stripe.Customer.create(email=user['email'],name=org['name'],metadata={'organization_id':org['id']})
@@ -264,10 +273,10 @@ def register(app):
         try:
             checkout=stripe.checkout.Session.create(
                 customer=customer_id,mode='subscription',
-                line_items=[{'price':price_id,'quantity':1}],
+                line_items=[{'price':STRIPE_PRICE_ID,'quantity':1}],
                 success_url=f'{base}{url_for("billing_success")}?session_id={{CHECKOUT_SESSION_ID}}',
                 cancel_url=f'{base}{url_for("billing")}',
-                metadata={'organization_id':org['id'],'plan':selected_plan},
+                metadata={'organization_id':org['id']},
             )
         except Exception as e:
             flash(f"Erreur Stripe : {e}"); return redirect(url_for('billing'))
@@ -311,9 +320,8 @@ def register(app):
             if etype=='checkout.session.completed':
                 org_id=obj.get('metadata',{}).get('organization_id')
                 sub_id=obj.get('subscription')
-                selected_plan=obj.get('metadata',{}).get('plan','PRO')
                 if org_id:
-                    ac.execute("UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(selected_plan,sub_id,now(),org_id)); ac.commit()
+                    ac.execute("UPDATE organizations SET plan='PRO',status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),org_id)); ac.commit()
             elif etype in ('customer.subscription.deleted','customer.subscription.updated'):
                 sub_id=obj.get('id'); status=obj.get('status')
                 row=ac.execute('SELECT id FROM organizations WHERE stripe_subscription_id=?',(sub_id,)).fetchone()
@@ -321,11 +329,7 @@ def register(app):
                     if status in ('canceled','unpaid','incomplete_expired'):
                         ac.execute("UPDATE organizations SET status='CANCELED',updated_at=? WHERE id=?",(now(),row['id']))
                     elif status=='active':
-                        price_id=None
-                        try: price_id=obj.get('items',{}).get('data',[{}])[0].get('price',{}).get('id')
-                        except Exception: pass
-                        plan=stripe_plan_from_price(price_id)
-                        ac.execute("UPDATE organizations SET status='ACTIVE_PAID',plan=?,updated_at=? WHERE id=?",(plan,now(),row['id']))
+                        ac.execute("UPDATE organizations SET status='ACTIVE_PAID',plan='PRO',updated_at=? WHERE id=?",(now(),row['id']))
                     elif status=='past_due':
                         ac.execute("UPDATE organizations SET status='PAST_DUE',updated_at=? WHERE id=?",(now(),row['id']))
                     ac.commit()

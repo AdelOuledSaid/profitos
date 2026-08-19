@@ -110,8 +110,9 @@ def register(app):
         org=current_org(); digest=compute_weekly_digest(org['id'])
         result=send_weekly_email(org,digest)
         if result.get('sent'): flash(f"Rapport hebdomadaire envoyé à {result['to']}.")
-        elif result.get('dry_run'): flash(f"SMTP non configuré — email non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
-        else: flash("Impossible d'envoyer le rapport : aucun propriétaire avec email trouvé.")
+        elif result.get('dry_run'): flash(f"Service email non configuré — email non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
+        elif result.get('reason')=='no_owner_email': flash("Impossible d'envoyer le rapport : aucun propriétaire avec email trouvé.")
+        else: flash("Impossible d'envoyer le rapport pour le moment. Réessayez dans quelques minutes.")
         return redirect(url_for('weekly_report_preview'))
 
     @app.route('/impact',methods=['GET','POST'])
