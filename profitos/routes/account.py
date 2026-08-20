@@ -343,8 +343,9 @@ def register(app):
     @require_area('billing')
     def billing():
         org=current_org()
+        plans={k:v for k,v in STRIPE_PLANS.items() if v.get('price_id')}
         return render_template('billing.html',org=org,billing_enabled=BILLING_ENABLED,
-            trial_days=trial_days_left(org),has_access=org_has_access(org),
+            trial_days=trial_days_left(org),has_access=org_has_access(org),plans=plans,
             stripe_publishable_key=STRIPE_PUBLISHABLE_KEY)
 
     @app.route('/billing/checkout',methods=['POST'])
@@ -352,26 +353,36 @@ def register(app):
     @require_area('billing')
     def billing_checkout():
         stripe=get_stripe()
-        if not stripe:
-            flash("La facturation Stripe n'est pas configurée sur cette instance (STRIPE_SECRET_KEY / STRIPE_PRICE_ID manquants).")
+        plan=(request.form.get('plan') or 'PRO').strip().upper()
+        selected=STRIPE_PLANS.get(plan)
+        if not stripe or not selected or not selected.get('price_id'):
+            flash("Ce plan n'est pas disponible ou la facturation Stripe n'est pas complètement configurée.")
             return redirect(url_for('billing'))
         org=current_org(); user=current_user()
+        # Évite de créer plusieurs abonnements en parallèle pour la même organisation.
+        if org['stripe_subscription_id'] and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
+            flash("Un abonnement Stripe existe déjà. Utilisez le portail pour le modifier ou le gérer.")
+            return redirect(url_for('billing'))
         customer_id=org['stripe_customer_id']
-        if not customer_id:
-            customer=stripe.Customer.create(email=user['email'],name=org['name'],metadata={'organization_id':org['id']})
-            customer_id=customer['id']
-            ac=auth_cx(); ac.execute('UPDATE organizations SET stripe_customer_id=?,updated_at=? WHERE id=?',(customer_id,now(),org['id'])); ac.commit(); ac.close()
-        base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
         try:
+            if not customer_id:
+                customer=stripe.Customer.create(email=user['email'],name=org['name'],metadata={'organization_id':str(org['id'])})
+                customer_id=customer['id']
+                acx=auth_cx(); acx.execute('UPDATE organizations SET stripe_customer_id=?,updated_at=? WHERE id=?',(customer_id,now(),org['id'])); acx.commit(); acx.close()
+            base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050').rstrip('/')
             checkout=stripe.checkout.Session.create(
                 customer=customer_id,mode='subscription',
-                line_items=[{'price':STRIPE_PRICE_ID,'quantity':1}],
+                line_items=[{'price':selected['price_id'],'quantity':1}],
                 success_url=f'{base}{url_for("billing_success")}?session_id={{CHECKOUT_SESSION_ID}}',
                 cancel_url=f'{base}{url_for("billing")}',
-                metadata={'organization_id':org['id']},
+                client_reference_id=str(org['id']),
+                metadata={'organization_id':str(org['id']),'plan':plan},
+                subscription_data={'metadata':{'organization_id':str(org['id']),'plan':plan}},
             )
-        except Exception as e:
-            flash(f"Erreur Stripe : {e}"); return redirect(url_for('billing'))
+        except Exception:
+            current_app.logger.exception('Stripe checkout failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
+            flash("Impossible d'ouvrir le paiement pour le moment. Réessayez plus tard.")
+            return redirect(url_for('billing'))
         return redirect(checkout.url,code=303)
 
     @app.route('/billing/portal',methods=['POST'])
@@ -382,51 +393,87 @@ def register(app):
         if not stripe or not org['stripe_customer_id']:
             flash("Aucun abonnement Stripe associé à cette organisation.")
             return redirect(url_for('billing'))
-        base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
+        base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050').rstrip('/')
         try:
             portal=stripe.billing_portal.Session.create(customer=org['stripe_customer_id'],return_url=f'{base}{url_for("billing")}')
-        except Exception as e:
-            flash(f"Erreur Stripe : {e}"); return redirect(url_for('billing'))
+        except Exception:
+            current_app.logger.exception('Stripe portal failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
+            flash("Impossible d'ouvrir le portail de facturation pour le moment.")
+            return redirect(url_for('billing'))
         return redirect(portal.url,code=303)
 
     @app.route('/billing/success')
     @login_required
     def billing_success():
-        flash("Merci ! Votre abonnement est en cours d'activation (confirmation Stripe en cours).")
+        # Ne jamais activer un plan depuis ce retour navigateur : seul le webhook signé fait foi.
+        flash("Paiement reçu par Stripe. Votre abonnement sera affiché actif dès confirmation sécurisée.")
         return redirect(url_for('billing'))
 
     @app.route('/billing/webhook',methods=['POST'])
     def billing_webhook():
-        """Endpoint appelé par Stripe (pas par un navigateur) — authentifié par signature,
-        pas par session/CSRF. Met à jour plan/status/stripe_subscription_id de l'organisation."""
         stripe=get_stripe()
-        if not stripe: return ('billing disabled',200)
+        if not stripe: return ('billing disabled',503)
         payload=request.get_data(); sig=request.headers.get('Stripe-Signature','')
         try:
             event=stripe.Webhook.construct_event(payload,sig,STRIPE_WEBHOOK_SECRET)
-        except Exception as e:
-            return (f'invalid signature: {e}',400)
+        except Exception:
+            current_app.logger.warning('Stripe webhook signature rejected request_id=%s',getattr(g,'request_id','-'))
+            return ('invalid signature',400)
 
-        ac=auth_cx()
+        event_id=event.get('id'); etype=event.get('type',''); obj=event['data']['object']
+        acx=auth_cx()
         try:
-            etype=event['type']; obj=event['data']['object']
+            # Idempotence : Stripe peut livrer le même événement plusieurs fois.
+            if event_id and acx.execute('SELECT id FROM stripe_webhook_events WHERE stripe_event_id=?',(event_id,)).fetchone():
+                return ('',200)
+
             if etype=='checkout.session.completed':
-                org_id=obj.get('metadata',{}).get('organization_id')
-                sub_id=obj.get('subscription')
-                if org_id:
-                    ac.execute("UPDATE organizations SET plan='PRO',status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),org_id)); ac.commit()
-            elif etype in ('customer.subscription.deleted','customer.subscription.updated'):
-                sub_id=obj.get('id'); status=obj.get('status')
-                row=ac.execute('SELECT id FROM organizations WHERE stripe_subscription_id=?',(sub_id,)).fetchone()
+                org_id=obj.get('metadata',{}).get('organization_id') or obj.get('client_reference_id')
+                sub_id=obj.get('subscription'); plan=(obj.get('metadata',{}).get('plan') or '').upper()
+                if org_id and sub_id and plan in STRIPE_PLANS:
+                    acx.execute("UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(plan,sub_id,now(),org_id))
+
+            elif etype in ('customer.subscription.created','customer.subscription.updated','customer.subscription.deleted'):
+                sub_id=obj.get('id'); status=obj.get('status'); metadata=obj.get('metadata') or {}
+                org_id=metadata.get('organization_id')
+                row=acx.execute('SELECT id FROM organizations WHERE stripe_subscription_id=?',(sub_id,)).fetchone() if sub_id else None
+                if not row and org_id:
+                    row=acx.execute('SELECT id FROM organizations WHERE id=?',(org_id,)).fetchone()
                 if row:
-                    if status in ('canceled','unpaid','incomplete_expired'):
-                        ac.execute("UPDATE organizations SET status='CANCELED',updated_at=? WHERE id=?",(now(),row['id']))
-                    elif status=='active':
-                        ac.execute("UPDATE organizations SET status='ACTIVE_PAID',plan='PRO',updated_at=? WHERE id=?",(now(),row['id']))
-                    elif status=='past_due':
-                        ac.execute("UPDATE organizations SET status='PAST_DUE',updated_at=? WHERE id=?",(now(),row['id']))
-                    ac.commit()
+                    price_id=None
+                    items=((obj.get('items') or {}).get('data') or [])
+                    if items:
+                        price_id=((items[0].get('price') or {}).get('id'))
+                    plan=STRIPE_PRICE_TO_PLAN.get(price_id) or (metadata.get('plan') or '').upper()
+                    if plan not in STRIPE_PLANS: plan=None
+                    if etype=='customer.subscription.deleted' or status in ('canceled','unpaid','incomplete_expired'):
+                        acx.execute("UPDATE organizations SET status='CANCELED',updated_at=? WHERE id=?",(now(),row['id']))
+                    elif status in ('active','trialing'):
+                        if plan:
+                            acx.execute("UPDATE organizations SET status='ACTIVE_PAID',plan=?,stripe_subscription_id=?,updated_at=? WHERE id=?",(plan,sub_id,now(),row['id']))
+                        else:
+                            acx.execute("UPDATE organizations SET status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),row['id']))
+                    elif status in ('past_due','incomplete'):
+                        acx.execute("UPDATE organizations SET status='PAST_DUE',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),row['id']))
+
+            elif etype=='invoice.payment_failed':
+                customer_id=obj.get('customer')
+                if customer_id:
+                    acx.execute("UPDATE organizations SET status='PAST_DUE',updated_at=? WHERE stripe_customer_id=?",(now(),customer_id))
+
+            elif etype=='invoice.payment_succeeded':
+                customer_id=obj.get('customer')
+                if customer_id:
+                    acx.execute("UPDATE organizations SET status='ACTIVE_PAID',updated_at=? WHERE stripe_customer_id=? AND stripe_subscription_id IS NOT NULL",(now(),customer_id))
+
+            if event_id:
+                acx.execute('INSERT INTO stripe_webhook_events(stripe_event_id,event_type,processed_at) VALUES(?,?,?)',(event_id,etype,now()))
+            acx.commit()
+        except Exception:
+            acx.rollback()
+            current_app.logger.exception('Stripe webhook processing failure event=%s request_id=%s',etype,getattr(g,'request_id','-'))
+            return ('webhook processing failed',500)
         finally:
-            ac.close()
+            acx.close()
         return ('',200)
 

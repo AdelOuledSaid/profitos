@@ -1,48 +1,34 @@
 {% extends "base.html" %}{% block content %}
 <div class="page">
-  <h1>Facturation</h1>
-
+  <div class="eyebrow">PLANS & BILLING</div><h1>Facturation</h1>
   {% if not billing_enabled %}
-  <div class="panel" style="padding:20px;background:#f9fafb;border-radius:8px;color:#6b7280;">
-    Stripe n'est pas configuré sur cette instance. L'application reste utilisable sans limite
-    (mode démo/dev). Pour activer la facturation, renseigne <code>STRIPE_SECRET_KEY</code>,
-    <code>STRIPE_PRICE_ID</code> et <code>STRIPE_WEBHOOK_SECRET</code> dans <code>.env</code>.
-  </div>
+  <div class="panel"><strong>Facturation non configurée.</strong><p class="muted">L'accès reste disponible en mode développement. En production, configurez la clé Stripe, le secret webhook et au moins un Price ID.</p></div>
   {% else %}
-
-  <div class="panel" style="padding:20px;border-radius:8px;margin-bottom:20px;background:{{ '#fef2f2' if org.status=='CANCELED' else ('#f0fdf4' if org.status=='ACTIVE_PAID' else '#eff6ff') }};">
-    <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Statut actuel</div>
-    {% if org.status=='ACTIVE_PAID' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Plan PRO — actif</div>
-      <div style="color:#6b7280;font-size:14px;margin-top:4px;">Merci pour votre confiance.</div>
-    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</div>
-    {% elif org.status=='PAST_DUE' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Paiement en retard</div>
-      <div style="color:#6b7280;font-size:14px;margin-top:4px;">Merci de mettre à jour votre moyen de paiement.</div>
-    {% elif org.status=='CANCELED' %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Abonnement annulé</div>
-    {% else %}
-      <div style="font-size:20px;font-weight:700;margin-top:4px;">Essai gratuit terminé</div>
-    {% endif %}
+  <div class="panel" style="margin-bottom:20px;">
+    <small class="muted">STATUT ACTUEL</small>
+    {% if org.status=='ACTIVE_PAID' %}<h2>{{ org.plan|title }} — actif</h2><p class="muted">Votre abonnement est confirmé par Stripe.</p>
+    {% elif org.status=='PAST_DUE' %}<h2>Paiement à régulariser</h2><p class="muted">Mettez à jour votre moyen de paiement dans le portail Stripe.</p>
+    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}<h2>Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</h2>
+    {% elif org.status=='CANCELED' %}<h2>Abonnement annulé</h2>
+    {% else %}<h2>Essai gratuit terminé</h2>{% endif %}
   </div>
 
-  {% if org.status!='ACTIVE_PAID' %}
-  <div class="panel" style="padding:24px;border-radius:8px;border:1px solid #e5e7eb;max-width:420px;">
-    <div style="font-size:18px;font-weight:700;">ProfitOS Pro</div>
-    <div style="color:#6b7280;font-size:14px;margin:8px 0 16px;">Accès illimité à RECOVER, SAVE, GROW et au rapport hebdomadaire.</div>
-    <form method="post" action="{{ url_for('billing_checkout') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" style="background:#111827;color:#fff;border:none;border-radius:8px;padding:12px 22px;font-weight:600;cursor:pointer;">S'abonner</button>
-    </form>
-  </div>
+  {% if org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
+  <form method="post" action="{{ url_for('billing_portal') }}" style="margin-bottom:20px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Gérer mon abonnement</button></form>
   {% else %}
-  <form method="post" action="{{ url_for('billing_portal') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" style="background:#111827;color:#fff;border:none;border-radius:8px;padding:12px 22px;font-weight:600;cursor:pointer;">Gérer mon abonnement</button>
-  </form>
+  <div class="cards">
+  {% for code,p in plans.items() %}
+    <section class="panel">
+      <div class="eyebrow">{{ code }}</div><h2>{{ p.name }}</h2>
+      <div style="font-size:30px;font-weight:800;margin:10px 0;">{{ p.price_eur }} € <small class="muted" style="font-size:14px;">/ mois</small></div>
+      {% if code=='STARTER' %}<p class="muted">Pour démarrer avec les fonctions essentielles de ProfitOS.</p>
+      {% elif code=='PRO' %}<p class="muted">Pour une utilisation régulière et complète de ProfitOS.</p>
+      {% else %}<p class="muted">Pour les organisations ayant des besoins plus importants.</p>{% endif %}
+      <form method="post" action="{{ url_for('billing_checkout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="plan" value="{{ code }}"><button type="submit">Choisir {{ p.name }}</button></form>
+    </section>
+  {% endfor %}
+  </div>
   {% endif %}
-
   {% endif %}
 </div>
 {% endblock %}

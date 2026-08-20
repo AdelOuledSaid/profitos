@@ -55,6 +55,12 @@ def init_auth_db():
         user_agent TEXT,
         created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stripe_event_id TEXT NOT NULL UNIQUE,
+        event_type TEXT NOT NULL,
+        processed_at TEXT NOT NULL
+    );
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
     cols=[r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
@@ -391,8 +397,18 @@ def cleanup_upload(path):
 STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_PUBLISHABLE_KEY=os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
-STRIPE_PRICE_ID=os.environ.get('STRIPE_PRICE_ID')
-BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
+STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID')
+STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or os.environ.get('STRIPE_PRICE_ID')
+STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
+STRIPE_PLANS={
+    'STARTER': {'name':'Starter','price_eur':49,'price_id':STRIPE_PRICE_STARTER_ID},
+    'PRO': {'name':'Pro','price_eur':99,'price_id':STRIPE_PRICE_PRO_ID},
+    'BUSINESS': {'name':'Business','price_eur':249,'price_id':STRIPE_PRICE_BUSINESS_ID},
+}
+STRIPE_PRICE_TO_PLAN={v['price_id']:k for k,v in STRIPE_PLANS.items() if v.get('price_id')}
+# Un abonnement ne doit jamais être activé sans webhook signé : c'est Stripe,
+# et non la page de succès du navigateur, qui fait foi.
+BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_TO_PLAN)
 
 def get_stripe():
     if not BILLING_ENABLED: return None
