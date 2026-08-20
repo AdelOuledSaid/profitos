@@ -1,5 +1,5 @@
 from profitos.runtime import *
-
+from profitos.feature_access import requires_feature
 
 
 def register(app):
@@ -7,9 +7,10 @@ def register(app):
     @login_required
     @requires_active_plan
     @require_area('grow')
+    @requires_feature('advanced_features')
     @rate_limit(20,3600)
     def dce_upload(opportunity_id):
-        if not PHASE2_ENABLED: abort(404)  # Bid Intelligence désactivé en V0
+        if not PHASE2_ENABLED: abort(404)
         c=cx(); opp=c.execute("SELECT * FROM opportunities WHERE id=? AND type='GROW'",(opportunity_id,)).fetchone()
         if not opp: c.close(); abort(404)
         f=request.files.get('file')
@@ -32,11 +33,8 @@ def register(app):
 
     @app.route('/service-worker.js')
     def service_worker():
-        """Servi depuis la racine (pas /static/) pour que son scope couvre toute
-        l'application — un service worker ne peut contrôler que son propre
-        répertoire et les sous-répertoires, sauf en-tête Service-Worker-Allowed."""
+        """Servi depuis la racine pour que son scope couvre toute l'application."""
         resp=app.send_static_file('service-worker.js')
         resp.headers['Content-Type']='application/javascript; charset=utf-8'
         resp.headers['Service-Worker-Allowed']='/'
         return resp
-

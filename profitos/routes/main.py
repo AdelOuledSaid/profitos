@@ -1,4 +1,6 @@
 from profitos.runtime import *
+from profitos.plan_limits import feature_enabled
+from profitos.feature_access import requires_feature
 
 
 
@@ -14,7 +16,7 @@ def register(app):
         dso_svg=sparkline_svg(dso_values) if len(dso_values)>=2 else None
         dso_current=round(dso_values[-1]) if dso_values else None
         dso_delta=round(dso_values[-1]-dso_values[-2]) if len(dso_values)>=2 else None
-        # Un rôle ne voit que les modules auxquels il a accès (ex. un Commercial ne voit pas RECOVER/SAVE).
+        # Un r├┤le ne voit que les modules auxquels il a acc├¿s (ex. un Commercial ne voit pas RECOVER/SAVE).
         top=[r for r in top if can_access(KIND_TO_AREA.get(r['type'],''))]
         return render_template('dashboard.html',
             recover=recover if can_access('recover') else None,
@@ -29,12 +31,14 @@ def register(app):
         c=cx()
         if request.method=='POST':
             if not can_access('settings'):
-                c.close(); flash('Seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
+                c.close(); flash('Seuls le propri├®taire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
             dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep
             vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),now())
-            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
-            try:flash(f'GROW actualisé : {sync_grow()} opportunités pertinentes.')
-            except Exception as e:flash(f'Profil enregistré, mais BOAMP est indisponible : {e}')
+            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistr├®.')
+            org=current_org()
+            if org and feature_enabled(org['plan'],'advanced_features'):
+                try:flash(f'GROW actualis├® : {sync_grow()} opportunit├®s pertinentes.')
+                except Exception as e:flash(f'Profil enregistr├®, mais BOAMP est indisponible : {e}')
             return redirect(url_for('grow'))
         p=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close(); return render_template('company.html',p=p)
 
@@ -50,14 +54,14 @@ def register(app):
         if filt=='overdue':
             rows=[r for r in active if r['kind']!='RETENTION']
         elif filt=='retention':
-            # Toutes les retenues (déjà libérables ET à venir) pour visibilité/planification,
-            # pas seulement celles déjà comptées dans le total "recoverable".
+            # Toutes les retenues (d├®j├á lib├®rables ET ├á venir) pour visibilit├®/planification,
+            # pas seulement celles d├®j├á compt├®es dans le total "recoverable".
             rows=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' ORDER BY COALESCE(retention_release_date,due_date) ASC").fetchall()
         else:
             rows=active
         c.close()
 
-        # Recherche/filtre avancé : client, montant min/max, période (échéance).
+        # Recherche/filtre avanc├® : client, montant min/max, p├®riode (├®ch├®ance).
         q=request.args.get('q','').strip()
         min_amount=request.args.get('min_amount','').strip()
         max_amount=request.args.get('max_amount','').strip()
@@ -99,10 +103,11 @@ def register(app):
     @app.route('/grow/refresh',methods=['POST'])
     @login_required
     @require_area('grow')
+    @requires_feature('advanced_features')
     @rate_limit(6,300)
     def grow_refresh():
-        try:flash(f'BOAMP actualisé : {sync_grow()} opportunités pertinentes.')
-        except Exception as e:flash(f'Impossible d’actualiser BOAMP : {e}')
+        try:flash(f'BOAMP actualis├® : {sync_grow()} opportunit├®s pertinentes.')
+        except Exception as e:flash(f'Impossible dÔÇÖactualiser BOAMP : {e}')
         return redirect(url_for('grow'))
 
     @app.route('/opportunity/<kind>/<int:item_id>')
@@ -111,7 +116,7 @@ def register(app):
     def detail(kind,item_id):
         kind=kind.upper()
         if not can_access(KIND_TO_AREA.get(kind,'')):
-            flash("Votre rôle ne donne pas accès à cette section."); return redirect(url_for('home'))
+            flash("Votre r├┤le ne donne pas acc├¿s ├á cette section."); return redirect(url_for('home'))
         c=cx()
         if kind=='RECOVER':
             r=c.execute('SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=?',(item_id,)).fetchone()
@@ -119,19 +124,22 @@ def register(app):
             if r['kind']=='RETENTION':
                 release=r['retention_release_date']
                 if release and release<=date.today().isoformat():
-                    reasons=[f"Retenue de garantie libérable depuis le {release}",'contactez le client pour en demander la levée']
+                    reasons=[f"Retenue de garantie lib├®rable depuis le {release}",'contactez le client pour en demander la lev├®e']
                 elif release:
-                    reasons=[f"Retenue de garantie libérable le {release}",'pas encore actionnable — visible pour anticipation']
+                    reasons=[f"Retenue de garantie lib├®rable le {release}",'pas encore actionnable ÔÇö visible pour anticipation']
                 else:
-                    reasons=['Retenue de garantie sans date de libération connue — à clarifier avec le contrat']
-                o=dict(r); o.update(kind='RECOVER',title=f"Retenue de garantie — Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue de garantie suit un régime contractuel différent d\'une facture standard'])
+                    reasons=['Retenue de garantie sans date de lib├®ration connue ÔÇö ├á clarifier avec le contrat']
+                o=dict(r); o.update(kind='RECOVER',title=f"Retenue de garantie ÔÇö Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue de garantie suit un r├®gime contractuel diff├®rent d\'une facture standard'])
             else:
-                o=dict(r); o.update(kind='RECOVER',title=f"Facture #{r['invoice_number']}",value=r['outstanding'],reasons=[f"{r['days_overdue']} jours de retard",'montant calculé depuis les données importées'],warnings=[])
+                o=dict(r); o.update(kind='RECOVER',title=f"Facture #{r['invoice_number']}",value=r['outstanding'],reasons=[f"{r['days_overdue']} jours de retard",'montant calcul├® depuis les donn├®es import├®es'],warnings=[])
         else:
             r=c.execute('SELECT * FROM opportunities WHERE id=? AND type=?',(item_id,kind)).fetchone()
             if not r:abort(404)
             o=dict(r); o.update(kind=kind,reasons=json.loads(r['reasons'] or '[]'),warnings=json.loads(r['warnings'] or '[]'),departments=jlist(r['departments']),deadline_human=fmt_deadline(r['deadline']),days_remaining=days_left(r['deadline']))
-        acts=c.execute('SELECT * FROM actions WHERE opportunity_id=? AND kind=? ORDER BY id DESC',(item_id,kind)).fetchall(); dce=c.execute('SELECT * FROM dce_documents WHERE opportunity_id=? ORDER BY id DESC',(item_id,)).fetchall() if kind=='GROW' else []
+        acts=c.execute('SELECT * FROM actions WHERE opportunity_id=? AND kind=? ORDER BY id DESC',(item_id,kind)).fetchall()
+        org=current_org()
+        can_use_advanced=bool(org and feature_enabled(org['plan'],'advanced_features'))
+        dce=c.execute('SELECT * FROM dce_documents WHERE opportunity_id=? ORDER BY id DESC',(item_id,)).fetchall() if kind=='GROW' and can_use_advanced else []
         history=c.execute('SELECT * FROM status_history WHERE kind=? AND entity_id=? ORDER BY id DESC',(kind,item_id)).fetchall()
         c.close(); dce_items=[]
         for d in dce:
@@ -143,7 +151,7 @@ def register(app):
     def opportunity_status(kind,item_id):
         kind=kind.upper()
         if not can_access(KIND_TO_AREA.get(kind,'')):
-            flash("Votre rôle ne donne pas accès à cette section."); return redirect(url_for('home'))
+            flash("Votre r├┤le ne donne pas acc├¿s ├á cette section."); return redirect(url_for('home'))
         new_status=request.form.get('status','').strip()
         if not new_status: return redirect(url_for('detail',kind=kind,item_id=item_id))
         c=cx()
@@ -159,7 +167,6 @@ def register(app):
             entity_type='OPPORTUNITY'
         c.close()
         log_status_change(entity_type,item_id,kind,old,new_status)
-        log_activity('STATUS_CHANGE',f'{kind} #{item_id} : {old} → {new_status}')
-        flash('Statut mis à jour.')
+        log_activity('STATUS_CHANGE',f'{kind} #{item_id} : {old} ÔåÆ {new_status}')
+        flash('Statut mis ├á jour.')
         return redirect(url_for('detail',kind=kind,item_id=item_id))
-
