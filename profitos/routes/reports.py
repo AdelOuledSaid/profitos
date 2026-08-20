@@ -1,5 +1,5 @@
 from profitos.runtime import *
-
+from profitos.plan_usage import quota_state, record_usage
 
 
 def register(app):
@@ -11,30 +11,34 @@ def register(app):
         return render_template('email_weekly.html',org=org,digest=digest,app_url=request.host_url.rstrip('/'),preview=True)
 
     def pdf_safe(text):
-        """Nettoie le texte pour la police core 'helvetica' de fpdf2, qui ne supporte
-        que le Latin-1 — remplace les caractères Unicode courants (tirets cadratins,
-        guillemets typographiques, points de suspension...) par leurs équivalents ASCII,
-        puis élimine silencieusement tout caractère restant non supporté plutôt que
-        de planter la génération du rapport."""
-        if text is None: return ''
-        text = str(text)
-        replacements = {'—':'-', '–':'-', '\u2018':"'", '\u2019':"'", '\u201c':'"', '\u201d':'"',
-                         '…':'...', '\xa0':' ', '•':'-', '€':'EUR'}
-        for src, dst in replacements.items():
-            text = text.replace(src, dst)
-        return text.encode('latin-1', errors='replace').decode('latin-1')
+        if text is None:return ''
+        text=str(text)
+        replacements={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"',
+                      '…':'...','\xa0':' ','•':'-','€':'EUR'}
+        for src,dst in replacements.items():
+            text=text.replace(src,dst)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
 
     @app.route('/reports/monthly.pdf')
     @login_required
     @requires_active_plan
     def monthly_report_pdf():
+        org=current_org()
+        quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])
+        if not quota['allowed']:
+            flash(
+                f"Quota mensuel de rapports atteint pour la formule {org['plan']} "
+                f"({quota['used']}/{quota['limit']}). Passez à une formule supérieure."
+            )
+            return redirect(url_for('impact'))
+
         try:
             from fpdf import FPDF
         except ImportError:
             flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
             return redirect(url_for('impact'))
 
-        org=current_org(); c=cx()
+        c=cx()
         recover=c.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()
         save=c.execute("SELECT COALESCE(SUM(value),0) t,COUNT(*) n FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()
         grow=c.execute("SELECT COUNT(*) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()
@@ -58,6 +62,7 @@ def register(app):
         def kpi(label,value,color):
             pdf.set_text_color(*color); pdf.set_font('Helvetica','B',16)
             pdf.cell(63,10,value,border=0)
+
         pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
         pdf.cell(63,6,'RECOVERABLE'); pdf.cell(63,6,'POTENTIAL SAVINGS'); pdf.cell(63,6,'GROW'); pdf.ln(6)
         kpi('recover',f"{recover['t']:,.0f} EUR",(220,38,38))
@@ -100,19 +105,38 @@ def register(app):
 
         pdf_bytes=bytes(pdf.output(dest='S'))
         filename=f"profitos-rapport-{datetime.now(timezone.utc).strftime('%Y-%m')}.pdf"
+
+        record_usage('reports_per_month',organization_id=org['id'])
+
         from flask import Response
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{filename}"'})
 
     @app.route('/reports/weekly/send',methods=['POST'])
     @login_required
+    @requires_active_plan
     def weekly_report_send():
-        org=current_org(); digest=compute_weekly_digest(org['id'])
+        org=current_org()
+        quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])
+        if not quota['allowed']:
+            flash(
+                f"Quota mensuel de rapports atteint pour la formule {org['plan']} "
+                f"({quota['used']}/{quota['limit']}). Passez à une formule supérieure."
+            )
+            return redirect(url_for('weekly_report_preview'))
+
+        digest=compute_weekly_digest(org['id'])
         result=send_weekly_email(org,digest)
-        if result.get('sent'): flash(f"Rapport hebdomadaire envoyé à {result['to']}.")
-        elif result.get('dry_run'): flash(f"Service email non configuré — email non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
-        elif result.get('reason')=='no_owner_email': flash("Impossible d'envoyer le rapport : aucun propriétaire avec email trouvé.")
-        else: flash("Impossible d'envoyer le rapport pour le moment. Réessayez dans quelques minutes.")
+
+        if result.get('sent'):
+            record_usage('reports_per_month',organization_id=org['id'])
+            flash(f"Rapport hebdomadaire envoyé à {result['to']}.")
+        elif result.get('dry_run'):
+            flash(f"Service email non configuré — email non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
+        elif result.get('reason')=='no_owner_email':
+            flash("Impossible d'envoyer le rapport : aucun propriétaire avec email trouvé.")
+        else:
+            flash("Impossible d'envoyer le rapport pour le moment. Réessayez dans quelques minutes.")
         return redirect(url_for('weekly_report_preview'))
 
     @app.route('/impact',methods=['GET','POST'])
@@ -121,8 +145,15 @@ def register(app):
     def impact():
         c=cx()
         if request.method=='POST':
-            aid=int(request.form['action_id']); typ=request.form['outcome_type']; amount=float(request.form['amount']); ver=1 if request.form.get('verified') else 0; note=request.form.get('note',''); c.execute('INSERT INTO outcomes(action_id,outcome_type,amount,verified,note,created_at) VALUES(?,?,?,?,?,?)',(aid,typ,amount,ver,note,now())); a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone(); c.execute("UPDATE actions SET status='DONE' WHERE id=?",(aid,)); c.commit()
-            if a: log_status_change('ACTION',a['opportunity_id'],a['kind'],a['status'],'DONE',note=f'{typ} — {amount:,.0f} €')
+            aid=int(request.form['action_id']); typ=request.form['outcome_type']; amount=float(request.form['amount']); ver=1 if request.form.get('verified') else 0; note=request.form.get('note','')
+            c.execute('INSERT INTO outcomes(action_id,outcome_type,amount,verified,note,created_at) VALUES(?,?,?,?,?,?)',(aid,typ,amount,ver,note,now()))
+            a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+            c.execute("UPDATE actions SET status='DONE' WHERE id=?",(aid,))
+            c.commit()
+            if a:log_status_change('ACTION',a['opportunity_id'],a['kind'],a['status'],'DONE',note=f'{typ} — {amount:,.0f} €')
             flash('Résultat enregistré.')
-        rows=c.execute('SELECT outcomes.*,actions.title action_title FROM outcomes LEFT JOIN actions ON actions.id=outcomes.action_id ORDER BY outcomes.id DESC').fetchall(); eligible=c.execute("SELECT * FROM actions WHERE status IN ('APPROVED','DONE') ORDER BY id DESC").fetchall(); verified=c.execute('SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1').fetchone()['t']; c.close(); return render_template('impact.html',rows=rows,eligible=eligible,verified=verified)
-
+        rows=c.execute('SELECT outcomes.*,actions.title action_title FROM outcomes LEFT JOIN actions ON actions.id=outcomes.action_id ORDER BY outcomes.id DESC').fetchall()
+        eligible=c.execute("SELECT * FROM actions WHERE status IN ('APPROVED','DONE') ORDER BY id DESC").fetchall()
+        verified=c.execute('SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1').fetchone()['t']
+        c.close()
+        return render_template('impact.html',rows=rows,eligible=eligible,verified=verified)
