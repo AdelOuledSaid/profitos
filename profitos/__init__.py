@@ -80,7 +80,7 @@ def create_app(config_object=None):
             "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
             "img-src 'self' data:; font-src 'self' data:; "
             "style-src-elem 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; script-src-attr 'none'; "
-            "connect-src 'self'; form-action 'self'"
+            "connect-src 'self'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com"
         )
         if is_production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
