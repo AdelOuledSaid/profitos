@@ -1,17 +1,19 @@
 from profitos.runtime import *
-from profitos.feature_access import requires_feature
+from profitos.feature_access import requires_feature, requires_paid_plan
 
 
 
 def register(app):
     @app.route('/actions')
     @login_required
+    @requires_paid_plan
     @require_area('actions')
     def actions():
         c=cx(); rows=c.execute("SELECT * FROM actions ORDER BY CASE status WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,id DESC").fetchall(); c.close(); return render_template('actions.html',rows=rows)
 
     @app.route('/actions/create/<kind>/<int:item_id>',methods=['POST'])
     @login_required
+    @requires_paid_plan
     def create_action(kind,item_id):
         kind=kind.upper()
         if not can_access(KIND_TO_AREA.get(kind,'')):
@@ -34,6 +36,7 @@ def register(app):
 
     @app.route('/actions/<int:aid>/status',methods=['POST'])
     @login_required
+    @requires_paid_plan
     def action_status(aid):
         st=request.form.get('status','PENDING').upper(); c=cx(); a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
         if not a: c.close(); return redirect(url_for('actions'))
@@ -53,6 +56,7 @@ def register(app):
     @app.route('/actions/<int:aid>/send',methods=['POST'])
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     @requires_feature('advanced_features')
     def action_send(aid):
         c=cx(); a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()

@@ -1,11 +1,13 @@
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
+from profitos.feature_access import requires_paid_plan
 
 
 def register(app):
     @app.route('/upload/invoices',methods=['GET','POST'])
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     @require_area('uploads')
     def upload_invoices():
         if request.method=='POST':
@@ -139,6 +141,7 @@ def register(app):
     @app.route('/upload/expenses',methods=['GET','POST'])
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     @require_area('uploads')
     def upload_expenses():
         if request.method=='POST':

@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
+from profitos.feature_access import requires_paid_plan
 
 
 def register(app):
@@ -22,6 +23,7 @@ def register(app):
     @app.route('/reports/monthly.pdf')
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     def monthly_report_pdf():
         org=current_org()
         quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])
@@ -115,6 +117,7 @@ def register(app):
     @app.route('/reports/weekly/send',methods=['POST'])
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     def weekly_report_send():
         org=current_org()
         quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])

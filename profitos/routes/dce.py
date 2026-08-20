@@ -1,11 +1,12 @@
 from profitos.runtime import *
-from profitos.feature_access import requires_feature
+from profitos.feature_access import requires_feature, requires_paid_plan
 
 
 def register(app):
     @app.route('/dce/<int:opportunity_id>/upload',methods=['POST'])
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     @require_area('grow')
     @requires_feature('advanced_features')
     @rate_limit(20,3600)

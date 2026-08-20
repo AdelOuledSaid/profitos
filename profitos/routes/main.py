@@ -1,6 +1,6 @@
 from profitos.runtime import *
 from profitos.plan_limits import feature_enabled
-from profitos.feature_access import requires_feature
+from profitos.feature_access import requires_feature, requires_paid_plan, current_plan_is_paid, _deny_paid_feature
 
 
 
@@ -94,6 +94,7 @@ def register(app):
     @app.route('/grow')
     @login_required
     @requires_active_plan
+    @requires_paid_plan
     @require_area('grow')
     def grow():
         p=profile()
@@ -102,6 +103,7 @@ def register(app):
 
     @app.route('/grow/refresh',methods=['POST'])
     @login_required
+    @requires_paid_plan
     @require_area('grow')
     @requires_feature('advanced_features')
     @rate_limit(6,300)
@@ -115,6 +117,8 @@ def register(app):
     @requires_active_plan
     def detail(kind,item_id):
         kind=kind.upper()
+        if kind=='GROW' and not current_plan_is_paid():
+            return _deny_paid_feature('grow')
         if not can_access(KIND_TO_AREA.get(kind,'')):
             flash("Votre r├┤le ne donne pas acc├¿s ├á cette section."); return redirect(url_for('home'))
         c=cx()
@@ -150,6 +154,8 @@ def register(app):
     @login_required
     def opportunity_status(kind,item_id):
         kind=kind.upper()
+        if kind=='GROW' and not current_plan_is_paid():
+            return _deny_paid_feature('grow_status')
         if not can_access(KIND_TO_AREA.get(kind,'')):
             flash("Votre r├┤le ne donne pas acc├¿s ├á cette section."); return redirect(url_for('home'))
         new_status=request.form.get('status','').strip()
