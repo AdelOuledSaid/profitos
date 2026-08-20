@@ -41,7 +41,7 @@
 <div class="simpleline">
 <div><strong>{{ d.title }}</strong><small>{{ d.status }}</small></div>
 <form method="post" action="{{ url_for('bid_document_status',doc_id=d.id) }}">
-<select name="status" onchange="this.form.submit()">
+<select name="status" data-auto-submit>
 <option {% if d.status=='MISSING' %}selected{% endif %}>MISSING</option>
 <option {% if d.status=='READY' %}selected{% endif %}>READY</option>
 <option {% if d.status=='VALIDATED' %}selected{% endif %}>VALIDATED</option>
@@ -61,7 +61,7 @@
 <div></div>
 <div>
 <form method="post" action="{{ url_for('bid_task_status',task_id=t.id) }}">
-<select name="status" onchange="this.form.submit()">
+<select name="status" data-auto-submit>
 <option {% if t.status=='TODO' %}selected{% endif %}>TODO</option>
 <option {% if t.status=='DOING' %}selected{% endif %}>DOING</option>
 <option {% if t.status=='DONE' %}selected{% endif %}>DONE</option>

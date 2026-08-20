@@ -1,3 +1,5 @@
+# ProfitOS V1.3.4 — CSP / XSS Hardening
+
 # ProfitOS V1.3.3 — Secure Tokens & Account Recovery
 
 # ProfitOS — V1.3.2

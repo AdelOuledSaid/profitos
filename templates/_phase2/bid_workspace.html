@@ -37,7 +37,7 @@
 <small>Source : {{ c.source_document }} · Preuve : {{ c.evidence_needed }}</small></div>
 <div><span class="risk {{ c.risk_level|lower }}">{{ c.risk_level }}</span></div>
 <form method="post" action="{{ url_for('compliance_status',item_id=c.id) }}">
-<select name="status" onchange="this.form.submit()">
+<select name="status" data-auto-submit>
 <option {% if c.status=='TO_VERIFY' %}selected{% endif %}>TO_VERIFY</option>
 <option {% if c.status=='COMPLIANT' %}selected{% endif %}>COMPLIANT</option>
 <option {% if c.status=='MISSING' %}selected{% endif %}>MISSING</option>
@@ -53,7 +53,7 @@
 {% for t in tasks %}
 <div class="simpleline"><div><strong>{{ t.title }}</strong><small>{{ t.category }} · {{ t.due_date or '' }}</small></div>
 <form method="post" action="{{ url_for('bid_task_status',task_id=t.id) }}">
-<select name="status" onchange="this.form.submit()">
+<select name="status" data-auto-submit>
 <option {% if t.status=='TODO' %}selected{% endif %}>TODO</option>
 <option {% if t.status=='DOING' %}selected{% endif %}>DOING</option>
 <option {% if t.status=='DONE' %}selected{% endif %}>DONE</option>
