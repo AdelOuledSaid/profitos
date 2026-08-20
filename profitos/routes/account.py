@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.runtime import _token_user
+from profitos.plan_limits import PLAN_LIMITS, plan_limit, within_limit, feature_enabled
 
 
 
@@ -9,7 +10,25 @@ def register(app):
     def org_new():
         name=request.form.get('org_name','').strip()
         if not name: flash("Nom d'organisation requis."); return redirect(url_for('settings'))
+
+        active_org=current_org()
+        active_plan=(active_org['plan'] if active_org else 'TRIAL')
         c=auth_cx()
+
+        owned_count=c.execute(
+            "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
+            (session['user_id'],)
+        ).fetchone()['n']
+
+        if not within_limit(active_plan,'organizations',owned_count,1):
+            c.close()
+            limit=plan_limit(active_plan,'organizations')
+            log_security_event('PLAN_LIMIT','BLOCKED',target='organizations')
+            flash(
+                f"Votre formule {active_plan} autorise au maximum {limit} organisation(s). "
+                "Passez à une formule supérieure pour en créer davantage."
+            )
+            return redirect(url_for('settings'))
         slug=re.sub(r'[^a-z0-9]+','-',norm(name)).strip('-') or 'company'; base=slug; i=1
         while c.execute('SELECT id FROM organizations WHERE slug=?',(slug,)).fetchone(): i+=1; slug=f'{base}-{i}'
         trial=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
@@ -290,6 +309,24 @@ def register(app):
         if role not in ROLES: role='MEMBER'
         if not email: flash('Email requis.'); return redirect(url_for('team'))
         c=auth_cx()
+
+        org=current_org()
+        plan=(org['plan'] if org else 'TRIAL')
+        member_count=c.execute(
+            'SELECT COUNT(*) AS n FROM memberships WHERE organization_id=?',
+            (session['org_id'],)
+        ).fetchone()['n']
+
+        if not within_limit(plan,'team_members',member_count,1):
+            c.close()
+            limit=plan_limit(plan,'team_members')
+            log_security_event('PLAN_LIMIT','BLOCKED',organization_id=session['org_id'],target='team_members')
+            flash(
+                f"Votre formule {plan} autorise au maximum {limit} utilisateur(s) dans l'équipe. "
+                "Passez à une formule supérieure pour inviter davantage de membres."
+            )
+            return redirect(url_for('team'))
+
         already=c.execute('SELECT 1 FROM memberships JOIN users ON users.id=memberships.user_id WHERE users.email=? AND memberships.organization_id=?',(email,session['org_id'])).fetchone()
         if already: c.close(); flash('Cette personne est déjà membre de cette organisation.'); return redirect(url_for('team'))
         user=c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
@@ -395,6 +432,7 @@ def register(app):
             stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
             cancellation_scheduled=cancellation_scheduled,
             cancellation_date=cancellation_date,
+            plan_limits=PLAN_LIMITS,
         )
 
     @app.route('/billing/checkout',methods=['POST'])
