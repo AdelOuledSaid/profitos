@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from flask import Flask, jsonify, g, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import get_config, APP_VERSION
-from .runtime import init_auth_db, init_runtime, database_readiness, init_rate_limiter, limiter
+from .runtime import init_auth_db, init_runtime, database_readiness, production_dependency_status, log_ops_event, init_rate_limiter, limiter
 
 
 def _configure_logging(app):
@@ -57,10 +58,19 @@ def create_app(config_object=None):
     def request_context():
         incoming = request.headers.get('X-Request-ID', '')
         g.request_id = incoming[:80] if incoming and re_safe_request_id(incoming) else secrets.token_hex(12)
+        g.request_started_at = time.monotonic()
 
     @app.after_request
     def security_headers(response):
         response.headers['X-Request-ID'] = getattr(g, 'request_id', '')
+        started = getattr(g, 'request_started_at', None)
+        if started is not None:
+            elapsed_ms = round((time.monotonic() - started) * 1000, 1)
+            response.headers['X-Response-Time-Ms'] = str(elapsed_ms)
+            if elapsed_ms >= 1500:
+                log_ops_event('SLOW_REQUEST','WARNING',detail=f'{elapsed_ms}ms')
+        if response.status_code >= 500:
+            log_ops_event('HTTP_5XX','ERROR',detail=f'status={response.status_code}')
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
@@ -103,6 +113,19 @@ def create_app(config_object=None):
     def internal_error(error):
         app.logger.exception('Erreur interne request_id=%s path=%s', getattr(g, 'request_id', '-'), request.path)
         return render_template('error.html', code=500, title='Erreur interne', message="Une erreur est survenue. L'identifiant de requête peut être communiqué au support.", request_id=getattr(g, 'request_id', None)), 500
+
+    @app.get('/ops/health')
+    @limiter.exempt
+    def ops_health():
+        deps = production_dependency_status()
+        healthy = bool(deps.get('database',{}).get('ok'))
+        payload = {
+            'status': 'ok' if healthy else 'degraded',
+            'service': 'profitos',
+            'version': APP_VERSION,
+            'dependencies': deps,
+        }
+        return jsonify(**payload), (200 if healthy else 503)
 
     @app.get('/healthz')
     @limiter.exempt

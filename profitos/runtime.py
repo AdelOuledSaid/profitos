@@ -1,6 +1,5 @@
-
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app
-import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g
+import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib, time
 try:
     from dotenv import load_dotenv
     load_dotenv()  # charge .env s'il existe (facultatif — ignoré silencieusement en son absence)
@@ -76,6 +75,58 @@ def init_auth_db():
         if col not in org_cols: c.execute(ddl)
     c.commit(); c.close()
     ensure_security_events_table()
+
+
+def production_dependency_status():
+    """Retourne un état non sensible des dépendances de production.
+
+    Aucune URL, clé, credential ou détail de connexion n'est exposé.
+    """
+    status = {
+        'database': {'configured': bool(os.environ.get('DATABASE_URL')), 'ok': False},
+        'rate_limit_store': {'configured': bool(os.environ.get('REDIS_URL')), 'ok': None},
+        'email': {'configured': bool(os.environ.get('RESEND_API_KEY')) or bool(os.environ.get('SMTP_HOST')), 'ok': None},
+    }
+
+    # DB = seul backend testé activement ici, car /readyz doit rester rapide et
+    # ne pas provoquer d'appel tiers à chaque health check.
+    try:
+        ok, backend, error = database_readiness()
+        status['database']['ok'] = bool(ok)
+        status['database']['backend'] = backend
+    except Exception:
+        status['database']['ok'] = False
+        status['database']['backend'] = 'unknown'
+
+    # Redis/Resend sont signalés comme configurés, sans exposer ni appeler
+    # leurs endpoints depuis le health check.
+    if status['rate_limit_store']['configured']:
+        status['rate_limit_store']['ok'] = True
+    if status['email']['configured']:
+        status['email']['ok'] = True
+
+    return status
+
+
+def log_ops_event(event_type, outcome='INFO', detail=None):
+    """Log JSON structuré destiné aux logs Render.
+
+    Ne jamais passer de secret/token/URL complète dans detail.
+    """
+    try:
+        payload = {
+            'event': str(event_type)[:80],
+            'outcome': str(outcome)[:24],
+            'request_id': getattr(g, 'request_id', None),
+            'path': request.path if request else None,
+            'method': request.method if request else None,
+            'detail': (str(detail)[:200] if detail else None),
+            'ts': now(),
+        }
+        current_app.logger.info('OPS %s', json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+    except Exception:
+        pass
+
 
 def database_readiness():
     """Vérifie la base auth sans dépendre d'une session utilisateur."""

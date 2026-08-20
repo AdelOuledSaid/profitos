@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
-APP_VERSION = "1.3.5"
+APP_VERSION = "1.3.6"
 
 
 class BaseConfig:
@@ -25,7 +25,7 @@ class BaseConfig:
     # plutôt que de faire tomber l'application.
     RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True
     RATELIMIT_SWALLOW_ERRORS = False
-    RATELIMIT_KEY_PREFIX = 'profitos-v135'
+    RATELIMIT_KEY_PREFIX = 'profitos-v136'
 
 
 class DevelopmentConfig(BaseConfig):
