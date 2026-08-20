@@ -1,16 +1,37 @@
 {% extends "base.html" %}{% block content %}
 <div class="page">
-  <div class="eyebrow">PLANS & BILLING</div><h1>Facturation</h1>
+  <div class="eyebrow">PLANS & BILLING</div>
+  <h1>Facturation</h1>
+
   {% if not billing_enabled %}
-  <div class="panel"><strong>Facturation non configurée.</strong><p class="muted">L'accès reste disponible en mode développement. En production, configurez la clé Stripe, le secret webhook et au moins un Price ID.</p></div>
+  <div class="panel">
+    <strong>Facturation non configurée.</strong>
+    <p class="muted">
+      L'accès reste disponible en mode développement. En production, configurez la clé Stripe,
+      le secret webhook et au moins un Price ID.
+    </p>
+  </div>
   {% else %}
+
   <div class="panel" style="margin-bottom:20px;">
     <small class="muted">STATUT ACTUEL</small>
-    {% if org.status=='ACTIVE_PAID' %}<h2>{{ org.plan|title }} — actif</h2><p class="muted">Votre abonnement est confirmé par Stripe.</p>
-    {% elif org.status=='PAST_DUE' %}<h2>Paiement à régulariser</h2><p class="muted">Mettez à jour votre moyen de paiement dans le portail Stripe.</p>
-    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}<h2>Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</h2>
-    {% elif org.status=='CANCELED' %}<h2>Abonnement annulé</h2>
-    {% else %}<h2>Essai gratuit terminé</h2>{% endif %}
+
+    {% if org.status=='ACTIVE_PAID' %}
+      <h2>{{ org.plan|title }} — actif</h2>
+      <p class="muted">Votre abonnement est confirmé par Stripe.</p>
+    {% elif org.status=='PAST_DUE' %}
+      <h2>Paiement à régulariser</h2>
+      <p class="muted">Mettez à jour votre moyen de paiement dans le portail Stripe.</p>
+    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}
+      <h2>
+        Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }}
+        restant{{ 's' if trial_days>1 else '' }}
+      </h2>
+    {% elif org.status=='CANCELED' %}
+      <h2>Abonnement annulé</h2>
+    {% else %}
+      <h2>Essai gratuit terminé</h2>
+    {% endif %}
   </div>
 
   {% if quota_usage %}
@@ -19,65 +40,129 @@
     <h2 style="margin-top:6px;">Limites de votre formule {{ org.plan|title }}</h2>
 
     <div class="cards" style="margin-top:14px;">
-      <section class="panel">
-        <div class="eyebrow">IMPORTS</div>
-        <h2>
-          {{ quota_usage.imports.used }}
-          /
-          {% if quota_usage.imports.limit is none %}Illimité{% else %}{{ quota_usage.imports.limit }}{% endif %}
-        </h2>
-        <p class="muted">Imports utilisés ce mois-ci.</p>
-      </section>
 
-      <section class="panel">
-        <div class="eyebrow">RAPPORTS</div>
-        <h2>
-          {{ quota_usage.reports.used }}
-          /
-          {% if quota_usage.reports.limit is none %}Illimité{% else %}{{ quota_usage.reports.limit }}{% endif %}
-        </h2>
-        <p class="muted">Rapports générés ou envoyés ce mois-ci.</p>
-      </section>
+      {% set items = [
+        ('IMPORTS', quota_usage.imports, "Imports utilisés ce mois-ci."),
+        ('RAPPORTS', quota_usage.reports, "Rapports générés ou envoyés ce mois-ci."),
+        ('ÉQUIPE', quota_usage.team, "Utilisateurs dans l'organisation actuelle."),
+        ('ORGANISATIONS', quota_usage.organizations, "Organisations dont vous êtes propriétaire.")
+      ] %}
 
+      {% for label,q,description in items %}
       <section class="panel">
-        <div class="eyebrow">ÉQUIPE</div>
-        <h2>
-          {{ quota_usage.team.used }}
-          /
-          {% if quota_usage.team.limit is none %}Illimité{% else %}{{ quota_usage.team.limit }}{% endif %}
-        </h2>
-        <p class="muted">Utilisateurs dans l'organisation actuelle.</p>
-      </section>
+        <div class="eyebrow">{{ label }}</div>
 
-      <section class="panel">
-        <div class="eyebrow">ORGANISATIONS</div>
-        <h2>
-          {{ quota_usage.organizations.used }}
+        <h2 style="margin-bottom:6px;">
+          {{ q.used }}
           /
-          {% if quota_usage.organizations.limit is none %}Illimité{% else %}{{ quota_usage.organizations.limit }}{% endif %}
+          {% if q.limit is none %}Illimité{% else %}{{ q.limit }}{% endif %}
         </h2>
-        <p class="muted">Organisations dont vous êtes propriétaire.</p>
+
+        {% if q.limit is not none %}
+          {% set pct = ((q.used * 100) / q.limit) if q.limit else 100 %}
+          {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+
+          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
+            <div
+              style="
+                height:100%;
+                width:{{ pct }}%;
+                border-radius:999px;
+                background:
+                  {% if pct >= 100 %}#dc2626
+                  {% elif pct >= 80 %}#d97706
+                  {% else %}#16a34a{% endif %};
+                transition:width .25s ease;
+              ">
+            </div>
+          </div>
+
+          {% if pct >= 100 %}
+            <p style="margin:0 0 6px;font-weight:700;color:#b91c1c;">
+              Limite atteinte.
+            </p>
+          {% elif pct >= 80 %}
+            <p style="margin:0 0 6px;font-weight:700;color:#b45309;">
+              Vous approchez de votre limite.
+            </p>
+          {% endif %}
+        {% else %}
+          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
+            <div style="height:100%;width:100%;border-radius:999px;background:#16a34a;"></div>
+          </div>
+          <p style="margin:0 0 6px;font-weight:700;">Aucune limite mensuelle.</p>
+        {% endif %}
+
+        <p class="muted">{{ description }}</p>
       </section>
+      {% endfor %}
+
     </div>
+
+    {% set import_warning = quota_usage.imports.limit is not none and quota_usage.imports.used * 100 >= quota_usage.imports.limit * 80 %}
+    {% set report_warning = quota_usage.reports.limit is not none and quota_usage.reports.used * 100 >= quota_usage.reports.limit * 80 %}
+    {% set team_warning = quota_usage.team.limit is not none and quota_usage.team.used * 100 >= quota_usage.team.limit * 80 %}
+    {% set org_warning = quota_usage.organizations.limit is not none and quota_usage.organizations.used * 100 >= quota_usage.organizations.limit * 80 %}
+
+    {% if org.plan in ('STARTER','PRO') and (import_warning or report_warning or team_warning or org_warning) %}
+    <div style="
+      margin-top:18px;
+      padding:16px;
+      border:1px solid #f59e0b;
+      border-radius:12px;
+      background:#fffbeb;
+    ">
+      <strong>Vous approchez d'une ou plusieurs limites de votre formule.</strong>
+      <p style="margin:6px 0 0;" class="muted">
+        Vous pouvez passer à une formule supérieure depuis le portail de facturation.
+      </p>
+
+      {% if org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
+      <form method="post" action="{{ url_for('billing_portal') }}" style="margin-top:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Passer au plan supérieur</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
   {% if org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
-  <form method="post" action="{{ url_for('billing_portal') }}" style="margin-bottom:20px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Gérer mon abonnement</button></form>
+  <form method="post" action="{{ url_for('billing_portal') }}" style="margin-bottom:20px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Gérer mon abonnement</button>
+  </form>
   {% else %}
   <div class="cards">
-  {% for code,p in plans.items() %}
+    {% for code,p in plans.items() %}
     <section class="panel">
-      <div class="eyebrow">{{ code }}</div><h2>{{ p.name }}</h2>
-      <div style="font-size:30px;font-weight:800;margin:10px 0;">{{ p.price_eur }} € <small class="muted" style="font-size:14px;">/ mois</small></div>
-      {% if code=='STARTER' %}<p class="muted">Pour démarrer avec les fonctions essentielles de ProfitOS.</p>
-      {% elif code=='PRO' %}<p class="muted">Pour une utilisation régulière et complète de ProfitOS.</p>
-      {% else %}<p class="muted">Pour les organisations ayant des besoins plus importants.</p>{% endif %}
-      <form method="post" action="{{ url_for('billing_checkout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="plan" value="{{ code }}"><button type="submit">Choisir {{ p.name }}</button></form>
+      <div class="eyebrow">{{ code }}</div>
+      <h2>{{ p.name }}</h2>
+
+      <div style="font-size:30px;font-weight:800;margin:10px 0;">
+        {{ p.price_eur }} €
+        <small class="muted" style="font-size:14px;">/ mois</small>
+      </div>
+
+      {% if code=='STARTER' %}
+        <p class="muted">Pour démarrer avec les fonctions essentielles de ProfitOS.</p>
+      {% elif code=='PRO' %}
+        <p class="muted">Pour une utilisation régulière et complète de ProfitOS.</p>
+      {% else %}
+        <p class="muted">Pour les organisations ayant des besoins plus importants.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('billing_checkout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="plan" value="{{ code }}">
+        <button type="submit">Choisir {{ p.name }}</button>
+      </form>
     </section>
-  {% endfor %}
+    {% endfor %}
   </div>
   {% endif %}
+
   {% endif %}
 </div>
 {% endblock %}
