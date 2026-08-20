@@ -73,17 +73,24 @@ def register(app):
         if request.method=='POST':
             email=request.form.get('email','').strip().lower(); pw=request.form.get('password','')
             c=auth_cx(); u=c.execute('SELECT * FROM users WHERE email=? AND is_active=1',(email,)).fetchone()
-            if not u or not check_password_hash(u['password_hash'],pw): c.close(); flash('E-mail ou mot de passe incorrect.'); return redirect(request.url)
+            if not u or not check_password_hash(u['password_hash'],pw):
+                failed_uid=u['id'] if u else None
+                c.close()
+                log_security_event('LOGIN_FAILED','FAILURE',user_id=failed_uid,target='account')
+                flash('E-mail ou mot de passe incorrect.')
+                return redirect(request.url)
             m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone(); c.close()
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
-            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; session['auth_version']=int(u.get('auth_version') or 0); init_tenant_db(); log_activity('LOGIN','Connexion')
+            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; session['auth_version']=int(u.get('auth_version') or 0); init_tenant_db(); log_activity('LOGIN','Connexion'); log_security_event('LOGIN_SUCCESS','SUCCESS',user_id=u['id'],organization_id=m['organization_id'],target='account')
             return redirect(safe_next_url(request.args.get('next')) or url_for('home'))
         return render_template('login.html')
 
     @app.route('/logout',methods=['POST'])
     @login_required
     def logout():
-        if session.get('user_id'): log_activity('LOGOUT','Déconnexion')
+        if session.get('user_id'):
+            log_activity('LOGOUT','Déconnexion')
+            log_security_event('LOGOUT','SUCCESS',target='account')
         session.clear(); return redirect(url_for('login'))
 
     @app.route('/verify/<token>')
@@ -91,6 +98,7 @@ def register(app):
     def verify_email(token):
         u,stored_token=_token_user('verification',token)
         if not u:
+            log_security_event('EMAIL_VERIFY','FAILURE',target='invalid_or_used')
             flash("Lien de vérification invalide, expiré ou déjà utilisé.")
             return redirect(url_for('login'))
 
@@ -101,6 +109,7 @@ def register(app):
             c=auth_cx()
             c.execute('UPDATE users SET verification_token=NULL WHERE id=? AND verification_token=?',(u['id'],stored_token))
             c.commit(); c.close()
+            log_security_event('EMAIL_VERIFY','EXPIRED',user_id=u['id'],target='account')
             flash("Ce lien de vérification a expiré. Demandez-en un nouveau depuis votre compte.")
             return redirect(url_for('login'))
 
@@ -116,6 +125,7 @@ def register(app):
         if getattr(result,'rowcount',0)!=1:
             flash("Lien de vérification invalide ou déjà utilisé.")
             return redirect(url_for('login'))
+        log_security_event('EMAIL_VERIFY','SUCCESS',user_id=u['id'],target='account')
         flash('Adresse email vérifiée. Merci !')
         return redirect(url_for('home') if session.get('user_id') else url_for('login'))
 
@@ -142,7 +152,11 @@ def register(app):
         if request.method=='POST':
             email=request.form.get('email','').strip().lower()
             c=auth_cx(); u=c.execute('SELECT * FROM users WHERE email=? AND is_active=1',(email,)).fetchone(); c.close()
-            if u: send_reset_email(u)
+            if u:
+                send_reset_email(u)
+                log_security_event('PASSWORD_RESET_REQUEST','ACCEPTED',user_id=u['id'],target='account')
+            else:
+                log_security_event('PASSWORD_RESET_REQUEST','ACCEPTED',target='unknown_account')
             # Message volontairement identique que le compte existe ou non, pour ne pas révéler les emails inscrits.
             flash("Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé.")
             return redirect(url_for('login'))
@@ -162,6 +176,7 @@ def register(app):
                 c=auth_cx()
                 c.execute('UPDATE users SET reset_token=NULL,reset_token_expires=NULL WHERE id=? AND reset_token=?',(u['id'],stored_token))
                 c.commit(); c.close()
+            log_security_event('PASSWORD_RESET','EXPIRED' if u else 'FAILURE',user_id=(u['id'] if u else None),target='account')
             flash("Ce lien de réinitialisation est invalide ou a expiré.")
             return redirect(url_for('forgot_password'))
 
@@ -188,6 +203,7 @@ def register(app):
                 flash("Ce lien de réinitialisation a déjà été utilisé.")
                 return redirect(url_for('forgot_password'))
 
+            log_security_event('PASSWORD_RESET','SUCCESS',user_id=u['id'],target='account')
             # La session courante, si elle existe, ne doit pas survivre au changement.
             session.clear()
             flash('Mot de passe mis à jour. Toutes les anciennes sessions ont été invalidées. Vous pouvez vous reconnecter.')
@@ -264,6 +280,7 @@ def register(app):
         c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,?,?)",(user['id'],session['org_id'],role,now())); c.commit(); c.close()
         org=current_org(); result=send_invite_email(user,org,role)
         log_activity('TEAM_INVITE',f'Invitation envoyée à {email} ({ROLE_LABELS.get(role,role)})')
+        log_security_event('TEAM_INVITE','SUCCESS',user_id=session.get('user_id'),target=f'user:{user["id"]}')
         if result.get('sent'):
             flash(f"Invitation envoyée à {email}.")
         elif result.get('dry_run'):
@@ -284,6 +301,7 @@ def register(app):
             flash("Vous ne pouvez pas retirer votre propre rôle de propriétaire."); return redirect(url_for('team'))
         c=auth_cx(); c.execute('UPDATE memberships SET role=? WHERE user_id=? AND organization_id=?',(role,uid,session['org_id'])); c.commit(); c.close()
         log_activity('TEAM_ROLE_UPDATE',f'Rôle mis à jour pour user #{uid} : {ROLE_LABELS.get(role,role)}')
+        log_security_event('TEAM_ROLE_UPDATE','SUCCESS',target=f'user:{uid}')
         flash('Rôle mis à jour.'); return redirect(url_for('team'))
 
     @app.route('/team/<int:uid>/remove',methods=['POST'])
@@ -296,6 +314,7 @@ def register(app):
             flash("Vous ne pouvez pas vous retirer vous-même."); return redirect(url_for('team'))
         c=auth_cx(); c.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(uid,session['org_id'])); c.commit(); c.close()
         log_activity('TEAM_REMOVE',f'Membre #{uid} retiré')
+        log_security_event('TEAM_REMOVE','SUCCESS',target=f'user:{uid}')
         flash('Membre retiré de l\'organisation.'); return redirect(url_for('team'))
 
     @app.route('/billing')

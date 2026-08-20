@@ -44,6 +44,17 @@ def init_auth_db():
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
     CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,organization_id INTEGER,user_id INTEGER,event_type TEXT,description TEXT,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS security_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER,
+        user_id INTEGER,
+        event_type TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        target TEXT,
+        ip_hash TEXT,
+        user_agent TEXT,
+        created_at TEXT NOT NULL
+    );
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
     cols=[r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
@@ -90,6 +101,37 @@ def log_activity(kind, desc):
     try:
         c=auth_cx(); c.execute('INSERT INTO activity_log(organization_id,user_id,event_type,description,created_at) VALUES(?,?,?,?,?)',(session.get('org_id'),session.get('user_id'),kind,desc,now())); c.commit(); c.close()
     except: pass
+
+def _audit_ip_hash():
+    """Pseudonymise l'IP : aucune adresse IP brute n'est stockée."""
+    try:
+        raw=(request.headers.get('CF-Connecting-IP') or request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+        if not raw:
+            return None
+        pepper=os.environ.get('PROFITOS_SECRET_KEY','profitos-audit')
+        return hashlib.sha256((pepper+'|'+raw).encode('utf-8')).hexdigest()
+    except Exception:
+        return None
+
+def log_security_event(event_type, outcome='SUCCESS', user_id=None, organization_id=None, target=None):
+    """Journal de sécurité minimal, sans secret, mot de passe, token ni IP brute.
+
+    `target` doit rester non sensible (ex: user:42, member:7). Les erreurs de
+    journalisation ne doivent jamais casser l'action métier.
+    """
+    try:
+        uid=user_id if user_id is not None else session.get('user_id')
+        oid=organization_id if organization_id is not None else session.get('org_id')
+        ua=(request.headers.get('User-Agent') or '')[:240] or None
+        safe_target=(str(target)[:160] if target is not None else None)
+        c=auth_cx()
+        c.execute(
+            'INSERT INTO security_events(organization_id,user_id,event_type,outcome,target,ip_hash,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?)',
+            (oid,uid,str(event_type)[:80],str(outcome)[:24],safe_target,_audit_ip_hash(),ua,now())
+        )
+        c.commit(); c.close()
+    except Exception:
+        pass
 
 def log_status_change(entity_type, entity_id, kind, old_status, new_status, note=None):
     """Journalise un changement de statut (facture, opportunité SAVE/GROW, ou action)
