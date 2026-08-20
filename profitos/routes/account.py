@@ -75,8 +75,12 @@ def register(app):
             c=auth_cx(); u=c.execute('SELECT * FROM users WHERE email=? AND is_active=1',(email,)).fetchone()
             if not u or not check_password_hash(u['password_hash'],pw):
                 failed_uid=u['id'] if u else None
+                failed_org=None
+                if u:
+                    fm=c.execute('SELECT organization_id FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone()
+                    failed_org=fm['organization_id'] if fm else None
                 c.close()
-                log_security_event('LOGIN_FAILED','FAILURE',user_id=failed_uid,target='account')
+                log_security_event('LOGIN_FAILED','FAILURE',user_id=failed_uid,organization_id=failed_org,target='account')
                 flash('E-mail ou mot de passe incorrect.')
                 return redirect(request.url)
             m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone(); c.close()
@@ -231,6 +235,23 @@ def register(app):
             if teams_url and not validate_webhook_url(teams_url): flash('Webhook Teams invalide ou non autorisé.'); return redirect(request.url)
             c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,now(),now())); c.commit(); c.close(); log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close(); ac=auth_cx(); activity=ac.execute('SELECT * FROM activity_log WHERE organization_id=? ORDER BY id DESC LIMIT 30',(session['org_id'],)).fetchall(); ac.close(); return render_template('settings.html',app_settings=s,org=current_org(),user=current_user(),activity=activity)
+
+    @app.route('/settings/security-events')
+    @login_required
+    def security_events():
+        if current_role()!='OWNER':
+            abort(403)
+        ensure_security_events_table()
+        c=auth_cx()
+        try:
+            rows=c.execute(
+                'SELECT id,event_type,outcome,user_id,organization_id,target,created_at '
+                'FROM security_events WHERE organization_id=? ORDER BY id DESC LIMIT 200',
+                (session['org_id'],)
+            ).fetchall()
+        finally:
+            c.close()
+        return render_template('security_events.html',events=rows)
 
     @app.route('/settings/test-notification',methods=['POST'])
     @login_required

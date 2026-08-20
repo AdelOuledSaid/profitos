@@ -74,6 +74,7 @@ def init_auth_db():
     ):
         if col not in org_cols: c.execute(ddl)
     c.commit(); c.close()
+    ensure_security_events_table()
 
 def database_readiness():
     """Vérifie la base auth sans dépendre d'une session utilisateur."""
@@ -96,6 +97,33 @@ def initialize_all_tenant_schemas():
         init_tenant_db(org_id)
         count += 1
     return count
+
+def ensure_security_events_table():
+    """Crée le journal de sécurité dans la base AUTH active si nécessaire.
+
+    Cette fonction est volontairement idempotente. Elle permet à une instance
+    déjà déployée d'appliquer la migration sans shell Render ni suppression de
+    données.
+    """
+    c=auth_cx()
+    try:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS security_events(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER,
+            user_id INTEGER,
+            event_type TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            target TEXT,
+            ip_hash TEXT,
+            user_agent TEXT,
+            created_at TEXT NOT NULL
+        );
+        """)
+        c.commit()
+    finally:
+        c.close()
+
 
 def log_activity(kind, desc):
     try:
@@ -120,6 +148,7 @@ def log_security_event(event_type, outcome='SUCCESS', user_id=None, organization
     journalisation ne doivent jamais casser l'action métier.
     """
     try:
+        ensure_security_events_table()
         uid=user_id if user_id is not None else session.get('user_id')
         oid=organization_id if organization_id is not None else session.get('org_id')
         ua=(request.headers.get('User-Agent') or '')[:240] or None
@@ -893,7 +922,7 @@ def user_organizations():
     return rows
 
 def commercial_context():
-    return {'auth_user':current_user(),'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations()}
+    return {'auth_user':current_user(),'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION','')}
 
 
 
@@ -909,6 +938,7 @@ def init_runtime(app):
     app.jinja_env.globals['ROLES'] = ROLES
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['trial_days_left'] = trial_days_left
+    app.jinja_env.globals['current_role'] = current_role
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)
