@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g
+
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app
 import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib
 try:
     from dotenv import load_dotenv
