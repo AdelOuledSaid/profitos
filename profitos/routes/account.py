@@ -1,6 +1,7 @@
 from profitos.runtime import *
 from profitos.runtime import _token_user
 from profitos.plan_limits import PLAN_LIMITS, plan_limit, within_limit, feature_enabled
+from profitos.plan_usage import quota_state
 
 
 
@@ -422,6 +423,46 @@ def register(app):
                     org['id'] if org else None
                 )
 
+        # Utilisation et limites du plan courant.
+        current_plan=(org['plan'] if org else 'TRIAL')
+        import_usage=quota_state(
+            'imports_per_month',
+            organization_id=org['id'] if org else None,
+            plan=current_plan,
+        )
+        report_usage=quota_state(
+            'reports_per_month',
+            organization_id=org['id'] if org else None,
+            plan=current_plan,
+        )
+
+        acx=auth_cx()
+        try:
+            team_members=acx.execute(
+                'SELECT COUNT(*) AS n FROM memberships WHERE organization_id=?',
+                (org['id'],)
+            ).fetchone()['n'] if org else 0
+
+            organizations_owned=acx.execute(
+                "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
+                (session['user_id'],)
+            ).fetchone()['n']
+        finally:
+            acx.close()
+
+        quota_usage={
+            'imports': import_usage,
+            'reports': report_usage,
+            'team': {
+                'used': int(team_members),
+                'limit': plan_limit(current_plan,'team_members'),
+            },
+            'organizations': {
+                'used': int(organizations_owned),
+                'limit': plan_limit(current_plan,'organizations'),
+            },
+        }
+
         return render_template(
             'billing.html',
             org=org,
@@ -433,6 +474,7 @@ def register(app):
             cancellation_scheduled=cancellation_scheduled,
             cancellation_date=cancellation_date,
             plan_limits=PLAN_LIMITS,
+            quota_usage=quota_usage,
         )
 
     @app.route('/billing/checkout',methods=['POST'])

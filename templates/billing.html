@@ -13,6 +13,55 @@
     {% else %}<h2>Essai gratuit terminé</h2>{% endif %}
   </div>
 
+  {% if quota_usage %}
+  <div class="panel" style="margin-bottom:20px;">
+    <small class="muted">UTILISATION CE MOIS-CI</small>
+    <h2 style="margin-top:6px;">Limites de votre formule {{ org.plan|title }}</h2>
+
+    <div class="cards" style="margin-top:14px;">
+      <section class="panel">
+        <div class="eyebrow">IMPORTS</div>
+        <h2>
+          {{ quota_usage.imports.used }}
+          /
+          {% if quota_usage.imports.limit is none %}Illimité{% else %}{{ quota_usage.imports.limit }}{% endif %}
+        </h2>
+        <p class="muted">Imports utilisés ce mois-ci.</p>
+      </section>
+
+      <section class="panel">
+        <div class="eyebrow">RAPPORTS</div>
+        <h2>
+          {{ quota_usage.reports.used }}
+          /
+          {% if quota_usage.reports.limit is none %}Illimité{% else %}{{ quota_usage.reports.limit }}{% endif %}
+        </h2>
+        <p class="muted">Rapports générés ou envoyés ce mois-ci.</p>
+      </section>
+
+      <section class="panel">
+        <div class="eyebrow">ÉQUIPE</div>
+        <h2>
+          {{ quota_usage.team.used }}
+          /
+          {% if quota_usage.team.limit is none %}Illimité{% else %}{{ quota_usage.team.limit }}{% endif %}
+        </h2>
+        <p class="muted">Utilisateurs dans l'organisation actuelle.</p>
+      </section>
+
+      <section class="panel">
+        <div class="eyebrow">ORGANISATIONS</div>
+        <h2>
+          {{ quota_usage.organizations.used }}
+          /
+          {% if quota_usage.organizations.limit is none %}Illimité{% else %}{{ quota_usage.organizations.limit }}{% endif %}
+        </h2>
+        <p class="muted">Organisations dont vous êtes propriétaire.</p>
+      </section>
+    </div>
+  </div>
+  {% endif %}
+
   {% if org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
   <form method="post" action="{{ url_for('billing_portal') }}" style="margin-bottom:20px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Gérer mon abonnement</button></form>
   {% else %}
