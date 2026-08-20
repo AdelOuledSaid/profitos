@@ -400,7 +400,13 @@ def register(app):
     @app.route('/billing/checkout',methods=['POST'])
     @login_required
     @require_area('billing')
+    @rate_limit(6,60)
     def billing_checkout():
+        # Défense en profondeur : la facturation ne peut être pilotée que par le propriétaire.
+        if current_role()!='OWNER':
+            log_security_event('BILLING_CHECKOUT','FORBIDDEN',target='billing')
+            abort(403)
+
         stripe=get_stripe()
 
         # Le plan doit toujours venir du formulaire et correspondre à un plan serveur connu.
@@ -418,8 +424,22 @@ def register(app):
         org=current_org()
         user=current_user()
 
+        # Verrou court anti-double-clic / requêtes répétées depuis le même navigateur.
+        lock_key=f"billing_checkout_lock_{org['id']}"
+        last_checkout=session.get(lock_key)
+        now_ts=int(datetime.now(timezone.utc).timestamp())
+        if last_checkout:
+            try:
+                if now_ts-int(last_checkout)<8:
+                    flash("Une demande de paiement est déjà en cours. Patientez quelques secondes.")
+                    return redirect(url_for('billing'))
+            except (TypeError,ValueError):
+                pass
+        session[lock_key]=now_ts
+
         # Évite de créer plusieurs abonnements en parallèle pour la même organisation.
         if org['stripe_subscription_id'] and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
+            session.pop(lock_key,None)
             flash("Un abonnement Stripe existe déjà. Utilisez le portail pour le modifier ou le gérer.")
             return redirect(url_for('billing'))
 
@@ -446,7 +466,8 @@ def register(app):
                 customer=stripe.Customer.create(
                     email=user['email'],
                     name=org['name'],
-                    metadata={'organization_id':str(org['id'])}
+                    metadata={'organization_id':str(org['id'])},
+                    idempotency_key=f"profitos-customer-org-{org['id']}"
                 )
                 customer_id=customer['id']
 
@@ -484,24 +505,34 @@ def register(app):
                         'plan':plan
                     }
                 },
+                idempotency_key=f"profitos-checkout-{org['id']}-{plan}-{now_ts//300}",
             )
 
         except Exception:
+            session.pop(lock_key,None)
             current_app.logger.exception(
                 'Stripe checkout failure request_id=%s org_id=%s plan=%s',
                 getattr(g,'request_id','-'),
                 org['id'],
                 plan
             )
+            log_security_event('BILLING_CHECKOUT','FAILURE',organization_id=org['id'],target=f'plan:{plan}')
             flash("Impossible d'ouvrir le paiement pour le moment. Réessayez plus tard.")
             return redirect(url_for('billing'))
 
+        session.pop(lock_key,None)
+        log_security_event('BILLING_CHECKOUT','SUCCESS',organization_id=org['id'],target=f'plan:{plan}')
         return redirect(checkout.url,code=303)
 
     @app.route('/billing/portal',methods=['POST'])
     @login_required
     @require_area('billing')
+    @rate_limit(10,300)
     def billing_portal():
+        if current_role()!='OWNER':
+            log_security_event('BILLING_PORTAL','FORBIDDEN',target='billing')
+            abort(403)
+
         stripe=get_stripe(); org=current_org()
         if not stripe or not org['stripe_customer_id']:
             flash("Aucun abonnement Stripe associé à cette organisation.")
@@ -511,8 +542,10 @@ def register(app):
             portal=stripe.billing_portal.Session.create(customer=org['stripe_customer_id'],return_url=f'{base}{url_for("billing")}')
         except Exception:
             current_app.logger.exception('Stripe portal failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
+            log_security_event('BILLING_PORTAL','FAILURE',organization_id=org['id'],target='billing')
             flash("Impossible d'ouvrir le portail de facturation pour le moment.")
             return redirect(url_for('billing'))
+        log_security_event('BILLING_PORTAL','SUCCESS',organization_id=org['id'],target='billing')
         return redirect(portal.url,code=303)
 
     @app.route('/billing/success')
@@ -526,12 +559,28 @@ def register(app):
     def billing_webhook():
         stripe=get_stripe()
         if not stripe: return ('billing disabled',503)
-        payload=request.get_data(); sig=request.headers.get('Stripe-Signature','')
+
+        # Les événements Stripe sont petits ; refuser un payload anormalement volumineux.
+        if request.content_length and request.content_length>1024*1024:
+            current_app.logger.warning('Stripe webhook payload too large request_id=%s',getattr(g,'request_id','-'))
+            return ('payload too large',413)
+
+        payload=request.get_data(cache=False); sig=request.headers.get('Stripe-Signature','')
         try:
             event=stripe.Webhook.construct_event(payload,sig,STRIPE_WEBHOOK_SECRET)
         except Exception:
             current_app.logger.warning('Stripe webhook signature rejected request_id=%s',getattr(g,'request_id','-'))
             return ('invalid signature',400)
+
+        # Empêche de mélanger accidentellement événements Test et Live.
+        expected_live=bool((STRIPE_SECRET_KEY or '').startswith('sk_live_'))
+        if bool(event.get('livemode'))!=expected_live:
+            current_app.logger.warning(
+                'Stripe webhook mode mismatch request_id=%s event_id=%s',
+                getattr(g,'request_id','-'),
+                event.get('id')
+            )
+            return ('mode mismatch',400)
 
         event_id=event.get('id'); etype=event.get('type',''); obj=event['data']['object']
         acx=auth_cx()
@@ -543,8 +592,26 @@ def register(app):
             if etype=='checkout.session.completed':
                 org_id=obj.get('metadata',{}).get('organization_id') or obj.get('client_reference_id')
                 sub_id=obj.get('subscription'); plan=(obj.get('metadata',{}).get('plan') or '').upper()
+                customer_id=obj.get('customer')
+
                 if org_id and sub_id and plan in STRIPE_PLANS:
-                    acx.execute("UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(plan,sub_id,now(),org_id))
+                    org_row=acx.execute(
+                        'SELECT id,stripe_customer_id FROM organizations WHERE id=?',
+                        (org_id,)
+                    ).fetchone()
+
+                    # N'accepte le Checkout que s'il appartient bien à l'organisation attendue.
+                    if org_row and (not org_row['stripe_customer_id'] or org_row['stripe_customer_id']==customer_id):
+                        acx.execute(
+                            "UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",
+                            (plan,sub_id,now(),org_id)
+                        )
+                    else:
+                        current_app.logger.warning(
+                            'Stripe checkout customer mismatch event_id=%s org_id=%s',
+                            event_id,
+                            org_id
+                        )
 
             elif etype in ('customer.subscription.created','customer.subscription.updated','customer.subscription.deleted'):
                 sub_id=obj.get('id'); status=obj.get('status'); metadata=obj.get('metadata') or {}
