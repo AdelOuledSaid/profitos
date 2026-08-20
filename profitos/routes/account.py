@@ -344,9 +344,58 @@ def register(app):
     def billing():
         org=current_org()
         plans={k:v for k,v in STRIPE_PLANS.items() if v.get('price_id')}
-        return render_template('billing.html',org=org,billing_enabled=BILLING_ENABLED,
-            trial_days=trial_days_left(org),has_access=org_has_access(org),plans=plans,
-            stripe_publishable_key=STRIPE_PUBLISHABLE_KEY)
+
+        cancellation_scheduled=False
+        cancellation_date=None
+
+        stripe=get_stripe()
+        sub_id=org['stripe_subscription_id'] if org else None
+
+        if stripe and sub_id and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
+            try:
+                subscription=stripe.Subscription.retrieve(sub_id)
+                cancellation_scheduled=bool(subscription.get('cancel_at_period_end'))
+
+                period_end=subscription.get('current_period_end')
+                if period_end:
+                    try:
+                        cancellation_date=datetime.fromtimestamp(
+                            int(period_end),
+                            tz=timezone.utc
+                        ).strftime('%d/%m/%Y')
+                    except (TypeError,ValueError,OverflowError):
+                        cancellation_date=None
+
+                if cancellation_scheduled:
+                    if cancellation_date:
+                        flash(
+                            f"Annulation programmée le {cancellation_date}. "
+                            "Vous conservez l'accès à votre abonnement jusqu'à cette date."
+                        )
+                    else:
+                        flash(
+                            "L'annulation de votre abonnement est programmée à la fin "
+                            "de la période de facturation en cours."
+                        )
+
+            except Exception:
+                current_app.logger.exception(
+                    'Stripe subscription status lookup failure request_id=%s org_id=%s',
+                    getattr(g,'request_id','-'),
+                    org['id'] if org else None
+                )
+
+        return render_template(
+            'billing.html',
+            org=org,
+            billing_enabled=BILLING_ENABLED,
+            trial_days=trial_days_left(org),
+            has_access=org_has_access(org),
+            plans=plans,
+            stripe_publishable_key=STRIPE_PUBLISHABLE_KEY,
+            cancellation_scheduled=cancellation_scheduled,
+            cancellation_date=cancellation_date,
+        )
 
     @app.route('/billing/checkout',methods=['POST'])
     @login_required
