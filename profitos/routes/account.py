@@ -353,36 +353,100 @@ def register(app):
     @require_area('billing')
     def billing_checkout():
         stripe=get_stripe()
-        plan=(request.form.get('plan') or 'PRO').strip().upper()
+
+        # Le plan doit toujours venir du formulaire et correspondre à un plan serveur connu.
+        plan=(request.form.get('plan') or '').strip().upper()
         selected=STRIPE_PLANS.get(plan)
-        if not stripe or not selected or not selected.get('price_id'):
-            flash("Ce plan n'est pas disponible ou la facturation Stripe n'est pas complètement configurée.")
+
+        if not stripe:
+            flash("La facturation Stripe n'est pas configurée.")
             return redirect(url_for('billing'))
-        org=current_org(); user=current_user()
+
+        if not selected or not selected.get('price_id'):
+            flash("Ce plan n'est pas disponible ou son tarif Stripe n'est pas configuré.")
+            return redirect(url_for('billing'))
+
+        org=current_org()
+        user=current_user()
+
         # Évite de créer plusieurs abonnements en parallèle pour la même organisation.
         if org['stripe_subscription_id'] and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
             flash("Un abonnement Stripe existe déjà. Utilisez le portail pour le modifier ou le gérer.")
             return redirect(url_for('billing'))
+
         customer_id=org['stripe_customer_id']
+
         try:
+            # Si un ancien Customer Stripe a été créé dans un autre mode
+            # (test/live), il peut ne plus exister avec la clé actuellement utilisée.
+            # Dans ce cas seulement, on recrée proprement le Customer.
+            if customer_id:
+                try:
+                    stripe.Customer.retrieve(customer_id)
+                except Exception as customer_error:
+                    if 'No such customer' in str(customer_error):
+                        current_app.logger.warning(
+                            'Stripe customer not found; recreating customer org_id=%s',
+                            org['id']
+                        )
+                        customer_id=None
+                    else:
+                        raise
+
             if not customer_id:
-                customer=stripe.Customer.create(email=user['email'],name=org['name'],metadata={'organization_id':str(org['id'])})
+                customer=stripe.Customer.create(
+                    email=user['email'],
+                    name=org['name'],
+                    metadata={'organization_id':str(org['id'])}
+                )
                 customer_id=customer['id']
-                acx=auth_cx(); acx.execute('UPDATE organizations SET stripe_customer_id=?,updated_at=? WHERE id=?',(customer_id,now(),org['id'])); acx.commit(); acx.close()
-            base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050').rstrip('/')
+
+                acx=auth_cx()
+                try:
+                    acx.execute(
+                        'UPDATE organizations SET stripe_customer_id=?,updated_at=? WHERE id=?',
+                        (customer_id,now(),org['id'])
+                    )
+                    acx.commit()
+                finally:
+                    acx.close()
+
+            base=os.environ.get('APP_BASE_URL','https://app.profitos.fr').rstrip('/')
+
             checkout=stripe.checkout.Session.create(
-                customer=customer_id,mode='subscription',
-                line_items=[{'price':selected['price_id'],'quantity':1}],
+                customer=customer_id,
+                mode='subscription',
+                line_items=[
+                    {
+                        'price':selected['price_id'],
+                        'quantity':1
+                    }
+                ],
                 success_url=f'{base}{url_for("billing_success")}?session_id={{CHECKOUT_SESSION_ID}}',
                 cancel_url=f'{base}{url_for("billing")}',
                 client_reference_id=str(org['id']),
-                metadata={'organization_id':str(org['id']),'plan':plan},
-                subscription_data={'metadata':{'organization_id':str(org['id']),'plan':plan}},
+                metadata={
+                    'organization_id':str(org['id']),
+                    'plan':plan
+                },
+                subscription_data={
+                    'metadata':{
+                        'organization_id':str(org['id']),
+                        'plan':plan
+                    }
+                },
             )
+
         except Exception:
-            current_app.logger.exception('Stripe checkout failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
+            current_app.logger.exception(
+                'Stripe checkout failure request_id=%s org_id=%s plan=%s',
+                getattr(g,'request_id','-'),
+                org['id'],
+                plan
+            )
             flash("Impossible d'ouvrir le paiement pour le moment. Réessayez plus tard.")
             return redirect(url_for('billing'))
+
         return redirect(checkout.url,code=303)
 
     @app.route('/billing/portal',methods=['POST'])
