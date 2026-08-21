@@ -4,7 +4,12 @@
 
 <div class="eyebrow">ACTION CENTER</div>
 <h1>Décider avant d'agir.</h1>
-<p class="muted">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
+<p class="muted">
+  Aucune action externe n'est exécutée automatiquement — un email n'est envoyé
+  qu'après validation humaine explicite.
+</p>
+
+<h2 style="margin-top:24px;">Actions actives</h2>
 
 {% for a in rows %}
 <section class="panel actioncard">
@@ -17,10 +22,6 @@
   </div>
 
   <pre>{{ a.draft }}</pre>
-
-  {% if a.status=='SENT' %}
-    <p class="muted">Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.</p>
-  {% endif %}
 
   <div class="actionbuttons">
     {% if a.status=='PENDING' %}
@@ -56,6 +57,46 @@
   </div>
 </section>
 {% else %}
-<section class="panel"><p class="muted">Aucune action préparée.</p></section>
+<section class="panel">
+  <p class="muted">Aucune action active.</p>
+</section>
 {% endfor %}
+
+{% if history_rows %}
+<details style="margin-top:24px;">
+  <summary style="cursor:pointer;font-weight:800;font-size:18px;">
+    Historique ({{ history_rows|length }})
+  </summary>
+
+  <div style="margin-top:14px;">
+    {% for a in history_rows %}
+    <section class="panel actioncard">
+      <div class="actionhead">
+        <div>
+          <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
+          <h2>{{ a.title }}</h2>
+        </div>
+        <span class="status">{{ a.status }}</span>
+      </div>
+
+      <pre>{{ a.draft }}</pre>
+
+      {% if a.status=='SENT' %}
+        <p class="muted">
+          Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.
+        </p>
+      {% endif %}
+
+      {% if a.status=='CANCELLED' %}
+      <form method="post" action="{{ url_for('action_status',aid=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="PENDING">
+        <button class="secondary">Réactiver</button>
+      </form>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
 {% endblock %}
