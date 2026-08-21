@@ -4,10 +4,7 @@
 
 <div class="eyebrow">ACTION CENTER</div>
 <h1>Décider avant d'agir.</h1>
-<p class="muted">
-  Aucune action externe n'est exécutée automatiquement — un email n'est envoyé
-  qu'après validation humaine explicite.
-</p>
+<p class="muted">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
 
 <h2 style="margin-top:24px;">Actions actives</h2>
 
@@ -20,6 +17,18 @@
     </div>
     <span class="status">{{ a.status }}</span>
   </div>
+
+  <details style="margin:12px 0;">
+    <summary style="cursor:pointer;font-weight:700;">Modifier le texte</summary>
+    <form method="post" action="{{ url_for('action_edit',aid=a.id) }}" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Titre</label>
+      <input name="title" value="{{ a.title }}" required style="width:100%;margin:6px 0 10px;">
+      <label>Message</label>
+      <textarea name="draft" rows="10" required style="width:100%;margin:6px 0 10px;">{{ a.draft }}</textarea>
+      <button type="submit" class="secondary">Enregistrer les modifications</button>
+    </form>
+  </details>
 
   <pre>{{ a.draft }}</pre>
 
@@ -57,16 +66,12 @@
   </div>
 </section>
 {% else %}
-<section class="panel">
-  <p class="muted">Aucune action active.</p>
-</section>
+<section class="panel"><p class="muted">Aucune action active.</p></section>
 {% endfor %}
 
 {% if history_rows %}
-<details style="margin-top:24px;">
-  <summary style="cursor:pointer;font-weight:800;font-size:18px;">
-    Historique ({{ history_rows|length }})
-  </summary>
+<details style="margin-top:24px;" open>
+  <summary style="cursor:pointer;font-weight:800;font-size:18px;">Historique ({{ history_rows|length }})</summary>
 
   <div style="margin-top:14px;">
     {% for a in history_rows %}
@@ -82,17 +87,35 @@
       <pre>{{ a.draft }}</pre>
 
       {% if a.status=='SENT' %}
-        <p class="muted">
-          Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.
-        </p>
+      <p class="muted">Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.</p>
       {% endif %}
 
       {% if a.status=='CANCELLED' %}
-      <form method="post" action="{{ url_for('action_status',aid=a.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="status" value="PENDING">
-        <button class="secondary">Réactiver</button>
-      </form>
+      <details style="margin:12px 0;">
+        <summary style="cursor:pointer;font-weight:700;">Modifier le texte</summary>
+        <form method="post" action="{{ url_for('action_edit',aid=a.id) }}" style="margin-top:12px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>Titre</label>
+          <input name="title" value="{{ a.title }}" required style="width:100%;margin:6px 0 10px;">
+          <label>Message</label>
+          <textarea name="draft" rows="10" required style="width:100%;margin:6px 0 10px;">{{ a.draft }}</textarea>
+          <button type="submit" class="secondary">Enregistrer les modifications</button>
+        </form>
+      </details>
+
+      <div class="actionbuttons">
+        <form method="post" action="{{ url_for('action_status',aid=a.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="PENDING">
+          <button class="secondary">Réactiver</button>
+        </form>
+
+        <form method="post" action="{{ url_for('action_delete',aid=a.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">Supprimer</button>
+        </form>
+        <small class="muted">Supprimer définitivement cette action annulée ?</small>
+      </div>
       {% endif %}
     </section>
     {% endfor %}
