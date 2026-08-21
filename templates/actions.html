@@ -1,1 +1,61 @@
-{% extends "base.html" %}{% block content %}<div class="eyebrow">ACTION CENTER</div><h1>Décider avant d'agir.</h1><p class="muted">Aucune action externe n'est exécutée automatiquement en V0 — un email n'est envoyé qu'après validation humaine explicite.</p>{% for a in rows %}<section class="panel actioncard"><div class="actionhead"><div><div class="type {{ a.kind|lower }}">{{ a.kind }}</div><h2>{{ a.title }}</h2></div><span class="status">{{ a.status }}</span></div><pre>{{ a.draft }}</pre>{% if a.status=='SENT' %}<p class="muted">Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.</p>{% endif %}<div class="actionbuttons">{% if a.status=='PENDING' %}<form method="post" action="{{ url_for('action_status',aid=a.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="APPROVED"><button>Approuver</button></form>{% endif %}{% if a.status=='APPROVED' and a.kind=='RECOVER' %}<form method="post" action="{{ url_for('action_send',aid=a.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Envoyer par email</button></form>{% endif %}{% if a.status in ['PENDING','APPROVED'] %}<form method="post" action="{{ url_for('action_status',aid=a.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="CANCELLED"><button class="secondary">Annuler</button></form>{% endif %}{% if a.status=='APPROVED' %}<a class="button secondary" href="{{ url_for('impact') }}">Enregistrer le résultat</a>{% endif %}</div></section>{% else %}<section class="panel"><p class="muted">Aucune action préparée.</p></section>{% endfor %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+
+<div class="eyebrow">ACTION CENTER</div>
+<h1>Décider avant d'agir.</h1>
+<p class="muted">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
+
+{% for a in rows %}
+<section class="panel actioncard">
+  <div class="actionhead">
+    <div>
+      <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
+      <h2>{{ a.title }}</h2>
+    </div>
+    <span class="status">{{ a.status }}</span>
+  </div>
+
+  <pre>{{ a.draft }}</pre>
+
+  {% if a.status=='SENT' %}
+    <p class="muted">Envoyé à {{ a.sent_to }} le {{ a.sent_at[:19] if a.sent_at else '' }}.</p>
+  {% endif %}
+
+  <div class="actionbuttons">
+    {% if a.status=='PENDING' %}
+    <form method="post" action="{{ url_for('action_status',aid=a.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="APPROVED">
+      <button>Approuver</button>
+    </form>
+    {% endif %}
+
+    {% if a.status=='APPROVED' and a.kind=='RECOVER' %}
+      {% if advanced_plan %}
+      <form method="post" action="{{ url_for('action_send',aid=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button>Envoyer par email</button>
+      </form>
+      {% else %}
+      <a class="button" href="{{ url_for('billing') }}">Envoi email · Pro</a>
+      {% endif %}
+    {% endif %}
+
+    {% if a.status in ['PENDING','APPROVED'] %}
+    <form method="post" action="{{ url_for('action_status',aid=a.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="CANCELLED">
+      <button class="secondary">Annuler</button>
+    </form>
+    {% endif %}
+
+    {% if a.status=='APPROVED' %}
+      <a class="button secondary" href="{{ url_for('impact') }}">Enregistrer le résultat</a>
+    {% endif %}
+  </div>
+</section>
+{% else %}
+<section class="panel"><p class="muted">Aucune action préparée.</p></section>
+{% endfor %}
+{% endblock %}

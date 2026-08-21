@@ -1,1 +1,57 @@
-{% extends "base.html" %}{% block content %}<div class="headerflex"><div><div class="eyebrow green">GROW · LIVE BOAMP</div><h1>Opportunités de marchés publics</h1><p class="muted">Filtrées selon tes métiers et départements.</p></div>{% if not needs_profile %}<form method="post" action="{{ url_for('grow_refresh') }}" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="button secondary">Actualiser BOAMP</button></form>{% endif %}</div>{% if needs_profile %}<section class="panel narrow"><h2>Configure ton entreprise</h2><a class="button" href="{{ url_for('company') }}">Créer le profil</a></section>{% else %}{% if last %}<div class="sourcebar">Source : BOAMP · {{ last.rows_processed }} annonces inspectées · {{ last.signals_found }} retenues</div>{% endif %}<section class="panel">{% for r in rows %}<a class="opportunity clickable" href="{{ url_for('detail',kind='GROW',item_id=r.id) }}"><div><div class="match">{{ r.score }}/100 MATCH</div><h3>{{ r.title }}</h3><p class="muted">{{ r.buyer }} · Départements : {{ jlist(r.departments)|join(', ') or 'non précisés' }}</p><div class="chips">{% for x in jlist(r.reasons) %}<span class="chip good">✓ {{ x }}</span>{% endfor %}{% for x in jlist(r.warnings) %}<span class="chip warn">⚠ {{ x }}</span>{% endfor %}</div></div><div class="deadline">{% if r.deadline %}<strong>{{ fmt_deadline(r.deadline) }}</strong><small>{% set d=days_left(r.deadline) %}{% if d is not none %}{{ d }} jours{% endif %}</small>{% endif %}</div></a>{% else %}<p class="muted">Aucun marché suffisamment pertinent.</p>{% endfor %}</section>{% endif %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+
+<div class="headerflex">
+  <div>
+    <div class="eyebrow green">GROW · LIVE BOAMP</div>
+    <h1>Opportunités de marchés publics</h1>
+    <p class="muted">Filtrées selon tes métiers et départements.</p>
+  </div>
+
+  {% if not needs_profile %}
+    {% if advanced_plan %}
+    <form method="post" action="{{ url_for('grow_refresh') }}" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button secondary">Actualiser BOAMP</button>
+    </form>
+    {% else %}
+    <a class="button secondary" href="{{ url_for('billing') }}">Actualisation BOAMP · Pro</a>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if needs_profile %}
+<section class="panel narrow">
+  <h2>Configure ton entreprise</h2>
+  <a class="button" href="{{ url_for('company') }}">Créer le profil</a>
+</section>
+{% else %}
+  {% if last %}
+  <div class="sourcebar">Source : BOAMP · {{ last.rows_processed }} annonces inspectées · {{ last.signals_found }} retenues</div>
+  {% endif %}
+  <section class="panel">
+    {% for r in rows %}
+    <a class="opportunity clickable" href="{{ url_for('detail',kind='GROW',item_id=r.id) }}">
+      <div>
+        <div class="match">{{ r.score }}/100 MATCH</div>
+        <h3>{{ r.title }}</h3>
+        <p class="muted">{{ r.buyer }} · Départements : {{ jlist(r.departments)|join(', ') or 'non précisés' }}</p>
+        <div class="chips">
+          {% for x in jlist(r.reasons) %}<span class="chip good">✓ {{ x }}</span>{% endfor %}
+          {% for x in jlist(r.warnings) %}<span class="chip warn">⚠ {{ x }}</span>{% endfor %}
+        </div>
+      </div>
+      <div class="deadline">
+        {% if r.deadline %}
+          <strong>{{ fmt_deadline(r.deadline) }}</strong>
+          <small>{% set d=days_left(r.deadline) %}{% if d is not none %}{{ d }} jours{% endif %}</small>
+        {% endif %}
+      </div>
+    </a>
+    {% else %}
+      <p class="muted">Aucun marché suffisamment pertinent.</p>
+    {% endfor %}
+  </section>
+{% endif %}
+{% endblock %}
