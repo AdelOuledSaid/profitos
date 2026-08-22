@@ -1,0 +1,23 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tarifs · ProfitOS</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body style="padding:60px 24px;max-width:1100px;margin:0 auto;">
+<div class="brand" style="margin-bottom:8px;">Profit<span>OS</span></div>
+<h1>Des tarifs simples, pas de surprise.</h1>
+<p class="muted" style="max-width:600px;">14 jours d'essai gratuit, sans carte bancaire. Annule à tout moment.</p>
+
+<div class="cards" style="grid-template-columns:repeat(3,1fr);margin-top:40px;">
+  {% for key, plan in plans.items() %}
+  <div class="card" style="display:flex;flex-direction:column;">
+    <div class="label">{{ plan.name|upper }}</div>
+    <div class="big">{{ plan.price_eur }} €<span style="font-size:14px;font-weight:400;color:#8fa9d3;">/mois</span></div>
+    <ul style="list-style:none;padding:0;margin:16px 0;flex:1;">
+      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].team_members }} membres d'équipe</li>
+      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].organizations }} organisation(s)</li>
+      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].imports_per_month or 'Imports illimités' }}{% if plan_limits[key].imports_per_month %} imports/mois{% endif %}</li>
+      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ 'Fonctionnalités avancées incluses' if plan_limits[key].advanced_features else 'RECOVER/SAVE/GROW de base' }}</li>
+    </ul>
+    <a class="button" href="{{ url_for('signup') }}" style="text-align:center;">Essayer gratuitement</a>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="muted" style="margin-top:40px;"><a class="link" href="{{ url_for('login') }}">← Déjà client ? Se connecter</a></p>
+</body></html>

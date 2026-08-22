@@ -303,8 +303,33 @@ def register(app):
             slack_url=request.form.get('slack_webhook_url','').strip() or None; teams_url=request.form.get('teams_webhook_url','').strip() or None
             if slack_url and not validate_webhook_url(slack_url): flash('Webhook Slack invalide ou non autorisé.'); return redirect(request.url)
             if teams_url and not validate_webhook_url(teams_url): flash('Webhook Teams invalide ou non autorisé.'); return redirect(request.url)
-            c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,now(),now())); c.commit(); c.close(); log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
+            accountant_email=request.form.get('accountant_email','').strip() or None
+            weekly_export=1 if request.form.get('weekly_export_enabled')=='on' else 0
+            logo_url=request.form.get('logo_url','').strip() or None
+            accent_color=request.form.get('accent_color','').strip() or None
+            if logo_url and not validate_logo_url(logo_url): flash('URL de logo invalide (https requis).'); return redirect(request.url)
+            if accent_color and not validate_hex_color(accent_color): flash('Couleur invalide — utilise un format hexadécimal (#111827).'); return redirect(request.url)
+            c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,accountant_email,weekly_export_enabled,logo_url,accent_color,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,accountant_email=excluded.accountant_email,weekly_export_enabled=excluded.weekly_export_enabled,logo_url=excluded.logo_url,accent_color=excluded.accent_color,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,accountant_email,weekly_export,logo_url,accent_color,now(),now())); c.commit(); c.close(); log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close(); ac=auth_cx(); activity=ac.execute('SELECT * FROM activity_log WHERE organization_id=? ORDER BY id DESC LIMIT 30',(session['org_id'],)).fetchall(); ac.close(); return render_template('settings.html',app_settings=s,org=current_org(),user=current_user(),activity=activity)
+
+    @app.route('/settings/send-accountant-export',methods=['POST'])
+    @login_required
+    def send_accountant_export_now():
+        """Envoie immédiatement (test manuel) l'export RECOVER au comptable configuré.
+        N'envoie qu'un LIEN de téléchargement sécurisé par token, jamais de pièce jointe
+        brute — le lien régénère l'export à la demande, toujours à jour."""
+        org=current_org()
+        c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close()
+        if not s or not s['accountant_email']:
+            flash("Renseigne d'abord l'email de ton comptable dans Settings."); return redirect(url_for('settings'))
+        result=send_accountant_export(org,s['accountant_email'])
+        if result.get('dry_run'):
+            flash(f"SMTP/Resend non configuré — email non envoyé (mode simulation) à {s['accountant_email']}.")
+        elif result.get('sent'):
+            flash(f"Export envoyé à {s['accountant_email']}.")
+        else:
+            flash(f"Échec de l'envoi : {result.get('error','erreur inconnue')}")
+        return redirect(url_for('settings'))
 
     @app.route('/settings/security-events')
     @login_required
@@ -362,6 +387,118 @@ def register(app):
     @require_area('team')
     def team():
         c=auth_cx(); rows=c.execute('SELECT memberships.*,users.email,users.full_name FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.organization_id=? ORDER BY memberships.id',(session['org_id'],)).fetchall(); c.close(); return render_template('team.html',members=rows)
+
+    @app.route('/settings/theme',methods=['POST'])
+    @login_required
+    def toggle_theme():
+        current=current_user()['theme_preference'] or 'dark'
+        new_theme='light' if current=='dark' else 'dark'
+        c=auth_cx(); c.execute('UPDATE users SET theme_preference=? WHERE id=?',(new_theme,session['user_id'])); c.commit(); c.close()
+        return redirect(request.referrer or url_for('home'))
+
+    @app.route('/settings/gdpr-export')
+    @login_required
+    def gdpr_export():
+        """Export RGPD en lecture seule : toutes les données liées à l'utilisateur et à
+        son organisation active, au format JSON. N'altère jamais les données existantes."""
+        org=current_org(); user=current_user()
+        tc=cx()
+        payload={
+            'utilisateur':{'email':user['email'],'nom':user['full_name'],'compte_cree_le':user['created_at']},
+            'organisation':{'nom':org['name'],'plan':org['plan'],'cree_le':org['created_at']},
+            'profil_entreprise':dict(tc.execute('SELECT * FROM company WHERE id=1').fetchone() or {}),
+            'factures':[dict(r) for r in tc.execute('SELECT * FROM invoices').fetchall()],
+            'depenses':[dict(r) for r in tc.execute('SELECT * FROM expenses').fetchall()],
+            'opportunites':[dict(r) for r in tc.execute('SELECT * FROM opportunities').fetchall()],
+            'actions':[dict(r) for r in tc.execute('SELECT * FROM actions').fetchall()],
+            'resultats_verifies':[dict(r) for r in tc.execute('SELECT * FROM outcomes').fetchall()],
+        }
+        tc.close()
+        log_activity('GDPR_EXPORT','Export RGPD téléchargé')
+        json_bytes=json.dumps(payload,ensure_ascii=False,indent=2,default=str).encode('utf-8')
+        return Response(json_bytes,mimetype='application/json',
+            headers={'Content-Disposition':f'attachment; filename="profitos-export-{org["id"]}.json"'})
+
+    @app.route('/settings/delete-account',methods=['GET','POST'])
+    @login_required
+    def delete_account():
+        """Suppression de compte / départ d'organisation — irréversible.
+        - Si l'utilisateur est le DERNIER membre de l'organisation active : toutes les
+          données de l'organisation sont effacées, puis l'organisation elle-même.
+        - Sinon : seule l'adhésion de l'utilisateur à cette organisation est retirée
+          (il quitte l'organisation, les données des autres membres restent intactes).
+        - Un propriétaire unique ne peut pas partir sans avoir d'abord promu quelqu'un
+          d'autre au rôle Propriétaire (évite une organisation orpheline)."""
+        org=current_org(); user=current_user()
+        ac=auth_cx()
+        member_count=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
+
+        if request.method=='POST':
+            confirm_text=request.form.get('confirm_text','').strip()
+            if confirm_text!=org['name']:
+                ac.close()
+                flash("Le nom saisi ne correspond pas exactement au nom de l'organisation.")
+                return redirect(request.url)
+
+            if session.get('role')=='OWNER' and member_count>1:
+                other_owners=ac.execute("SELECT COUNT(*) c FROM memberships WHERE organization_id=? AND role='OWNER' AND user_id!=?",(org['id'],user['id'])).fetchone()['c']
+                if other_owners==0:
+                    ac.close()
+                    flash("Tu es le seul propriétaire de cette organisation. Promeus d'abord quelqu'un d'autre au rôle Propriétaire (page Team) avant de partir.")
+                    return redirect(url_for('team'))
+
+            ac.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(user['id'],org['id'])); ac.commit()
+            remaining_members=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
+
+            if remaining_members==0:
+                try:
+                    tc=tenant_cx_direct(org['id'])
+                    for table in ('invoices','expenses','opportunities','actions','outcomes','company','app_settings',
+                                  'status_history','dso_snapshots','customer_tags','fixed_price_contracts',
+                                  'price_index_readings','audit_runs','dce_documents','weekly_reports'):
+                        try: tc.execute(f'DELETE FROM {table}')
+                        except Exception: pass
+                    tc.commit(); tc.close()
+                except Exception:
+                    current_app.logger.exception('Tenant data wipe failed for org %s',org['id'])
+                for table in ('buyer_signals','sector_dso_signals','public_invoice_tokens','export_tokens','api_keys','partner_directory','referrals'):
+                    try: ac.execute(f'DELETE FROM {table} WHERE organization_id=?',(org['id'],))
+                    except Exception: pass
+                ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],)); ac.commit()
+
+            remaining_orgs=ac.execute('SELECT COUNT(*) c FROM memberships WHERE user_id=?',(user['id'],)).fetchone()['c']
+            if remaining_orgs==0:
+                ac.execute('DELETE FROM users WHERE id=?',(user['id'],)); ac.commit()
+            ac.close()
+
+            log_activity('ACCOUNT_DELETED',f"Compte/organisation supprimé par {user['email']}")
+            session.clear()
+            flash('Toutes les données ont été supprimées.' if remaining_members==0 else 'Tu as quitté cette organisation.')
+            return redirect(url_for('login'))
+
+        ac.close()
+        return render_template('delete_account.html',org=org,is_last_member=(member_count==1))
+
+    @app.route('/changelog/seen',methods=['POST'])
+    @login_required
+    def changelog_seen():
+        if CHANGELOG_ENTRIES:
+            c=auth_cx(); c.execute('UPDATE users SET last_seen_changelog=? WHERE id=?',(CHANGELOG_ENTRIES[0]['date'],session['user_id'])); c.commit(); c.close()
+        return redirect(request.referrer or url_for('home'))
+
+    @app.route('/team/performance')
+    @login_required
+    @require_area('team')
+    def team_performance():
+        """Compte, par personne (via changed_by de status_history), le nombre de
+        changements de statut effectués — approbations, envois, résolutions..."""
+        c=cx()
+        rows=c.execute("SELECT changed_by,COUNT(*) n FROM status_history WHERE changed_by IS NOT NULL AND changed_by!='system' GROUP BY changed_by ORDER BY n DESC").fetchall()
+        recovered=c.execute("SELECT changed_by,COUNT(*) n FROM status_history WHERE new_status='paid' AND changed_by IS NOT NULL GROUP BY changed_by").fetchall()
+        c.close()
+        recovered_map={r['changed_by']:r['n'] for r in recovered}
+        stats=[{'name':r['changed_by'],'total_changes':r['n'],'invoices_recovered':recovered_map.get(r['changed_by'],0)} for r in rows]
+        return render_template('team_performance.html',stats=stats)
 
     def send_invite_email(user, org, role, dry_run=None):
         token=gen_token()

@@ -20,6 +20,12 @@ document.addEventListener('click', function (event) {
     if (d) d.style.display = d.style.display === 'block' ? 'none' : 'block';
     return;
   }
+  var changelogToggle = event.target.closest('[data-changelog-toggle]');
+  if (changelogToggle) {
+    var cd = document.getElementById('changelog-dropdown');
+    if (cd) cd.style.display = cd.style.display === 'block' ? 'none' : 'block';
+    return;
+  }
   var replay = event.target.closest('[data-tour-replay]');
   if (replay && window.profitosStartTour) {
     window.profitosStartTour();

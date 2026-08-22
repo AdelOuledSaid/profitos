@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">TEAM PERFORMANCE</div>
+<h1>Performance de l'équipe</h1>
+<p class="muted">Nombre de changements de statut effectués par chaque membre (approbations, envois, factures marquées recouvrées...).</p>
+
+<section class="panel">
+  {% for s in stats %}
+  <div class="simpleline">
+    <div><strong>{{ s.name }}</strong><small>{{ s.total_changes }} action(s) au total</small></div>
+    <div class="money">{{ s.invoices_recovered }} facture(s) recouvrée(s)</div>
+  </div>
+  {% else %}
+  <p class="muted">Aucune activité enregistrée pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,34 @@
+/* Thème clair — activé uniquement quand <html data-theme="light">. N'affecte jamais
+   le thème sombre par défaut, et ne modifie pas static/style.css (zéro risque de
+   régression visuelle sur ce qui fonctionne déjà). */
+
+[data-theme="light"] body{background:#f4f6fb;color:#1a2436}
+[data-theme="light"] .sidebar{background:#ffffff;border-right:1px solid #dde5f2}
+[data-theme="light"] nav a{color:#33425e}
+[data-theme="light"] nav a:hover{background:#eef2fa}
+[data-theme="light"] .navhead{color:#7b8bab}
+[data-theme="light"] .subbrand{color:#5b6c8f}
+[data-theme="light"] .flash{background:#eaf0fb;border:1px solid #b9c9e8;color:#1a2436}
+[data-theme="light"] .muted,[data-theme="light"] small,[data-theme="light"] .hint{color:#5b6c8f}
+[data-theme="light"] .card,[data-theme="light"] .panel{background:#ffffff;border:1px solid #dde5f2;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+[data-theme="light"] .verified{background:#eef6f1}
+[data-theme="light"] .metricline,[data-theme="light"] .sourcebar{background:#eef2fa;border:1px solid #d7e0f0}
+[data-theme="light"] .row{border-bottom:1px solid #e4eaf4}
+[data-theme="light"] .clickable:hover{background:#f3f6fc}
+[data-theme="light"] .score,[data-theme="light"] .status{background:#eaf0fb;color:#1a2436}
+[data-theme="light"] .opportunity{border-bottom:1px solid #e4eaf4}
+[data-theme="light"] .chip{border:1px solid #c7d4ea}
+[data-theme="light"] .button,[data-theme="light"] button{background:#1a2436;color:#ffffff}
+[data-theme="light"] .button.secondary,[data-theme="light"] button.secondary{background:#eaf0fb;color:#1a2436;border:1px solid #c7d4ea}
+[data-theme="light"] .link{color:#2563eb}
+[data-theme="light"] input,[data-theme="light"] textarea,[data-theme="light"] select{background:#ffffff;color:#1a2436;border:1px solid #c7d4ea}
+[data-theme="light"] .heroScore{background:#eaf0fb;border:1px solid #c7d4ea}
+[data-theme="light"] .heroScore span{color:#5b6c8f}
+[data-theme="light"] .goodtext{color:#0f7a4d}
+[data-theme="light"] .warntext{color:#a15c00}
+[data-theme="light"] .simpleline{border-bottom:1px solid #e4eaf4}
+[data-theme="light"] .actioncard pre{background:#f4f6fb;border:1px solid #d7e0f0;color:#1a2436}
+[data-theme="light"] .accountbox{background:#f4f6fb;border:1px solid #dde5f2}
+[data-theme="light"] .accountbox span{color:#5b6c8f}
+[data-theme="light"] .authpage{background:radial-gradient(circle at top,#eef2fa,#f4f6fb 55%)}
+[data-theme="light"] .authcard{background:#ffffff;border:1px solid #dde5f2;box-shadow:0 20px 60px rgba(20,30,60,.08)}

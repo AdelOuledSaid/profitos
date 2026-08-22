@@ -41,7 +41,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def init_auth_db():
     c=auth_cx(); c.executescript('''
     CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,slug TEXT UNIQUE,plan TEXT DEFAULT 'TRIAL',status TEXT DEFAULT 'ACTIVE',trial_ends_at TEXT,stripe_customer_id TEXT,stripe_subscription_id TEXT,created_at TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,theme_preference TEXT DEFAULT 'dark',last_seen_changelog TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
     CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,organization_id INTEGER,user_id INTEGER,event_type TEXT,description TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS security_events(
@@ -117,6 +117,12 @@ def init_auth_db():
         invoice_local_id INTEGER NOT NULL,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS export_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        export_type TEXT,
+        created_at TEXT
+    );
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
     cols=[r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
@@ -127,6 +133,8 @@ def init_auth_db():
         ('reset_token',"ALTER TABLE users ADD COLUMN reset_token TEXT"),
         ('reset_token_expires',"ALTER TABLE users ADD COLUMN reset_token_expires TEXT"),
         ('auth_version',"ALTER TABLE users ADD COLUMN auth_version INTEGER DEFAULT 0"),
+        ('theme_preference',"ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'dark'"),
+        ('last_seen_changelog',"ALTER TABLE users ADD COLUMN last_seen_changelog TEXT"),
     ):
         if col not in cols: c.execute(ddl)
     org_cols=[r['name'] for r in c.execute('PRAGMA table_info(organizations)').fetchall()]
@@ -400,6 +408,21 @@ def validate_webhook_url(url):
     except Exception:
         return False
 
+def validate_hex_color(value):
+    """Format strict #RGB ou #RRGGBB uniquement — jamais de valeur CSS libre injectée
+    dans un attribut style (défense en profondeur, même si Jinja échappe déjà les guillemets)."""
+    if not value: return True
+    return bool(re.fullmatch(r'#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}',value))
+
+def validate_logo_url(url):
+    """Logo hébergé ailleurs, https uniquement — pas de data: ni de schéma arbitraire."""
+    if not url: return True
+    try:
+        p=urlsplit(url)
+        return p.scheme=='https' and bool(p.hostname)
+    except Exception:
+        return False
+
 
 def _signature_ok(path, ext):
     try:
@@ -619,7 +642,7 @@ def init_tenant_db(org_id=None):
     if not org_id:
         raise RuntimeError('Organisation requise pour initialiser le schéma tenant')
     c=dbmod.connect_tenant(org_id, tenant_db(org_id)); c.executescript('''
-    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT);
@@ -631,6 +654,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS dce_documents(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,filename TEXT,filetype TEXT,text_content TEXT,analysis_json TEXT,go_score INTEGER,recommendation TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS weekly_reports(id INTEGER PRIMARY KEY AUTOINCREMENT,period_start TEXT,period_end TEXT,payload_json TEXT,sent_at TEXT,recipient TEXT,status TEXT DEFAULT 'PENDING');
     CREATE TABLE IF NOT EXISTS status_history(id INTEGER PRIMARY KEY AUTOINCREMENT,entity_type TEXT,entity_id INTEGER,kind TEXT,old_status TEXT,new_status TEXT,changed_by TEXT,note TEXT,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS customer_tags(customer_name_norm TEXT PRIMARY KEY,customer_name_display TEXT,tag TEXT,note TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'BT01',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     '''); c.commit()
@@ -640,7 +664,9 @@ def init_tenant_db(org_id=None):
                        ('invoices','customer_email'),('actions','sent_at'),('actions','sent_to'),
                        ('invoices','customer_phone'),
                        ('invoices','public_token'),
-                       ('app_settings','slack_webhook_url'),('app_settings','teams_webhook_url')):
+                       ('app_settings','slack_webhook_url'),('app_settings','teams_webhook_url'),
+                       ('app_settings','accountant_email'),('app_settings','weekly_export_enabled'),
+                       ('app_settings','logo_url'),('app_settings','accent_color')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
@@ -1040,6 +1066,20 @@ def resolve_public_invoice_token(token):
     c.close()
     return row
 
+def send_accountant_export(org, email, dry_run=None):
+    """Envoie au comptable un LIEN de téléchargement sécurisé (pas de pièce jointe brute) —
+    le lien régénère l'export RECOVER à la demande, toujours à jour au moment du clic."""
+    token=secrets.token_urlsafe(20)
+    c=auth_cx()
+    c.execute('INSERT INTO export_tokens(token,organization_id,export_type,created_at) VALUES(?,?,?,?)',
+        (token,org['id'],'recover',now())); c.commit(); c.close()
+    base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
+    link=f"{base}{url_for('export_download',token=token)}"
+    html=render_template('email_transactional.html',title=f"Export ProfitOS — {org['name']}",
+        intro=f"Voici le lien pour télécharger l'export des créances de {org['name']}, toujours à jour au moment du clic.",
+        cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien reste valable — contacte l\'organisation si tu n\'es pas concerné(e).')
+    return send_email(email,f"Export ProfitOS — {org['name']}",html,dry_run=dry_run)
+
 def reward_referrer_if_any(acx, referred_org_id):
     """Accorde 1 mois gratuit au parrain quand l'organisation parrainée devient payante.
     'acx' est une connexion auth déjà ouverte (appelé depuis le webhook Stripe, qui gère
@@ -1060,6 +1100,14 @@ def reward_referrer_if_any(acx, referred_org_id):
             log_activity('REFERRAL_REWARDED',f"Parrainage récompensé (organisation #{referred_org_id} devenue payante)")
     except Exception:
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
+
+CHANGELOG_ENTRIES=[
+    {'date':'2026-08-22','title':'Segmentation clients, performance équipe, export comptable automatisé'},
+    {'date':'2026-08-22','title':'Score de risque acheteur croisé, benchmark sectoriel DSO, calendrier unifié'},
+    {'date':'2026-08-22','title':'Programme de parrainage, portail client public, rapprochement bancaire'},
+    {'date':'2026-08-20','title':'Prévision de trésorerie, simulateur de caution, radar de cotraitance'},
+    {'date':'2026-08-18','title':'Rôles équipe, PWA installable, export CSV/Excel'},
+]
 
 def notify_org(text):
     """Envoie une notification Slack/Teams pour l'organisation courante, si un webhook
@@ -1255,8 +1303,24 @@ def live_notifications():
     except Exception:
         return []
 
+def org_branding():
+    """Logo/couleur d'accent personnalisés, si configurés dans Settings. Best-effort :
+    ne doit jamais faire échouer le rendu d'une page si la table n'est pas encore prête."""
+    if not session.get('org_id'): return {}
+    try:
+        c=cx(); s=c.execute('SELECT logo_url,accent_color FROM app_settings WHERE id=1').fetchone(); c.close()
+        if not s: return {}
+        return {'logo_url':s['logo_url'],'accent_color':s['accent_color']}
+    except Exception:
+        return {}
+
 def commercial_context():
-    return {'auth_user':current_user(),'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION',''),'notifications':live_notifications()}
+    u=current_user()
+    unseen_changelog=False
+    if u and CHANGELOG_ENTRIES:
+        last_seen=u['last_seen_changelog'] or ''
+        unseen_changelog=CHANGELOG_ENTRIES[0]['date']>last_seen
+    return {'auth_user':u,'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION',''),'notifications':live_notifications(),'branding':org_branding(),'changelog_entries':CHANGELOG_ENTRIES,'unseen_changelog':unseen_changelog}
 
 
 

@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr"{% if auth_user %} data-theme="{{ auth_user.theme_preference or 'dark' }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or 'ProfitOS' }}</title>
   <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='theme-light.css') }}">
   <link rel="manifest" href="{{ url_for('static',filename='manifest.json') }}">
   <meta name="theme-color" content="#081020">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
@@ -18,7 +19,8 @@
 {% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
 
 <aside class="sidebar">
-  <div class="brand">Profit<span>OS</span></div>
+  {% if branding and branding.accent_color %}<div style="height:4px;background:{{ branding.accent_color }};margin:-28px -22px 18px;border-radius:0;"></div>{% endif %}
+  <div class="brand">{% if branding and branding.logo_url %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}Profit<span>OS</span>{% endif %}</div>
   <div class="subbrand">Production · V{{ app_version }}</div>
 
   <nav>
@@ -44,7 +46,7 @@
     <a href="{{ url_for('company') }}">Profil entreprise</a>
 
     <div class="navhead">ACCOUNT</div>
-    {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a>{% endif %}
+    {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a><a href="{{ url_for('team_performance') }}">Performance</a>{% endif %}
     {% if can_access('billing') %}<a href="{{ url_for('billing') }}">Billing</a>{% endif %}
     {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a><a href="{{ url_for('integrations') }}">Integrations</a><a href="{{ url_for('api_keys') }}">API</a><a href="{{ url_for('referral') }}">Referral</a>{% endif %}
   </nav>
@@ -77,6 +79,11 @@
       </form>
     </details>
 
+    <form method="post" action="{{ url_for('toggle_theme') }}" style="margin:0 0 8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="secondary" style="width:100%;font-size:11px;padding:6px 8px;">{{ '☀ Thème clair' if (auth_user.theme_preference or 'dark')=='dark' else '🌙 Thème sombre' }}</button>
+    </form>
+
     <form method="post" action="{{ url_for('logout') }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="logout-link">Déconnexion</button>
@@ -86,8 +93,25 @@
 </aside>
 
 <main>
-  {% if auth_user and notifications %}
-  <div style="display:flex;justify-content:flex-end;margin-bottom:10px;position:relative;">
+  {% if auth_user and (notifications or unseen_changelog) %}
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;position:relative;">
+    {% if unseen_changelog %}
+    <div class="notif-wrap" style="position:relative;">
+      <button type="button" data-changelog-toggle style="background:#0f1c33;border:1px solid #5fe0ac;border-radius:8px;padding:8px 12px;color:#f6f8fc;cursor:pointer;position:relative;">
+        ✨ Nouveautés
+      </button>
+      <div id="changelog-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:340px;background:#0f1c33;border:1px solid #294064;border-radius:10px;padding:10px;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.4);">
+        {% for entry in changelog_entries[:6] %}
+        <div style="padding:8px;border-bottom:1px solid #1a2a47;font-size:13px;"><strong style="display:block;color:#8fa9d3;font-size:11px;">{{ entry.date }}</strong>{{ entry.title }}</div>
+        {% endfor %}
+        <form method="post" action="{{ url_for('changelog_seen') }}" style="margin-top:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary" style="width:100%;font-size:12px;">Marquer comme lu</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    {% if notifications %}
     <div class="notif-wrap" style="position:relative;">
       <button type="button" data-notif-toggle style="background:#0f1c33;border:1px solid #294064;border-radius:8px;padding:8px 12px;color:#f6f8fc;cursor:pointer;position:relative;">
         🔔 <span style="background:#ff6e78;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">{{ notifications|length }}</span>
@@ -98,6 +122,7 @@
         {% endfor %}
       </div>
     </div>
+    {% endif %}
   </div>
   {% endif %}
   {% if auth_user and not auth_user.email_verified %}

@@ -119,7 +119,9 @@ def register(app):
                 return redirect(request.url)
 
             RETENTION_KEYWORDS=('retenue','retention','garantie')
-            c=cx(); c.execute('DELETE FROM invoices'); today=date.today(); signals=0; retentions=0
+            c=cx()
+            previous_rows={r['invoice_number']:{'amount':r['amount'],'customer':r['customer']} for r in c.execute('SELECT invoice_number,amount,customer FROM invoices').fetchall()}
+            c.execute('DELETE FROM invoices'); today=date.today(); signals=0; retentions=0
             ac_clean=auth_cx(); ac_clean.execute('DELETE FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)); ac_clean.commit(); ac_clean.close()
             for _,r in df.iterrows():
                 try:amount=float(r[m['amount']])
@@ -163,7 +165,26 @@ def register(app):
 
             urgent=c.execute("SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90").fetchone()
             overdue_rows=c.execute("SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchall()
+
+            # Détection d'anomalies par rapport à l'import précédent : facture disparue,
+            # ou montant qui a significativement changé pour le même numéro de facture.
+            anomalies=[]
+            if previous_rows:
+                current_numbers={r['invoice_number'] for r in c.execute('SELECT invoice_number FROM invoices').fetchall()}
+                for num,old in previous_rows.items():
+                    if num not in current_numbers:
+                        anomalies.append(f"Facture #{num} ({old['customer']}, {old['amount']:,.0f} €) présente à l'import précédent a disparu de ce nouvel import.")
+                for r in c.execute('SELECT invoice_number,amount,customer FROM invoices').fetchall():
+                    old=previous_rows.get(r['invoice_number'])
+                    if old and old['amount'] and abs(r['amount']-old['amount'])/old['amount']>0.2:
+                        anomalies.append(f"Facture #{r['invoice_number']} ({r['customer']}) : montant passé de {old['amount']:,.0f} € à {r['amount']:,.0f} €.")
             c.close()
+            if anomalies:
+                ac_log=auth_cx()
+                for a in anomalies[:20]:
+                    ac_log.execute('INSERT INTO activity_log(organization_id,user_id,event_type,description,created_at) VALUES(?,?,?,?,?)',
+                        (org['id'],session.get('user_id'),'IMPORT_ANOMALY',a,now()))
+                ac_log.commit(); ac_log.close()
 
             # Alimente les signaux partagés inter-organisations (anonymisés) : risque
             # acheteur croisé et benchmark sectoriel DSO. Best-effort, ne bloque jamais l'upload.
@@ -180,6 +201,8 @@ def register(app):
             msg=f'Factures analysées · {signals} signaux RECOVER.'
             if retentions: msg+=f' Dont {retentions} retenue(s) de garantie détectée(s).'
             flash(msg)
+            if anomalies:
+                flash(f"⚠ {len(anomalies)} anomalie(s) détectée(s) par rapport à l'import précédent — voir Settings → Activity Log pour le détail.")
             return redirect(url_for('recover'))
 
         return render_template('upload.html',title='Importer les factures',kind='invoices')

@@ -1,5 +1,5 @@
 from profitos.runtime import *
-from profitos.plan_limits import feature_enabled
+from profitos.plan_limits import feature_enabled, PLAN_LIMITS
 from profitos.feature_access import requires_feature, requires_paid_plan, current_plan_is_paid, _deny_paid_feature
 from profitos.plan_usage import quota_state, record_usage
 import io
@@ -211,6 +211,80 @@ def register(app):
         ac=auth_cx(); org=ac.execute('SELECT name FROM organizations WHERE id=?',(mapping['organization_id'],)).fetchone(); ac.close()
         return render_template('pay_status.html',inv=inv,org_name=org['name'] if org else '')
 
+    @app.route('/export-download/<token>')
+    def export_download(token):
+        """Téléchargement public authentifié par token — utilisé par le lien envoyé au
+        comptable. Régénère l'export RECOVER à la demande (jamais de fichier stocké)."""
+        ac=auth_cx()
+        mapping=ac.execute('SELECT * FROM export_tokens WHERE token=?',(token,)).fetchone()
+        ac.close()
+        if not mapping:
+            abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        rows=tc.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC").fetchall()
+        tc.close()
+        data=[{'Client':r['customer'],'N° facture':r['invoice_number'],'Type':r['kind'],
+               'Montant dû (€)':round(r['outstanding'],2),'Jours de retard':r['days_overdue'],
+               "Date d'échéance":r['due_date'],'Statut':r['status'],'Score':r['score']} for r in rows]
+        return export_response(data,'profitos-recover')
+
+    @app.route('/profit-audit',methods=['GET','POST'])
+    def public_profit_audit():
+        """Calculateur public sans compte — aimant à leads. Estimation indicative
+        basée sur des heuristiques BTP générales, pas sur de vraies données client
+        (le visiteur n'a encore rien uploadé)."""
+        result=None
+        if request.method=='POST':
+            try:
+                revenue=float(request.form.get('revenue','0').replace(' ','').replace(',','.'))
+                overdue_invoices=int(request.form.get('overdue_invoices','0'))
+            except ValueError:
+                revenue=0; overdue_invoices=0
+            revenue=max(0,min(revenue,50_000_000))
+            overdue_invoices=max(0,min(overdue_invoices,200))
+            # Heuristique indicative : ~1,5% du CA annuel est généralement en créances
+            # en retard dans le BTP, ajusté par le nombre de factures en retard déclaré.
+            base_recoverable=revenue*0.015
+            adjustment=1+min(overdue_invoices,20)*0.05
+            recoverable_low=round(base_recoverable*adjustment*0.6,-2)
+            recoverable_high=round(base_recoverable*adjustment*1.4,-2)
+            savings_estimate=round(revenue*0.004,-2)
+            result={'recoverable_low':recoverable_low,'recoverable_high':recoverable_high,'savings_estimate':savings_estimate}
+        return render_template('profit_audit_public.html',result=result)
+
+    @app.route('/pricing')
+    def pricing():
+        """Page tarifs publique — aucune authentification requise."""
+        return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS)
+
+    @app.route('/customer-tags/set',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('recover')
+    def customer_tag_set():
+        """Étiquette un client (VIP/RISQUE/FIABLE) — affichée sur RECOVER pour aider
+        à prioriser visuellement, sans impacter les calculs de score existants."""
+        customer=request.form.get('customer','').strip()
+        tag=request.form.get('tag','').strip().upper()
+        note=request.form.get('note','').strip()
+        if not customer:
+            flash('Client requis.'); return redirect(request.referrer or url_for('recover'))
+        if tag not in ('VIP','RISQUE','FIABLE','',None):
+            tag=''
+        c=cx()
+        if tag:
+            c.execute('''INSERT INTO customer_tags(customer_name_norm,customer_name_display,tag,note,updated_at)
+                         VALUES(?,?,?,?,?)
+                         ON CONFLICT(customer_name_norm) DO UPDATE SET
+                           customer_name_display=excluded.customer_name_display,tag=excluded.tag,
+                           note=excluded.note,updated_at=excluded.updated_at''',
+                (norm(customer),customer,tag,note,now()))
+        else:
+            c.execute('DELETE FROM customer_tags WHERE customer_name_norm=?',(norm(customer),))
+        c.commit(); c.close()
+        flash(f"Étiquette mise à jour pour {customer}." if tag else f"Étiquette retirée pour {customer}.")
+        return redirect(request.referrer or url_for('recover'))
+
     @app.route('/calendar')
     @login_required
     @requires_active_plan
@@ -275,6 +349,9 @@ def register(app):
     @require_area('recover')
     def recover():
         rows,total,filt,q,min_amount,max_amount,date_from,date_to=_recover_filtered_rows()
+        c=cx(); tags=c.execute('SELECT * FROM customer_tags').fetchall(); c.close()
+        tags_map={t['customer_name_norm']:t['tag'] for t in tags}
+        for r in rows: r['customer_tag']=tags_map.get(norm(r['customer']))
         return render_template('recover.html',rows=rows,total=total,filt=filt,today=date.today().isoformat(),
             q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to)
 
@@ -418,6 +495,9 @@ def register(app):
                 o['buyer_risk']=buyer_risk_lookup(r['customer'],session['org_id'])
             except Exception:
                 o['buyer_risk']=None
+            tag_row=c.execute('SELECT tag,note FROM customer_tags WHERE customer_name_norm=?',(norm(r['customer']),)).fetchone()
+            o['customer_tag']=tag_row['tag'] if tag_row else None
+            o['customer_tag_note']=tag_row['note'] if tag_row else ''
         else:
             r=c.execute('SELECT * FROM opportunities WHERE id=? AND type=?',(item_id,kind)).fetchone()
             if not r:abort(404)

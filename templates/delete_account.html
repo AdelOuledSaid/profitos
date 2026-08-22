@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow red">DANGER ZONE</div>
+<h1>Supprimer mon compte</h1>
+
+{% if is_last_member %}
+<div class="panel" style="margin:18px 0;background:#1a0f0f;border:1px solid #ff6e78;">
+  <p style="margin:0;">Tu es le <strong>dernier membre</strong> de l'organisation <strong>{{ org.name }}</strong>. Continuer supprimera <strong>définitivement et irréversiblement</strong> :</p>
+  <ul style="margin:10px 0 0;padding-left:20px;">
+    <li>Toutes les factures, dépenses et opportunités importées</li>
+    <li>Tout l'historique d'actions et de statuts</li>
+    <li>Les paramètres et l'organisation elle-même</li>
+  </ul>
+</div>
+{% else %}
+<div class="panel" style="margin:18px 0;background:#0a1529;">
+  <p style="margin:0;">Tu quitteras l'organisation <strong>{{ org.name }}</strong>. Les autres membres et leurs données ne sont pas affectés. Si tu n'appartiens à aucune autre organisation après ça, ton compte utilisateur sera aussi supprimé.</p>
+</div>
+{% endif %}
+
+<p class="muted">Avant de continuer, tu peux <a class="link" href="{{ url_for('gdpr_export') }}">télécharger toutes tes données</a> (RGPD).</p>
+
+<form method="post" class="stack" style="max-width:420px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Tape le nom exact de l'organisation pour confirmer<input type="text" name="confirm_text" placeholder="{{ org.name }}" required autocomplete="off"></label>
+  <button type="submit" style="background:#ff6e78;color:#1a0f0f;">Confirmer la suppression</button>
+</form>
+{% endblock %}

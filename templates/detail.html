@@ -1,5 +1,24 @@
 {% extends "base.html" %}{% block content %}{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}<div class="eyebrow {{ o.kind|lower }}">{{ o.kind }}</div><div class="detailhead"><div><h1>{{ o.title }}</h1>{% if o.kind=='RECOVER' %}<p class="muted">{{ o.customer }} · {{ o.days_overdue }} jours de retard</p>{% elif o.kind=='GROW' %}<p class="muted">{{ o.buyer }} · {{ o.departments|join(', ') or 'zone non précisée' }}</p>{% else %}<p class="muted">{{ o.details }}</p>{% endif %}</div><div class="heroScore">{{ o.score }}/100<span>Score</span></div></div><div class="twocol"><section class="panel"><h2>Pourquoi ProfitOS l'a signalé</h2>{% for x in o.reasons %}<div class="bullet goodtext">✓ {{ x }}</div>{% endfor %}{% for x in o.warnings %}<div class="bullet warntext">⚠ {{ x }}</div>{% endfor %}{% if o.kind=='GROW' and o.source_url %}<p><a class="link" href="{{ o.source_url }}" target="_blank">Ouvrir l'avis BOAMP officiel →</a></p>{% endif %}</section><section class="panel"><h2>Recommended action</h2>{% if o.kind=='RECOVER' %}<p>Préparer une relance de paiement.</p>{% elif o.kind=='SAVE' %}<p>Vérifier les factures/contrats sources.</p>{% else %}<p>Lancer une analyse GO / NO-GO.</p>{% endif %}<form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>
 {% if o.kind=='RECOVER' and o.status|lower!='paid' %}<form method="post" action="{{ url_for('opportunity_status',kind=o.kind,item_id=o.id) }}" style="margin-top:10px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="secondary">Marquer comme recouvré</button></form>{% endif %}
+{% if o.kind=='RECOVER' %}
+<div class="panel" style="margin-top:14px;background:#0a1529;">
+  <h3 style="margin:0 0 8px;font-size:14px;">Étiqueter ce client</h3>
+  <form method="post" action="{{ url_for('customer_tag_set') }}" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="customer" value="{{ o.customer }}">
+    <label style="font-size:11px;color:#8fa9d3;">Étiquette
+      <select name="tag">
+        <option value="" {% if not o.customer_tag %}selected{% endif %}>Aucune</option>
+        <option value="VIP" {% if o.customer_tag=='VIP' %}selected{% endif %}>VIP</option>
+        <option value="FIABLE" {% if o.customer_tag=='FIABLE' %}selected{% endif %}>Fiable</option>
+        <option value="RISQUE" {% if o.customer_tag=='RISQUE' %}selected{% endif %}>Risqué</option>
+      </select>
+    </label>
+    <label style="font-size:11px;color:#8fa9d3;flex:1;min-width:160px;">Note<input type="text" name="note" value="{{ o.customer_tag_note }}" placeholder="optionnel"></label>
+    <button type="submit" class="secondary">Enregistrer</button>
+  </form>
+</div>
+{% endif %}
 {% if o.buyer_risk %}
 <div class="panel" style="margin-top:14px;background:#1a0f0f;border:1px solid #ff6e78;">
   <h3 style="margin:0 0 6px;font-size:14px;color:#ff6e78;">⚠ Risque acheteur partagé</h3>
