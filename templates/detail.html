@@ -6,8 +6,6 @@
   <p style="margin:0;font-size:13px;">Ce client a aussi été signalé en retard de paiement par <strong>{{ o.buyer_risk.org_count }} autre(s) organisation(s)</strong> ProfitOS ({{ o.buyer_risk.total_invoices }} facture(s) au total, retard moyen {{ o.buyer_risk.avg_days }} jours). Signal anonymisé — aucune identité d'organisation n'est partagée.</p>
 </div>
 {% endif %}
-<<<<<<< HEAD
-=======
 {% if o.public_token %}
 <div class="panel" style="margin-top:14px;background:#0a1529;">
   <h3 style="margin:0 0 6px;font-size:14px;">Portail client</h3>
@@ -15,7 +13,6 @@
   <code style="display:block;padding:8px;background:#000;border-radius:6px;word-break:break-all;font-size:12px;">{{ request.host_url }}pay-status/{{ o.public_token }}</code>
 </div>
 {% endif %}
->>>>>>> 5043cf8 (update)
 {% if o.bond_cost is defined and o.bond_cost is not none %}
 <div class="panel" style="margin-top:14px;background:#0a1529;">
   <h3 style="margin:0 0 8px;font-size:14px;">Simuler une caution de remplacement</h3>
