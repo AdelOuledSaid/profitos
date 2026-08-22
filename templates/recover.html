@@ -13,6 +13,7 @@
   <label style="font-size:11px;color:#8fa9d3;">Échéance avant<input type="date" name="date_to" value="{{ date_to }}"></label>
   <button type="submit" style="height:44px;">Filtrer</button>
 </form>
+{% if auth_org and auth_org.plan in ('PRO','BUSINESS') %}<div style="margin:-8px 0 18px;display:flex;gap:8px;"><a class="button secondary" href="{{ url_for('recover_export',format='xlsx',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (Excel)</a><a class="button secondary" href="{{ url_for('recover_export',format='csv',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (CSV)</a></div>{% else %}<p class="muted" style="margin:-8px 0 18px;"><a class="link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>{% endif %}
 <section class="panel">{% for r in rows %}<a class="row clickable" href="{{ url_for('detail',kind='RECOVER',item_id=r.id) }}"><div><strong>{{ r.customer }}</strong>
 {% if r.kind=='RETENTION' %}
   {% set release=r.retention_release_date %}

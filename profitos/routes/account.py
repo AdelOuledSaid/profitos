@@ -244,6 +244,27 @@ def register(app):
             c=cx(); c.execute("INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at",(company,city,dep,allowed,activities,certs,now())); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,1,'EUR','fr-FR',1,?,?) ON CONFLICT(id) DO UPDATE SET onboarding_complete=1,updated_at=excluded.updated_at",(now(),now())); c.commit(); c.close(); log_activity('ONBOARDING_COMPLETE','Profil entreprise complété'); flash('Onboarding terminé.'); return redirect(url_for('home'))
         return render_template('onboarding.html',profile=p,org=org)
 
+    @app.route('/integrations',methods=['GET','POST'])
+    @login_required
+    @require_area('settings')
+    def integrations():
+        """Aucune intégration comptable réelle n'est encore branchée (nécessite un vrai
+        compte partenaire/OAuth chez Pennylane, QuickBooks ou Sage). Cette page capture
+        l'intérêt pour prioriser le développement, plutôt que de simuler une fausse connexion."""
+        org=current_org()
+        if request.method=='POST':
+            provider=request.form.get('provider','').strip()
+            email=request.form.get('email','').strip() or current_user()['email']
+            if provider:
+                c=auth_cx(); c.execute('INSERT INTO integration_interest(organization_id,provider,email,created_at) VALUES(?,?,?,?)',
+                    (org['id'],provider,email,now())); c.commit(); c.close()
+                log_activity('INTEGRATION_INTEREST',f'Intérêt exprimé pour {provider}')
+                flash(f"Merci ! On te préviendra dès que la connexion {provider} sera disponible.")
+            return redirect(url_for('integrations'))
+        ac=auth_cx(); requested=ac.execute('SELECT provider FROM integration_interest WHERE organization_id=?',(org['id'],)).fetchall(); ac.close()
+        requested_providers={r['provider'] for r in requested}
+        return render_template('integrations.html',requested_providers=requested_providers)
+
     @app.route('/settings',methods=['GET','POST'])
     @login_required
     @require_area('settings')
@@ -272,6 +293,33 @@ def register(app):
         finally:
             c.close()
         return render_template('security_events.html',events=rows)
+
+    @app.route('/settings/audit-export')
+    @login_required
+    def audit_export():
+        """Export d'un journal d'audit combiné (activité + historique de statuts) —
+        utile pour un cabinet comptable qui a besoin d'une trace conforme des actions."""
+        if current_role() not in ('OWNER','ADMIN'):
+            flash("Seuls le propriétaire ou un administrateur peuvent exporter le journal d'audit.")
+            return redirect(url_for('settings'))
+        ac=auth_cx()
+        activity=ac.execute('SELECT event_type,description,created_at FROM activity_log WHERE organization_id=? ORDER BY id DESC LIMIT 1000',(session['org_id'],)).fetchall()
+        ac.close()
+        c=cx()
+        status=c.execute('SELECT entity_type,entity_id,kind,old_status,new_status,changed_by,note,created_at FROM status_history ORDER BY id DESC LIMIT 1000').fetchall()
+        c.close()
+
+        rows=[]
+        for a in activity:
+            rows.append({'Date':a['created_at'],'Catégorie':'ACTIVITY','Type':a['event_type'],
+                         'Détail':a['description'],'Ancien statut':'','Nouveau statut':'','Auteur':''})
+        for s in status:
+            rows.append({'Date':s['created_at'],'Catégorie':'STATUS_CHANGE','Type':f"{s['entity_type']}/{s['kind']}",
+                         'Détail':s['note'] or f"#{s['entity_id']}",'Ancien statut':s['old_status'] or '',
+                         'Nouveau statut':s['new_status'],'Auteur':s['changed_by']})
+        rows.sort(key=lambda r:r['Date'] or '',reverse=True)
+        log_activity('AUDIT_EXPORT','Export du journal d\'audit')
+        return export_response(rows,'profitos-audit-log')
 
     @app.route('/settings/test-notification',methods=['POST'])
     @login_required

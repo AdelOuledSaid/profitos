@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">INTEGRATIONS</div>
+<h1>Connexions comptables</h1>
+<p class="muted">Aucune de ces connexions n'est encore disponible — elles nécessitent un partenariat technique avec chaque éditeur, qu'on n'a pas encore mis en place. Dis-nous laquelle t'intéresse en priorité, ça nous aide à prioriser le développement. En attendant, l'import manuel (Excel/CSV) reste la façon d'utiliser ProfitOS.</p>
+
+<section class="panel">
+  {% for provider in ['Pennylane','QuickBooks','Sage'] %}
+  <div class="simpleline">
+    <div><strong>{{ provider }}</strong><small>{% if provider in requested_providers %}Intérêt déjà enregistré — merci !{% else %}Bientôt disponible{% endif %}</small></div>
+    {% if provider not in requested_providers %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="provider" value="{{ provider }}">
+      <button type="submit" class="secondary">Me prévenir</button>
+    </form>
+    {% else %}
+    <span class="status">✓</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow amber">MARGIN WATCH</div>
+<h1>Suivi de l'érosion de marge (indice BT01)</h1>
+<p class="muted">Comparaison manuelle entre l'évolution de l'indice BT01 (bâtiment tous corps d'état) et tes contrats signés à prix fixe. Saisis tes relevés d'indice une fois par mois pour garder ce suivi à jour — pas de connexion automatique à l'INSEE dans cette version.</p>
+
+{% if alerts %}
+<section class="panel" style="margin:18px 0;">
+  <h2>Alertes</h2>
+  {% for a in alerts %}
+  <div class="simpleline">
+    <div>
+      <strong>{{ a.contract.project_name }}</strong>
+      <small>{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
+    </div>
+    <div class="money" style="color:{{ '#ff6e78' if a.is_erosion else '#5fe0ac' }};">
+      {{ '+' if a.at_risk>0 else '' }}{{ "{:,.0f}".format(a.at_risk) }} €
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% elif contracts and not readings %}
+<div class="panel" style="margin:18px 0;background:#0a1529;"><p class="muted">Ajoute au moins un relevé BT01 pour calculer les alertes.</p></div>
+{% endif %}
+
+<div class="twocol" style="margin-top:18px;">
+  <section class="panel">
+    <h2>Relevés BT01</h2>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="reading">
+      <label>Date du relevé<input type="date" name="reading_date" required></label>
+      <label>Valeur de l'indice<input type="number" name="value" step="0.01" required placeholder="ex: 125.3"></label>
+      <button>Ajouter le relevé</button>
+    </form>
+    <p class="muted" style="font-size:11px;margin-top:8px;">L'indice BT01 officiel est publié mensuellement par l'INSEE (insee.fr, indices Bâtiment).</p>
+    {% for r in readings|reverse %}
+    <div class="simpleline"><span>{{ r.reading_date }}</span><span>{{ r.value }}</span></div>
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <h2>Contrats à prix fixe suivis</h2>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="form_type" value="contract">
+      <label>Nom du projet<input type="text" name="project_name" required></label>
+      <label>Client<input type="text" name="customer"></label>
+      <label>Montant du contrat (€)<input type="number" name="amount" step="1" required></label>
+      <label>Date de signature<input type="date" name="signed_date" required></label>
+      <label>Part matériaux dans le contrat (%)<input type="number" name="materials_share_pct" value="30" step="1" min="0" max="100"></label>
+      <button>Ajouter au suivi</button>
+    </form>
+    {% for ct in contracts %}
+    <div class="simpleline"><span>{{ ct.project_name }}</span><span>{{ "{:,.0f}".format(ct.amount) }} €</span></div>
+    {% endfor %}
+  </section>
+</div>
+
+<p class="muted" style="margin-top:18px;font-size:11px;">Méthode : le montant à risque est estimé en appliquant la variation de l'indice BT01 (depuis la signature jusqu'au dernier relevé) à la part matériaux déclarée du contrat. C'est une estimation indicative, pas un calcul comptable certifié.</p>
+{% endblock %}

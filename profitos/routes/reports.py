@@ -20,6 +20,51 @@ def register(app):
             text=text.replace(src,dst)
         return text.encode('latin-1',errors='replace').decode('latin-1')
 
+    @app.route('/forecast')
+    @login_required
+    @requires_active_plan
+    @require_area('impact')
+    def cash_forecast():
+        """Prévision de trésorerie à 90 jours — estimation indicative, pas une garantie.
+        RECOVER : pondéré par le score (proxy de probabilité de recouvrement), classé dans
+        un horizon 0-30/31-60/61-90j selon l'ancienneté du retard actuel (plus une créance
+        est déjà ancienne, plus son horizon de résolution est repoussé, par prudence).
+        SAVE : pondéré par le score, classé selon la facilité présumée de mise en œuvre.
+        GROW : exclu du chiffrage 90 jours (cycle de marché public trop long), affiché à part
+        comme pipeline indicatif au-delà de l'horizon."""
+        c=cx()
+        invoices=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchall()
+        saves=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchall()
+        grow_total=c.execute("SELECT COALESCE(SUM(1),0) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['n']
+        c.close()
+
+        buckets={'0-30j':0.0,'31-60j':0.0,'61-90j':0.0}
+        for inv in invoices:
+            weight=(inv['score'] or 0)/100
+            expected=inv['outstanding']*weight
+            days=inv['days_overdue'] or 0
+            if days<=30: buckets['0-30j']+=expected
+            elif days<=60: buckets['31-60j']+=expected
+            else: buckets['61-90j']+=expected  # créance déjà ancienne : horizon repoussé par prudence
+
+        for s in saves:
+            weight=(s['score'] or 0)/100
+            expected=(s['value'] or 0)*weight
+            if s['score']>=80: buckets['0-30j']+=expected
+            elif s['score']>=50: buckets['31-60j']+=expected
+            else: buckets['61-90j']+=expected
+
+        total_90j=sum(buckets.values())
+        chart=bars_svg(list(buckets.items()))
+        cumulative=[]
+        running=0
+        for label,v in buckets.items():
+            running+=v; cumulative.append((label,round(running)))
+
+        return render_template('forecast.html',buckets=buckets,total_90j=total_90j,chart=chart,
+            cumulative=cumulative,grow_total=grow_total,
+            invoice_count=len(invoices),save_count=len(saves))
+
     @app.route('/reports/monthly.pdf')
     @login_required
     @requires_active_plan

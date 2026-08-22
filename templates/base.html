@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-title" content="ProfitOS">
   <script src="{{ url_for('static',filename='app.js') }}" defer></script>
 </head>
-<body>
+<body{% if request.endpoint=='home' %} data-tour-auto="1"{% endif %}>
 {% set paid_plan = auth_org and auth_org.plan in ('STARTER','PRO','BUSINESS') %}
 {% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
 
@@ -25,18 +25,18 @@
     <a href="{{ url_for('home') }}">Overview</a>
 
     <div class="navhead">MONEY</div>
-    {% if can_access('recover') %}<a href="{{ url_for('recover') }}">Recover</a>{% endif %}
-    {% if can_access('save') %}<a href="{{ url_for('save') }}">Save</a>{% endif %}
-    {% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}">Grow</a>{% endif %}
+    {% if can_access('recover') %}<a href="{{ url_for('recover') }}" data-tour="recover">Recover</a><a href="{{ url_for('calendar_view') }}">Calendar</a>{% endif %}
+    {% if can_access('save') %}<a href="{{ url_for('save') }}" data-tour="save">Save</a><a href="{{ url_for('margin_watch') }}">Margin Watch</a>{% endif %}
+    {% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}" data-tour="grow">Grow</a><a href="{{ url_for('partners') }}">Partners</a>{% endif %}
 
     <div class="navhead">OPERATE</div>
-    {% if paid_plan and can_access('actions') %}<a href="{{ url_for('actions') }}">Action Center</a>{% endif %}
-    {% if can_access('impact') %}<a href="{{ url_for('impact') }}">Impact</a>{% endif %}
+    {% if paid_plan and can_access('actions') %}<a href="{{ url_for('actions') }}" data-tour="actions">Action Center</a>{% endif %}
+    {% if can_access('impact') %}<a href="{{ url_for('impact') }}">Impact</a><a href="{{ url_for('cash_forecast') }}">Cash Forecast</a>{% endif %}
     {% if can_access('weekly') %}<a href="{{ url_for('weekly_report_preview') }}">Weekly Report</a>{% endif %}
 
     {% if paid_plan and can_access('uploads') %}
       <div class="navhead">DATA</div>
-      <a href="{{ url_for('upload_invoices') }}">Importer factures</a>
+      <a href="{{ url_for('upload_invoices') }}" data-tour="uploads">Importer factures</a>
       <a href="{{ url_for('upload_expenses') }}">Importer dépenses</a>
     {% endif %}
 
@@ -45,7 +45,7 @@
     <div class="navhead">ACCOUNT</div>
     {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a>{% endif %}
     {% if can_access('billing') %}<a href="{{ url_for('billing') }}">Billing</a>{% endif %}
-    {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a>{% endif %}
+    {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a><a href="{{ url_for('integrations') }}">Integrations</a><a href="{{ url_for('api_keys') }}">API</a>{% endif %}
   </nav>
 
   {% if auth_user %}
@@ -54,6 +54,7 @@
     <span>{{ auth_user.full_name or auth_user.email }}</span>
 
     {% if user_orgs|length>1 %}
+    <a href="{{ url_for('portfolio') }}" style="display:block;font-size:11px;color:#a9c8fa;margin-bottom:6px;">Vue consolidée (portfolio) →</a>
     <div style="margin:8px 0;display:flex;flex-direction:column;gap:4px;">
       {% for o in user_orgs %}
         {% if o.id!=auth_org.id %}
@@ -84,6 +85,20 @@
 </aside>
 
 <main>
+  {% if auth_user and notifications %}
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px;position:relative;">
+    <div class="notif-wrap" style="position:relative;">
+      <button type="button" data-notif-toggle style="background:#0f1c33;border:1px solid #294064;border-radius:8px;padding:8px 12px;color:#f6f8fc;cursor:pointer;position:relative;">
+        🔔 <span style="background:#ff6e78;color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">{{ notifications|length }}</span>
+      </button>
+      <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:320px;background:#0f1c33;border:1px solid #294064;border-radius:10px;padding:8px;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.4);">
+        {% for n in notifications %}
+        <a href="{{ n.url }}" style="display:block;padding:8px;border-radius:6px;text-decoration:none;color:#f6f8fc;font-size:13px;">{{ n.icon }} {{ n.text }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
   {% if auth_user and not auth_user.email_verified %}
   <div class="flash" style="background:#fffbeb;border-color:#fde68a;color:#78350f;">
     Votre email n'est pas encore vérifié.

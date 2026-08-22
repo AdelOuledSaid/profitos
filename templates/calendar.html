@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">CALENDAR</div>
+<h1>Échéances à venir</h1>
+<p class="muted">Factures en retard, retenues de garantie libérables et deadlines de marchés publics, en un seul endroit.{% if past_count %} {{ past_count }} échéance(s) déjà passée(s) non affichée(s).{% endif %}</p>
+
+<section class="panel">
+  {% for e in upcoming %}
+  <div class="simpleline">
+    <div>
+      <span class="type {{ e.type|lower }}">{{ e.type }}</span>
+      <strong>{{ e.label }}</strong>
+      <small>{{ e.date }}</small>
+    </div>
+    {% if e.value %}<div class="money">{{ "{:,.0f}".format(e.value) }} €</div>{% endif %}
+  </div>
+  {% else %}
+  <p class="muted">Aucune échéance à venir pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endblock %}

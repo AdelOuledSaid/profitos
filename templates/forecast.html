@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">CASH FORECAST</div>
+<h1>{{ "{:,.0f}".format(total_90j) }} € attendus sur 90 jours</h1>
+<p class="muted">Estimation indicative pondérée par le score de chaque opportunité — pas une garantie de trésorerie. Basée sur {{ invoice_count }} créance(s) RECOVER et {{ save_count }} signal(aux) SAVE ouverts.</p>
+
+{% if chart %}
+<section class="panel" style="margin:18px 0;">
+  <h2>Répartition par horizon</h2>
+  {{ chart|safe }}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Détail cumulé</h2>
+  {% for label, cum in cumulative %}
+  <div class="simpleline"><span>D'ici {{ label }}</span><span class="money">{{ "{:,.0f}".format(cum) }} € cumulés</span></div>
+  {% endfor %}
+</section>
+
+<section class="panel" style="margin-top:18px;background:#0a1529;">
+  <h2>Pipeline GROW (hors horizon 90 jours)</h2>
+  <p class="muted">{{ grow_total }} opportunité(s) de marché public ouvertes — cycle de décision généralement supérieur à 90 jours, donc non inclus dans le chiffrage ci-dessus. Consulte <a class="link" href="{{ url_for('grow') }}">GROW</a> pour le détail.</p>
+</section>
+
+<p class="muted" style="margin-top:18px;font-size:12px;">
+Méthode : RECOVER est pondéré par le score de chaque créance (proxy de probabilité de recouvrement) et classé selon l'ancienneté actuelle du retard (plus une créance est déjà en retard, plus son horizon de résolution est repoussé par prudence). SAVE est pondéré par le score et classé selon la facilité présumée de mise en œuvre. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
+</p>
+{% endblock %}

@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app
-import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib, time
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app, jsonify, Response
+import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib, time, io
 try:
     from dotenv import load_dotenv
     load_dotenv()  # charge .env s'il existe (facultatif — ignoré silencieusement en son absence)
@@ -60,6 +60,48 @@ def init_auth_db():
         stripe_event_id TEXT NOT NULL UNIQUE,
         event_type TEXT NOT NULL,
         processed_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS partner_directory(
+        organization_id INTEGER PRIMARY KEY,
+        company_name TEXT,
+        department TEXT,
+        activities TEXT,
+        contact_email TEXT,
+        opted_in INTEGER DEFAULT 0,
+        updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS integration_interest(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER,
+        provider TEXT,
+        email TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS api_keys(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        key_prefix TEXT,
+        created_by TEXT,
+        created_at TEXT,
+        last_used_at TEXT,
+        revoked_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS buyer_signals(
+        buyer_name_norm TEXT NOT NULL,
+        organization_id INTEGER NOT NULL,
+        buyer_name_display TEXT,
+        invoice_count INTEGER,
+        avg_days_overdue REAL,
+        updated_at TEXT,
+        PRIMARY KEY(buyer_name_norm,organization_id)
+    );
+    CREATE TABLE IF NOT EXISTS sector_dso_signals(
+        organization_id INTEGER NOT NULL,
+        snapshot_date TEXT NOT NULL,
+        avg_days_overdue REAL,
+        updated_at TEXT,
+        PRIMARY KEY(organization_id,snapshot_date)
     );
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
@@ -565,7 +607,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT);
+    CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT);
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);
     CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT);
     CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,kind TEXT,title TEXT,draft TEXT,status TEXT DEFAULT 'PENDING',expected_value REAL DEFAULT 0,created_at TEXT,sent_at TEXT,sent_to TEXT);
@@ -574,11 +616,14 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS dce_documents(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,filename TEXT,filetype TEXT,text_content TEXT,analysis_json TEXT,go_score INTEGER,recommendation TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS weekly_reports(id INTEGER PRIMARY KEY AUTOINCREMENT,period_start TEXT,period_end TEXT,payload_json TEXT,sent_at TEXT,recipient TEXT,status TEXT DEFAULT 'PENDING');
     CREATE TABLE IF NOT EXISTS status_history(id INTEGER PRIMARY KEY AUTOINCREMENT,entity_type TEXT,entity_id INTEGER,kind TEXT,old_status TEXT,new_status TEXT,changed_by TEXT,note TEXT,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'BT01',reading_date TEXT,value REAL,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues de garantie.
     for table,col in (('invoices','created_at'),('opportunities','created_at'),
                        ('invoices','kind'),('invoices','retention_release_date'),('invoices','retention_pct'),
                        ('invoices','customer_email'),('actions','sent_at'),('actions','sent_to'),
+                       ('invoices','customer_phone'),
                        ('app_settings','slack_webhook_url'),('app_settings','teams_webhook_url')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
@@ -668,6 +713,25 @@ def sparkline_svg(values,width=260,height=56,color='#5fe0ac'):
             f'xmlns="http://www.w3.org/2000/svg"><path d="{path}" fill="none" stroke="{color}" '
             f'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
             f'<circle cx="{last_x}" cy="{last_y}" r="3.5" fill="{color}"/></svg>')
+
+def bars_svg(labels_values,width=420,height=140,color='#5fe0ac'):
+    """Barres verticales SVG simples (pas de lib JS), pour la prévision de trésorerie.
+    labels_values : liste de tuples (label, valeur)."""
+    if not labels_values: return None
+    vals=[v for _,v in labels_values]
+    hi=max(max(vals,default=0),1)
+    n=len(labels_values); pad=10; gap=14
+    bar_w=(width-2*pad-gap*(n-1))/n
+    bars=[]; labels=[]
+    for i,(label,v) in enumerate(labels_values):
+        x=pad+i*(bar_w+gap)
+        h=(v/hi)*(height-40) if hi else 0
+        y=height-30-h
+        bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="4" fill="{color}"/>')
+        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{v:,.0f}</text>'.replace(',',' '))
+        labels.append(f'<text x="{x+bar_w/2:.1f}" y="{height-10:.1f}" font-size="11" fill="#8fa9d3" text-anchor="middle">{label}</text>')
+    return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+            f'xmlns="http://www.w3.org/2000/svg">'+''.join(bars)+''.join(labels)+'</svg>')
 
 TAX={
  'renovation':['rénovation','renovation','réhabilitation','rehabilitation'],
@@ -813,6 +877,135 @@ def send_email(to_email, subject, html, dry_run=None):
     except Exception as exc:
         current_app.logger.exception('SMTP email failed for %s', to_email)
         return {'sent':False,'provider':'smtp','error':str(exc),'to':to_email,'subject':subject}
+
+def send_sms(to_phone, body, dry_run=None):
+    """Envoie un SMS via Twilio si TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER
+    sont configurés, sinon simule (dry-run). Même principe que send_email()."""
+    sid=os.environ.get('TWILIO_ACCOUNT_SID','').strip()
+    token=os.environ.get('TWILIO_AUTH_TOKEN','').strip()
+    from_number=os.environ.get('TWILIO_FROM_NUMBER','').strip()
+
+    if dry_run is None:
+        dry_run = not (sid and token and from_number)
+    if dry_run:
+        return {'sent':False,'dry_run':True,'provider':'dry-run','to':to_phone,'body':body}
+
+    try:
+        from twilio.rest import Client
+        client=Client(sid,token)
+        message=client.messages.create(body=body,from_=from_number,to=to_phone)
+        return {'sent':True,'provider':'twilio','id':message.sid,'to':to_phone}
+    except ImportError:
+        return {'sent':False,'provider':'twilio','error':"paquet 'twilio' non installé — pip install twilio",'to':to_phone}
+    except Exception as exc:
+        current_app.logger.exception('Twilio SMS failed for %s', to_phone)
+        return {'sent':False,'provider':'twilio','error':str(exc),'to':to_phone}
+
+def generate_api_key():
+    """Nouvelle clé API en clair — n'est montrée qu'une seule fois à la création,
+    seul son hash est conservé en base (même principe qu'un mot de passe)."""
+    return 'pos_live_'+secrets.token_urlsafe(32)
+
+def hash_api_key(raw_key):
+    return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+
+def api_key_required(fn):
+    """Authentifie une requête API via 'Authorization: Bearer <clé>'. Résout
+    l'organisation correspondante dans g.api_org_id, sans dépendre de la session
+    (les appels API n'ont pas de cookie de session)."""
+    @functools.wraps(fn)
+    def wrapped(*args,**kwargs):
+        auth_header=request.headers.get('Authorization','')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error':'missing_api_key','message':'En-tête Authorization: Bearer <clé> requis.'}),401
+        raw_key=auth_header[7:].strip()
+        key_hash=hash_api_key(raw_key)
+        c=auth_cx()
+        row=c.execute('SELECT * FROM api_keys WHERE key_hash=? AND revoked_at IS NULL',(key_hash,)).fetchone()
+        if row:
+            c.execute('UPDATE api_keys SET last_used_at=? WHERE id=?',(now(),row['id'])); c.commit()
+        c.close()
+        if not row:
+            return jsonify({'error':'invalid_api_key','message':'Clé API invalide ou révoquée.'}),401
+        g.api_org_id=row['organization_id']
+        return fn(*args,**kwargs)
+    return wrapped
+
+def sync_buyer_signals(org_id, invoices_rows):
+    """Met à jour les signaux de risque acheteur partagés entre organisations, à partir
+    des factures en retard de CETTE organisation. Agrégation anonymisée : les autres
+    organisations ne voient jamais QUI a signalé quoi, seulement un compte et une moyenne."""
+    from collections import defaultdict
+    by_customer=defaultdict(list)
+    for r in invoices_rows:
+        if r.get('days_overdue',0)>0 and norm(r.get('status','') or '')!='paid':
+            by_customer[r['customer']].append(r['days_overdue'])
+    if not by_customer: return
+    c=auth_cx()
+    for customer,days_list in by_customer.items():
+        key=norm(customer)
+        if not key: continue
+        avg=sum(days_list)/len(days_list)
+        c.execute('''INSERT INTO buyer_signals(buyer_name_norm,organization_id,buyer_name_display,invoice_count,avg_days_overdue,updated_at)
+                     VALUES(?,?,?,?,?,?)
+                     ON CONFLICT(buyer_name_norm,organization_id) DO UPDATE SET
+                       buyer_name_display=excluded.buyer_name_display,invoice_count=excluded.invoice_count,
+                       avg_days_overdue=excluded.avg_days_overdue,updated_at=excluded.updated_at''',
+            (key,org_id,customer,len(days_list),avg,now()))
+    c.commit(); c.close()
+
+def buyer_risk_lookup(customer_name, exclude_org_id):
+    """Cherche si d'autres organisations ProfitOS (que la sienne) ont aussi signalé
+    ce même acheteur en retard de paiement. Retourne None si aucun autre signal."""
+    key=norm(customer_name)
+    if not key: return None
+    c=auth_cx()
+    rows=c.execute('SELECT * FROM buyer_signals WHERE buyer_name_norm=? AND organization_id!=?',(key,exclude_org_id)).fetchall()
+    c.close()
+    if not rows: return None
+    org_count=len(rows)
+    total_invoices=sum(r['invoice_count'] for r in rows)
+    avg_days=sum(r['avg_days_overdue']*r['invoice_count'] for r in rows)/total_invoices if total_invoices else 0
+    return {'org_count':org_count,'total_invoices':total_invoices,'avg_days':round(avg_days)}
+
+def sync_sector_dso(org_id, avg_days_overdue):
+    """Alimente le benchmark sectoriel anonymisé (moyenne DSO inter-organisations)."""
+    c=auth_cx()
+    c.execute('''INSERT INTO sector_dso_signals(organization_id,snapshot_date,avg_days_overdue,updated_at)
+                 VALUES(?,?,?,?)
+                 ON CONFLICT(organization_id,snapshot_date) DO UPDATE SET
+                   avg_days_overdue=excluded.avg_days_overdue,updated_at=excluded.updated_at''',
+        (org_id,date.today().isoformat(),avg_days_overdue,now()))
+    c.commit(); c.close()
+
+def sector_dso_benchmark(exclude_org_id):
+    """Moyenne DSO des autres organisations (leur dernier relevé chacune), anonymisée."""
+    c=auth_cx()
+    rows=c.execute('SELECT organization_id,MAX(snapshot_date) d FROM sector_dso_signals WHERE organization_id!=? GROUP BY organization_id',(exclude_org_id,)).fetchall()
+    if not rows: c.close(); return None
+    values=[]
+    for r in rows:
+        v=c.execute('SELECT avg_days_overdue FROM sector_dso_signals WHERE organization_id=? AND snapshot_date=?',(r['organization_id'],r['d'])).fetchone()
+        if v and v['avg_days_overdue'] is not None: values.append(v['avg_days_overdue'])
+    c.close()
+    if not values: return None
+    return {'org_count':len(values),'avg_days':round(sum(values)/len(values))}
+
+def export_response(rows, filename_base):
+    """Exporte une liste de dicts en CSV ou XLSX selon ?format=csv|xlsx (défaut xlsx).
+    Partagé par tous les blueprints (RECOVER/SAVE/GROW, audit, etc.)."""
+    fmt=request.args.get('format','xlsx').lower()
+    df=pd.DataFrame(rows)
+    if fmt=='csv':
+        csv_bytes=df.to_csv(index=False).encode('utf-8-sig')  # BOM : accents corrects dans Excel FR
+        return Response(csv_bytes,mimetype='text/csv',
+            headers={'Content-Disposition':f'attachment; filename="{filename_base}.csv"'})
+    buf=io.BytesIO()
+    with pd.ExcelWriter(buf,engine='openpyxl') as writer:
+        df.to_excel(writer,index=False,sheet_name='Export')
+    buf.seek(0)
+    return Response(buf.getvalue(),mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition':f'attachment; filename="{filename_base}.xlsx"'})
 
 def notify_org(text):
     """Envoie une notification Slack/Teams pour l'organisation courante, si un webhook
@@ -989,8 +1182,27 @@ def user_organizations():
     c=auth_cx(); rows=c.execute('SELECT organizations.* FROM memberships JOIN organizations ON organizations.id=memberships.organization_id WHERE memberships.user_id=? ORDER BY organizations.name',(uid,)).fetchall(); c.close()
     return rows
 
+def live_notifications():
+    """Alertes urgentes calculées à la volée (pas de table dédiée — toujours à jour) :
+    factures en retard critique, retenues libérables sous 7 jours, deadlines GROW proches."""
+    if not session.get('org_id'): return []
+    try:
+        c=cx(); notifs=[]
+        for r in c.execute("SELECT invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 LIMIT 5").fetchall():
+            notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {r['outstanding']:,.0f} €",'url':url_for('recover')})
+        soon=(date.today()+timedelta(days=7)).isoformat(); today_iso=date.today().isoformat()
+        for r in c.execute("SELECT invoice_number,customer,retention_release_date FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date BETWEEN ? AND ? LIMIT 5",(today_iso,soon)).fetchall():
+            notifs.append({'icon':'🟡','text':f"Retenue libérable bientôt — {r['customer']} (#{r['invoice_number']})",'url':url_for('recover',filter='retention')})
+        if can_access('grow'):
+            for r in c.execute("SELECT title,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' AND deadline BETWEEN ? AND ? LIMIT 5",(today_iso,soon)).fetchall():
+                notifs.append({'icon':'🟢','text':f"Deadline proche — {r['title']}",'url':url_for('grow')})
+        c.close()
+        return notifs
+    except Exception:
+        return []
+
 def commercial_context():
-    return {'auth_user':current_user(),'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION','')}
+    return {'auth_user':current_user(),'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION',''),'notifications':live_notifications()}
 
 
 

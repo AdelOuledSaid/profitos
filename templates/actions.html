@@ -47,6 +47,10 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button>Envoyer par email</button>
       </form>
+      <form method="post" action="{{ url_for('action_send_sms',aid=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="secondary">Envoyer par SMS</button>
+      </form>
       {% else %}
       <a class="button" href="{{ url_for('billing') }}">Envoi email · Pro</a>
       {% endif %}

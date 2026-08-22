@@ -31,3 +31,6 @@ resend==2.37.0
 
 # Rate limiting distribué (Render Key Value / Valkey, compatible Redis).
 Flask-Limiter[redis]==4.1.1
+
+# Relances par SMS (optionnel — mode simulation sans ces identifiants).
+twilio==9.3.7

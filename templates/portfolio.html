@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">PORTFOLIO</div>
+<h1>Vue consolidée — {{ rows|length }} organisation(s)</h1>
+<p class="muted">Utile si tu gères plusieurs clients BTP depuis un seul compte (cabinet comptable, groupe multi-sociétés).</p>
+
+<div class="cards four" style="margin:18px 0;">
+  <div class="card"><div class="label red">RECOVERABLE (total)</div><div class="big">{{ "{:,.0f}".format(totals.recover) }} €</div></div>
+  <div class="card"><div class="label amber">SAVE (total)</div><div class="big">{{ "{:,.0f}".format(totals.save) }} €</div></div>
+  <div class="card"><div class="label green">GROW (total)</div><div class="big">{{ totals.grow }}</div></div>
+  <div class="card"><div class="label">Actions en attente</div><div class="big">{{ totals.pending }}</div></div>
+</div>
+
+<section class="panel">
+  {% for r in rows %}
+  <div class="simpleline">
+    <div><strong>{{ r.org.name }}</strong>{% if r.error %}<small style="color:#ff6e78;">Erreur d'accès : {{ r.error }}</small>{% else %}<small>{{ r.pending }} action(s) en attente</small>{% endif %}</div>
+    {% if not r.error %}
+    <div style="display:flex;gap:18px;">
+      <span class="money">{{ "{:,.0f}".format(r.recover) }} €</span>
+      <span class="money">{{ "{:,.0f}".format(r.save) }} €</span>
+      <span>{{ r.grow }} GROW</span>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('org_switch',org_id=r.org.id) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="secondary">Ouvrir →</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">Tu n'appartiens qu'à une seule organisation pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endblock %}

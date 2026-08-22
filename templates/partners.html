@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">PARTNERS</div>
+<h1>Radar de cotraitance</h1>
+<p class="muted">Trouve des entreprises BTP complémentaires (autre corps de métier) pour candidater ensemble à un marché trop gros seul. Repose sur un répertoire partagé entre organisations ProfitOS, uniquement pour celles qui ont activé le partage.</p>
+
+<section class="panel" style="margin:18px 0;background:#0a1529;">
+  {% if my_entry and my_entry.opted_in %}
+    <p><strong>Ton profil est visible</strong> par les autres organisations ProfitOS ayant aussi activé le partage : {{ my_entry.company_name }} · {{ my_entry.department or 'département non précisé' }}.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="opt_out"><button type="submit" class="secondary">Retirer mon profil du répertoire</button></form>
+  {% else %}
+    <p><strong>Ton profil n'est pas visible</strong> pour l'instant. Active le partage pour apparaître dans le radar des autres organisations — et voir les leurs en retour. Seuls le nom de ton entreprise, ton département et tes corps de métier sont partagés (jamais tes données financières).</p>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="opt_in">
+      <label>Email de contact affiché aux autres<input type="email" name="contact_email" placeholder="{{ session.get('email','') }}"></label>
+      <button>Activer le partage de mon profil</button>
+    </form>
+  {% endif %}
+</section>
+
+{% if my_entry and my_entry.opted_in %}
+<section class="panel">
+  <h2>Partenaires complémentaires suggérés</h2>
+  {% for m in matches %}
+  <div class="simpleline">
+    <div><strong>{{ m.org.company_name }}</strong><small>{{ m.org.department or 'zone non précisée' }} · {{ m.org.activities }}{% if m.same_dept %} · même département{% endif %}</small></div>
+    <div><a class="link" href="mailto:{{ m.org.contact_email }}">Contacter →</a></div>
+  </div>
+  {% else %}
+  <p class="muted">Aucun partenaire complémentaire trouvé pour l'instant — reviens quand d'autres organisations auront activé le partage.</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

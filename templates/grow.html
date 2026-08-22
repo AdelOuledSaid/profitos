@@ -21,6 +21,20 @@
   {% endif %}
 </div>
 
+{% if not needs_profile %}
+<form method="get" class="panel" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px;padding:16px;">
+  <label style="font-size:11px;color:#8fa9d3;">Recherche<input type="text" name="q" value="{{ q }}" placeholder="ex: rénovation, acheteur..."></label>
+  <label style="font-size:11px;color:#8fa9d3;">Score min<input type="number" name="min_value" value="{{ min_value }}" step="1" placeholder="0-100"></label>
+  <label style="font-size:11px;color:#8fa9d3;">Score max<input type="number" name="max_value" value="{{ max_value }}" step="1" placeholder="0-100"></label>
+  <button type="submit" style="height:44px;">Filtrer</button>
+</form>
+  {% if advanced_plan %}
+  <div style="margin:0 0 18px;display:flex;gap:8px;"><a class="button secondary" href="{{ url_for('grow_export',format='xlsx') }}">Exporter (Excel)</a><a class="button secondary" href="{{ url_for('grow_export',format='csv') }}">Exporter (CSV)</a></div>
+  {% else %}
+  <p class="muted" style="margin:0 0 18px;"><a class="link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>
+  {% endif %}
+{% endif %}
+
 {% if needs_profile %}
 <section class="panel narrow">
   <h2>Configure ton entreprise</h2>
