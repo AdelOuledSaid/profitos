@@ -57,6 +57,8 @@ def register(app):
     @rate_limit(10,900)
     def signup():
         if session.get('user_id'): return redirect(url_for('home'))
+        if request.method=='GET' and request.args.get('ref'):
+            session['pending_ref_code']=request.args.get('ref','').strip()
         if request.method=='POST':
             name=request.form.get('full_name','').strip(); email=request.form.get('email','').strip().lower(); pw=request.form.get('password',''); company=request.form.get('company_name','').strip()
             if not name or not email or not pw or not company: flash('Tous les champs sont obligatoires.'); return redirect(request.url)
@@ -68,9 +70,21 @@ def register(app):
             while c.execute('SELECT id FROM organizations WHERE slug=?',(slug,)).fetchone(): i+=1; slug=f'{base}-{i}'
             from datetime import timedelta
             trial=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
-            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,created_at,updated_at) VALUES(?,?,'TRIAL','ACTIVE',?,?,?)",(company,slug,trial,now(),now())); oid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            referral_code=secrets.token_urlsafe(6)
+            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,referral_code,created_at,updated_at) VALUES(?,?,'TRIAL','ACTIVE',?,?,?,?)",(company,slug,trial,referral_code,now(),now())); oid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute('INSERT INTO users(email,password_hash,full_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)',(email,generate_password_hash(pw),name,now(),now())); uid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,'OWNER',?)",(uid,oid,now())); c.commit()
+
+            # Programme de parrainage : si l'inscription vient d'un lien ?ref=CODE, on lie
+            # les deux organisations. La récompense (1 mois gratuit) n'est accordée que
+            # lorsque l'organisation parrainée devient réellement payante (voir Stripe webhook).
+            ref_code=request.args.get('ref','').strip() or session.pop('pending_ref_code','')
+            if ref_code:
+                referrer=c.execute('SELECT id FROM organizations WHERE referral_code=?',(ref_code,)).fetchone()
+                if referrer and referrer['id']!=oid:
+                    c.execute('INSERT OR IGNORE INTO referrals(referrer_org_id,referred_org_id,status,created_at) VALUES(?,?,?,?)',
+                        (referrer['id'],oid,'PENDING',now())); c.commit()
+
             user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone(); c.close()
             session.clear(); session.permanent=True; session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; session['auth_version']=int(user.get('auth_version') or 0); init_tenant_db()
             tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
@@ -264,6 +278,21 @@ def register(app):
         ac=auth_cx(); requested=ac.execute('SELECT provider FROM integration_interest WHERE organization_id=?',(org['id'],)).fetchall(); ac.close()
         requested_providers={r['provider'] for r in requested}
         return render_template('integrations.html',requested_providers=requested_providers)
+
+    @app.route('/referral')
+    @login_required
+    def referral():
+        org=current_org()
+        if not org['referral_code']:
+            code=secrets.token_urlsafe(6)
+            c=auth_cx(); c.execute('UPDATE organizations SET referral_code=? WHERE id=?',(code,org['id'])); c.commit(); c.close()
+            org=current_org()
+        ac=auth_cx()
+        referred=ac.execute('SELECT r.*,o.name FROM referrals r JOIN organizations o ON o.id=r.referred_org_id WHERE r.referrer_org_id=? ORDER BY r.id DESC',(org['id'],)).fetchall()
+        ac.close()
+        base_url=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
+        referral_link=f"{base_url}{url_for('signup')}?ref={org['referral_code']}"
+        return render_template('referral.html',org=org,referred=referred,referral_link=referral_link)
 
     @app.route('/settings',methods=['GET','POST'])
     @login_required
@@ -734,6 +763,7 @@ def register(app):
                             "UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",
                             (plan,sub_id,now(),org_id)
                         )
+                        reward_referrer_if_any(acx,org_id)
                     else:
                         current_app.logger.warning(
                             'Stripe checkout customer mismatch event_id=%s org_id=%s',

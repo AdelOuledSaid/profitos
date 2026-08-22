@@ -103,6 +103,23 @@ def init_auth_db():
         updated_at TEXT,
         PRIMARY KEY(organization_id,snapshot_date)
     );
+<<<<<<< HEAD
+=======
+    CREATE TABLE IF NOT EXISTS referrals(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        referrer_org_id INTEGER NOT NULL,
+        referred_org_id INTEGER NOT NULL UNIQUE,
+        status TEXT DEFAULT 'PENDING',
+        rewarded_at TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS public_invoice_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        invoice_local_id INTEGER NOT NULL,
+        created_at TEXT
+    );
+>>>>>>> 5043cf8 (update)
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
     cols=[r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
@@ -119,6 +136,7 @@ def init_auth_db():
     for col,ddl in (
         ('stripe_customer_id',"ALTER TABLE organizations ADD COLUMN stripe_customer_id TEXT"),
         ('stripe_subscription_id',"ALTER TABLE organizations ADD COLUMN stripe_subscription_id TEXT"),
+        ('referral_code',"ALTER TABLE organizations ADD COLUMN referral_code TEXT"),
     ):
         if col not in org_cols: c.execute(ddl)
     c.commit(); c.close()
@@ -607,7 +625,11 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,updated_at TEXT);
+<<<<<<< HEAD
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT);
+=======
+    CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT);
+>>>>>>> 5043cf8 (update)
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);
     CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT);
     CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,kind TEXT,title TEXT,draft TEXT,status TEXT DEFAULT 'PENDING',expected_value REAL DEFAULT 0,created_at TEXT,sent_at TEXT,sent_to TEXT);
@@ -624,6 +646,10 @@ def init_tenant_db(org_id=None):
                        ('invoices','kind'),('invoices','retention_release_date'),('invoices','retention_pct'),
                        ('invoices','customer_email'),('actions','sent_at'),('actions','sent_to'),
                        ('invoices','customer_phone'),
+<<<<<<< HEAD
+=======
+                       ('invoices','public_token'),
+>>>>>>> 5043cf8 (update)
                        ('app_settings','slack_webhook_url'),('app_settings','teams_webhook_url')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
@@ -1007,6 +1033,47 @@ def export_response(rows, filename_base):
     return Response(buf.getvalue(),mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition':f'attachment; filename="{filename_base}.xlsx"'})
 
+<<<<<<< HEAD
+=======
+def register_public_invoice_token(org_id, invoice_local_id):
+    """Génère un token public non-devinable pour une facture, et l'enregistre dans la
+    base auth (mapping token -> organisation) pour permettre la résolution du portail
+    client sans exposer la structure multi-tenant. Retourne le token."""
+    token=secrets.token_urlsafe(20)
+    c=auth_cx()
+    c.execute('INSERT INTO public_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+        (token,org_id,invoice_local_id,now())); c.commit(); c.close()
+    return token
+
+def resolve_public_invoice_token(token):
+    """Retrouve l'organisation et l'id local d'une facture à partir de son token public."""
+    c=auth_cx()
+    row=c.execute('SELECT * FROM public_invoice_tokens WHERE token=?',(token,)).fetchone()
+    c.close()
+    return row
+
+def reward_referrer_if_any(acx, referred_org_id):
+    """Accorde 1 mois gratuit au parrain quand l'organisation parrainée devient payante.
+    'acx' est une connexion auth déjà ouverte (appelé depuis le webhook Stripe, qui gère
+    lui-même le commit global) — on ne ferme pas la connexion ici, on ne fait qu'écrire.
+    Best-effort : ne doit jamais faire échouer le traitement du webhook Stripe."""
+    try:
+        ref=acx.execute("SELECT * FROM referrals WHERE referred_org_id=? AND status='PENDING'",(referred_org_id,)).fetchone()
+        if not ref: return
+        acx.execute("UPDATE referrals SET status='REWARDED',rewarded_at=? WHERE id=?",(now(),ref['id']))
+        # Récompense simple et robuste : prolonge le trial_ends_at du parrain de 30 jours.
+        # Fonctionne aussi bien pour un parrain encore en essai que déjà payant (le champ
+        # est simplement stocké, sans effet si le parrain a déjà un abonnement Stripe actif).
+        referrer=acx.execute('SELECT * FROM organizations WHERE id=?',(ref['referrer_org_id'],)).fetchone()
+        if referrer:
+            base=parse_dt(referrer['trial_ends_at']) or datetime.now(timezone.utc)
+            new_end=max(base,datetime.now(timezone.utc))+timedelta(days=30)
+            acx.execute('UPDATE organizations SET trial_ends_at=?,updated_at=? WHERE id=?',(new_end.isoformat(),now(),ref['referrer_org_id']))
+            log_activity('REFERRAL_REWARDED',f"Parrainage récompensé (organisation #{referred_org_id} devenue payante)")
+    except Exception:
+        current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
+
+>>>>>>> 5043cf8 (update)
 def notify_org(text):
     """Envoie une notification Slack/Teams pour l'organisation courante, si un webhook
     est configuré dans Settings. Silencieux (no-op) si aucun webhook n'est renseigné —

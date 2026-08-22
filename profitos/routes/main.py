@@ -195,6 +195,22 @@ def register(app):
         ac.close()
         return render_template('partners.html',my_entry=my_entry,matches=matches)
 
+    @app.route('/pay-status/<token>')
+    def public_invoice_status(token):
+        """Portail client public — aucune authentification requise. N'expose QUE le strict
+        nécessaire pour une facture précise (montant, statut, échéance), jamais le reste
+        des données de l'organisation. Le token est non-devinable (20 octets aléatoires)."""
+        mapping=resolve_public_invoice_token(token)
+        if not mapping:
+            abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        inv=tc.execute('SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=?',(mapping['invoice_local_id'],)).fetchone()
+        tc.close()
+        if not inv:
+            abort(404)
+        ac=auth_cx(); org=ac.execute('SELECT name FROM organizations WHERE id=?',(mapping['organization_id'],)).fetchone(); ac.close()
+        return render_template('pay_status.html',inv=inv,org_name=org['name'] if org else '')
+
     @app.route('/calendar')
     @login_required
     @requires_active_plan

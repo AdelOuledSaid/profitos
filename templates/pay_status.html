@@ -1,0 +1,25 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Statut de paiement · {{ org_name }}</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body style="background:#081020;color:#f6f8fc;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px;">
+<div style="max-width:420px;width:100%;background:#0f1c33;border:1px solid #294064;border-radius:14px;padding:28px;">
+  <div style="font-size:12px;color:#8fa9d3;text-transform:uppercase;letter-spacing:.06em;">{{ org_name }}</div>
+  <h1 style="font-size:22px;margin:8px 0 4px;">Facture #{{ inv.invoice_number }}</h1>
+  <p style="color:#c4d3ef;font-size:14px;margin:0 0 20px;">Statut de paiement en temps réel.</p>
+
+  <div style="background:#081020;border-radius:10px;padding:18px;margin-bottom:16px;">
+    <div style="font-size:12px;color:#8fa9d3;">MONTANT RESTANT DÛ</div>
+    <div style="font-size:28px;font-weight:800;">{{ "{:,.0f}".format(inv.outstanding) }} €</div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #1a2a47;">
+    <span style="color:#8fa9d3;">Statut</span>
+    <strong>{{ 'Payée' if inv.status|lower=='paid' else ('En retard' if inv.days_overdue and inv.days_overdue>0 else 'En cours') }}</strong>
+  </div>
+  {% if inv.due_date %}<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #1a2a47;">
+    <span style="color:#8fa9d3;">Échéance</span><strong>{{ inv.due_date }}</strong>
+  </div>{% endif %}
+  {% if inv.kind=='RETENTION' and inv.retention_release_date %}<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;">
+    <span style="color:#8fa9d3;">Retenue libérable le</span><strong>{{ inv.retention_release_date }}</strong>
+  </div>{% endif %}
+
+  <p style="margin-top:20px;font-size:12px;color:#6b84ab;">En cas de question sur cette facture, merci de contacter directement {{ org_name }}.</p>
+</div>
+</body></html>

@@ -4,6 +4,87 @@ from profitos.feature_access import requires_paid_plan
 
 
 def register(app):
+    @app.route('/upload/bank-statement',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def upload_bank_statement():
+        """Rapprochement bancaire : propose des correspondances entre les lignes créditrices
+        d'un relevé bancaire et les factures impayées. Ne marque JAMAIS rien comme payé
+        automatiquement — l'utilisateur doit valider chaque correspondance sur l'écran suivant."""
+        if request.method=='POST':
+            f=request.files.get('file')
+            if not f:
+                flash('Aucun fichier sélectionné.'); return redirect(request.url)
+            path=UP/f.filename; f.save(path)
+            try:
+                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+            except Exception as e:
+                flash(str(e)); return redirect(request.url)
+            aliases={'date':['date','date operation',"date d'opération",'date valeur'],
+                     'desc':['description','libelle','libellé','intitule','intitulé','détail','detail'],
+                     'amount':['amount','montant','credit','crédit']}
+            m=map_cols(df,aliases)
+            missing=[k for k in ('date','amount') if k not in m]
+            if missing:
+                flash('Colonnes manquantes dans le relevé : '+', '.join(missing)); return redirect(request.url)
+
+            c=cx()
+            unpaid=c.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid'").fetchall()
+            c.close()
+
+            proposals=[]
+            for _,row in df.iterrows():
+                try: bank_amount=float(row[m['amount']])
+                except Exception: continue
+                if bank_amount<=0: continue  # on ne traite que les lignes créditrices (encaissements)
+                bank_desc=str(row[m['desc']]) if 'desc' in m else ''
+                bank_date=str(row[m['date']])[:10]
+                candidates=[inv for inv in unpaid if abs(inv['outstanding']-bank_amount)<0.01]
+                match=None
+                if len(candidates)==1:
+                    match=candidates[0]
+                elif len(candidates)>1:
+                    # Montant identique sur plusieurs factures : on tente de désambiguïser
+                    # via le nom du client ou le n° de facture mentionné dans le libellé.
+                    for cand in candidates:
+                        if norm(cand['customer']) in norm(bank_desc) or norm(cand['invoice_number']) in norm(bank_desc):
+                            match=cand; break
+                proposals.append({'bank_date':bank_date,'bank_desc':bank_desc,'bank_amount':bank_amount,
+                    'match':match,'ambiguous':len(candidates)>1 and match is None,'candidates':candidates})
+
+            matched_count=sum(1 for p in proposals if p['match'])
+            return render_template('bank_reconciliation.html',proposals=proposals,matched_count=matched_count,total_rows=len(proposals))
+
+        return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement')
+
+    @app.route('/reconcile/confirm',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def reconcile_confirm():
+        invoice_ids=request.form.getlist('confirm_invoice_id')
+        if not invoice_ids:
+            flash('Aucune correspondance sélectionnée.'); return redirect(url_for('upload_bank_statement'))
+        count=0
+        for iid in invoice_ids:
+            try: iid=int(iid)
+            except ValueError: continue
+            c=cx()
+            row=c.execute('SELECT * FROM invoices WHERE id=?',(iid,)).fetchone()
+            if not row or norm(row['status'] or '')=='paid': c.close(); continue
+            old=row['status']
+            c.execute("UPDATE invoices SET status='paid' WHERE id=?",(iid,))
+            c.commit(); c.close()  # commité avant log_status_change : évite un verrou SQLite
+                                     # entre cette connexion et celle ouverte par log_status_change.
+            count+=1
+            log_status_change('INVOICE',iid,'RECOVER',old,'paid',note='Rapprochement bancaire')
+        log_activity('BANK_RECONCILIATION',f'{count} facture(s) rapprochée(s) et marquée(s) payée(s)')
+        flash(f'{count} facture(s) marquée(s) comme payée(s) suite au rapprochement bancaire.')
+        return redirect(url_for('recover'))
+
     @app.route('/upload/invoices',methods=['GET','POST'])
     @login_required
     @requires_active_plan
@@ -39,6 +120,7 @@ def register(app):
 
             RETENTION_KEYWORDS=('retenue','retention','garantie')
             c=cx(); c.execute('DELETE FROM invoices'); today=date.today(); signals=0; retentions=0
+            ac_clean=auth_cx(); ac_clean.execute('DELETE FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)); ac_clean.commit(); ac_clean.close()
             for _,r in df.iterrows():
                 try:amount=float(r[m['amount']])
                 except:continue
@@ -62,6 +144,9 @@ def register(app):
                 phone_val=str(r[m['phone']]).strip() if 'phone' in m and str(r[m['phone']]).strip().lower()!='nan' else None
                 c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val))
+                local_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                token=register_public_invoice_token(org['id'],local_id)
+                c.execute('UPDATE invoices SET public_token=? WHERE id=?',(token,local_id))
             c.commit()
 
             snap=c.execute("SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()

@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">BANK RECONCILIATION</div>
+<h1>Rapprochement bancaire</h1>
+<p class="muted">{{ matched_count }}/{{ total_rows }} ligne(s) du relevé rapprochée(s) automatiquement à une facture. Vérifie et décoche ce qui ne convient pas avant de valider — aucune facture n'est marquée payée sans ta confirmation.</p>
+
+<form method="post" action="{{ url_for('reconcile_confirm') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="panel">
+    {% for p in proposals %}
+    <div class="simpleline">
+      <div>
+        {% if p.match %}
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" name="confirm_invoice_id" value="{{ p.match.id }}" checked>
+          <span><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ "{:,.0f}".format(p.bank_amount) }} €<br>
+          <small class="muted">→ Facture #{{ p.match.invoice_number }} — {{ p.match.customer }}</small></span>
+        </label>
+        {% elif p.ambiguous %}
+        <div><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ "{:,.0f}".format(p.bank_amount) }} €<br>
+        <small style="color:#f0b429;">⚠ Montant identique sur {{ p.candidates|length }} factures — désambiguïsation impossible, à traiter manuellement.</small></div>
+        {% else %}
+        <div><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ "{:,.0f}".format(p.bank_amount) }} €<br>
+        <small class="muted">Aucune facture impayée ne correspond à ce montant.</small></div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p class="muted">Aucune ligne créditrice trouvée dans le relevé.</p>
+    {% endfor %}
+  </section>
+  {% if matched_count %}<button type="submit" style="margin-top:16px;">Confirmer les correspondances cochées</button>{% endif %}
+</form>
+{% endblock %}

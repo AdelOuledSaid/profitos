@@ -38,6 +38,7 @@
       <div class="navhead">DATA</div>
       <a href="{{ url_for('upload_invoices') }}" data-tour="uploads">Importer factures</a>
       <a href="{{ url_for('upload_expenses') }}">Importer dépenses</a>
+      <a href="{{ url_for('upload_bank_statement') }}">Relevé bancaire</a>
     {% endif %}
 
     <a href="{{ url_for('company') }}">Profil entreprise</a>
@@ -45,7 +46,11 @@
     <div class="navhead">ACCOUNT</div>
     {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a>{% endif %}
     {% if can_access('billing') %}<a href="{{ url_for('billing') }}">Billing</a>{% endif %}
+<<<<<<< HEAD
     {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a><a href="{{ url_for('integrations') }}">Integrations</a><a href="{{ url_for('api_keys') }}">API</a>{% endif %}
+=======
+    {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a><a href="{{ url_for('integrations') }}">Integrations</a><a href="{{ url_for('api_keys') }}">API</a><a href="{{ url_for('referral') }}">Referral</a>{% endif %}
+>>>>>>> 5043cf8 (update)
   </nav>
 
   {% if auth_user %}

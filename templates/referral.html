@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">REFERRAL</div>
+<h1>Programme de parrainage</h1>
+<p class="muted">Partage ce lien. Quand l'organisation que tu parraines devient cliente payante, tu reçois 1 mois gratuit automatiquement.</p>
+
+<section class="panel" style="margin:18px 0;background:#0a1529;">
+  <code style="display:block;padding:12px;background:#000;border-radius:8px;word-break:break-all;font-size:13px;">{{ referral_link }}</code>
+</section>
+
+<section class="panel">
+  <h2>Filleuls</h2>
+  {% for r in referred %}
+  <div class="simpleline">
+    <div><strong>{{ r.name }}</strong><small>Inscrit le {{ r.created_at[:10] if r.created_at else '' }}</small></div>
+    <span class="status">{{ 'Récompensé' if r.status=='REWARDED' else 'En attente de conversion' }}</span>
+  </div>
+  {% else %}
+  <p class="muted">Aucun filleul pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,29 @@
+[1mdiff --cc profitos/routes/account.py[m
+[1mindex 3ba35e4,00f062c..0000000[m
+[1m--- a/profitos/routes/account.py[m
+[1m+++ b/profitos/routes/account.py[m
+[36m@@@ -265,6 -279,21 +279,24 @@@[m [mdef register(app)[m
+          requested_providers={r['provider'] for r in requested}[m
+          return render_template('integrations.html',requested_providers=requested_providers)[m
+  [m
+[32m++<<<<<<< HEAD[m
+[32m++=======[m
+[32m+     @app.route('/referral')[m
+[32m+     @login_required[m
+[32m+     def referral():[m
+[32m+         org=current_org()[m
+[32m+         if not org['referral_code']:[m
+[32m+             code=secrets.token_urlsafe(6)[m
+[32m+             c=auth_cx(); c.execute('UPDATE organizations SET referral_code=? WHERE id=?',(code,org['id'])); c.commit(); c.close()[m
+[32m+             org=current_org()[m
+[32m+         ac=auth_cx()[m
+[32m+         referred=ac.execute('SELECT r.*,o.name FROM referrals r JOIN organizations o ON o.id=r.referred_org_id WHERE r.referrer_org_id=? ORDER BY r.id DESC',(org['id'],)).fetchall()[m
+[32m+         ac.close()[m
+[32m+         base_url=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))[m
+[32m+         referral_link=f"{base_url}{url_for('signup')}?ref={org['referral_code']}"[m
+[32m+         return render_template('referral.html',org=org,referred=referred,referral_link=referral_link)[m
+[32m+ [m
+[32m++>>>>>>> 5043cf8 (update)[m
+      @app.route('/settings',methods=['GET','POST'])[m
+      @login_required[m
+      @require_area('settings')[m
