@@ -1,0 +1,8 @@
+@media (max-width:720px){
+  .landing-hero h1{font-size:30px!important}
+  .landing-3col{grid-template-columns:1fr!important}
+  .landing-cta-row{flex-direction:column;align-items:stretch!important}
+  .landing-cta-row a{text-align:center}
+  .landing-nav-links{display:none!important}
+  .landing-demo-grid{grid-template-columns:1fr 1fr!important}
+}
