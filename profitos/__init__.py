@@ -46,7 +46,7 @@ def create_app(config_object=None):
     init_auth_db()
     init_runtime(app)
 
-    from .routes import account, dce, main, actions, reports, imports, api
+    from .routes import account, dce, main, actions, reports, imports, api, money_hunter
     account.register(app)
     dce.register(app)
     main.register(app)
@@ -54,6 +54,7 @@ def create_app(config_object=None):
     reports.register(app)
     imports.register(app)
     api.register(app)
+    money_hunter.register(app)
 
     @app.before_request
     def request_context():

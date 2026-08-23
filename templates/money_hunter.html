@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="eyebrow green">MONEY HUNTER · V1.6</div>
+<h1>Où est l'argent aujourd'hui ?</h1>
+<p class="muted" style="max-width:780px;">Money Hunter rassemble RECOVER, SAVE et GROW pour classer les décisions à plus fort impact. Les montants affichés viennent uniquement de vos données ProfitOS ; aucune valeur financière n'est inventée.</p>
+
+<div class="cards" style="margin:20px 0;">
+  <section class="panel">
+    <div class="eyebrow red">RECOVER</div>
+    <h2>{{ "{:,.0f}".format(brief.recover_total) }} €</h2>
+    <p class="muted">Créances actuellement récupérables.</p>
+    <strong>{{ brief.urgent_recover }} priorité(s) élevée(s)</strong>
+  </section>
+
+  <section class="panel">
+    <div class="eyebrow">SAVE</div>
+    <h2>{{ "{:,.0f}".format(brief.save_total) }} € / an</h2>
+    <p class="muted">Économies potentielles détectées.</p>
+    <strong>{{ brief.high_save }} signal(aux) fort(s)</strong>
+  </section>
+
+  <section class="panel">
+    <div class="eyebrow green">GROW</div>
+    {% if brief.grow_pipeline > 0 %}
+      <h2>{{ "{:,.0f}".format(brief.grow_pipeline) }} €</h2>
+      <p class="muted">Pipeline dont la valeur est connue.</p>
+    {% else %}
+      <h2>{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</h2>
+      <p class="muted">Pipeline GROW à qualifier.</p>
+    {% endif %}
+    <strong>{{ brief.strong_grow }} match(es) fort(s)</strong>
+  </section>
+</div>
+
+<section class="panel" style="margin-bottom:20px;">
+  <div class="eyebrow">MONEY BRIEF</div>
+  <h2>{{ "{:,.0f}".format(brief.money_identified) }} € identifiés</h2>
+  <p class="muted">Créances RECOVER + économies SAVE potentielles. SAVE est généralement annualisé : ce total n'est pas une prévision de trésorerie.</p>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
+    <div><small class="muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;">{{ "{:,.0f}".format(brief.expected_value) }} €</div></div>
+    <div><small class="muted">SIGNAUX ANALYSÉS</small><div style="font-size:24px;font-weight:800;">{{ brief.recommendation_count }}</div></div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="eyebrow">PRIORITÉS</div>
+  <h2>Les prochaines décisions recommandées</h2>
+  {% for r in brief.recommendations %}
+    <div class="simpleline" style="align-items:center;gap:14px;">
+      <div style="flex:1;">
+        <div class="type {{ r.kind|lower }}">{{ r.kind }}</div>
+        <strong>{{ r.title }}</strong>
+        <small>{{ r.detail }}</small>
+        <small class="muted">{{ r.action }} · confiance {{ r.confidence }}/100</small>
+      </div>
+      <div style="text-align:right;min-width:135px;">
+        {% if r.amount > 0 %}<strong>{{ "{:,.0f}".format(r.amount) }} €</strong>{% endif %}
+        <div><a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a></div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">Aucun signal financier disponible. Importez des factures ou des dépenses, ou configurez votre profil GROW.</p>
+  {% endfor %}
+</section>
+{% endblock %}
