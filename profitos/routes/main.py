@@ -8,9 +8,13 @@ import io
 
 def register(app):
     @app.route('/')
-    @login_required
-    @requires_active_plan
     def home():
+        if not session.get('user_id'):
+            return render_template('landing.html')
+        return _home_dashboard()
+
+    @requires_active_plan
+    def _home_dashboard():
         c=cx(); recover=c.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']; save=c.execute("SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
         top=list(c.execute("SELECT id,invoice_number title,customer subtitle,MAX(amount-paid_amount,0) value,score,'RECOVER' type FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC LIMIT 3").fetchall())+list(c.execute("SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC LIMIT 2").fetchall())+list(c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall())
         snaps=c.execute('SELECT * FROM dso_snapshots ORDER BY snapshot_date ASC LIMIT 30').fetchall(); c.close(); top.sort(key=lambda x:x['score'],reverse=True)
@@ -251,6 +255,30 @@ def register(app):
             savings_estimate=round(revenue*0.004,-2)
             result={'recoverable_low':recoverable_low,'recoverable_high':recoverable_high,'savings_estimate':savings_estimate}
         return render_template('profit_audit_public.html',result=result)
+
+    @app.route('/demo',methods=['GET','POST'])
+    def request_demo():
+        """Demande de démo publique — aucune authentification requise."""
+        if request.method=='POST':
+            full_name=request.form.get('full_name','').strip()
+            company=request.form.get('company','').strip()
+            email=request.form.get('email','').strip()
+            phone=request.form.get('phone','').strip()
+            message=request.form.get('message','').strip()
+            if not (full_name and company and email):
+                flash('Nom, entreprise et email sont requis.')
+                return redirect(request.url)
+            ac=auth_cx()
+            ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,message,created_at) VALUES(?,?,?,?,?,?)',
+                (full_name,company,email,phone,message,now())); ac.commit(); ac.close()
+            admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','')
+            if admin_email:
+                html=render_template('email_transactional.html',title='Nouvelle demande de démo',
+                    intro=f"{full_name} ({company}, {email}{', '+phone if phone else ''}) a demandé une démo ProfitOS.{' Message : '+message if message else ''}",
+                    cta_label=f'Répondre à {full_name}',cta_url=f'mailto:{email}',footer='')
+                send_email(admin_email,f'Demande de démo — {company}',html)
+            return render_template('demo_thanks.html')
+        return render_template('demo_request.html')
 
     @app.route('/pricing')
     def pricing():

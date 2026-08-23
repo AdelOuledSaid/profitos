@@ -1,0 +1,21 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Demander une démo · ProfitOS</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body style="background:#081020;color:#f6f8fc;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:60px 24px;">
+<div style="max-width:480px;margin:0 auto;">
+  <div class="brand" style="font-size:20px;font-weight:800;margin-bottom:24px;">Profit<span style="color:#5fe0ac;">OS</span></div>
+  <h1>Demander une démo</h1>
+  <p class="muted">On vous montre ProfitOS sur un cas concret BTP, 20 minutes, sans engagement.</p>
+
+  {% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+
+  <form method="post" class="stack" style="margin-top:20px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nom complet<input type="text" name="full_name" required></label>
+    <label>Entreprise<input type="text" name="company" required></label>
+    <label>Email professionnel<input type="email" name="email" required></label>
+    <label>Téléphone (optionnel)<input type="tel" name="phone"></label>
+    <label>Message (optionnel)<textarea name="message" rows="3" style="width:100%;padding:10px;border-radius:8px;background:#0f1c33;border:1px solid #294064;color:#f6f8fc;"></textarea></label>
+    <button type="submit">Envoyer la demande</button>
+  </form>
+
+  <p class="muted" style="margin-top:20px;"><a class="link" href="{{ url_for('home') }}">← Retour à l'accueil</a></p>
+</div>
+</body></html>

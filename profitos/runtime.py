@@ -77,6 +77,15 @@ def init_auth_db():
         email TEXT,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS demo_requests(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        full_name TEXT,
+        company TEXT,
+        email TEXT,
+        phone TEXT,
+        message TEXT,
+        created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS api_keys(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         organization_id INTEGER NOT NULL,
