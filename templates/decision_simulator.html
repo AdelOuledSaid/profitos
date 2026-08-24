@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AUTONOMOUS FINANCIAL PLANNER · V1.6.8</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.6.9</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -18,6 +18,8 @@
     <label>Encaissement attendu (€)<input type="number" min="0" step="0.01" name="expected_inflow" value="{{ inputs.expected_inflow if inputs.expected_inflow else '' }}" placeholder="0"></label>
     <label>Jour de l'encaissement<input type="number" min="0" max="90" name="inflow_day" value="{{ inputs.inflow_day }}"></label>
     <label>Réserve minimale à préserver (€)<input type="number" min="0" step="100" name="reserve" value="{{ inputs.reserve }}"></label>
+    <label>Financement maximum accepté (€)<input type="number" min="0" step="100" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}" placeholder="Laisser vide = sans plafond"></label>
+    <label>Décision au plus tard à J+<input type="number" min="0" max="90" name="deadline" value="{{ inputs.deadline }}"></label>
     <button type="submit">Simuler la décision</button>
   </form>
   <p class="muted decision-hint">Pour un achat, laissez coût mensuel et encaissement à 0. Pour un marché, renseignez le coût de démarrage et l'encaissement attendu.</p>
@@ -66,6 +68,32 @@
       <p>{{ simulation.optimizer.no_financing.explanation }}</p>
       <p class="muted">ProfitOS n'invente pas de recettes pour rendre artificiellement la décision possible.</p>
     {% endif %}
+  </section>
+  <section class="planner-top3">
+    <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
+    <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
+    <div class="planner-plan-grid">
+    {% for plan in simulation.optimizer.top3 %}
+      <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
+        <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
+        <strong>J+{{ plan.decision_day }} · {{ plan.installments }} fois</strong>
+        <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
+        <span>Point bas {{ "{:,.0f}".format(plan.minimum) }} €</span>
+        <p>{{ plan.reason }}</p>
+      </article>
+    {% endfor %}
+    </div>
+  </section>
+  <section class="planner-cfo">
+    <div class="eyebrow green">AI CFO · QUESTION SUR CE SCÉNARIO</div>
+    <h3>Interrogez votre plan financier.</h3>
+    <form method="get" class="cfo-form">
+      <input type="hidden" name="simulate" value="1"><input type="hidden" name="kind" value="{{ inputs.kind }}"><input type="hidden" name="amount" value="{{ inputs.amount }}"><input type="hidden" name="decision_day" value="{{ inputs.decision_day }}"><input type="hidden" name="monthly_cost" value="{{ inputs.monthly_cost }}"><input type="hidden" name="expected_inflow" value="{{ inputs.expected_inflow }}"><input type="hidden" name="inflow_day" value="{{ inputs.inflow_day }}"><input type="hidden" name="reserve" value="{{ inputs.reserve }}"><input type="hidden" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}"><input type="hidden" name="deadline" value="{{ inputs.deadline }}">
+      <input name="cfo_question" value="{{ cfo_question }}" placeholder="Ex. Pourquoi J+15 ? Puis-je le faire sans financement ?">
+      <button type="submit">Demander à ProfitOS</button>
+    </form>
+    {% if simulation.cfo_answer %}<div class="cfo-answer"><small>RÉPONSE BASÉE SUR LES DONNÉES CONNUES</small><strong>{{ simulation.cfo_answer }}</strong></div>{% endif %}
+    <p class="muted">Cette première version n’invente ni transactions ni revenus : elle explique le scénario calculé par ProfitOS.</p>
   </section>
   <details class="optimizer-details"><summary>Voir les meilleures alternatives testées</summary>
     {% for alt in simulation.optimizer.alternatives %}<div class="brain-row"><div><strong>J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}</strong><small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small></div><strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong></div>{% endfor %}

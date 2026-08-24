@@ -108,72 +108,87 @@ def _strategy_label(best, financing=0.0):
     return ", ".join(parts[:-1]) + (" et " + parts[-1] if len(parts)>1 else parts[0])
 
 
+def _plan_reason(plan, reserve, max_financing, deadline):
+    reasons=[]
+    if plan['financing']==0:
+        reasons.append("aucun financement supplémentaire")
+    else:
+        reasons.append(f"{plan['financing']:,.0f} € de financement")
+    reasons.append(f"un point bas de {plan['minimum']:,.0f} €")
+    reasons.append(f"une décision à J+{plan['decision_day']}")
+    if plan['installments']>1:
+        reasons.append(f"un paiement en {plan['installments']} fois")
+    text="Ce plan combine " + ", ".join(reasons[:-1]) + " et " + reasons[-1] + "."
+    if max_financing is not None:
+        text += f" Il respecte le plafond de financement de {max_financing:,.0f} €."
+    if deadline is not None:
+        text += f" Il respecte aussi l'échéance maximale J+{deadline}."
+    text += f" Réserve cible : {reserve:,.0f} €."
+    return text
+
+
 def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
-                       expected_inflow=0.0, inflow_day=60, reserve=5000.0):
+                       expected_inflow=0.0, inflow_day=60, reserve=5000.0,
+                       max_financing=None, deadline=90):
     reserve=max(0.0, float(reserve or 0.0))
+    deadline=max(decision_day, min(90, int(deadline if deadline is not None else 90)))
+    if max_financing is not None:
+        max_financing=max(0.0,float(max_financing))
     candidates=[]
-    # Search every 5 days so the planner can find a materially better date than
-    # the coarse J+30/J+60/J+90 choices used by V1.6.7.
     delays=sorted(set([decision_day,30,60,90] + list(range(decision_day,91,5))))
-    delays=[d for d in delays if decision_day<=d<=90]
+    delays=[d for d in delays if decision_day<=d<=deadline]
     installment_options=[1] if kind=='hire' else [1,2,3,4]
     for day in delays:
         for installments in installment_options:
             result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments)
-            if not result:
-                continue
-            financing=round(max(0.0, reserve-result['minimum']),2)
-            candidates.append({
-                'decision_day':day, 'installments':installments,
-                'minimum':result['minimum'], 'min_day':result['min_day'],
-                'end_90':result['end_90'], 'financing':financing,
-                'payment_days':result['payment_days'],
-            })
-    if not candidates:
-        return None
-
-    # Primary plan: minimise financing first, then delay, then complexity.
-    ranked=sorted(candidates,key=lambda x:(x['financing'],x['decision_day'],x['installments']))
-    best=ranked[0]
-    best['score']=(best['financing'],best['decision_day'],best['installments'])
+            if not result: continue
+            financing=round(max(0.0,reserve-result['minimum']),2)
+            candidates.append({'decision_day':day,'installments':installments,'minimum':result['minimum'],
+                'min_day':result['min_day'],'end_90':result['end_90'],'financing':financing,
+                'payment_days':result['payment_days']})
+    if not candidates: return None
+    feasible=[c for c in candidates if max_financing is None or c['financing']<=max_financing]
+    pool=feasible or candidates
+    ranked=sorted(pool,key=lambda x:(x['financing'],x['decision_day'],x['installments'],-x['minimum']))
+    best=dict(ranked[0]); best['score']=(best['financing'],best['decision_day'],best['installments'])
     label=_strategy_label(best,best['financing'])
-    if best['financing']==0:
-        explanation=(f"Ce plan conserve un point bas de {best['minimum']:,.0f} €, "
-                     f"au-dessus de la réserve cible de {reserve:,.0f} €, sans financement supplémentaire.")
+    if feasible:
+        explanation=_plan_reason(best,reserve,max_financing,deadline)
     else:
-        explanation=(f"Le meilleur plan opérationnel testé descend à {best['minimum']:,.0f} €. "
-                     f"Pour préserver {reserve:,.0f} € de réserve, il faut sécuriser {best['financing']:,.0f} €.")
-
-    # Debt-free planner: among strategies already preserving the target reserve,
-    # prefer the earliest date and then the fewest instalments.
+        explanation=(f"Aucun plan testé ne respecte le plafond de financement de {max_financing:,.0f} €. "
+                     f"Le plan le plus proche nécessite {best['financing']:,.0f} €.")
     debt_free=[c for c in candidates if c['financing']==0]
-    no_financing=None
     if debt_free:
         nf=min(debt_free,key=lambda x:(x['decision_day'],x['installments'],-x['minimum']))
-        no_financing={
-            **nf,
-            'available':True,
-            'label':_strategy_label(nf,0),
-            'explanation':(f"Cette option ne nécessite aucun financement et conserve "
-                           f"au moins {nf['minimum']:,.0f} € de trésorerie."),
-        }
+        no_financing={**nf,'available':True,'label':_strategy_label(nf,0),
+            'explanation':f"Cette option ne nécessite aucun financement et conserve au moins {nf['minimum']:,.0f} € de trésorerie."}
     else:
         closest=max(candidates,key=lambda x:x['minimum'])
-        no_financing={
-            'available':False,
-            'label':'Aucune solution sans financement sur 90 jours',
-            'explanation':(f"Avec les encaissements actuellement connus, même la trajectoire la plus favorable "
-                           f"atteint {closest['minimum']:,.0f} €. Il manque {max(0.0,reserve-closest['minimum']):,.0f} € "
-                           f"pour préserver la réserve cible de {reserve:,.0f} €."),
+        no_financing={'available':False,'label':f"Aucune solution sans financement avant J+{deadline}",
+            'explanation':(f"Avec les encaissements connus, la trajectoire la plus favorable atteint {closest['minimum']:,.0f} €. "
+                           f"Il manque {max(0.0,reserve-closest['minimum']):,.0f} € pour préserver {reserve:,.0f} € de réserve."),
             'decision_day':closest['decision_day'],'installments':closest['installments'],
-            'minimum':closest['minimum'],'financing':closest['financing'],
-        }
+            'minimum':closest['minimum'],'financing':closest['financing']}
+    top3=[]
+    for i,c in enumerate(ranked[:3],1):
+        item=dict(c); item['rank']=i; item['reason']=_plan_reason(c,reserve,max_financing,deadline); top3.append(item)
+    return {'reserve':reserve,'max_financing':max_financing,'deadline':deadline,'constraints_met':bool(feasible),
+        'best':best,'label':label,'explanation':explanation,'alternatives':ranked[:5],
+        'top3':top3,'no_financing':no_financing}
 
-    return {
-        'reserve':reserve,'best':best,'label':label,'explanation':explanation,
-        'alternatives':ranked[:5], 'no_financing':no_financing,
-    }
 
+def _cfo_answer(question, simulation):
+    q=(question or '').strip()
+    if not q or not simulation or not simulation.get('optimizer'): return None
+    o=simulation['optimizer']; b=o['best']; low=q.lower()
+    if any(w in low for w in ('sans financement','sans emprunt','zéro dette','zero dette')):
+        nf=o['no_financing']
+        return nf['explanation'] if not nf['available'] else f"Oui. Plan sans financement : {nf['label']}. {nf['explanation']}"
+    if any(w in low for w in ('pourquoi','why','j+','date')):
+        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({b['financing']:,.0f} €), puis le délai et la complexité. Point bas prévu : {b['minimum']:,.0f} €."
+    if any(w in low for w in ('financement','emprunt','dette')):
+        return f"Le plan recommandé nécessite {b['financing']:,.0f} € de financement pour préserver {o['reserve']:,.0f} € de réserve."
+    return f"Plan recommandé : {o['label']}. Point bas {b['minimum']:,.0f} €, trésorerie J+90 {b['end_90']:,.0f} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
 
 def register(app):
     @app.route('/decision-simulator')
@@ -195,12 +210,15 @@ def register(app):
             'expected_inflow':_num(request.args.get('expected_inflow')),
             'inflow_day':_day(request.args.get('inflow_day'),60),
             'reserve':_num(request.args.get('reserve'),5000.0),
+            'max_financing': (_num(request.args.get('max_financing')) if request.args.get('max_financing') not in (None,'') else None),
+            'deadline': _day(request.args.get('deadline'),90),
         }
         if submitted and cash['cash_balance'] is not None:
-            sim_args={k:v for k,v in inputs.items() if k!='reserve'}
+            sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline')}
             simulation=_simulate_decision(cash, **sim_args)
-            simulation['optimizer']=_optimize_decision(cash, reserve=inputs['reserve'], **sim_args)
+            simulation['optimizer']=_optimize_decision(cash, reserve=inputs['reserve'], max_financing=inputs['max_financing'], deadline=inputs['deadline'], **sim_args)
+            simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
             log_activity('DECISION_SIMULATOR_VIEW','Consultation du Decision Simulator')
-        return render_template('decision_simulator.html',cash=cash,simulation=simulation,inputs=inputs)
+        return render_template('decision_simulator.html',cash=cash,simulation=simulation,inputs=inputs,cfo_question=request.args.get('cfo_question',''))
