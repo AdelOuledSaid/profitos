@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.6.9</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.6.9.2</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -78,16 +78,37 @@
     {% endif %}
   </section>
   <section class="planner-top3">
-    <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
-    <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
+    {% if simulation.optimizer.constraints_met %}
+      <div class="eyebrow green">TOP 3 · PLANS COMPATIBLES</div>
+      <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
+    {% else %}
+      <div class="eyebrow green">TOP 3 · PLANS LES PLUS PROCHES</div>
+      <h3>Les meilleures alternatives testées malgré le dépassement du plafond</h3>
+    {% endif %}
     <div class="planner-plan-grid">
     {% for plan in simulation.optimizer.top3 %}
       <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
-        <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
+        <small>
+          #{{ plan.rank }}
+          {% if loop.first %}
+            {% if simulation.optimizer.constraints_met %}· RECOMMANDÉ{% else %}· LE PLUS PROCHE{% endif %}
+          {% endif %}
+        </small>
         <strong>J+{{ plan.decision_day }} · {{ plan.installments }} fois</strong>
         <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
         <span>Point bas {{ "{:,.0f}".format(plan.minimum) }} €</span>
-        <p>{{ plan.reason }}</p>
+        {% if simulation.optimizer.constraints_met %}
+          <p>{{ plan.reason }}</p>
+        {% else %}
+          <p>
+            Ce plan nécessite {{ "{:,.0f}".format(plan.financing) }} € de financement.
+            {% if simulation.optimizer.max_financing is not none %}
+              Il dépasse votre plafond de
+              {{ "{:,.0f}".format(plan.financing - simulation.optimizer.max_financing) }} €.
+            {% endif %}
+            Réserve cible : {{ "{:,.0f}".format(simulation.optimizer.reserve) }} €.
+          </p>
+        {% endif %}
       </article>
     {% endfor %}
     </div>
