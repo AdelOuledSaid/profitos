@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.1</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.2</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -62,7 +62,7 @@
   </div>
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">CONSTRAINT RESOLUTION ENGINE · V1.7.1</div>
+    <div class="eyebrow green">CONSTRAINT RESOLUTION ENGINE · V1.7.2</div>
     <h3>3 stratégies pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">
@@ -71,6 +71,7 @@
         <small>#{{ option.rank }} · {{ option.title|upper }}</small>
         <strong>{{ option.headline }}</strong>
         <p>{{ option.explanation }}</p>
+        <small class="resolution-verified">✓ Vérifiée par le moteur · point bas {{ "{:,.0f}".format(option.verified_minimum) }} € · financement {{ "{:,.0f}".format(option.verified_financing) }} €</small>
         <a class="button resolution-action" href="{{ url_for('decision_simulator', simulate=1, kind=inputs.kind, amount=option.target_amount, decision_day=inputs.decision_day, monthly_cost=inputs.monthly_cost, expected_inflow=inputs.expected_inflow, inflow_day=inputs.inflow_day, reserve=inputs.reserve, max_financing=option.target_max_financing, deadline=inputs.deadline) }}">Tester cette stratégie</a>
       </article>
       {% endfor %}

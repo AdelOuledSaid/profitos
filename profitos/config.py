@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
-APP_VERSION = "1.7.1"
+APP_VERSION = "1.7.2"
 
 
 class BaseConfig:

@@ -202,53 +202,94 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
 
 
 
-def _build_constraint_resolutions(kind, amount, optimizer):
-    """Build deterministic, explainable ways to close a financing constraint gap.
+def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0, monthly_cost=0.0,
+                                  expected_inflow=0.0, inflow_day=60):
+    """Return only resolution strategies revalidated by the real optimizer.
 
-    The engine never invents revenue: it only changes user-controlled levers
-    (decision amount / accepted financing) and exposes a mixed option.
+    Every displayed strategy is replayed through ``_optimize_decision`` and is
+    kept only when all constraints are actually met. No future revenue is added.
     """
     if not optimizer or optimizer.get('constraints_met'):
         return []
-    best=optimizer['best']
     cap=optimizer.get('max_financing')
     if cap is None:
         return []
-    gap=round(max(0.0,best['financing']-cap),2)
-    if gap <= 0:
-        return []
-    reserve=optimizer['reserve']
+    reserve=optimizer['reserve']; deadline=optimizer['deadline']
+
+    def verify(target_amount, target_cap):
+        result=_optimize_decision(
+            cash, kind, max(0.0,target_amount), decision_day, monthly_cost,
+            expected_inflow, inflow_day, reserve, max(0.0,target_cap), deadline)
+        if not result or not result.get('constraints_met'):
+            return None
+        best=result['best']
+        if best['minimum'] + best['financing'] + 0.01 < reserve:
+            return None
+        if best['financing'] > target_cap + 0.01 or best['decision_day'] > deadline:
+            return None
+        return result
+
     resolutions=[]
+    # 1) Increase financing ceiling. Binary search the smallest verified ceiling.
+    hi=max(cap, optimizer['best']['financing']); lo=cap
+    verified=verify(amount,hi)
+    if verified:
+        for _ in range(28):
+            mid=(lo+hi)/2.0
+            if verify(amount,mid): hi=mid
+            else: lo=mid
+        target_cap=round(hi+0.01,2); checked=verify(amount,target_cap) or verified
+        extra=round(max(0.0,target_cap-cap),2)
+        resolutions.append({'rank':1,'kind':'financing','title':'Augmenter le financement disponible',
+            'headline':f"Porter le plafond de financement à {target_cap:,.0f} €",
+            'effort':extra,'target_amount':amount,'target_max_financing':target_cap,
+            'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+            'explanation':f"Solution vérifiée par le simulateur : plafond augmenté de {extra:,.0f} € ; la réserve cible de {reserve:,.0f} € est respectée après financement."})
 
-    # 1. Keep the decision unchanged and relax only the financing ceiling.
-    resolutions.append({
-        'rank':1, 'kind':'financing', 'title':'Augmenter le financement disponible',
-        'headline':f"Porter le plafond de financement à {best['financing']:,.0f} €",
-        'effort':gap, 'target_amount':amount, 'target_max_financing':best['financing'],
-        'explanation':(f"Il faut {gap:,.0f} € de capacité de financement supplémentaire pour conserver "
-                       f"le montant de la décision et la réserve cible de {reserve:,.0f} €."),
-    })
-
-    # 2. Keep the financing ceiling and reduce the discretionary initial amount.
     if kind in ('investment','expense','market') and amount > 0:
-        reduced=max(0.0,round(amount-gap,2))
-        resolutions.append({
-            'rank':2, 'kind':'amount', 'title':'Réduire le montant de la décision',
-            'headline':f"Ramener le décaissement initial à environ {reduced:,.0f} €",
-            'effort':gap, 'target_amount':reduced, 'target_max_financing':cap,
-            'explanation':(f"Une réduction d'au moins {gap:,.0f} € ferme l'écart estimé tout en conservant "
-                           f"le plafond de financement actuel de {cap:,.0f} €."),
-        })
+        # 2) Reduce amount while keeping the existing financing ceiling.
+        lo=0.0; hi=amount
+        if verify(lo,cap):
+            for _ in range(30):
+                mid=(lo+hi)/2.0
+                if verify(mid,cap): lo=mid
+                else: hi=mid
+            target_amount=max(0.0,round(lo-0.01,2)); checked=verify(target_amount,cap) or verify(lo,cap)
+            reduction=round(max(0.0,amount-target_amount),2)
+            resolutions.append({'rank':len(resolutions)+1,'kind':'amount','title':'Réduire le montant de la décision',
+                'headline':f"Ramener le décaissement initial à environ {target_amount:,.0f} €",
+                'effort':reduction,'target_amount':target_amount,'target_max_financing':cap,
+                'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+                'explanation':f"Solution vérifiée : réduire la décision d’environ {reduction:,.0f} € permet de respecter le plafond de {cap:,.0f} € et la réserve cible de {reserve:,.0f} €."})
 
-        # 3. Balanced combination: split the gap between financing and amount reduction.
-        extra=round(gap/2.0,2); reduction=round(gap-extra,2)
-        resolutions.append({
-            'rank':3, 'kind':'mixed', 'title':'Partager l’effort',
-            'headline':f"Augmenter le plafond de financement de {extra:,.0f} € et réduire la décision de {reduction:,.0f} €",
-            'effort':gap, 'target_amount':max(0.0,round(amount-reduction,2)), 'target_max_financing':round(cap+extra,2),
-            'explanation':(f"Cette option répartit l'écart : plafond porté à {cap+extra:,.0f} € et "
-                           f"décaissement ramené à environ {max(0.0,amount-reduction):,.0f} €."),
-        })
+        # 3) Search a genuinely feasible mixed compromise instead of splitting the old gap 50/50.
+        best_mix=None
+        base_gap=max(1.0,optimizer['best']['financing']-cap)
+        for i in range(1,40):
+            reduction=base_gap*i/40.0
+            target_amount=max(0.0,amount-reduction)
+            # Find minimum cap required for this reduced amount.
+            low=cap; high=max(cap,optimizer['best']['financing'])
+            if not verify(target_amount,high):
+                continue
+            for _ in range(22):
+                mid=(low+high)/2.0
+                if verify(target_amount,mid): high=mid
+                else: low=mid
+            target_cap=round(high+0.01,2); checked=verify(target_amount,target_cap)
+            if not checked: continue
+            extra=max(0.0,target_cap-cap)
+            # Prefer balanced controllable effort, then lower total effort.
+            score=(abs(extra-reduction),extra+reduction)
+            if best_mix is None or score < best_mix[0]:
+                best_mix=(score,target_amount,target_cap,reduction,extra,checked)
+        if best_mix:
+            _,target_amount,target_cap,reduction,extra,checked=best_mix
+            resolutions.append({'rank':len(resolutions)+1,'kind':'mixed','title':'Partager l’effort',
+                'headline':f"Augmenter le plafond de financement de {extra:,.0f} € et réduire la décision de {reduction:,.0f} €",
+                'effort':round(extra+reduction,2),'target_amount':round(target_amount,2),'target_max_financing':round(target_cap,2),
+                'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+                'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {target_cap:,.0f} €, décision environ {target_amount:,.0f} €. La réserve cible de {reserve:,.0f} € est respectée après financement."})
     return resolutions[:3]
 
 def _cfo_answer(question, simulation):
@@ -291,7 +332,7 @@ def register(app):
             sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline')}
             simulation=_simulate_decision(cash, **sim_args)
             simulation['optimizer']=_optimize_decision(cash, reserve=inputs['reserve'], max_financing=inputs['max_financing'], deadline=inputs['deadline'], **sim_args)
-            simulation['resolutions']=_build_constraint_resolutions(kind, inputs['amount'], simulation['optimizer'])
+            simulation['resolutions']=_build_constraint_resolutions(cash, kind, inputs['amount'], simulation['optimizer'], inputs['decision_day'], inputs['monthly_cost'], inputs['expected_inflow'], inputs['inflow_day'])
             simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
