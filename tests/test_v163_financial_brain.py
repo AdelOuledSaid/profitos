@@ -27,4 +27,4 @@ def test_financial_brain_template_has_core_sections():
 def test_financial_brain_in_navigation():
     t=(ROOT/'templates'/'base.html').read_text(encoding='utf-8')
     assert "url_for('financial_brain')" in t
-    assert "filename='financial-brain.css',v='1630'" in t
+    assert "filename='financial-brain.css',v='1652'" in t
