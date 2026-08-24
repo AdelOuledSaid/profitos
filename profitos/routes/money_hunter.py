@@ -107,13 +107,26 @@ def _payment_intelligence(customer, customer_stats, action_stats, base_confidenc
     recovery_factor = max(0.10, min(1.0, confidence_factor * data_factor * learning_factor))
 
     if risk >= 75:
+        risk_level = 'ÉLEVÉ'
+        risk_class = 'high'
         next_action = 'Relancer aujourd’hui et demander une date de paiement ferme'
     elif risk >= 50:
+        risk_level = 'MODÉRÉ'
+        risk_class = 'medium'
         next_action = 'Relancer sous 48 h et confirmer le statut de la facture'
     elif risk >= 30:
+        risk_level = 'À SURVEILLER'
+        risk_class = 'medium'
         next_action = 'Programmer un rappel et surveiller la créance'
     else:
+        risk_level = 'FAIBLE'
+        risk_class = 'low'
         next_action = 'Surveiller sans escalade immédiate'
+
+    # Un score numérique ne doit pas être présenté comme fiable lorsque
+    # l'historique client est insuffisant. Le moteur le conserve en interne
+    # pour le classement, tandis que l'interface affiche d'abord un niveau.
+    show_risk_score = evidence != 'INSUFFISANT'
 
     learning_note = f'{sent} relance(s) envoyée(s)'
     if resolved:
@@ -123,6 +136,9 @@ def _payment_intelligence(customer, customer_stats, action_stats, base_confidenc
 
     return {
         'payment_risk_score': risk,
+        'payment_risk_level': risk_level,
+        'payment_risk_class': risk_class,
+        'show_risk_score': show_risk_score,
         'evidence_level': evidence,
         'evidence_note': evidence_note,
         'next_best_action': next_action,

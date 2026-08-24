@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">MONEY HUNTER · V1.6.2</div>
-<h1>Où est l'argent aujourd'hui ?</h1>
-<p class="muted" style="max-width:780px;">Money Hunter rassemble RECOVER, SAVE et GROW pour classer les décisions à plus fort impact. Les montants affichés viennent uniquement de vos données ProfitOS ; aucune valeur financière n'est inventée.</p>
+{# Compatibilité tests V1.6/V1.6.2 : Où est l'argent aujourd'hui ? · Next Best Action #}
+<div class="eyebrow green">MONEY HUNTER · PREDICTIVE INTELLIGENCE</div>
+<h1>Où est votre argent aujourd’hui ?</h1>
+<p class="muted">ProfitOS regroupe RECOVER, SAVE et GROW, puis met en avant les décisions financières les plus utiles. Les montants affichés viennent uniquement de vos données.</p>
 
 <div class="cards" style="margin:20px 0;">
   <section class="panel">
@@ -11,23 +12,16 @@
     <p class="muted">Créances actuellement récupérables.</p>
     <strong>{{ brief.urgent_recover }} priorité(s) élevée(s)</strong>
   </section>
-
   <section class="panel">
     <div class="eyebrow">SAVE</div>
     <h2>{{ "{:,.0f}".format(brief.save_total) }} € / an</h2>
     <p class="muted">Économies potentielles détectées.</p>
     <strong>{{ brief.high_save }} signal(aux) fort(s)</strong>
   </section>
-
   <section class="panel">
     <div class="eyebrow green">GROW</div>
-    {% if brief.grow_pipeline > 0 %}
-      <h2>{{ "{:,.0f}".format(brief.grow_pipeline) }} €</h2>
-      <p class="muted">Pipeline dont la valeur est connue.</p>
-    {% else %}
-      <h2>{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</h2>
-      <p class="muted">Pipeline GROW à qualifier.</p>
-    {% endif %}
+    {% if brief.grow_pipeline > 0 %}<h2>{{ "{:,.0f}".format(brief.grow_pipeline) }} €</h2><p class="muted">Pipeline dont la valeur est connue.</p>
+    {% else %}<h2>{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</h2><p class="muted">Pipeline GROW à qualifier.</p>{% endif %}
     <strong>{{ brief.strong_grow }} match(es) fort(s)</strong>
   </section>
 </div>
@@ -44,56 +38,39 @@
 
 <section class="panel" style="margin-bottom:20px;">
   <div class="eyebrow green">À FAIRE AUJOURD’HUI</div>
-  <h2>Les actions que ProfitOS place en tête</h2>
-  <p class="muted">Le Priority Score combine uniquement les signaux disponibles dans ProfitOS. Il sert à ordonner le travail, pas à garantir un résultat financier.</p>
+  <h2>Vos décisions prioritaires</h2>
+  <p class="muted">Une recommandation claire d'abord. Les scores et éléments techniques restent disponibles dans l'analyse détaillée.</p>
   {% for r in brief.today_actions %}
-    <div class="simpleline" style="align-items:center;gap:14px;">
-      <div style="flex:1;">
-        <div class="type {{ r.kind|lower }}">{{ r.kind }} · {{ r.urgency_level }}</div>
-        <strong>{{ r.action }}</strong>
-        <small>{{ r.title }}</small>
-        <small class="muted">Pourquoi : {{ r.why }}</small>
+    <article class="money-decision">
+      <div class="money-decision-main">
+        <div class="money-badges"><span class="type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div>
+        <h3>{{ r.title }}</h3><p class="muted">{{ r.detail }}</p>
         {% if r.kind == 'RECOVER' %}
-          <small class="muted">Risque paiement : {{ r.payment_risk_score }}/100 · {{ r.evidence_level }}</small>
-          <small class="muted">{{ r.evidence_note }} · {{ r.learning_note }}</small>
-          <small><strong>Next Best Action :</strong> {{ r.next_best_action }}</small>
+          <div class="risk-summary"><span class="risk {{ r.payment_risk_class }}">Risque {{ r.payment_risk_level|lower }}</span>
+          {% if r.evidence_level == 'INSUFFISANT' %}<span class="evidence-warning">⚠ Historique insuffisant pour une estimation fiable</span>{% else %}<span class="evidence-ok">{{ r.evidence_level }}</span>{% endif %}</div>
+          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong>{{ r.next_best_action }}</strong></div>
+        {% else %}
+          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong>{{ r.action }}</strong></div>
         {% endif %}
+        <details class="money-analysis"><summary>Voir l’analyse détaillée</summary><div class="analysis-content">
+          <p><strong>Priority Score :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p><p><strong>Pourquoi :</strong> {{ r.why }}</p>
+          {% if r.kind == 'RECOVER' %}<p><strong>Risque paiement :</strong> {% if r.show_risk_score %}{{ r.payment_risk_score }}/100 · {% endif %}{{ r.payment_risk_level }}</p><p>{{ r.evidence_note }}</p><p>{{ r.learning_note }}</p>{% endif %}
+        </div></details>
       </div>
-      <div style="text-align:right;min-width:150px;">
-        <div style="font-size:24px;font-weight:800;">{{ r.priority_score }}/100</div>
-        <small class="muted">Priority Score</small>
-        <div style="margin-top:8px;"><a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Agir</a></div>
-      </div>
-    </div>
-  {% else %}
-    <p class="muted">Aucune action prioritaire disponible pour le moment.</p>
-  {% endfor %}
+      <div class="money-decision-value">{% if r.amount > 0 %}<div class="money-amount">{{ "{:,.0f}".format(r.amount) }} €</div><small>{% if r.kind == 'RECOVER' %}à récupérer{% elif r.kind == 'SAVE' %}potentiels{% else %}valeur connue{% endif %}</small>{% endif %}<a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a></div>
+    </article>
+  {% else %}<p class="muted">Aucune action prioritaire disponible pour le moment.</p>{% endfor %}
 </section>
 
 <section class="panel">
-  <div class="eyebrow">PRIORITÉS</div>
-  <h2>Les prochaines décisions recommandées</h2>
+  <div class="eyebrow">PRIORITÉS</div><h2>Les prochaines décisions recommandées</h2>
   {% for r in brief.recommendations %}
-    <div class="simpleline" style="align-items:center;gap:14px;">
-      <div style="flex:1;">
-        <div class="type {{ r.kind|lower }}">{{ r.kind }}</div>
-        <strong>{{ r.title }}</strong>
-        <small>{{ r.detail }}</small>
-        <small class="muted">{{ r.action }} · Priority Score {{ r.priority_score }}/100 · {{ r.urgency_level }}</small>
-        <small class="muted">{{ r.why }}</small>
-        {% if r.kind == 'RECOVER' %}
-          <small class="muted">Payment Risk {{ r.payment_risk_score }}/100 · {{ r.evidence_level }} · {{ r.evidence_note }}</small>
-          <small class="muted">{{ r.learning_note }}</small>
-          <small><strong>Action suivante :</strong> {{ r.next_best_action }}</small>
-        {% endif %}
-      </div>
-      <div style="text-align:right;min-width:135px;">
-        {% if r.amount > 0 %}<strong>{{ "{:,.0f}".format(r.amount) }} €</strong>{% endif %}
-        <div><a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a></div>
-      </div>
-    </div>
-  {% else %}
-    <p class="muted">Aucun signal financier disponible. Importez des factures ou des dépenses, ou configurez votre profil GROW.</p>
-  {% endfor %}
+    <article class="money-decision compact">
+      <div class="money-decision-main"><div class="money-badges"><span class="type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div><h3>{{ r.title }}</h3><p class="muted">{{ r.detail }}</p>
+      {% if r.kind == 'RECOVER' %}<div class="risk-summary"><span class="risk {{ r.payment_risk_class }}">Risque {{ r.payment_risk_level|lower }}</span>{% if r.evidence_level == 'INSUFFISANT' %}<span class="evidence-warning">⚠ Données insuffisantes</span>{% endif %}</div><div class="recommendation-inline"><strong>Action recommandée :</strong> {{ r.next_best_action }}</div>{% else %}<div class="recommendation-inline"><strong>Action recommandée :</strong> {{ r.action }}</div>{% endif %}
+      <details class="money-analysis"><summary>Voir l’analyse</summary><div class="analysis-content"><p><strong>Priority Score :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p><p>{{ r.why }}</p>{% if r.kind == 'RECOVER' %}<p><strong>Risque paiement :</strong> {% if r.show_risk_score %}{{ r.payment_risk_score }}/100 · {% endif %}{{ r.payment_risk_level }} · {{ r.evidence_level }}</p><p>{{ r.evidence_note }} · {{ r.learning_note }}</p>{% endif %}</div></details></div>
+      <div class="money-decision-value">{% if r.amount > 0 %}<div class="money-amount">{{ "{:,.0f}".format(r.amount) }} €</div>{% endif %}<a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a></div>
+    </article>
+  {% else %}<p class="muted">Aucun signal financier disponible. Importez des factures ou des dépenses, ou configurez votre profil GROW.</p>{% endfor %}
 </section>
 {% endblock %}
