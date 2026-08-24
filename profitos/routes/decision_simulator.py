@@ -114,7 +114,7 @@ def _plan_reason(plan, reserve, max_financing, deadline):
         reasons.append("aucun financement supplémentaire")
     else:
         reasons.append(f"{plan['financing']:,.0f} € de financement")
-    reasons.append(f"un point bas de {plan['minimum']:,.0f} €")
+    reasons.append(f"un point bas de {plan['minimum_after_financing']:,.0f} € après financement")
     reasons.append(f"une décision à J+{plan['decision_day']}")
     if plan['installments']>1:
         reasons.append(f"un paiement en {plan['installments']} fois")
@@ -143,11 +143,24 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
             result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments)
             if not result: continue
             financing=round(max(0.0,reserve-result['minimum']),2)
-            candidates.append({'decision_day':day,'installments':installments,'minimum':result['minimum'],
-                'min_day':result['min_day'],'end_90':result['end_90'],'financing':financing,
+            # Financing is modeled as secured liquidity available to the plan.
+            # Keep both pre- and post-financing cash levels explicit so the UI
+            # never presents the raw minimum as if it were the funded minimum.
+            minimum_before=round(result['minimum'],2)
+            minimum_after=round(minimum_before+financing,2)
+            end_90_before=round(result['end_90'],2)
+            end_90_after=round(end_90_before+financing,2)
+            candidates.append({'decision_day':day,'installments':installments,
+                'minimum':minimum_before,'minimum_before_financing':minimum_before,
+                'minimum_after_financing':minimum_after,'min_day':result['min_day'],
+                'end_90':end_90_before,'end_90_before_financing':end_90_before,
+                'end_90_after_financing':end_90_after,'financing':financing,
                 'payment_days':result['payment_days']})
     if not candidates: return None
-    feasible=[c for c in candidates if max_financing is None or c['financing']<=max_financing]
+    feasible=[c for c in candidates
+              if (max_financing is None or c['financing']<=max_financing+0.01)
+              and c['minimum_after_financing']+0.01>=reserve
+              and c['decision_day']<=deadline]
     constraints_met=bool(feasible)
     pool=feasible or candidates
     ranked_all=sorted(pool,key=lambda x:(x['financing'],x['decision_day'],x['installments'],-x['minimum']))
@@ -174,6 +187,10 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         if len(eq_dates)>1:
             explanation += (f" Plusieurs dates testées donnent le même résultat financier ; "
                             f"J+{best['decision_day']} est retenu car c'est la date la plus proche.")
+        explanation += (f" Point bas avant financement : {best['minimum_before_financing']:,.0f} €. "
+                        f"Après apport du financement de {best['financing']:,.0f} €, "
+                        f"le point bas financé est {best['minimum_after_financing']:,.0f} €, "
+                        f"donc la réserve cible de {reserve:,.0f} € est respectée.")
     else:
         gap=round(max(0.0,best['financing']-(max_financing or 0.0)),2)
         explanation=(f"Aucun plan compatible avec vos contraintes. Le meilleur besoin de financement trouvé est "
@@ -223,7 +240,7 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
         if not result or not result.get('constraints_met'):
             return None
         best=result['best']
-        if best['minimum'] + best['financing'] + 0.01 < reserve:
+        if best['minimum_after_financing'] + 0.01 < reserve:
             return None
         if best['financing'] > target_cap + 0.01 or best['decision_day'] > deadline:
             return None
@@ -243,7 +260,7 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
         resolutions.append({'rank':1,'kind':'financing','title':'Augmenter le financement disponible',
             'headline':f"Porter le plafond de financement à {target_cap:,.0f} €",
             'effort':extra,'target_amount':amount,'target_max_financing':target_cap,
-            'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+            'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
             'explanation':f"Solution vérifiée par le simulateur : plafond augmenté de {extra:,.0f} € ; la réserve cible de {reserve:,.0f} € est respectée après financement."})
 
     if kind in ('investment','expense','market') and amount > 0:
@@ -259,7 +276,7 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
             resolutions.append({'rank':len(resolutions)+1,'kind':'amount','title':'Réduire le montant de la décision',
                 'headline':f"Ramener le décaissement initial à environ {target_amount:,.0f} €",
                 'effort':reduction,'target_amount':target_amount,'target_max_financing':cap,
-                'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+                'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
                 'explanation':f"Solution vérifiée : réduire la décision d’environ {reduction:,.0f} € permet de respecter le plafond de {cap:,.0f} € et la réserve cible de {reserve:,.0f} €."})
 
         # 3) Search a genuinely feasible mixed compromise instead of splitting the old gap 50/50.
@@ -288,7 +305,7 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
             resolutions.append({'rank':len(resolutions)+1,'kind':'mixed','title':'Partager l’effort',
                 'headline':f"Augmenter le plafond de financement de {extra:,.0f} € et réduire la décision de {reduction:,.0f} €",
                 'effort':round(extra+reduction,2),'target_amount':round(target_amount,2),'target_max_financing':round(target_cap,2),
-                'verified':True,'verified_minimum':checked['best']['minimum'],'verified_financing':checked['best']['financing'],
+                'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
                 'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {target_cap:,.0f} €, décision environ {target_amount:,.0f} €. La réserve cible de {reserve:,.0f} € est respectée après financement."})
     return resolutions[:3]
 
@@ -300,10 +317,10 @@ def _cfo_answer(question, simulation):
         nf=o['no_financing']
         return nf['explanation'] if not nf['available'] else f"Oui. Plan sans financement : {nf['label']}. {nf['explanation']}"
     if any(w in low for w in ('pourquoi','why','j+','date')):
-        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({b['financing']:,.0f} €), puis le délai et la complexité. Point bas prévu : {b['minimum']:,.0f} €."
+        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({b['financing']:,.0f} €), puis le délai et la complexité. Point bas avant financement : {b['minimum_before_financing']:,.0f} € ; après financement : {b['minimum_after_financing']:,.0f} €."
     if any(w in low for w in ('financement','emprunt','dette')):
         return f"Le plan recommandé nécessite {b['financing']:,.0f} € de financement pour préserver {o['reserve']:,.0f} € de réserve."
-    return f"Plan recommandé : {o['label']}. Point bas {b['minimum']:,.0f} €, trésorerie J+90 {b['end_90']:,.0f} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
+    return f"Plan recommandé : {o['label']}. Point bas après financement {b['minimum_after_financing']:,.0f} €, trésorerie J+90 après financement {b['end_90_after_financing']:,.0f} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
 
 def register(app):
     @app.route('/decision-simulator')

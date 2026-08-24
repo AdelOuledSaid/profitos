@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.2</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.3</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -57,12 +57,12 @@
   <div class="decision-kpis optimizer-kpis">
     <div><small>MEILLEURE DATE</small><strong>J+{{ simulation.optimizer.best.decision_day }}</strong></div>
     <div><small>PAIEMENT</small><strong>{{ simulation.optimizer.best.installments }} fois</strong></div>
-    <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum) }} €</strong></div>
+    <div><small>POINT BAS · APRÈS FINANCEMENT</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum_after_financing) }} €</strong><span>Avant financement : {{ "{:,.0f}".format(simulation.optimizer.best.minimum_before_financing) }} €</span></div>
     <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
   </div>
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">CONSTRAINT RESOLUTION ENGINE · V1.7.2</div>
+    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.3</div>
     <h3>3 stratégies pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">
@@ -104,7 +104,7 @@
         <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
         <strong>J+{{ plan.decision_day }} · {{ plan.installments }} fois</strong>
         <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
-        <span>Point bas {{ "{:,.0f}".format(plan.minimum) }} €</span>
+        <span>Point bas après financement {{ "{:,.0f}".format(plan.minimum_after_financing) }} €</span><span>Avant financement {{ "{:,.0f}".format(plan.minimum_before_financing) }} €</span>
         <p>{{ plan.reason }}</p>
       </article>
     {% endfor %}

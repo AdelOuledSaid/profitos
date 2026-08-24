@@ -4,7 +4,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_version_136():
     text=(ROOT/"profitos"/"config.py").read_text(encoding="utf-8")
-    assert 'APP_VERSION = "1.7.2"' in text
+    assert 'APP_VERSION = "1.7.3"' in text
 
 def test_ops_health_route_exists():
     text=(ROOT/"profitos"/"__init__.py").read_text(encoding="utf-8")

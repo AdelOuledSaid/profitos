@@ -9,7 +9,7 @@ def test_v171_actionable_resolution_engine():
 
 def test_v171_actionable_resolution_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'CONSTRAINT RESOLUTION ENGINE · V1.7.2' in t
+    assert 'FINANCIAL CONSISTENCY GUARD · V1.7.3' in t
     assert 'Tester cette stratégie' in t
     assert 'option.target_amount' in t
     assert 'option.target_max_financing' in t

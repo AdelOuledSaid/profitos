@@ -197,12 +197,9 @@ class PGConnection:
         try:
             cur.execute(pg_sql, params)
         except Exception:
-           try:
-               if not self._conn.closed:
-                   self._conn.rollback()
-           except Exception:
-               pass
-           raise
+            self._conn.rollback()  # évite de laisser la connexion dans un état "transaction avortée"
+                                    # qui ferait échouer TOUTES les requêtes suivantes sur cette connexion.
+            raise
         return PGCursorResult(cur)
 
     def executescript(self, script):

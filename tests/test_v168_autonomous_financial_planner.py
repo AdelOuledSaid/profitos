@@ -2,11 +2,11 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_version_168():
-    assert 'APP_VERSION = "1.7.2"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.7.3"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_planner_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.2' in t
+    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.3' in t
     assert 'PLAN SANS FINANCEMENT' in t
     assert 'no_financing' in t
 
