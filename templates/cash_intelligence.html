@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">CASH INTELLIGENCE · V1.6.4</div>
+<div class="eyebrow green">CASH INTELLIGENCE · V1.6.5</div>
 <h1>Anticiper votre trésorerie avant qu'elle devienne urgente.</h1>
-<p class="muted">Prévision 30 / 60 / 90 jours et scénarios d'encaissement. ProfitOS distingue les données saisies des estimations calculées.</p>
+<p class="muted">Prévision 30 / 60 / 90 jours, scénarios prudent / probable / optimiste et simulation d'encaissement.</p>
 
 <section class="panel cash-balance-card">
   <div><div class="eyebrow">SOLDE DE DÉPART</div><h2>{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.cash_balance) }} €{% else %}Solde bancaire requis{% endif %}</h2><p class="muted">{% if cash.cash_as_of %}Solde déclaré au {{ cash.cash_as_of }}.{% else %}Saisissez votre trésorerie actuelle pour activer les scénarios.{% endif %}</p></div>
@@ -16,15 +16,31 @@
   <section class="panel"><small>DÉPENSE MENSUELLE OBSERVÉE</small><div class="big">{{ "{:,.0f}".format(cash.monthly_burn) }} €</div><p class="muted">Calculée sur {{ cash.expense_rows }} dépense(s) des 90 derniers jours.</p></section>
 </div>
 
+{% if cash.cash_balance is not none %}
+<section class="panel cash-chart-panel">
+  <div class="eyebrow green">CASH SCENARIOS · 90 JOURS</div><h2>Trois trajectoires pour décider avant la tension</h2>
+  <p class="muted">Les scénarios modifient uniquement le timing et la prudence des encaissements connus. Les dépenses futures inconnues ne sont pas ajoutées.</p>
+  <div class="cash-legend"><span class="legend prudent">Prudent</span><span class="legend probable">Probable</span><span class="legend optimiste">Optimiste</span></div>
+  <div class="cash-chart-wrap">
+    <svg class="cash-chart" viewBox="0 0 920 220" role="img" aria-label="Courbes de trésorerie projetée sur 90 jours">
+      <line x1="18" y1="202" x2="902" y2="202" class="chart-axis"/><line x1="18" y1="18" x2="18" y2="202" class="chart-axis"/>
+      {% for curve in cash.curves %}<polyline class="cash-line {{ curve.mode }}" points="{{ curve.points }}" fill="none"/>{% endfor %}
+    </svg>
+    <div class="chart-days"><span>Aujourd'hui</span><span>30 j</span><span>60 j</span><span>90 j</span></div>
+  </div>
+  <div class="scenario-summary">{% for curve in cash.curves %}<div class="scenario-summary-card {{ curve.mode }}"><small>{{ curve.mode|upper }}</small><strong>{{ "{:,.0f}".format(curve.minimum) }} €</strong><span>point bas · J+{{ curve.min_day }}</span><b>{{ "{:,.0f}".format(curve.end_90) }} € à J+90</b></div>{% endfor %}</div>
+</section>
+{% endif %}
+
 {% if cash.cash_balance is not none and cash.top_receivable %}
 <section class="panel scenario-panel">
-  <div class="eyebrow green">WHAT-IF · RECOVER</div><h2>Et si {{ cash.top_receivable.customer }} payait plus tôt ?</h2>
-  <p class="muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ "{:,.0f}".format(cash.top_receivable.amount) }} € exposés.</p>
-  <div class="scenario-grid">{% for s in cash.scenarios %}<div><small>PAIEMENT SOUS {{ s.delay }} J</small><strong>{{ "{:,.0f}".format(s.minimum) }} €</strong><span>point bas de trésorerie sur 90 j</span></div>{% endfor %}</div>
+  <div class="eyebrow green">WHAT-IF · RECOVER</div><h2>Quand {{ cash.top_receivable.customer }} paiera-t-il ?</h2>
+  <p class="muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ "{:,.0f}".format(cash.top_receivable.amount) }} € exposés. Testez le timing sans modifier la facture.</p>
+  <form method="get" class="whatif-form"><label>Date d'encaissement simulée<select name="payment_delay"><option value="today" {% if custom and custom.choice=='today' %}selected{% endif %}>Aujourd'hui</option><option value="7" {% if custom and custom.choice=='7' %}selected{% endif %}>Sous 7 jours</option><option value="30" {% if custom and custom.choice=='30' %}selected{% endif %}>Sous 30 jours</option><option value="60" {% if custom and custom.choice=='60' %}selected{% endif %}>Sous 60 jours</option><option value="never" {% if custom and custom.choice=='never' %}selected{% endif %}>Pas d'encaissement sur 90 jours</option></select></label><button type="submit">Simuler</button></form>
+  {% if custom %}<div class="whatif-result"><div><small>SCÉNARIO TESTÉ</small><strong>{{ custom.label }}</strong></div><div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(custom.minimum) }} €</strong><span>à J+{{ custom.min_day }}</span></div><div><small>TRÉSORERIE À 90 J</small><strong>{{ "{:,.0f}".format(custom.end_90) }} €</strong></div></div>{% else %}<div class="scenario-grid">{% for s in cash.scenarios %}<div><small>PAIEMENT SOUS {{ s.delay }} J</small><strong>{{ "{:,.0f}".format(s.minimum) }} €</strong><span>point bas de trésorerie sur 90 j</span></div>{% endfor %}</div>{% endif %}
 </section>
 {% endif %}
 
 <section class="panel" style="margin-top:20px"><div class="eyebrow">ENCAISSEMENTS MODÉLISÉS</div><h2>Ce qui alimente la prévision</h2>{% for r in cash.receivables[:8] %}<div class="brain-row"><div><strong>{{ r.customer }} · #{{ r.invoice_number }}</strong><small>{{ r.days_overdue }} jours de retard · confiance {{ r.confidence }}% · horizon prudent {{ r.expected_date }}</small></div><div><strong>{{ "{:,.0f}".format(r.expected_amount) }} €</strong><small>sur {{ "{:,.0f}".format(r.amount) }} € exposés</small></div></div>{% else %}<p class="muted">Aucune créance ouverte.</p>{% endfor %}</section>
-
 <section class="panel brain-gaps" style="margin-top:20px"><div class="eyebrow amber">MÉTHODE & LIMITES</div><h2>Une prévision explicable</h2><p>{{ cash.method_note }}</p><div class="bullet warntext">⚠ Les dépenses futures non encore enregistrées (salaires, TVA, échéances fournisseurs, emprunts) ne sont pas inventées.</div><div class="bullet warntext">⚠ Le solde bancaire est saisi manuellement dans cette version ; une connexion bancaire pourra le remplacer ensuite.</div></section>
 {% endblock %}

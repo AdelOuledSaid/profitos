@@ -2,7 +2,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_version_141():
-    assert 'APP_VERSION = "1.6.4"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.6.5"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_three_server_side_plans_and_signed_webhook():
     t=(ROOT/'profitos/runtime.py').read_text(encoding='utf-8')

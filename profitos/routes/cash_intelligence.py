@@ -17,6 +17,54 @@ def _cash_settings(c):
     return row or {'cash_balance':None,'cash_as_of':None,'updated_at':None}
 
 
+def _curve_points(values, width=920, height=220, pad=18):
+    """Transforme une série journalière en points SVG, sans JavaScript inline."""
+    if not values:
+        return ''
+    lo=min(values); hi=max(values)
+    span=max(hi-lo,1.0)
+    usable_w=width-2*pad; usable_h=height-2*pad
+    pts=[]
+    for i,value in enumerate(values):
+        x=pad + usable_w*(i/max(len(values)-1,1))
+        y=pad + usable_h*(hi-value)/span
+        pts.append(f"{x:.1f},{y:.1f}")
+    return ' '.join(pts)
+
+
+def _simulate_curve(cash, daily_burn, receivables, mode='probable', top_delay=None):
+    """Courbe 0..90 j. Les hypothèses restent explicites et déterministes."""
+    factors={'prudent':0.55,'probable':1.0,'optimiste':1.12}
+    factor=factors.get(mode,1.0)
+    events={}
+    top=receivables[0] if receivables else None
+    for idx,r in enumerate(receivables):
+        if idx==0 and top_delay is not None:
+            if top_delay < 0: # -1 = jamais sur l'horizon
+                continue
+            day=max(0,min(90,int(top_delay)))
+            amount=r['amount'] if mode!='prudent' else r['amount']*0.75
+        else:
+            base=(_iso_date(r['expected_date'])-date.today()).days
+            shift=15 if mode=='prudent' else (-10 if mode=='optimiste' else 0)
+            day=max(0,min(90,base+shift))
+            amount=r['expected_amount']*factor
+        events[day]=events.get(day,0.0)+amount
+    values=[round(cash,2)]; running=cash
+    minimum=cash; min_day=0
+    for day in range(1,91):
+        running-=daily_burn
+        running+=events.get(day,0.0)
+        running=round(running,2)
+        values.append(running)
+        if running<minimum:
+            minimum=running; min_day=day
+    return {
+        'mode':mode,'values':values,'points':_curve_points(values),
+        'minimum':round(minimum,2),'min_day':min_day,'end_90':round(running,2),
+    }
+
+
 def build_cash_intelligence():
     c=cx()
     try:
@@ -100,6 +148,12 @@ def build_cash_intelligence():
                 minimum=min(minimum,running)
             scenarios.append({'delay':delay,'minimum':round(minimum,2),'end_90':round(running,2)})
 
+    curves=[]
+    selected_delay=None
+    if cash is not None:
+        for mode in ('prudent','probable','optimiste'):
+            curves.append(_simulate_curve(cash,daily_burn,receivables,mode=mode))
+
     risk_day=(today+timedelta(days=min_day)).isoformat() if min_cash is not None and min_cash<0 else None
     if cash is None:
         alert_level='INCOMPLET'; alert='Renseignez le solde bancaire actuel pour activer la prévision.'
@@ -115,7 +169,7 @@ def build_cash_intelligence():
         'observed_90':round(observed_90,2),'expense_rows':len(recent),'horizons':horizons,
         'receivables':receivables,'top_receivable':top,'scenarios':scenarios,
         'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,
-        'alert_level':alert_level,'alert':alert,
+        'alert_level':alert_level,'alert':alert,'curves':curves,
         'method_note':'Prévision calculée à partir du solde saisi, des créances RECOVER pondérées par leur score et de la dépense quotidienne observée sur les 90 derniers jours.',
     }
 
@@ -144,5 +198,14 @@ def register(app):
             flash('Solde de trésorerie mis à jour.')
             return redirect(url_for('cash_intelligence'))
         cash=build_cash_intelligence()
+        raw_delay=(request.args.get('payment_delay') or '').strip()
+        custom=None
+        if cash['cash_balance'] is not None and cash['top_receivable'] and raw_delay:
+            mapping={'today':0,'7':7,'30':30,'60':60,'never':-1}
+            if raw_delay in mapping:
+                daily_burn=cash['monthly_burn']/30.0
+                custom=_simulate_curve(cash['cash_balance'],daily_burn,cash['receivables'],mode='probable',top_delay=mapping[raw_delay])
+                custom['label']={'today':"Aujourd'hui",'7':'Sous 7 jours','30':'Sous 30 jours','60':'Sous 60 jours','never':"Pas d'encaissement sur 90 j"}[raw_delay]
+                custom['choice']=raw_delay
         log_activity('CASH_INTELLIGENCE_VIEW','Consultation de Cash Intelligence')
-        return render_template('cash_intelligence.html',cash=cash)
+        return render_template('cash_intelligence.html',cash=cash,custom=custom)
