@@ -6,7 +6,7 @@
   <title>{{ title or 'ProfitOS' }}</title>
   <link rel="stylesheet" href="{{ url_for('static',filename='style.css',v='1622') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='theme-light.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static',filename='financial-brain.css',v='1652') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='financial-brain.css',v='1660') }}">
   <link rel="manifest" href="{{ url_for('static',filename='manifest.json') }}">
   <meta name="theme-color" content="#081020">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
@@ -28,7 +28,7 @@
     <a href="{{ url_for('home') }}">Overview</a>
 
     <div class="navhead">MONEY</div>
-    {% if paid_plan %}<a href="{{ url_for('money_hunter') }}">Money Hunter</a><a href="{{ url_for('financial_brain') }}">Financial Brain</a><a href="{{ url_for('cash_intelligence') }}">Cash Intelligence</a>{% endif %}
+    {% if paid_plan %}<a href="{{ url_for('money_hunter') }}">Money Hunter</a><a href="{{ url_for('financial_brain') }}">Financial Brain</a><a href="{{ url_for('cash_intelligence') }}">Cash Intelligence</a><a href="{{ url_for('decision_simulator') }}">Decision Simulator</a>{% endif %}
     {% if can_access('recover') %}<a href="{{ url_for('recover') }}" data-tour="recover">Recover</a><a href="{{ url_for('calendar_view') }}">Calendar</a>{% endif %}
     {% if can_access('save') %}<a href="{{ url_for('save') }}" data-tour="save">Save</a><a href="{{ url_for('margin_watch') }}">Margin Watch</a>{% endif %}
     {% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}" data-tour="grow">Grow</a><a href="{{ url_for('partners') }}">Partners</a>{% endif %}
