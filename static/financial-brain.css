@@ -196,3 +196,6 @@
 .planner-debt-free h3{margin:8px 0 6px;font-size:1.2rem}
 /* V1.6.9 — AI CFO / Explainable Planner */
 .planner-top3,.planner-cfo{margin-top:22px;padding-top:22px;border-top:1px solid #294064}.planner-plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}.planner-plan-card{display:flex;flex-direction:column;gap:8px;background:#0d1930;border:1px solid #294064;border-radius:14px;padding:18px}.planner-plan-card.recommended{border-color:#3d8b72;background:#102722}.planner-plan-card>strong{font-size:20px}.planner-plan-card span{color:#a9c8fa}.planner-plan-card p{font-size:13px;color:#a9bddc;line-height:1.45}.cfo-form{display:grid;grid-template-columns:1fr auto;gap:10px}.cfo-answer{margin-top:14px;background:#102722;border:1px solid #356b61;border-radius:12px;padding:16px}.cfo-answer small,.cfo-answer strong{display:block}.cfo-answer strong{margin-top:7px;line-height:1.5}@media(max-width:900px){.planner-plan-grid{grid-template-columns:1fr}.cfo-form{grid-template-columns:1fr}}
+
+/* V1.7.1 constraint-resolution actions */
+.resolution-action{margin-top:auto;text-align:center;text-decoration:none;display:block;padding:10px 12px}.constraint-resolution .planner-plan-card{min-height:250px}

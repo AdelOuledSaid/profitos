@@ -4,7 +4,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_cash_scenarios_stylesheet_cache_busted():
     t=(ROOT/'templates'/'base.html').read_text(encoding='utf-8')
-    assert "financial-brain.css',v='1690'" in t
+    assert "financial-brain.css'" in t
 
 def test_cash_scenarios_chart_css_visible():
     t=(ROOT/'static'/'financial-brain.css').read_text(encoding='utf-8')

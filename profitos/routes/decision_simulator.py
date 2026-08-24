@@ -224,7 +224,7 @@ def _build_constraint_resolutions(kind, amount, optimizer):
     resolutions.append({
         'rank':1, 'kind':'financing', 'title':'Augmenter le financement disponible',
         'headline':f"Porter le plafond de financement à {best['financing']:,.0f} €",
-        'effort':gap,
+        'effort':gap, 'target_amount':amount, 'target_max_financing':best['financing'],
         'explanation':(f"Il faut {gap:,.0f} € de capacité de financement supplémentaire pour conserver "
                        f"le montant de la décision et la réserve cible de {reserve:,.0f} €."),
     })
@@ -235,7 +235,7 @@ def _build_constraint_resolutions(kind, amount, optimizer):
         resolutions.append({
             'rank':2, 'kind':'amount', 'title':'Réduire le montant de la décision',
             'headline':f"Ramener le décaissement initial à environ {reduced:,.0f} €",
-            'effort':gap,
+            'effort':gap, 'target_amount':reduced, 'target_max_financing':cap,
             'explanation':(f"Une réduction d'au moins {gap:,.0f} € ferme l'écart estimé tout en conservant "
                            f"le plafond de financement actuel de {cap:,.0f} €."),
         })
@@ -244,8 +244,8 @@ def _build_constraint_resolutions(kind, amount, optimizer):
         extra=round(gap/2.0,2); reduction=round(gap-extra,2)
         resolutions.append({
             'rank':3, 'kind':'mixed', 'title':'Partager l’effort',
-            'headline':f"Ajouter {extra:,.0f} € de financement et réduire la décision de {reduction:,.0f} €",
-            'effort':gap,
+            'headline':f"Augmenter le plafond de financement de {extra:,.0f} € et réduire la décision de {reduction:,.0f} €",
+            'effort':gap, 'target_amount':max(0.0,round(amount-reduction,2)), 'target_max_financing':round(cap+extra,2),
             'explanation':(f"Cette option répartit l'écart : plafond porté à {cap+extra:,.0f} € et "
                            f"décaissement ramené à environ {max(0.0,amount-reduction):,.0f} €."),
         })
