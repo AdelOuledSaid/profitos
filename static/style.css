@@ -69,3 +69,17 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a1428;border:1px sol
 .money-decision-value .button{margin-top:8px;min-width:104px;text-align:center}
 .money-decision.compact .money-decision-value{padding-top:30px}
 @media(max-width:760px){.money-badges{gap:8px}.money-decision-value{padding-top:6px}.money-decision.compact .money-decision-value{padding-top:6px}.recommendation-text{font-size:15px}}
+
+
+/* V1.6.2.2 — Money Hunter layout + cache refresh */
+.money-priorities .money-decision{grid-template-columns:minmax(0,1fr) 210px;gap:36px;align-items:start;padding:28px 0}
+.money-priorities .money-badges{gap:12px;margin-bottom:16px}
+.money-priorities .money-kind,.money-priorities .priority-badge{flex:0 0 auto}
+.money-priorities .money-decision h3{font-size:22px;margin:0 0 10px}
+.money-priorities .money-detail{margin-bottom:16px}
+.money-priorities .risk-summary{margin:0 0 14px}
+.money-priorities .recommendation-box{margin:0 0 10px;max-width:820px}
+.money-priorities .money-decision-value{padding-top:42px;align-items:flex-end;text-align:right;gap:7px}
+.money-priorities .money-decision-value .money-amount{font-size:30px}
+.money-priorities .money-decision-value .button{min-width:116px;margin-top:10px}
+@media(max-width:900px){.money-priorities .money-decision{grid-template-columns:1fr}.money-priorities .money-decision-value{padding-top:0;align-items:flex-start;text-align:left}}
