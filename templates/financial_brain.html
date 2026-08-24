@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="eyebrow green">FINANCIAL BRAIN · V1.6.3</div>
+<h1>Quelle décision protège le plus votre argent ?</h1>
+<p class="muted">ProfitOS croise RECOVER, SAVE, GROW et Margin Watch. Aucun cash bancaire ni aucune marge de marché n'est inventé : les données manquantes sont signalées.</p>
+
+<div class="brain-kpis">
+  <section class="panel brain-score"><small>FINANCIAL CONTROL SCORE</small><div class="brain-score-value">{{ brain.control_score }}/100</div><strong>{{ brain.control_level }}</strong><p class="muted">Score de pilotage basé sur les signaux connus, pas une note de solvabilité.</p></section>
+  <section class="panel"><small>CAPITAL À RISQUE</small><div class="big">{{ "{:,.0f}".format(brain.capital_at_risk) }} €</div><p class="muted">Créances exposées + risque de marge BT01 connu.</p></section>
+  <section class="panel"><small>RECOVERY ATTENDU</small><div class="big">{{ "{:,.0f}".format(brain.expected_recovery) }} €</div><p class="muted">Estimation prudente issue de RECOVER.</p></section>
+  <section class="panel"><small>SAVE MENSUEL</small><div class="big">{{ "{:,.0f}".format(brain.save_monthly) }} €</div><p class="muted">Équivalent mensuel des économies annualisées détectées.</p></section>
+</div>
+
+{% if brain.best_decision %}
+<section class="panel brain-next">
+  <div class="eyebrow green">NEXT BEST FINANCIAL DECISION</div>
+  <div class="brain-next-grid">
+    <div><span class="type {{ brain.best_decision.kind|lower }}">{{ brain.best_decision.kind }}</span><h2>{{ brain.best_decision.title }}</h2><p>{{ brain.best_decision.brain_reason }}</p><div class="recommendation-box"><small>ACTION</small><strong>{{ brain.best_decision.brain_action }}</strong></div></div>
+    <div class="brain-next-value">{% if brain.best_decision.amount > 0 %}<strong>{{ "{:,.0f}".format(brain.best_decision.amount) }} €</strong>{% endif %}<a class="button secondary" href="{{ url_for('detail',kind=brain.best_decision.url_kind,item_id=brain.best_decision.item_id) }}">Agir maintenant</a></div>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel" style="margin-top:20px;">
+  <div class="eyebrow">ARBITRAGE</div><h2>Décisions classées par impact</h2>
+  {% for d in brain.decisions %}<div class="brain-row"><div><span class="type {{ d.kind|lower }}">{{ d.kind }}</span><strong>{{ d.title }}</strong><small>{{ d.brain_reason }}</small></div><div><strong>{% if d.financial_impact>0 %}{{ "{:,.0f}".format(d.financial_impact) }} €{% else %}À qualifier{% endif %}</strong><small>impact de décision</small></div></div>{% else %}<p class="muted">Pas encore assez de signaux pour classer une décision.</p>{% endfor %}
+</section>
+
+<section class="panel" style="margin-top:20px;">
+  <div class="eyebrow green">GROW · FINANCIAL CHECK</div><h2>Peut-on financièrement prendre ce marché ?</h2>
+  {% for g in brain.grow_checks %}<div class="brain-grow"><div><strong>{{ g.title }}</strong><small>{{ g.buyer or 'Acheteur non précisé' }} · Match {{ g.score }}/100</small></div><span class="status">{{ g.decision }}</span><p>{{ g.reason }}</p><p class="muted"><strong>Données requises :</strong> {{ g.missing|join(', ') }}</p><a class="link" href="{{ url_for('detail',kind='GROW',item_id=g.id) }}">Ouvrir le marché →</a></div>{% else %}<p class="muted">Aucune opportunité GROW ouverte.</p>{% endfor %}
+</section>
+
+<section class="panel brain-gaps" style="margin-top:20px;">
+  <div class="eyebrow amber">QUALITÉ DES DONNÉES</div><h2>Ce que ProfitOS ne sait pas encore</h2>
+  {% for x in brain.data_gaps %}<div class="bullet warntext">⚠ {{ x }}</div>{% endfor %}
+  <p class="muted">Ces limites empêchent volontairement ProfitOS de produire un faux GO/NO-GO ou une fausse prévision de trésorerie.</p>
+</section>
+{% endblock %}
