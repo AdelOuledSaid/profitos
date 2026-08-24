@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.6.9.2</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.0</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -60,6 +60,22 @@
     <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum) }} €</strong></div>
     <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
   </div>
+  {% if simulation.resolutions %}
+  <section class="constraint-resolution">
+    <div class="eyebrow green">CONSTRAINT RESOLUTION ENGINE · V1.7.0</div>
+    <h3>3 stratégies pour rendre la décision possible</h3>
+    <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
+    <div class="planner-plan-grid">
+      {% for option in simulation.resolutions %}
+      <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
+        <small>#{{ option.rank }} · {{ option.title|upper }}</small>
+        <strong>{{ option.headline }}</strong>
+        <p>{{ option.explanation }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
   <section class="planner-debt-free">
     <div class="eyebrow green">PLAN SANS FINANCEMENT</div>
     {% if simulation.optimizer.no_financing.available %}
@@ -78,37 +94,16 @@
     {% endif %}
   </section>
   <section class="planner-top3">
-    {% if simulation.optimizer.constraints_met %}
-      <div class="eyebrow green">TOP 3 · PLANS COMPATIBLES</div>
-      <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
-    {% else %}
-      <div class="eyebrow green">TOP 3 · PLANS LES PLUS PROCHES</div>
-      <h3>Les meilleures alternatives testées malgré le dépassement du plafond</h3>
-    {% endif %}
+    <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
+    <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
     <div class="planner-plan-grid">
     {% for plan in simulation.optimizer.top3 %}
       <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
-        <small>
-          #{{ plan.rank }}
-          {% if loop.first %}
-            {% if simulation.optimizer.constraints_met %}· RECOMMANDÉ{% else %}· LE PLUS PROCHE{% endif %}
-          {% endif %}
-        </small>
+        <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
         <strong>J+{{ plan.decision_day }} · {{ plan.installments }} fois</strong>
         <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
         <span>Point bas {{ "{:,.0f}".format(plan.minimum) }} €</span>
-        {% if simulation.optimizer.constraints_met %}
-          <p>{{ plan.reason }}</p>
-        {% else %}
-          <p>
-            Ce plan nécessite {{ "{:,.0f}".format(plan.financing) }} € de financement.
-            {% if simulation.optimizer.max_financing is not none %}
-              Il dépasse votre plafond de
-              {{ "{:,.0f}".format(plan.financing - simulation.optimizer.max_financing) }} €.
-            {% endif %}
-            Réserve cible : {{ "{:,.0f}".format(simulation.optimizer.reserve) }} €.
-          </p>
-        {% endif %}
+        <p>{{ plan.reason }}</p>
       </article>
     {% endfor %}
     </div>

@@ -201,6 +201,56 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         'constraint_gap': round(max(0.0,best['financing']-(max_financing or 0.0)),2) if not constraints_met else 0.0}
 
 
+
+def _build_constraint_resolutions(kind, amount, optimizer):
+    """Build deterministic, explainable ways to close a financing constraint gap.
+
+    The engine never invents revenue: it only changes user-controlled levers
+    (decision amount / accepted financing) and exposes a mixed option.
+    """
+    if not optimizer or optimizer.get('constraints_met'):
+        return []
+    best=optimizer['best']
+    cap=optimizer.get('max_financing')
+    if cap is None:
+        return []
+    gap=round(max(0.0,best['financing']-cap),2)
+    if gap <= 0:
+        return []
+    reserve=optimizer['reserve']
+    resolutions=[]
+
+    # 1. Keep the decision unchanged and relax only the financing ceiling.
+    resolutions.append({
+        'rank':1, 'kind':'financing', 'title':'Augmenter le financement disponible',
+        'headline':f"Porter le plafond de financement à {best['financing']:,.0f} €",
+        'effort':gap,
+        'explanation':(f"Il faut {gap:,.0f} € de capacité de financement supplémentaire pour conserver "
+                       f"le montant de la décision et la réserve cible de {reserve:,.0f} €."),
+    })
+
+    # 2. Keep the financing ceiling and reduce the discretionary initial amount.
+    if kind in ('investment','expense','market') and amount > 0:
+        reduced=max(0.0,round(amount-gap,2))
+        resolutions.append({
+            'rank':2, 'kind':'amount', 'title':'Réduire le montant de la décision',
+            'headline':f"Ramener le décaissement initial à environ {reduced:,.0f} €",
+            'effort':gap,
+            'explanation':(f"Une réduction d'au moins {gap:,.0f} € ferme l'écart estimé tout en conservant "
+                           f"le plafond de financement actuel de {cap:,.0f} €."),
+        })
+
+        # 3. Balanced combination: split the gap between financing and amount reduction.
+        extra=round(gap/2.0,2); reduction=round(gap-extra,2)
+        resolutions.append({
+            'rank':3, 'kind':'mixed', 'title':'Partager l’effort',
+            'headline':f"Ajouter {extra:,.0f} € de financement et réduire la décision de {reduction:,.0f} €",
+            'effort':gap,
+            'explanation':(f"Cette option répartit l'écart : plafond porté à {cap+extra:,.0f} € et "
+                           f"décaissement ramené à environ {max(0.0,amount-reduction):,.0f} €."),
+        })
+    return resolutions[:3]
+
 def _cfo_answer(question, simulation):
     q=(question or '').strip()
     if not q or not simulation or not simulation.get('optimizer'): return None
@@ -241,6 +291,7 @@ def register(app):
             sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline')}
             simulation=_simulate_decision(cash, **sim_args)
             simulation['optimizer']=_optimize_decision(cash, reserve=inputs['reserve'], max_financing=inputs['max_financing'], deadline=inputs['deadline'], **sim_args)
+            simulation['resolutions']=_build_constraint_resolutions(kind, inputs['amount'], simulation['optimizer'])
             simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
