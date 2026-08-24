@@ -16,6 +16,48 @@ def _confidence(score):
         return 0
 
 
+def _clamp(value, low=0, high=100):
+    return max(low, min(high, int(round(value))))
+
+
+def _intelligence(kind, amount, confidence, days_overdue=0, deadline=None):
+    """Score explicable V1.6.1 fondé uniquement sur les données ProfitOS."""
+    amount = max(0.0, _safe_float(amount))
+    confidence = _confidence(confidence)
+
+    if kind == 'RECOVER':
+        urgency = min(100, max(0, int(days_overdue or 0)) * 2)
+        impact = min(100, amount / 100.0)  # 10 k€ atteint le plafond d'impact.
+        priority = _clamp(0.45 * confidence + 0.35 * urgency + 0.20 * impact)
+        if priority >= 80:
+            level, action = 'URGENT', 'Préparer une relance aujourd’hui'
+        elif priority >= 60:
+            level, action = 'ÉLEVÉE', 'Relancer rapidement'
+        elif priority >= 40:
+            level, action = 'MOYENNE', 'Planifier une relance'
+        else:
+            level, action = 'FAIBLE', 'Surveiller la créance'
+        why = f"{int(days_overdue or 0)} jours de retard · {amount:,.0f} € exposés · confiance {confidence}/100"
+        return priority, level, action, why
+
+    if kind == 'SAVE':
+        # La valeur SAVE est annualisée : on compare son impact mensuel.
+        monthly = amount / 12.0
+        impact = min(100, monthly / 50.0)  # 5 k€/mois atteint le plafond.
+        priority = _clamp(0.65 * confidence + 0.35 * impact)
+        level = 'ÉLEVÉE' if priority >= 70 else ('MOYENNE' if priority >= 45 else 'FAIBLE')
+        action = 'Vérifier la dépense et décider' if priority >= 45 else 'Garder sous surveillance'
+        why = f"{amount:,.0f} € / an potentiels · confiance {confidence}/100"
+        return priority, level, action, why
+
+    # GROW : sans montant fiable, aucune valeur financière n'est fabriquée.
+    priority = _clamp(confidence)
+    level = 'ÉLEVÉE' if priority >= 75 else ('MOYENNE' if priority >= 50 else 'FAIBLE')
+    action = 'Évaluer le GO / NO-GO'
+    why = f"Match {confidence}/100" + (f" · échéance {deadline}" if deadline else '')
+    return priority, level, action, why
+
+
 def build_money_brief():
     """Construit le brief Money Hunter à partir des données du tenant courant.
 
@@ -55,6 +97,9 @@ def build_money_brief():
         expected = amount * score / 100.0
         recover_total += amount
         recover_expected += expected
+        priority_score, urgency_level, action, why = _intelligence(
+            'RECOVER', amount, score, days_overdue=row['days_overdue']
+        )
         recommendations.append({
             'kind': 'RECOVER',
             'title': f"Relancer {row['customer']}",
@@ -62,10 +107,13 @@ def build_money_brief():
             'amount': amount,
             'confidence': score,
             'expected': expected,
-            'priority': expected,
+            'priority': priority_score,
+            'priority_score': priority_score,
+            'urgency_level': urgency_level,
+            'why': why,
             'url_kind': 'RECOVER',
             'item_id': row['id'],
-            'action': 'Relancer maintenant' if row['days_overdue'] >= 7 else 'Surveiller et préparer la relance',
+            'action': action,
         })
 
     for row in saves:
@@ -74,6 +122,7 @@ def build_money_brief():
         expected = amount * score / 100.0
         save_total += amount
         save_expected += expected
+        priority_score, urgency_level, action, why = _intelligence('SAVE', amount, score)
         recommendations.append({
             'kind': 'SAVE',
             'title': row['title'],
@@ -81,11 +130,13 @@ def build_money_brief():
             'amount': amount,
             'confidence': score,
             'expected': expected,
-            # SAVE est généralement annualisé : mensualisation pour comparer la priorité cash.
-            'priority': expected / 12.0,
+            'priority': priority_score,
+            'priority_score': priority_score,
+            'urgency_level': urgency_level,
+            'why': why,
             'url_kind': 'SAVE',
             'item_id': row['id'],
-            'action': 'Vérifier la source et décider',
+            'action': action,
         })
 
     for row in grows:
@@ -93,6 +144,9 @@ def build_money_brief():
         score = _confidence(row['score'])
         if amount > 0:
             grow_pipeline += amount
+        priority_score, urgency_level, action, why = _intelligence(
+            'GROW', amount, score, deadline=row['deadline']
+        )
         recommendations.append({
             'kind': 'GROW',
             'title': row['title'],
@@ -101,14 +155,20 @@ def build_money_brief():
             'confidence': score,
             'expected': 0.0,
             # Sans valeur de marché fiable, le score reste un signal et non un montant inventé.
-            'priority': score * 10.0,
+            'priority': priority_score,
+            'priority_score': priority_score,
+            'urgency_level': urgency_level,
+            'why': why,
             'url_kind': 'GROW',
             'item_id': row['id'],
-            'action': 'Évaluer le GO / NO-GO',
+            'action': action,
         })
 
     recommendations.sort(key=lambda x: (x['priority'], x['confidence']), reverse=True)
     top = recommendations[:8]
+    today_actions = [r for r in recommendations if r['priority_score'] >= 70][:5]
+    if not today_actions and recommendations:
+        today_actions = recommendations[:1]
 
     urgent_recover = sum(1 for r in invoices if _confidence(r['score']) >= 80)
     high_save = sum(1 for r in saves if _confidence(r['score']) >= 80)
@@ -127,6 +187,7 @@ def build_money_brief():
         'high_save': high_save,
         'strong_grow': strong_grow,
         'recommendations': top,
+        'today_actions': today_actions,
         'recommendation_count': len(recommendations),
     }
 

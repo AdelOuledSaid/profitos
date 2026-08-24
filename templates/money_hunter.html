@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">MONEY HUNTER · V1.6</div>
+<div class="eyebrow green">MONEY HUNTER · V1.6.1</div>
 <h1>Où est l'argent aujourd'hui ?</h1>
 <p class="muted" style="max-width:780px;">Money Hunter rassemble RECOVER, SAVE et GROW pour classer les décisions à plus fort impact. Les montants affichés viennent uniquement de vos données ProfitOS ; aucune valeur financière n'est inventée.</p>
 
@@ -42,6 +42,29 @@
   </div>
 </section>
 
+<section class="panel" style="margin-bottom:20px;">
+  <div class="eyebrow green">À FAIRE AUJOURD’HUI</div>
+  <h2>Les actions que ProfitOS place en tête</h2>
+  <p class="muted">Le Priority Score combine uniquement les signaux disponibles dans ProfitOS. Il sert à ordonner le travail, pas à garantir un résultat financier.</p>
+  {% for r in brief.today_actions %}
+    <div class="simpleline" style="align-items:center;gap:14px;">
+      <div style="flex:1;">
+        <div class="type {{ r.kind|lower }}">{{ r.kind }} · {{ r.urgency_level }}</div>
+        <strong>{{ r.action }}</strong>
+        <small>{{ r.title }}</small>
+        <small class="muted">Pourquoi : {{ r.why }}</small>
+      </div>
+      <div style="text-align:right;min-width:150px;">
+        <div style="font-size:24px;font-weight:800;">{{ r.priority_score }}/100</div>
+        <small class="muted">Priority Score</small>
+        <div style="margin-top:8px;"><a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Agir</a></div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">Aucune action prioritaire disponible pour le moment.</p>
+  {% endfor %}
+</section>
+
 <section class="panel">
   <div class="eyebrow">PRIORITÉS</div>
   <h2>Les prochaines décisions recommandées</h2>
@@ -51,7 +74,8 @@
         <div class="type {{ r.kind|lower }}">{{ r.kind }}</div>
         <strong>{{ r.title }}</strong>
         <small>{{ r.detail }}</small>
-        <small class="muted">{{ r.action }} · confiance {{ r.confidence }}/100</small>
+        <small class="muted">{{ r.action }} · Priority Score {{ r.priority_score }}/100 · {{ r.urgency_level }}</small>
+        <small class="muted">{{ r.why }}</small>
       </div>
       <div style="text-align:right;min-width:135px;">
         {% if r.amount > 0 %}<strong>{{ "{:,.0f}".format(r.amount) }} €</strong>{% endif %}
