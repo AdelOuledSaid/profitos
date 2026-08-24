@@ -148,15 +148,38 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                 'payment_days':result['payment_days']})
     if not candidates: return None
     feasible=[c for c in candidates if max_financing is None or c['financing']<=max_financing]
+    constraints_met=bool(feasible)
     pool=feasible or candidates
-    ranked=sorted(pool,key=lambda x:(x['financing'],x['decision_day'],x['installments'],-x['minimum']))
+    ranked_all=sorted(pool,key=lambda x:(x['financing'],x['decision_day'],x['installments'],-x['minimum']))
+
+    # Collapse financially equivalent plans. If several dates produce the same
+    # financing need, minimum cash and installment count, keep the earliest one.
+    ranked=[]
+    seen=set()
+    equivalent_dates={}
+    for c in ranked_all:
+        key=(round(c['financing'],2),round(c['minimum'],2),c['installments'],round(c['end_90'],2))
+        if key in seen:
+            equivalent_dates.setdefault(key,[]).append(c['decision_day'])
+            continue
+        seen.add(key)
+        ranked.append(c)
+        equivalent_dates.setdefault(key,[c['decision_day']])
     best=dict(ranked[0]); best['score']=(best['financing'],best['decision_day'],best['installments'])
     label=_strategy_label(best,best['financing'])
-    if feasible:
+    if constraints_met:
         explanation=_plan_reason(best,reserve,max_financing,deadline)
+        eq_key=(round(best['financing'],2),round(best['minimum'],2),best['installments'],round(best['end_90'],2))
+        eq_dates=sorted(set(equivalent_dates.get(eq_key,[])))
+        if len(eq_dates)>1:
+            explanation += (f" Plusieurs dates testées donnent le même résultat financier ; "
+                            f"J+{best['decision_day']} est retenu car c'est la date la plus proche.")
     else:
-        explanation=(f"Aucun plan testé ne respecte le plafond de financement de {max_financing:,.0f} €. "
-                     f"Le plan le plus proche nécessite {best['financing']:,.0f} €.")
+        gap=round(max(0.0,best['financing']-(max_financing or 0.0)),2)
+        explanation=(f"Aucun plan compatible avec vos contraintes. Le meilleur besoin de financement trouvé est "
+                     f"{best['financing']:,.0f} €, pour un plafond accepté de {max_financing:,.0f} €. "
+                     f"Écart : {gap:,.0f} €. Pour rendre la décision possible, augmentez le plafond de financement, "
+                     f"réduisez le montant de la décision ou modifiez uniquement des hypothèses d'encaissement réellement justifiées.")
     debt_free=[c for c in candidates if c['financing']==0]
     if debt_free:
         nf=min(debt_free,key=lambda x:(x['decision_day'],x['installments'],-x['minimum']))
@@ -172,9 +195,10 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     top3=[]
     for i,c in enumerate(ranked[:3],1):
         item=dict(c); item['rank']=i; item['reason']=_plan_reason(c,reserve,max_financing,deadline); top3.append(item)
-    return {'reserve':reserve,'max_financing':max_financing,'deadline':deadline,'constraints_met':bool(feasible),
+    return {'reserve':reserve,'max_financing':max_financing,'deadline':deadline,'constraints_met':constraints_met,
         'best':best,'label':label,'explanation':explanation,'alternatives':ranked[:5],
-        'top3':top3,'no_financing':no_financing}
+        'top3':top3,'no_financing':no_financing,
+        'constraint_gap': round(max(0.0,best['financing']-(max_financing or 0.0)),2) if not constraints_met else 0.0}
 
 
 def _cfo_answer(question, simulation):

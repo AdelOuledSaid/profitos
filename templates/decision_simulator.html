@@ -41,9 +41,17 @@
 {% if simulation.optimizer %}
 <section class="panel decision-optimizer">
   <div class="eyebrow green">AUTONOMOUS FINANCIAL PLANNER</div>
-  <h2>Voici le plan financier recommandé.</h2>
+  {% if simulation.optimizer.constraints_met %}
+    <h2>Voici le plan financier recommandé.</h2>
+  {% else %}
+    <h2>Aucun plan compatible avec vos contraintes.</h2>
+    <div class="constraint-alert">
+      <strong>Plafond dépassé de {{ "{:,.0f}".format(simulation.optimizer.constraint_gap) }} €.</strong>
+      <p>{{ simulation.optimizer.explanation }}</p>
+    </div>
+  {% endif %}
   <div class="optimizer-best">
-    <div><small>STRATÉGIE RECOMMANDÉE</small><strong>{{ simulation.optimizer.label }}</strong><p>{{ simulation.optimizer.explanation }}</p></div>
+    <div><small>{% if simulation.optimizer.constraints_met %}STRATÉGIE RECOMMANDÉE{% else %}PLAN LE PLUS PROCHE{% endif %}</small><strong>{{ simulation.optimizer.label }}</strong>{% if simulation.optimizer.constraints_met %}<p>{{ simulation.optimizer.explanation }}</p>{% endif %}</div>
     <div class="decision-gap"><small>RÉSERVE CIBLE</small><strong>{{ "{:,.0f}".format(simulation.optimizer.reserve) }} €</strong></div>
   </div>
   <div class="decision-kpis optimizer-kpis">
