@@ -13,7 +13,7 @@ def test_healthz():
     app,client=make_client(); r=client.get('/healthz')
     assert r.status_code==200
     assert r.get_json()['status']=='ok'
-    assert r.get_json()['version']=='1.7.3'
+    assert r.get_json()['version']=='1.7.4'
 
 
 def test_login_page():

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.3</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.4</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -26,9 +26,14 @@
 </section>
 
 {% if simulation %}
-<section class="panel decision-verdict {{ simulation.tone }}">
-  <div><div class="eyebrow">VERDICT FINANCIER</div><h2>{{ simulation.level }}</h2><p>{{ simulation.recommendation }}</p></div>
-  <div class="decision-gap"><small>{% if simulation.financing_gap>0 %}FINANCEMENT MINIMUM{% else %}POINT BAS APRÈS DÉCISION{% endif %}</small><strong>{% if simulation.financing_gap>0 %}{{ "{:,.0f}".format(simulation.financing_gap) }} €{% else %}{{ "{:,.0f}".format(simulation.minimum) }} €{% endif %}</strong></div>
+<section class="panel decision-verdict {{ simulation.tone }} decision-initial-state">
+  <div>
+    <div class="eyebrow">SCÉNARIO INITIAL · SANS OPTIMISATION</div>
+    <h2>{{ simulation.level }}</h2>
+    <p>{{ simulation.recommendation }}</p>
+    <p class="muted decision-clarifier">Ce premier verdict mesure la décision telle que saisie, avant report, fractionnement ou financement proposé par ProfitOS.</p>
+  </div>
+  <div class="decision-gap"><small>{% if simulation.financing_gap>0 %}BESOIN POUR ÉVITER LE NÉGATIF{% else %}POINT BAS APRÈS DÉCISION{% endif %}</small><strong>{% if simulation.financing_gap>0 %}{{ "{:,.0f}".format(simulation.financing_gap) }} €{% else %}{{ "{:,.0f}".format(simulation.minimum) }} €{% endif %}</strong></div>
 </section>
 
 <div class="decision-kpis">
@@ -39,8 +44,12 @@
 </div>
 
 {% if simulation.optimizer %}
+{% set optimization_gain = simulation.financing_gap - simulation.optimizer.best.financing %}
 <section class="panel decision-optimizer">
-  <div class="eyebrow green">AUTONOMOUS FINANCIAL PLANNER</div>
+  <div class="eyebrow green">PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.4</div>
+  {% if simulation.optimizer.constraints_met %}
+  <div class="decision-optimized-status">SOUTENABLE SOUS VOS CONTRAINTES</div>
+  {% endif %}
   {% if simulation.optimizer.constraints_met %}
     <h2>Voici le plan financier recommandé.</h2>
   {% else %}
@@ -49,6 +58,14 @@
       <strong>Plafond dépassé de {{ "{:,.0f}".format(simulation.optimizer.constraint_gap) }} €.</strong>
       <p>{{ simulation.optimizer.explanation }}</p>
     </div>
+  {% endif %}
+  {% if simulation.optimizer.constraints_met %}
+  <div class="decision-before-after">
+    <div><small>AVANT OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.financing_gap) }} €</strong><span>besoin pour éviter le négatif</span></div>
+    <div class="decision-before-after-arrow">→</div>
+    <div><small>APRÈS OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong><span>financement du plan retenu</span></div>
+    <div><small>BESOIN RÉDUIT DE</small><strong>{% if optimization_gain > 0 %}{{ "{:,.0f}".format(optimization_gain) }} €{% else %}—{% endif %}</strong><span>grâce au report / fractionnement</span></div>
+  </div>
   {% endif %}
   <div class="optimizer-best">
     <div><small>{% if simulation.optimizer.constraints_met %}STRATÉGIE RECOMMANDÉE{% else %}PLAN LE PLUS PROCHE{% endif %}</small><strong>{{ simulation.optimizer.label }}</strong>{% if simulation.optimizer.constraints_met %}<p>{{ simulation.optimizer.explanation }}</p>{% endif %}</div>
@@ -62,7 +79,7 @@
   </div>
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.3</div>
+    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.4</div>
     <h3>3 stratégies pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">

@@ -2,7 +2,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_v166_version():
-    assert 'APP_VERSION = "1.7.3"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.7.4"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_decision_simulator_registered():
     t=(ROOT/'profitos/__init__.py').read_text(encoding='utf-8')
@@ -22,7 +22,7 @@ def test_decision_simulator_route_and_model():
 
 def test_decision_simulator_template_is_explainable():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'VERDICT FINANCIER' in t
+    assert 'SCÉNARIO INITIAL · SANS OPTIMISATION' in t
     assert 'POINT BAS · AVANT' in t
     assert 'POINT BAS · APRÈS' in t
     assert "Les coûts, taxes ou revenus non renseignés ne sont pas inventés." in t
