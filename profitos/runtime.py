@@ -666,6 +666,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS customer_tags(customer_name_norm TEXT PRIMARY KEY,customer_name_display TEXT,tag TEXT,note TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'BT01',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
+    CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues de garantie.
     for table,col in (('invoices','created_at'),('opportunities','created_at'),

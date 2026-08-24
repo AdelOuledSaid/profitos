@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="eyebrow green">CASH INTELLIGENCE · V1.6.4</div>
+<h1>Anticiper votre trésorerie avant qu'elle devienne urgente.</h1>
+<p class="muted">Prévision 30 / 60 / 90 jours et scénarios d'encaissement. ProfitOS distingue les données saisies des estimations calculées.</p>
+
+<section class="panel cash-balance-card">
+  <div><div class="eyebrow">SOLDE DE DÉPART</div><h2>{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.cash_balance) }} €{% else %}Solde bancaire requis{% endif %}</h2><p class="muted">{% if cash.cash_as_of %}Solde déclaré au {{ cash.cash_as_of }}.{% else %}Saisissez votre trésorerie actuelle pour activer les scénarios.{% endif %}</p></div>
+  <form method="post" class="cash-balance-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Trésorerie disponible (€)<input type="number" step="0.01" name="cash_balance" value="{{ cash.cash_balance if cash.cash_balance is not none else '' }}" required></label><button>Mettre à jour</button></form>
+</section>
+
+<div class="cash-alert {{ cash.alert_level|lower }}"><strong>{{ cash.alert_level }}</strong><span>{{ cash.alert }}</span></div>
+
+<div class="brain-kpis cash-kpis">
+  {% for days in (30,60,90) %}<section class="panel"><small>TRÉSORERIE PROJETÉE · {{ days }} J</small><div class="big">{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.horizons[days]) }} €{% else %}—{% endif %}</div><p class="muted">Solde + encaissements attendus − rythme de dépenses observé.</p></section>{% endfor %}
+  <section class="panel"><small>DÉPENSE MENSUELLE OBSERVÉE</small><div class="big">{{ "{:,.0f}".format(cash.monthly_burn) }} €</div><p class="muted">Calculée sur {{ cash.expense_rows }} dépense(s) des 90 derniers jours.</p></section>
+</div>
+
+{% if cash.cash_balance is not none and cash.top_receivable %}
+<section class="panel scenario-panel">
+  <div class="eyebrow green">WHAT-IF · RECOVER</div><h2>Et si {{ cash.top_receivable.customer }} payait plus tôt ?</h2>
+  <p class="muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ "{:,.0f}".format(cash.top_receivable.amount) }} € exposés.</p>
+  <div class="scenario-grid">{% for s in cash.scenarios %}<div><small>PAIEMENT SOUS {{ s.delay }} J</small><strong>{{ "{:,.0f}".format(s.minimum) }} €</strong><span>point bas de trésorerie sur 90 j</span></div>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="panel" style="margin-top:20px"><div class="eyebrow">ENCAISSEMENTS MODÉLISÉS</div><h2>Ce qui alimente la prévision</h2>{% for r in cash.receivables[:8] %}<div class="brain-row"><div><strong>{{ r.customer }} · #{{ r.invoice_number }}</strong><small>{{ r.days_overdue }} jours de retard · confiance {{ r.confidence }}% · horizon prudent {{ r.expected_date }}</small></div><div><strong>{{ "{:,.0f}".format(r.expected_amount) }} €</strong><small>sur {{ "{:,.0f}".format(r.amount) }} € exposés</small></div></div>{% else %}<p class="muted">Aucune créance ouverte.</p>{% endfor %}</section>
+
+<section class="panel brain-gaps" style="margin-top:20px"><div class="eyebrow amber">MÉTHODE & LIMITES</div><h2>Une prévision explicable</h2><p>{{ cash.method_note }}</p><div class="bullet warntext">⚠ Les dépenses futures non encore enregistrées (salaires, TVA, échéances fournisseurs, emprunts) ne sont pas inventées.</div><div class="bullet warntext">⚠ Le solde bancaire est saisi manuellement dans cette version ; une connexion bancaire pourra le remplacer ensuite.</div></section>
+{% endblock %}
