@@ -190,3 +190,7 @@
 
 /* V1.6.7 Decision Optimizer */
 .decision-optimizer{margin-top:24px;border-color:#285b55}.optimizer-best{display:flex;justify-content:space-between;gap:28px;align-items:flex-start;margin-top:18px}.optimizer-best>div:first-child{max-width:850px}.optimizer-best strong{display:block;font-size:1.35rem;margin:8px 0}.optimizer-kpis{margin-top:18px}.optimizer-kpis>div{padding:18px;border:1px solid #294362;border-radius:14px;background:#0d1c33}.optimizer-kpis strong{display:block;font-size:1.25rem;margin-top:7px}.optimizer-details{margin-top:20px}.optimizer-details summary{cursor:pointer;font-weight:700;color:#8db8ff;margin-bottom:10px}@media(max-width:900px){.optimizer-best{display:block}.optimizer-best .decision-gap{margin-top:18px}}
+
+/* V1.6.8 Autonomous Financial Planner */
+.planner-debt-free{margin:22px 0;padding:20px;border:1px solid rgba(93,225,178,.28);border-radius:16px;background:rgba(7,30,34,.22)}
+.planner-debt-free h3{margin:8px 0 6px;font-size:1.2rem}

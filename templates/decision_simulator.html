@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">DECISION OPTIMIZER · V1.6.7</div>
+<div class="eyebrow green">AUTONOMOUS FINANCIAL PLANNER · V1.6.8</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -38,8 +38,8 @@
 
 {% if simulation.optimizer %}
 <section class="panel decision-optimizer">
-  <div class="eyebrow green">DECISION OPTIMIZER</div>
-  <h2>Comment rendre cette décision soutenable ?</h2>
+  <div class="eyebrow green">AUTONOMOUS FINANCIAL PLANNER</div>
+  <h2>Voici le plan financier recommandé.</h2>
   <div class="optimizer-best">
     <div><small>STRATÉGIE RECOMMANDÉE</small><strong>{{ simulation.optimizer.label }}</strong><p>{{ simulation.optimizer.explanation }}</p></div>
     <div class="decision-gap"><small>RÉSERVE CIBLE</small><strong>{{ "{:,.0f}".format(simulation.optimizer.reserve) }} €</strong></div>
@@ -50,10 +50,27 @@
     <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum) }} €</strong></div>
     <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
   </div>
+  <section class="planner-debt-free">
+    <div class="eyebrow green">PLAN SANS FINANCEMENT</div>
+    {% if simulation.optimizer.no_financing.available %}
+      <h3>{{ simulation.optimizer.no_financing.label }}</h3>
+      <p>{{ simulation.optimizer.no_financing.explanation }}</p>
+      <div class="decision-kpis optimizer-kpis">
+        <div><small>DATE</small><strong>J+{{ simulation.optimizer.no_financing.decision_day }}</strong></div>
+        <div><small>PAIEMENT</small><strong>{{ simulation.optimizer.no_financing.installments }} fois</strong></div>
+        <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.no_financing.minimum) }} €</strong></div>
+        <div><small>FINANCEMENT</small><strong>0 €</strong></div>
+      </div>
+    {% else %}
+      <h3>{{ simulation.optimizer.no_financing.label }}</h3>
+      <p>{{ simulation.optimizer.no_financing.explanation }}</p>
+      <p class="muted">ProfitOS n'invente pas de recettes pour rendre artificiellement la décision possible.</p>
+    {% endif %}
+  </section>
   <details class="optimizer-details"><summary>Voir les meilleures alternatives testées</summary>
     {% for alt in simulation.optimizer.alternatives %}<div class="brain-row"><div><strong>J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}</strong><small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small></div><strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong></div>{% endfor %}
   </details>
-  <p class="muted">ProfitOS teste automatiquement le report à J+30/J+60/J+90 et, lorsque pertinent, le paiement en 2, 3 ou 4 fois. Il n'invente aucun encaissement futur.</p>
+  <p class="muted">ProfitOS recherche automatiquement la meilleure date entre J+0 et J+90 et, lorsque pertinent, le paiement en 2, 3 ou 4 fois. Il n'invente aucun encaissement futur.</p>
 </section>
 {% endif %}
 

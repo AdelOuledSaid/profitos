@@ -2,7 +2,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_v165_version():
-    assert 'APP_VERSION = "1.6.7"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.6.8"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_three_cash_scenarios_present():
     t=(ROOT/'profitos/routes/cash_intelligence.py').read_text(encoding='utf-8')
