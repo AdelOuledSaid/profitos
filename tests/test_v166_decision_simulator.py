@@ -2,7 +2,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_v166_version():
-    assert 'APP_VERSION = "1.6.6"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.6.7"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_decision_simulator_registered():
     t=(ROOT/'profitos/__init__.py').read_text(encoding='utf-8')
@@ -11,7 +11,7 @@ def test_decision_simulator_registered():
 def test_decision_simulator_navigation():
     t=(ROOT/'templates/base.html').read_text(encoding='utf-8')
     assert "url_for('decision_simulator')" in t
-    assert "financial-brain.css',v='1660'" in t
+    assert "filename='financial-brain.css'" in t
 
 def test_decision_simulator_route_and_model():
     t=(ROOT/'profitos/routes/decision_simulator.py').read_text(encoding='utf-8')

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">DECISION SIMULATOR · V1.6.6</div>
+<div class="eyebrow green">DECISION OPTIMIZER · V1.6.7</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -17,6 +17,7 @@
     <label>Coût mensuel supplémentaire (€)<input type="number" min="0" step="0.01" name="monthly_cost" value="{{ inputs.monthly_cost if inputs.monthly_cost else '' }}" placeholder="0"></label>
     <label>Encaissement attendu (€)<input type="number" min="0" step="0.01" name="expected_inflow" value="{{ inputs.expected_inflow if inputs.expected_inflow else '' }}" placeholder="0"></label>
     <label>Jour de l'encaissement<input type="number" min="0" max="90" name="inflow_day" value="{{ inputs.inflow_day }}"></label>
+    <label>Réserve minimale à préserver (€)<input type="number" min="0" step="100" name="reserve" value="{{ inputs.reserve }}"></label>
     <button type="submit">Simuler la décision</button>
   </form>
   <p class="muted decision-hint">Pour un achat, laissez coût mensuel et encaissement à 0. Pour un marché, renseignez le coût de démarrage et l'encaissement attendu.</p>
@@ -34,6 +35,27 @@
   <section class="panel"><small>TRÉSORERIE J+90 · AVANT</small><strong>{{ "{:,.0f}".format(simulation.baseline_end_90) }} €</strong></section>
   <section class="panel"><small>TRÉSORERIE J+90 · APRÈS</small><strong>{{ "{:,.0f}".format(simulation.end_90) }} €</strong></section>
 </div>
+
+{% if simulation.optimizer %}
+<section class="panel decision-optimizer">
+  <div class="eyebrow green">DECISION OPTIMIZER</div>
+  <h2>Comment rendre cette décision soutenable ?</h2>
+  <div class="optimizer-best">
+    <div><small>STRATÉGIE RECOMMANDÉE</small><strong>{{ simulation.optimizer.label }}</strong><p>{{ simulation.optimizer.explanation }}</p></div>
+    <div class="decision-gap"><small>RÉSERVE CIBLE</small><strong>{{ "{:,.0f}".format(simulation.optimizer.reserve) }} €</strong></div>
+  </div>
+  <div class="decision-kpis optimizer-kpis">
+    <div><small>MEILLEURE DATE</small><strong>J+{{ simulation.optimizer.best.decision_day }}</strong></div>
+    <div><small>PAIEMENT</small><strong>{{ simulation.optimizer.best.installments }} fois</strong></div>
+    <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum) }} €</strong></div>
+    <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
+  </div>
+  <details class="optimizer-details"><summary>Voir les meilleures alternatives testées</summary>
+    {% for alt in simulation.optimizer.alternatives %}<div class="brain-row"><div><strong>J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}</strong><small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small></div><strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong></div>{% endfor %}
+  </details>
+  <p class="muted">ProfitOS teste automatiquement le report à J+30/J+60/J+90 et, lorsque pertinent, le paiement en 2, 3 ou 4 fois. Il n'invente aucun encaissement futur.</p>
+</section>
+{% endif %}
 
 <section class="panel decision-explain"><div class="eyebrow green">IMPACT DE LA DÉCISION</div><h2>Ce que ProfitOS a réellement modélisé</h2><div class="brain-row"><div><strong>Décaissement initial</strong><small>Appliqué à J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.amount) }} €</strong></div>{% if simulation.monthly_cost %}<div class="brain-row"><div><strong>Coût récurrent</strong><small>Proratisé à partir de J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.monthly_cost) }} €/mois</strong></div>{% endif %}{% if simulation.expected_inflow %}<div class="brain-row"><div><strong>Encaissement simulé</strong><small>Ajouté à J+{{ simulation.inflow_day }}</small></div><strong>+ {{ "{:,.0f}".format(simulation.expected_inflow) }} €</strong></div>{% endif %}<p class="muted">La trajectoire de référence reste le scénario probable de Cash Intelligence. Les coûts, taxes ou revenus non renseignés ne sont pas inventés.</p></section>
 {% endif %}

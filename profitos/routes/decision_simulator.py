@@ -61,6 +61,79 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     }
 
 
+def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
+                       expected_inflow=0.0, inflow_day=60, installments=1):
+    baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
+    if not baseline:
+        return None
+    values=list(baseline['values'])
+    installments=max(1, min(4, int(installments or 1)))
+    payment_days=[min(90, decision_day + 30*i) for i in range(installments)]
+    payment=amount/installments if installments else amount
+    adjusted=[]
+    for day,base in enumerate(values):
+        impact=0.0
+        if kind in ('investment','expense','market'):
+            for pday in payment_days:
+                if day>=pday:
+                    impact-=payment
+        elif kind=='hire':
+            if day>=decision_day:
+                impact-=amount
+                impact-=monthly_cost*((day-decision_day)/30.0)
+        if kind!='hire' and monthly_cost and day>=decision_day:
+            impact-=monthly_cost*((day-decision_day)/30.0)
+        if expected_inflow and day>=inflow_day:
+            impact+=expected_inflow
+        adjusted.append(round(base+impact,2))
+    return {
+        'values':adjusted, 'minimum':round(min(adjusted),2),
+        'min_day':adjusted.index(min(adjusted)), 'end_90':round(adjusted[-1],2),
+        'installments':installments, 'payment_days':payment_days,
+    }
+
+
+def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
+                       expected_inflow=0.0, inflow_day=60, reserve=5000.0):
+    reserve=max(0.0, float(reserve or 0.0))
+    candidates=[]
+    delays=sorted(set([decision_day, 30, 60, 90]))
+    delays=[d for d in delays if d>=decision_day and d<=90]
+    installment_options=[1] if kind=='hire' else [1,2,3,4]
+    for day in delays:
+        for installments in installment_options:
+            result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments)
+            if not result:
+                continue
+            financing=max(0.0, reserve-result['minimum'])
+            # Prefer no financing, then less delay, then fewer installments.
+            score=(1 if financing>0 else 0, round(financing,2), day, installments)
+            candidates.append({
+                'decision_day':day, 'installments':installments,
+                'minimum':result['minimum'], 'min_day':result['min_day'],
+                'end_90':result['end_90'], 'financing':round(financing,2),
+                'score':score, 'payment_days':result['payment_days'],
+            })
+    if not candidates:
+        return None
+    best=min(candidates,key=lambda x:x['score'])
+    if best['financing']==0:
+        if best['decision_day']>decision_day and best['installments']>1:
+            label=f"Reporter à J+{best['decision_day']} et payer en {best['installments']} fois"
+        elif best['decision_day']>decision_day:
+            label=f"Reporter la décision à J+{best['decision_day']}"
+        elif best['installments']>1:
+            label=f"Payer en {best['installments']} fois"
+        else:
+            label="Décision soutenable sans financement supplémentaire"
+        explanation=f"Cette option maintient au moins {best['minimum']:,.0f} € de trésorerie, au-dessus de la réserve cible de {reserve:,.0f} €."
+    else:
+        label=f"Sécuriser au moins {best['financing']:,.0f} € de financement"
+        explanation=f"Même la meilleure option testée descend à {best['minimum']:,.0f} €. Un financement de {best['financing']:,.0f} € est nécessaire pour préserver {reserve:,.0f} € de réserve."
+    alternatives=sorted(candidates,key=lambda x:x['score'])[:5]
+    return {'reserve':reserve,'best':best,'label':label,'explanation':explanation,'alternatives':alternatives}
+
+
 def register(app):
     @app.route('/decision-simulator')
     @login_required
@@ -80,9 +153,12 @@ def register(app):
             'monthly_cost':_num(request.args.get('monthly_cost')),
             'expected_inflow':_num(request.args.get('expected_inflow')),
             'inflow_day':_day(request.args.get('inflow_day'),60),
+            'reserve':_num(request.args.get('reserve'),5000.0),
         }
         if submitted and cash['cash_balance'] is not None:
-            simulation=_simulate_decision(cash, **inputs)
+            sim_args={k:v for k,v in inputs.items() if k!='reserve'}
+            simulation=_simulate_decision(cash, **sim_args)
+            simulation['optimizer']=_optimize_decision(cash, reserve=inputs['reserve'], **sim_args)
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
             log_activity('DECISION_SIMULATOR_VIEW','Consultation du Decision Simulator')
