@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">MONEY HUNTER · V1.6.1</div>
+<div class="eyebrow green">MONEY HUNTER · V1.6.2</div>
 <h1>Où est l'argent aujourd'hui ?</h1>
 <p class="muted" style="max-width:780px;">Money Hunter rassemble RECOVER, SAVE et GROW pour classer les décisions à plus fort impact. Les montants affichés viennent uniquement de vos données ProfitOS ; aucune valeur financière n'est inventée.</p>
 
@@ -53,6 +53,11 @@
         <strong>{{ r.action }}</strong>
         <small>{{ r.title }}</small>
         <small class="muted">Pourquoi : {{ r.why }}</small>
+        {% if r.kind == 'RECOVER' %}
+          <small class="muted">Risque paiement : {{ r.payment_risk_score }}/100 · {{ r.evidence_level }}</small>
+          <small class="muted">{{ r.evidence_note }} · {{ r.learning_note }}</small>
+          <small><strong>Next Best Action :</strong> {{ r.next_best_action }}</small>
+        {% endif %}
       </div>
       <div style="text-align:right;min-width:150px;">
         <div style="font-size:24px;font-weight:800;">{{ r.priority_score }}/100</div>
@@ -76,6 +81,11 @@
         <small>{{ r.detail }}</small>
         <small class="muted">{{ r.action }} · Priority Score {{ r.priority_score }}/100 · {{ r.urgency_level }}</small>
         <small class="muted">{{ r.why }}</small>
+        {% if r.kind == 'RECOVER' %}
+          <small class="muted">Payment Risk {{ r.payment_risk_score }}/100 · {{ r.evidence_level }} · {{ r.evidence_note }}</small>
+          <small class="muted">{{ r.learning_note }}</small>
+          <small><strong>Action suivante :</strong> {{ r.next_best_action }}</small>
+        {% endif %}
       </div>
       <div style="text-align:right;min-width:135px;">
         {% if r.amount > 0 %}<strong>{{ "{:,.0f}".format(r.amount) }} €</strong>{% endif %}
