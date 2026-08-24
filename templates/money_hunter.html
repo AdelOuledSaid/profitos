@@ -43,14 +43,14 @@
   {% for r in brief.today_actions %}
     <article class="money-decision">
       <div class="money-decision-main">
-        <div class="money-badges"><span class="type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div>
+        <div class="money-badges"><span class="money-kind type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div>
         <h3>{{ r.title }}</h3><p class="muted">{{ r.detail }}</p>
         {% if r.kind == 'RECOVER' %}
           <div class="risk-summary"><span class="risk {{ r.payment_risk_class }}">Risque {{ r.payment_risk_level|lower }}</span>
           {% if r.evidence_level == 'INSUFFISANT' %}<span class="evidence-warning">⚠ Historique insuffisant pour une estimation fiable</span>{% else %}<span class="evidence-ok">{{ r.evidence_level }}</span>{% endif %}</div>
-          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong>{{ r.next_best_action }}</strong></div>
+          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong class="recommendation-text">{{ r.next_best_action }}</strong></div>
         {% else %}
-          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong>{{ r.action }}</strong></div>
+          <div class="recommendation-box"><small>ACTION RECOMMANDÉE</small><strong class="recommendation-text">{{ r.action }}</strong></div>
         {% endif %}
         <details class="money-analysis"><summary>Voir l’analyse détaillée</summary><div class="analysis-content">
           <p><strong>Priority Score :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p><p><strong>Pourquoi :</strong> {{ r.why }}</p>
@@ -66,7 +66,7 @@
   <div class="eyebrow">PRIORITÉS</div><h2>Les prochaines décisions recommandées</h2>
   {% for r in brief.recommendations %}
     <article class="money-decision compact">
-      <div class="money-decision-main"><div class="money-badges"><span class="type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div><h3>{{ r.title }}</h3><p class="muted">{{ r.detail }}</p>
+      <div class="money-decision-main"><div class="money-badges"><span class="money-kind type {{ r.kind|lower }}">{{ r.kind }}</span><span class="priority-badge">{{ r.urgency_level }}</span></div><h3>{{ r.title }}</h3><p class="muted">{{ r.detail }}</p>
       {% if r.kind == 'RECOVER' %}<div class="risk-summary"><span class="risk {{ r.payment_risk_class }}">Risque {{ r.payment_risk_level|lower }}</span>{% if r.evidence_level == 'INSUFFISANT' %}<span class="evidence-warning">⚠ Données insuffisantes</span>{% endif %}</div><div class="recommendation-inline"><strong>Action recommandée :</strong> {{ r.next_best_action }}</div>{% else %}<div class="recommendation-inline"><strong>Action recommandée :</strong> {{ r.action }}</div>{% endif %}
       <details class="money-analysis"><summary>Voir l’analyse</summary><div class="analysis-content"><p><strong>Priority Score :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p><p>{{ r.why }}</p>{% if r.kind == 'RECOVER' %}<p><strong>Risque paiement :</strong> {% if r.show_risk_score %}{{ r.payment_risk_score }}/100 · {% endif %}{{ r.payment_risk_level }} · {{ r.evidence_level }}</p><p>{{ r.evidence_note }} · {{ r.learning_note }}</p>{% endif %}</div></details></div>
       <div class="money-decision-value">{% if r.amount > 0 %}<div class="money-amount">{{ "{:,.0f}".format(r.amount) }} €</div>{% endif %}<a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a></div>

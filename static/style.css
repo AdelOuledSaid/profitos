@@ -45,3 +45,27 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a1428;border:1px sol
 
 /* Money Hunter UX 1.6.2.1 */
 .money-decision{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:24px;padding:22px 0;border-bottom:1px solid #283d60}.money-decision:last-child{border-bottom:0}.money-decision h3{font-size:20px;margin:7px 0 4px}.money-decision p{margin:4px 0}.money-decision-value{text-align:right;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:8px}.money-amount{font-size:26px;font-weight:900}.money-badges,.risk-summary{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.priority-badge,.evidence-warning,.evidence-ok{font-size:10px;font-weight:900;border-radius:999px;padding:6px 9px}.priority-badge{background:#1c3155;color:#dce9ff}.evidence-warning{background:#473b1f;color:#ffd982}.evidence-ok{background:#173c34;color:#a9f1d2}.risk.low{background:#173c34;color:#a9f1d2}.recommendation-box{margin:14px 0;background:#0d1930;border:1px solid #294064;border-radius:12px;padding:13px 15px}.recommendation-box small,.recommendation-box strong{display:block}.recommendation-box small{font-size:10px;font-weight:900;letter-spacing:.1em;margin-bottom:5px}.recommendation-inline{margin-top:11px;color:#dfe9fa}.money-analysis{margin-top:12px}.money-analysis summary{cursor:pointer;color:#9bc2ff;font-weight:700;font-size:13px}.analysis-content{margin-top:10px;padding:12px 14px;background:#0a1428;border:1px solid #293f65;border-radius:10px;color:#a9bddc;font-size:13px}.analysis-content p{margin:5px 0}.money-decision.compact{padding:18px 0}@media(max-width:760px){.money-decision{grid-template-columns:1fr}.money-decision-value{text-align:left;align-items:flex-start}.money-amount{font-size:23px}}
+
+
+/* V1.6.2.1 polish — Money Hunter decision cards */
+.money-decision-main{min-width:0}
+.money-badges{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.money-badges .money-kind{display:inline-flex;align-items:center;margin:0;padding:6px 9px;border-radius:999px;background:#172846;font-size:10px;line-height:1;font-weight:900;letter-spacing:.09em}
+.money-badges .money-kind.recover{background:#46242d;color:#ff8d98}
+.money-badges .money-kind.save{background:#44391d;color:#ffd36e}
+.money-badges .money-kind.grow{background:#153a31;color:#7be8bd}
+.priority-badge{display:inline-flex;align-items:center;margin:0;line-height:1;white-space:nowrap}
+.money-decision h3{margin:0 0 7px;font-size:21px;line-height:1.25}
+.money-decision .risk-summary{margin-top:16px;gap:10px}
+.money-decision .risk-summary .risk,.money-decision .risk-summary .evidence-warning,.money-decision .risk-summary .evidence-ok{display:inline-flex;align-items:center;line-height:1.2}
+.recommendation-box{display:grid;gap:6px;margin:16px 0 10px;padding:15px 16px}
+.recommendation-box small{margin:0;color:#8fa9d3}
+.recommendation-text{display:block;font-size:16px;line-height:1.4;color:#f6f8fc}
+.money-analysis{margin-top:8px}
+.money-analysis summary{display:inline-flex;align-items:center;min-height:34px;padding:5px 0}
+.money-decision-value{min-width:170px;justify-content:flex-start;padding-top:36px}
+.money-decision-value .money-amount{font-size:28px;line-height:1;font-weight:900;white-space:nowrap}
+.money-decision-value small{display:block;margin-top:-2px}
+.money-decision-value .button{margin-top:8px;min-width:104px;text-align:center}
+.money-decision.compact .money-decision-value{padding-top:30px}
+@media(max-width:760px){.money-badges{gap:8px}.money-decision-value{padding-top:6px}.money-decision.compact .money-decision-value{padding-top:6px}.recommendation-text{font-size:15px}}
