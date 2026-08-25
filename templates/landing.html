@@ -5,7 +5,21 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ProfitOS — Le copilote financier de votre entreprise</title>
   <meta name="description" content="ProfitOS centralise recouvrement, économies, trésorerie, décisions financières et opportunités commerciales pour aider les entreprises à protéger leur cash et décider plus vite.">
+  <meta name="theme-color" content="#07101f">
   <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ProfitOS">
+  <meta property="og:title" content="ProfitOS — Le copilote financier de votre entreprise">
+  <meta property="og:description" content="Recouvrement, économies, prévision de trésorerie et décisions financières simulées, réunis dans une seule plateforme.">
+  <meta property="og:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
+  <meta property="og:url" content="{{ request.url_root }}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ProfitOS — Le copilote financier de votre entreprise">
+  <meta name="twitter:description" content="Recouvrement, économies, prévision de trésorerie et décisions financières simulées, réunis dans une seule plateforme.">
+  <meta name="twitter:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
+
   <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
 </head>
 <body class="landing-body">
@@ -37,7 +51,7 @@
   </div>
 
   <div class="landing-product-preview landing-fade-in landing-fade-in-2" aria-label="Aperçu de ProfitOS">
-    <div class="preview-topbar"><div><strong>ProfitOS</strong><span>Financial Brain</span></div><span class="preview-live">● LIVE</span></div>
+    <div class="preview-topbar"><div><strong>ProfitOS</strong><span>Financial Brain</span></div><span class="preview-live"><span class="preview-live-dot"></span> LIVE</span></div>
     <div class="preview-score-row">
       <div class="preview-score"><small>FINANCIAL CONTROL SCORE</small><strong>78<span>/100</span></strong><em>MAÎTRISÉ</em></div>
       <div class="preview-metric"><small>CASH À PROTÉGER</small><strong>28 100 €</strong><span>Créances + marge connue</span></div>
