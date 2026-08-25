@@ -273,21 +273,55 @@ def register(app):
             company=request.form.get('company','').strip()
             email=request.form.get('email','').strip()
             phone=request.form.get('phone','').strip()
+            sector=request.form.get('sector','').strip()
+            company_size=request.form.get('company_size','').strip()
+            primary_need=request.form.get('primary_need','').strip()
             message=request.form.get('message','').strip()
-            if not (full_name and company and email):
-                flash('Nom, entreprise et email sont requis.')
+            if not (full_name and company and email and sector and primary_need):
+                flash('Nom, entreprise, email, secteur et besoin principal sont requis.')
                 return redirect(request.url)
             ac=auth_cx()
-            ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,message,created_at) VALUES(?,?,?,?,?,?)',
-                (full_name,company,email,phone,message,now())); ac.commit(); ac.close()
+            ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                (full_name,company,email,phone,sector,company_size,primary_need,message,'NOUVEAU',now())); ac.commit(); ac.close()
             admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','')
             if admin_email:
+                details=(f"Contact : {full_name} | Email : {email}"
+                         + (f" | Téléphone : {phone}" if phone else '')
+                         + f" | Entreprise : {company} | Secteur : {sector}"
+                         + (f" | Taille : {company_size}" if company_size else '')
+                         + f" | Besoin principal : {primary_need}"
+                         + (f" | Message : {message}" if message else ''))
                 html=render_template('email_transactional.html',title='Nouvelle demande de démo',
-                    intro=f"{full_name} ({company}, {email}{', '+phone if phone else ''}) a demandé une démo ProfitOS.{' Message : '+message if message else ''}",
-                    cta_label=f'Répondre à {full_name}',cta_url=f'mailto:{email}',footer='')
+                    intro=details, cta_label=f'Répondre à {full_name}',cta_url=f'mailto:{email}',footer='Demande enregistrée dans ProfitOS.')
                 send_email(admin_email,f'Demande de démo — {company}',html)
             return render_template('demo_thanks.html')
         return render_template('demo_request.html')
+
+    @app.route('/admin/demo-requests',methods=['GET'])
+    @login_required
+    def demo_requests_admin():
+        ac=auth_cx()
+        user=ac.execute('SELECT email FROM users WHERE id=?',(session.get('user_id'),)).fetchone()
+        admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip().lower()
+        if not user or not admin_email or (user['email'] or '').strip().lower()!=admin_email:
+            ac.close(); abort(403)
+        rows=ac.execute('SELECT * FROM demo_requests ORDER BY created_at DESC').fetchall(); ac.close()
+        return render_template('demo_requests_admin.html',demo_requests=rows)
+
+    @app.route('/admin/demo-requests/<int:request_id>/status',methods=['POST'])
+    @login_required
+    def demo_request_status(request_id):
+        ac=auth_cx()
+        user=ac.execute('SELECT email FROM users WHERE id=?',(session.get('user_id'),)).fetchone()
+        admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip().lower()
+        if not user or not admin_email or (user['email'] or '').strip().lower()!=admin_email:
+            ac.close(); abort(403)
+        status=request.form.get('status','NOUVEAU').upper()
+        allowed={'NOUVEAU','CONTACTE','DEMO_PLANIFIEE','CONVERTI','PERDU'}
+        if status not in allowed: status='NOUVEAU'
+        ac.execute('UPDATE demo_requests SET status=? WHERE id=?',(status,request_id)); ac.commit(); ac.close()
+        flash('Statut de la demande mis à jour.')
+        return redirect(url_for('demo_requests_admin'))
 
     @app.route('/pricing')
     def pricing():

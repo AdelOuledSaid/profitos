@@ -1,4 +1,4 @@
-# ProfitOS V1.7.5 — Multi-Sector
+# ProfitOS V1.7.6 — Multi-Sector
 
 ProfitOS is positioned as a Financial Operating System for SMEs, not as a BTP-only product.
 

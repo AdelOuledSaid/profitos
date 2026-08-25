@@ -12,6 +12,6 @@ def test_constraint_resolution_engine_present():
 
 def test_constraint_resolution_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'FINANCIAL CONSISTENCY GUARD · V1.7.5' in t
+    assert 'FINANCIAL CONSISTENCY GUARD · V1.7.6' in t
     assert '3 stratégies pour rendre la décision possible' in t
     assert "Aucun revenu futur n'est inventé" in t

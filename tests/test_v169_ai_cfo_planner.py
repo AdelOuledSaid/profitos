@@ -6,7 +6,7 @@ def test_v169_version():
 
 def test_v169_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    for x in ['AI CFO · EXPLAINABLE PLANNER · V1.7.5','Financement maximum accepté','Décision au plus tard','TOP 3 · PLANS EXPLIQUÉS','AI CFO · QUESTION SUR CE SCÉNARIO']:
+    for x in ['AI CFO · EXPLAINABLE PLANNER · V1.7.6','Financement maximum accepté','Décision au plus tard','TOP 3 · PLANS EXPLIQUÉS','AI CFO · QUESTION SUR CE SCÉNARIO']:
         assert x in t
 
 def test_v169_engine_contract():

@@ -8,5 +8,5 @@ def test_v172_verified_engine_present():
 
 def test_v172_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'FINANCIAL CONSISTENCY GUARD · V1.7.5' in t
+    assert 'FINANCIAL CONSISTENCY GUARD · V1.7.6' in t
     assert 'Vérifiée par le moteur' in t

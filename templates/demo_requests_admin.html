@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="eyebrow green">COMMERCIAL · PROSPECTS</div>
+<h1>Demandes de démo</h1>
+<p class="muted">Toutes les demandes reçues depuis le site ProfitOS.</p>
+<div class="card" style="overflow-x:auto;margin-top:22px;">
+<table style="width:100%;border-collapse:collapse;min-width:1050px;">
+<thead><tr><th>Date</th><th>Contact</th><th>Entreprise</th><th>Secteur</th><th>Taille</th><th>Besoin</th><th>Message</th><th>Statut</th><th>Action</th></tr></thead>
+<tbody>
+{% for d in demo_requests %}
+<tr>
+<td>{{ d.created_at[:16] if d.created_at else '' }}</td>
+<td><strong>{{ d.full_name }}</strong><br><a href="mailto:{{ d.email }}">{{ d.email }}</a>{% if d.phone %}<br>{{ d.phone }}{% endif %}</td>
+<td>{{ d.company }}</td><td>{{ d.sector or '—' }}</td><td>{{ d.company_size or '—' }}</td><td>{{ d.primary_need or '—' }}</td><td>{{ d.message or '—' }}</td>
+<td><strong>{{ (d.status or 'NOUVEAU').replace('_',' ') }}</strong></td>
+<td><form method="post" action="{{ url_for('demo_request_status',request_id=d.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="status"><option value="NOUVEAU">Nouveau</option><option value="CONTACTE">Contacté</option><option value="DEMO_PLANIFIEE">Démo planifiée</option><option value="CONVERTI">Converti</option><option value="PERDU">Perdu</option></select><button type="submit" style="margin-top:6px;">Mettre à jour</button></form></td>
+</tr>
+{% else %}<tr><td colspan="9">Aucune demande de démo pour le moment.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

@@ -12,7 +12,7 @@ def test_optimizer_engine_present():
 
 def test_optimizer_ui_present():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.5' in t
+    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.6' in t
     assert 'STRATÉGIE RECOMMANDÉE' in t
     assert 'Réserve minimale à préserver' in t
     assert 'FINANCEMENT À SÉCURISER' in t

@@ -6,7 +6,7 @@ def test_v174_version():
 
 def test_before_after_decision_intelligence_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    for x in ['SCÉNARIO INITIAL · SANS OPTIMISATION','PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.5','AVANT OPTIMISATION','APRÈS OPTIMISATION','BESOIN RÉDUIT DE','SOUTENABLE SOUS VOS CONTRAINTES']:
+    for x in ['SCÉNARIO INITIAL · SANS OPTIMISATION','PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.6','AVANT OPTIMISATION','APRÈS OPTIMISATION','BESOIN RÉDUIT DE','SOUTENABLE SOUS VOS CONTRAINTES']:
         assert x in t
 
 def test_professional_landing_features():

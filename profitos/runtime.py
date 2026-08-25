@@ -83,7 +83,11 @@ def init_auth_db():
         company TEXT,
         email TEXT,
         phone TEXT,
+        sector TEXT,
+        company_size TEXT,
+        primary_need TEXT,
         message TEXT,
+        status TEXT DEFAULT 'NOUVEAU',
         created_at TEXT
     );
     CREATE TABLE IF NOT EXISTS api_keys(
@@ -146,6 +150,15 @@ def init_auth_db():
         ('last_seen_changelog',"ALTER TABLE users ADD COLUMN last_seen_changelog TEXT"),
     ):
         if col not in cols: c.execute(ddl)
+    demo_cols=[r['name'] for r in c.execute('PRAGMA table_info(demo_requests)').fetchall()]
+    for col,ddl in (
+        ('sector',"ALTER TABLE demo_requests ADD COLUMN sector TEXT"),
+        ('company_size',"ALTER TABLE demo_requests ADD COLUMN company_size TEXT"),
+        ('primary_need',"ALTER TABLE demo_requests ADD COLUMN primary_need TEXT"),
+        ('status',"ALTER TABLE demo_requests ADD COLUMN status TEXT DEFAULT 'NOUVEAU'"),
+    ):
+        if col not in demo_cols: c.execute(ddl)
+
     org_cols=[r['name'] for r in c.execute('PRAGMA table_info(organizations)').fetchall()]
     for col,ddl in (
         ('stripe_customer_id',"ALTER TABLE organizations ADD COLUMN stripe_customer_id TEXT"),

@@ -6,7 +6,7 @@ def test_version_168():
 
 def test_planner_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.5' in t
+    assert 'AI CFO · EXPLAINABLE PLANNER · V1.7.6' in t
     assert 'PLAN SANS FINANCEMENT' in t
     assert 'no_financing' in t
 

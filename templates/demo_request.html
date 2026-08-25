@@ -1,21 +1,20 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Demander une démo · ProfitOS</title><link rel="stylesheet" href="{{ asset_url('style.css') }}"></head><body style="background:#081020;color:#f6f8fc;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:60px 24px;">
-<div style="max-width:480px;margin:0 auto;">
+<div style="max-width:560px;margin:0 auto;">
   <div class="brand" style="font-size:20px;font-weight:800;margin-bottom:24px;">Profit<span style="color:#5fe0ac;">OS</span></div>
-  <h1>Demander une démo</h1>
-  <p class="muted">On vous montre ProfitOS sur un cas concret adapté à votre activité, 20 minutes, sans engagement.</p>
-
+  <h1>Réserver une démo personnalisée</h1>
+  <p class="muted">20 minutes pour découvrir comment ProfitOS peut améliorer le pilotage financier de votre entreprise.</p>
   {% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
-
   <form method="post" class="stack" style="margin-top:20px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Nom complet<input type="text" name="full_name" required></label>
     <label>Entreprise<input type="text" name="company" required></label>
     <label>Email professionnel<input type="email" name="email" required></label>
     <label>Téléphone (optionnel)<input type="tel" name="phone"></label>
-    <label>Message (optionnel)<textarea name="message" rows="3" style="width:100%;padding:10px;border-radius:8px;background:#0f1c33;border:1px solid #294064;color:#f6f8fc;"></textarea></label>
-    <button type="submit">Envoyer la demande</button>
+    <label>Secteur d’activité<select name="sector" required><option value="">Choisir…</option><option>BTP / Construction</option><option>Transport / Logistique</option><option>Commerce</option><option>Services</option><option>Industrie</option><option>Restauration / Hôtellerie</option><option>Santé</option><option>Autre</option></select></label>
+    <label>Taille de l’entreprise<select name="company_size"><option value="">Choisir…</option><option>1–5 salariés</option><option>6–20 salariés</option><option>21–50 salariés</option><option>51–200 salariés</option><option>Plus de 200 salariés</option></select></label>
+    <label>Besoin principal<select name="primary_need" required><option value="">Choisir…</option><option>Améliorer la trésorerie</option><option>Réduire les impayés</option><option>Protéger les marges</option><option>Réduire les dépenses</option><option>Simuler une décision financière</option><option>Piloter la croissance</option><option>Autre</option></select></label>
+    <label>Message (optionnel)<textarea name="message" rows="4" style="width:100%;padding:10px;border-radius:8px;background:#0f1c33;border:1px solid #294064;color:#f6f8fc;"></textarea></label>
+    <button type="submit">Demander ma démo</button>
   </form>
-
   <p class="muted" style="margin-top:20px;"><a class="link" href="{{ url_for('home') }}">← Retour à l'accueil</a></p>
-</div>
-</body></html>
+</div></body></html>
