@@ -28,7 +28,7 @@ def test_v161_no_fake_grow_money():
 
 def test_v161_version():
     t=(ROOT/'profitos'/'config.py').read_text(encoding='utf-8')
-    assert 'APP_VERSION = "1.7.4"' in t
+    assert 'APP_VERSION = "1.7.5"' in t
 
 
 def test_v161_no_inline_handlers():

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.4</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.5</div>
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -46,7 +46,7 @@
 {% if simulation.optimizer %}
 {% set optimization_gain = simulation.financing_gap - simulation.optimizer.best.financing %}
 <section class="panel decision-optimizer">
-  <div class="eyebrow green">PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.4</div>
+  <div class="eyebrow green">PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.5</div>
   {% if simulation.optimizer.constraints_met %}
   <div class="decision-optimized-status">SOUTENABLE SOUS VOS CONTRAINTES</div>
   {% endif %}
@@ -79,7 +79,7 @@
   </div>
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.4</div>
+    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.5</div>
     <h3>3 stratégies pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">

@@ -26,4 +26,4 @@ def test_v162_ui_explains_predictive_signals():
 
 def test_v162_version():
     t=(ROOT/'profitos/config.py').read_text(encoding='utf-8')
-    assert 'APP_VERSION = "1.7.4"' in t
+    assert 'APP_VERSION = "1.7.5"' in t

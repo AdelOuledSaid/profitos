@@ -5,11 +5,11 @@
 
 <section class="panel" style="margin:18px 0;background:#0a1529;">
   <h2>Indice de référence</h2>
-  <p class="muted" style="font-size:13px;">Choisis l'indice pertinent pour ton activité — <strong>BT01</strong> pour le bâtiment (publié par l'INSEE), ou tout autre indice sectoriel, l'indice des prix à la consommation, ton propre indice interne, etc.</p>
+  <p class="muted" style="font-size:13px;">Choisis l'indice pertinent pour ton activité : indice sectoriel, IPC, indice contractuel ou indice interne. BT01 reste disponible comme exemple pour les entreprises du bâtiment.</p>
   <form method="post" style="display:flex;gap:8px;align-items:end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form_type" value="index_name">
-    <label style="font-size:11px;color:#8fa9d3;">Nom de l'indice suivi<input type="text" name="index_name" value="{{ index_name }}" placeholder="ex: BT01, IPC, indice interne..."></label>
+    <label style="font-size:11px;color:#8fa9d3;">Nom de l'indice suivi<input type="text" name="index_name" value="{{ index_name }}" placeholder="ex: IPC, indice sectoriel, indice interne..."></label>
     <button type="submit" class="secondary">Changer d'indice</button>
   </form>
 </section>

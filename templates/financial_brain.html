@@ -6,7 +6,7 @@
 
 <div class="brain-kpis">
   <section class="panel brain-score"><small>FINANCIAL CONTROL SCORE</small><div class="brain-score-value">{{ brain.control_score }}/100</div><strong>{{ brain.control_level }}</strong><p class="muted">Score de pilotage basé sur les signaux connus, pas une note de solvabilité.</p></section>
-  <section class="panel"><small>CAPITAL À RISQUE</small><div class="big">{{ "{:,.0f}".format(brain.capital_at_risk) }} €</div><p class="muted">Créances exposées + risque de marge BT01 connu.</p></section>
+  <section class="panel"><small>CAPITAL À RISQUE</small><div class="big">{{ "{:,.0f}".format(brain.capital_at_risk) }} €</div><p class="muted">Créances exposées + risque d’érosion de marge connu.</p></section>
   <section class="panel"><small>RECOVERY ATTENDU</small><div class="big">{{ "{:,.0f}".format(brain.expected_recovery) }} €</div><p class="muted">Estimation prudente issue de RECOVER.</p></section>
   <section class="panel"><small>SAVE MENSUEL</small><div class="big">{{ "{:,.0f}".format(brain.save_monthly) }} €</div><p class="muted">Équivalent mensuel des économies annualisées détectées.</p></section>
 </div>

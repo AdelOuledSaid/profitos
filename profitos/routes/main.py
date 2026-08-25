@@ -78,16 +78,16 @@ def register(app):
     @require_area('save')
     def margin_watch():
         """Suivi manuel de l'érosion de marge sur contrats à prix fixe, par comparaison
-        avec un indice de référence choisi par l'utilisateur (BT01 pour le BTP, ou tout
-        autre indice pertinent pour son secteur — saisi manuellement, pas d'accès API
+        avec un indice de référence choisi par l'utilisateur (indice sectoriel, IPC,
+        indice contractuel ou indice interne — saisi manuellement, pas d'accès API
         temps réel ici)."""
         c=cx()
         settings_row=c.execute('SELECT price_index_name FROM app_settings WHERE id=1').fetchone()
-        index_name=(settings_row['price_index_name'] if settings_row and settings_row['price_index_name'] else 'BT01').strip() or 'BT01'
+        index_name=(settings_row['price_index_name'] if settings_row and settings_row['price_index_name'] else 'INDICE').strip() or 'INDICE'
         if request.method=='POST':
             form=request.form.get('form_type')
             if form=='index_name':
-                new_name=request.form.get('index_name','').strip() or 'BT01'
+                new_name=request.form.get('index_name','').strip() or 'INDICE'
                 c.execute("INSERT INTO app_settings(id,price_index_name,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET price_index_name=excluded.price_index_name,updated_at=excluded.updated_at",(new_name,now())); c.commit()
                 flash(f"Indice de référence mis à jour : {new_name}.")
                 c.close(); return redirect(url_for('margin_watch'))

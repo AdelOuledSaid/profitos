@@ -2,11 +2,11 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def test_v174_version():
-    assert 'APP_VERSION = "1.7.4"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
+    assert 'APP_VERSION = "1.7.5"' in (ROOT/'profitos/config.py').read_text(encoding='utf-8')
 
 def test_before_after_decision_intelligence_ui():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
-    for x in ['SCÉNARIO INITIAL · SANS OPTIMISATION','PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.4','AVANT OPTIMISATION','APRÈS OPTIMISATION','BESOIN RÉDUIT DE','SOUTENABLE SOUS VOS CONTRAINTES']:
+    for x in ['SCÉNARIO INITIAL · SANS OPTIMISATION','PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.5','AVANT OPTIMISATION','APRÈS OPTIMISATION','BESOIN RÉDUIT DE','SOUTENABLE SOUS VOS CONTRAINTES']:
         assert x in t
 
 def test_professional_landing_features():

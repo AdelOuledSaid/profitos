@@ -15,7 +15,7 @@
 <section class="panel">
 <h2>Ajouter une référence</h2>
 <form method="post" action="{{ url_for('knowledge_reference_add') }}" class="stack">
-<input name="title" placeholder="Nom du chantier / projet" required>
+<input name="title" placeholder="Nom du projet / dossier" required>
 <input name="client" placeholder="Client">
 <div class="formgrid"><input name="year" type="number" placeholder="Année"><input name="value" type="number" placeholder="Montant €"></div>
 <input name="location" placeholder="Localisation">
@@ -54,7 +54,7 @@
 <section class="panel">
 <h2>Ajouter une méthode interne</h2>
 <form method="post" action="{{ url_for('knowledge_method_add') }}" class="stack">
-<input name="title" placeholder="Ex. Gestion des déchets chantier" required>
+<input name="title" placeholder="Ex. Procédure qualité fournisseur" required>
 <input name="category" placeholder="QSE, Méthode, Planning...">
 <textarea name="content" rows="6" placeholder="Décrire la méthode réellement utilisée"></textarea>
 <button>Ajouter</button>
