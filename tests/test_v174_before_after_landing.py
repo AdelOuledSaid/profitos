@@ -22,6 +22,8 @@ def test_landing_has_conversion_ctas():
 
 def test_v174_css_cache():
     t=(ROOT/'templates/base.html').read_text(encoding='utf-8')
-    assert "financial-brain.css',v='1740'" in t
+    # Le versionnage manuel ('v=1740') a été remplacé par un cache-busting automatique
+    # basé sur la date de modification du fichier (voir profitos.runtime.asset_url).
+    assert "asset_url('financial-brain.css')" in t
     l=(ROOT/'templates/landing.html').read_text(encoding='utf-8')
-    assert "landing.css',v='1740'" in l
+    assert "asset_url('landing.css')" in l

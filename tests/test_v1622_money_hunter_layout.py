@@ -9,7 +9,9 @@ def test_money_hunter_has_single_recommendation_list():
 
 def test_money_hunter_css_cache_busted():
     t=(ROOT/'templates/base.html').read_text(encoding='utf-8')
-    assert "filename='style.css',v='1622'" in t
+    # Le versionnage manuel ('v=1622') a été remplacé par un cache-busting automatique
+    # basé sur la date de modification du fichier (voir profitos.runtime.asset_url).
+    assert "asset_url('style.css')" in t
 
 def test_money_hunter_v1622_css_present():
     t=(ROOT/'static/style.css').read_text(encoding='utf-8')

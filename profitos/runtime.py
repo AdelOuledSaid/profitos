@@ -1339,6 +1339,17 @@ def security_session_context():
     if session.get('user_id'):
         session.permanent=True
 
+def asset_url(filename):
+    """URL statique avec un paramètre de version basé sur la date de modification
+    du fichier — force le navigateur à recharger l'asset dès qu'il change, sans
+    jamais avoir besoin de mettre à jour un numéro de version à la main."""
+    try:
+        path = current_app.static_folder and (Path(current_app.static_folder)/filename)
+        v = int(path.stat().st_mtime) if path and path.exists() else 0
+    except Exception:
+        v = 0
+    return url_for('static', filename=filename, v=v)
+
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
@@ -1347,6 +1358,7 @@ def init_runtime(app):
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.jinja_env.globals['current_role'] = current_role
+    app.jinja_env.globals['asset_url'] = asset_url
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)

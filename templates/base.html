@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or 'ProfitOS' }}</title>
-  <link rel="stylesheet" href="{{ url_for('static',filename='style.css',v='1622') }}">
-  <link rel="stylesheet" href="{{ url_for('static',filename='theme-light.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static',filename='financial-brain.css',v='1740') }}">
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('theme-light.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('financial-brain.css') }}">
   <link rel="manifest" href="{{ url_for('static',filename='manifest.json') }}">
   <meta name="theme-color" content="#081020">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ProfitOS">
-  <script src="{{ url_for('static',filename='app.js') }}" defer></script>
+  <script src="{{ asset_url('app.js') }}" defer></script>
 </head>
 <body{% if request.endpoint=='home' %} data-tour-auto="1"{% endif %}>
 {% set paid_plan = auth_org and auth_org.plan in ('STARTER','PRO','BUSINESS') %}

@@ -11,7 +11,7 @@ def test_decision_simulator_registered():
 def test_decision_simulator_navigation():
     t=(ROOT/'templates/base.html').read_text(encoding='utf-8')
     assert "url_for('decision_simulator')" in t
-    assert "filename='financial-brain.css'" in t
+    assert "asset_url('financial-brain.css')" in t
 
 def test_decision_simulator_route_and_model():
     t=(ROOT/'profitos/routes/decision_simulator.py').read_text(encoding='utf-8')
@@ -22,6 +22,8 @@ def test_decision_simulator_route_and_model():
 
 def test_decision_simulator_template_is_explainable():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
+    # "VERDICT FINANCIER" a été reformulé en "SCÉNARIO INITIAL · SANS OPTIMISATION"
+    # (le panneau de verdict initial existe toujours, juste avec un intitulé plus clair).
     assert 'SCÉNARIO INITIAL · SANS OPTIMISATION' in t
     assert 'POINT BAS · AVANT' in t
     assert 'POINT BAS · APRÈS' in t
