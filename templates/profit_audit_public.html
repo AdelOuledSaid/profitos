@@ -1,6 +1,6 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profit Audit gratuit · ProfitOS</title><link rel="stylesheet" href="{{ asset_url('style.css') }}"></head><body style="padding:60px 24px;max-width:640px;margin:0 auto;">
 <div class="brand" style="margin-bottom:8px;">Profit<span>OS</span></div>
-<h1>Combien votre entreprise BTP perd-elle chaque mois ?</h1>
+<h1>Combien votre entreprise perd-elle chaque mois ?</h1>
 <p class="muted">Estimation gratuite en 10 secondes, sans compte ni engagement.</p>
 
 <form method="post" class="panel stack" style="margin-top:24px;">
@@ -15,7 +15,7 @@
   <h2>Estimation indicative</h2>
   <div class="simpleline"><span>Créances potentiellement récupérables</span><span class="money">{{ "{:,.0f}".format(result.recoverable_low) }} — {{ "{:,.0f}".format(result.recoverable_high) }} €</span></div>
   <div class="simpleline"><span>Économies potentielles estimées</span><span class="money">{{ "{:,.0f}".format(result.savings_estimate) }} €/an</span></div>
-  <p class="muted" style="margin-top:14px;font-size:12px;">Estimation indicative basée sur des moyennes sectorielles BTP — pas un calcul sur tes vraies données. Pour un chiffre précis, uploade tes factures dans un vrai Profit Audit.</p>
+  <p class="muted" style="margin-top:14px;font-size:12px;">Estimation indicative basée sur des moyennes sectorielles généralistes — pas un calcul sur tes vraies données. Pour un chiffre précis, uploade tes factures dans un vrai Profit Audit.</p>
   <a class="button" href="{{ url_for('signup') }}" style="display:block;text-align:center;margin-top:16px;">Lancer mon vrai Profit Audit gratuit →</a>
 </section>
 {% endif %}

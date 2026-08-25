@@ -83,9 +83,9 @@ def register(app):
             if o['kind']=='RETENTION':
                 title=f"Demander la levée de retenue — {o['customer']} — #{o['invoice_number']}"
                 draft=(
-                    f"Objet : Demande de levée de la retenue de garantie — Facture {o['invoice_number']}\n\n"
+                    f"Objet : Demande de levée de la retenue contractuelle — Facture {o['invoice_number']}\n\n"
                     "Bonjour,\n\n"
-                    f"La retenue de garantie de {o['outstanding']:,.2f} € appliquée sur la facture "
+                    f"La retenue contractuelle de {o['outstanding']:,.2f} € appliquée sur la facture "
                     f"{o['invoice_number']} est libérable"
                     f"{' depuis le ' + o['retention_release_date'] if o['retention_release_date'] else ''}. "
                     "Pouvez-vous nous confirmer la date de virement ?\n\nCordialement"

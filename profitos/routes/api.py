@@ -5,7 +5,7 @@ from profitos.feature_access import requires_paid_plan
 def register(app):
     # ------------------------------------------------------------------
     # API publique en lecture seule, authentifiée par clé API (Bearer token).
-    # Permet à un outil externe (ERP BTP, logiciel de devis...) de lire les
+    # Permet à un outil externe (ERP, logiciel de facturation...) de lire les
     # données ProfitOS d'une organisation. Écriture non disponible dans cette
     # première version — volontairement, pour limiter la surface de risque.
     # ------------------------------------------------------------------

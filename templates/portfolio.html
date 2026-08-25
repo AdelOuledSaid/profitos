@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block content %}
 <div class="eyebrow">PORTFOLIO</div>
 <h1>Vue consolidée — {{ rows|length }} organisation(s)</h1>
-<p class="muted">Utile si tu gères plusieurs clients BTP depuis un seul compte (cabinet comptable, groupe multi-sociétés).</p>
+<p class="muted">Utile si tu gères plusieurs clients depuis un seul compte (cabinet comptable, groupe multi-sociétés).</p>
 
 <div class="cards four" style="margin:18px 0;">
   <div class="card"><div class="label red">RECOVERABLE (total)</div><div class="big">{{ "{:,.0f}".format(totals.recover) }} €</div></div>

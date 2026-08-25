@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% block content %}<div class="eyebrow red">RECOVER</div><h1>{{ "{:,.0f}".format(total) }} € récupérables</h1><p class="muted">Montants restant dus sur les factures échues et retenues de garantie libérables.</p>
+{% extends "base.html" %}{% block content %}<div class="eyebrow red">RECOVER</div><h1>{{ "{:,.0f}".format(total) }} € récupérables</h1><p class="muted">Montants restant dus sur les factures échues et retenues contractuelles libérables.</p>
 <div class="filterbar" style="display:flex;gap:8px;margin:12px 0 18px;">
   <a href="{{ url_for('recover',filter='all') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='all' else 'background:#f3f4f6;color:#374151;' }}">Tout</a>
   <a href="{{ url_for('recover',filter='overdue') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='overdue' else 'background:#f3f4f6;color:#374151;' }}">Factures en retard</a>
-  <a href="{{ url_for('recover',filter='retention') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='retention' else 'background:#f3f4f6;color:#374151;' }}">Retenues de garantie</a>
+  <a href="{{ url_for('recover',filter='retention') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='retention' else 'background:#f3f4f6;color:#374151;' }}">Retenues contractuelles</a>
 </div>
 <form method="get" class="panel" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:18px;padding:16px;">
   <input type="hidden" name="filter" value="{{ filt }}">
@@ -17,8 +17,8 @@
 <section class="panel">{% for r in rows %}<a class="row clickable" href="{{ url_for('detail',kind='RECOVER',item_id=r.id) }}"><div><strong>{{ r.customer }}</strong>{% if r.customer_tag %} <span class="status" style="background:{{ '#3d1f1f' if r.customer_tag=='RISQUE' else ('#1f2f1f' if r.customer_tag=='FIABLE' else '#2a2010') }};">{{ r.customer_tag }}</span>{% endif %}
 {% if r.kind=='RETENTION' %}
   {% set release=r.retention_release_date %}
-  <small>#{{ r.invoice_number }} · Retenue de garantie{% if release %} · {% if release>today %}libérable le {{ release }}{% else %}libérable depuis le {{ release }}{% endif %}{% endif %}</small>
+  <small>#{{ r.invoice_number }} · Retenue contractuelle{% if release %} · {% if release>today %}libérable le {{ release }}{% else %}libérable depuis le {{ release }}{% endif %}{% endif %}</small>
 {% else %}
   <small>#{{ r.invoice_number }} · {{ r.days_overdue }} jours de retard</small>
 {% endif %}
-</div><div class="money">{{ "{:,.0f}".format(r.outstanding) }} €</div><div class="score">{{ r.score }}</div></a>{% else %}<p class="muted">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue de garantie détectée. Ajoute une colonne "type" (valeur "retenue de garantie") et "retention_release_date" dans ton fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</p>{% endfor %}</section>{% endblock %}
+</div><div class="money">{{ "{:,.0f}".format(r.outstanding) }} €</div><div class="score">{{ r.score }}</div></a>{% else %}<p class="muted">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue contractuelle détectée. Ajoute une colonne "type" (valeur "retenue de garantie" ou "retenue contractuelle") et "retention_release_date" dans ton fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</p>{% endfor %}</section>{% endblock %}

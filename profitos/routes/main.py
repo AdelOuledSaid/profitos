@@ -78,17 +78,26 @@ def register(app):
     @require_area('save')
     def margin_watch():
         """Suivi manuel de l'érosion de marge sur contrats à prix fixe, par comparaison
-        avec l'indice BT01 (saisi manuellement — pas d'accès API INSEE en temps réel ici)."""
+        avec un indice de référence choisi par l'utilisateur (BT01 pour le BTP, ou tout
+        autre indice pertinent pour son secteur — saisi manuellement, pas d'accès API
+        temps réel ici)."""
         c=cx()
+        settings_row=c.execute('SELECT price_index_name FROM app_settings WHERE id=1').fetchone()
+        index_name=(settings_row['price_index_name'] if settings_row and settings_row['price_index_name'] else 'BT01').strip() or 'BT01'
         if request.method=='POST':
             form=request.form.get('form_type')
+            if form=='index_name':
+                new_name=request.form.get('index_name','').strip() or 'BT01'
+                c.execute("INSERT INTO app_settings(id,price_index_name,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET price_index_name=excluded.price_index_name,updated_at=excluded.updated_at",(new_name,now())); c.commit()
+                flash(f"Indice de référence mis à jour : {new_name}.")
+                c.close(); return redirect(url_for('margin_watch'))
             if form=='reading':
                 d=request.form.get('reading_date','').strip(); v=request.form.get('value','').strip()
                 try: v=float(v)
                 except ValueError: v=None
                 if d and v is not None:
-                    c.execute('INSERT INTO price_index_readings(index_name,reading_date,value,created_at) VALUES(?,?,?,?)',('BT01',d,v,now())); c.commit()
-                    flash('Relevé BT01 enregistré.')
+                    c.execute('INSERT INTO price_index_readings(index_name,reading_date,value,created_at) VALUES(?,?,?,?)',(index_name,d,v,now())); c.commit()
+                    flash(f'Relevé {index_name} enregistré.')
                 else:
                     flash('Date et valeur requises pour un relevé.')
             elif form=='contract':
@@ -106,7 +115,7 @@ def register(app):
                     flash('Nom du projet, montant et date de signature requis.')
             c.close(); return redirect(url_for('margin_watch'))
 
-        readings=c.execute("SELECT * FROM price_index_readings WHERE index_name='BT01' ORDER BY reading_date ASC").fetchall()
+        readings=c.execute("SELECT * FROM price_index_readings WHERE index_name=? ORDER BY reading_date ASC",(index_name,)).fetchall()
         contracts=c.execute("SELECT * FROM fixed_price_contracts WHERE status='ACTIVE' ORDER BY signed_date DESC").fetchall()
         c.close()
 
@@ -128,13 +137,13 @@ def register(app):
                         'is_erosion':change_pct>0})
         alerts.sort(key=lambda a:abs(a['at_risk']),reverse=True)
 
-        return render_template('margin_watch.html',readings=readings,contracts=contracts,alerts=alerts)
+        return render_template('margin_watch.html',readings=readings,contracts=contracts,alerts=alerts,index_name=index_name)
 
     @app.route('/portfolio')
     @login_required
     def portfolio():
         """Vue consolidée de toutes les organisations de l'utilisateur — utile pour un
-        cabinet comptable qui gère plusieurs clients BTP depuis un seul compte."""
+        cabinet comptable qui gère plusieurs clients depuis un seul compte."""
         orgs=user_organizations()
         rows=[]
         for org in orgs:
@@ -157,7 +166,7 @@ def register(app):
     @requires_active_plan
     @require_area('grow')
     def partners():
-        """Radar de cotraitance : répertoire partagé opt-in entre organisations ProfitOS.
+        """Radar de partenaires : répertoire partagé opt-in entre organisations ProfitOS.
         Aucune donnée n'est visible pour les autres tant que l'organisation n'a pas activé
         explicitement le partage — action volontaire, jamais activée par défaut."""
         org=current_org(); ac=auth_cx()
@@ -176,12 +185,12 @@ def register(app):
                                 department=excluded.department,activities=excluded.activities,
                                 contact_email=excluded.contact_email,opted_in=1,updated_at=excluded.updated_at''',
                     (org['id'],comp['name'],comp['department'],comp['activities'],contact,now())); ac.commit()
-                log_activity('PARTNER_DIRECTORY_OPT_IN','Profil rendu visible pour la cotraitance')
-                flash('Ton profil est maintenant visible par les autres organisations ProfitOS pour la cotraitance.')
+                log_activity('PARTNER_DIRECTORY_OPT_IN','Profil rendu visible pour le radar de partenaires')
+                flash('Ton profil est maintenant visible par les autres organisations ProfitOS dans le radar de partenaires.')
             elif action=='opt_out':
                 ac.execute('UPDATE partner_directory SET opted_in=0,updated_at=? WHERE organization_id=?',(now(),org['id'])); ac.commit()
-                log_activity('PARTNER_DIRECTORY_OPT_OUT','Profil retiré du répertoire de cotraitance')
-                flash('Ton profil a été retiré du répertoire de cotraitance.')
+                log_activity('PARTNER_DIRECTORY_OPT_OUT','Profil retiré du radar de partenaires')
+                flash('Ton profil a été retiré du radar de partenaires.')
             ac.close(); return redirect(url_for('partners'))
 
         my_entry=ac.execute('SELECT * FROM partner_directory WHERE organization_id=?',(org['id'],)).fetchone()
@@ -235,7 +244,7 @@ def register(app):
     @app.route('/profit-audit',methods=['GET','POST'])
     def public_profit_audit():
         """Calculateur public sans compte — aimant à leads. Estimation indicative
-        basée sur des heuristiques BTP générales, pas sur de vraies données client
+        basée sur des heuristiques générales, pas sur de vraies données client
         (le visiteur n'a encore rien uploadé)."""
         result=None
         if request.method=='POST':
@@ -247,7 +256,7 @@ def register(app):
             revenue=max(0,min(revenue,50_000_000))
             overdue_invoices=max(0,min(overdue_invoices,200))
             # Heuristique indicative : ~1,5% du CA annuel est généralement en créances
-            # en retard dans le BTP, ajusté par le nombre de factures en retard déclaré.
+            # en retard, ajusté par le nombre de factures en retard déclaré.
             base_recoverable=revenue*0.015
             adjustment=1+min(overdue_invoices,20)*0.05
             recoverable_low=round(base_recoverable*adjustment*0.6,-2)
@@ -318,7 +327,7 @@ def register(app):
     @requires_active_plan
     @require_area('recover')
     def calendar_view():
-        """Vue unifiée des échéances : factures en retard, retenues de garantie
+        """Vue unifiée des échéances : factures en retard, retenues contractuelles
         libérables, deadlines GROW — tout au même endroit, triées par date."""
         c=cx()
         events=[]
@@ -498,12 +507,12 @@ def register(app):
             if r['kind']=='RETENTION':
                 release=r['retention_release_date']
                 if release and release<=date.today().isoformat():
-                    reasons=[f"Retenue de garantie libérable depuis le {release}",'contactez le client pour en demander la levée']
+                    reasons=[f"Retenue contractuelle libérable depuis le {release}",'contactez le client pour en demander la levée']
                 elif release:
-                    reasons=[f"Retenue de garantie libérable le {release}",'pas encore actionnable — visible pour anticipation']
+                    reasons=[f"Retenue contractuelle libérable le {release}",'pas encore actionnable — visible pour anticipation']
                 else:
-                    reasons=['Retenue de garantie sans date de libération connue — à clarifier avec le contrat']
-                o=dict(r); o.update(kind='RECOVER',title=f"Retenue de garantie — Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue de garantie suit un régime contractuel différent d\'une facture standard'])
+                    reasons=['Retenue contractuelle sans date de libération connue — à clarifier avec le contrat']
+                o=dict(r); o.update(kind='RECOVER',title=f"Retenue contractuelle — Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue contractuelle suit un régime différent d\'une facture standard'])
                 # Simulateur de caution : remplacer la retenue en numéraire par une caution
                 # bancaire libère la trésorerie immédiatement, contre un coût annuel en %.
                 try: bond_rate=float(request.args.get('bond_rate','1.0'))

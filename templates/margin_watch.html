@@ -1,7 +1,18 @@
 {% extends "base.html" %}{% block content %}
 <div class="eyebrow amber">MARGIN WATCH</div>
-<h1>Suivi de l'érosion de marge (indice BT01)</h1>
-<p class="muted">Comparaison manuelle entre l'évolution de l'indice BT01 (bâtiment tous corps d'état) et tes contrats signés à prix fixe. Saisis tes relevés d'indice une fois par mois pour garder ce suivi à jour — pas de connexion automatique à l'INSEE dans cette version.</p>
+<h1>Suivi de l'érosion de marge ({{ index_name }})</h1>
+<p class="muted">Comparaison manuelle entre l'évolution de ton indice de référence et tes contrats signés à prix fixe. Saisis un relevé une fois par mois pour garder ce suivi à jour — pas de connexion automatique en temps réel dans cette version.</p>
+
+<section class="panel" style="margin:18px 0;background:#0a1529;">
+  <h2>Indice de référence</h2>
+  <p class="muted" style="font-size:13px;">Choisis l'indice pertinent pour ton activité — <strong>BT01</strong> pour le bâtiment (publié par l'INSEE), ou tout autre indice sectoriel, l'indice des prix à la consommation, ton propre indice interne, etc.</p>
+  <form method="post" style="display:flex;gap:8px;align-items:end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_type" value="index_name">
+    <label style="font-size:11px;color:#8fa9d3;">Nom de l'indice suivi<input type="text" name="index_name" value="{{ index_name }}" placeholder="ex: BT01, IPC, indice interne..."></label>
+    <button type="submit" class="secondary">Changer d'indice</button>
+  </form>
+</section>
 
 {% if alerts %}
 <section class="panel" style="margin:18px 0;">
@@ -19,12 +30,12 @@
   {% endfor %}
 </section>
 {% elif contracts and not readings %}
-<div class="panel" style="margin:18px 0;background:#0a1529;"><p class="muted">Ajoute au moins un relevé BT01 pour calculer les alertes.</p></div>
+<div class="panel" style="margin:18px 0;background:#0a1529;"><p class="muted">Ajoute au moins un relevé {{ index_name }} pour calculer les alertes.</p></div>
 {% endif %}
 
 <div class="twocol" style="margin-top:18px;">
   <section class="panel">
-    <h2>Relevés BT01</h2>
+    <h2>Relevés {{ index_name }}</h2>
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="form_type" value="reading">
@@ -32,7 +43,7 @@
       <label>Valeur de l'indice<input type="number" name="value" step="0.01" required placeholder="ex: 125.3"></label>
       <button>Ajouter le relevé</button>
     </form>
-    <p class="muted" style="font-size:11px;margin-top:8px;">L'indice BT01 officiel est publié mensuellement par l'INSEE (insee.fr, indices Bâtiment).</p>
+    <p class="muted" style="font-size:11px;margin-top:8px;">{% if index_name=='BT01' %}L'indice BT01 officiel est publié mensuellement par l'INSEE (insee.fr, indices Bâtiment).{% else %}Renseigne la valeur publiée pour ton indice de référence à la date choisie.{% endif %}</p>
     {% for r in readings|reverse %}
     <div class="simpleline"><span>{{ r.reading_date }}</span><span>{{ r.value }}</span></div>
     {% endfor %}
@@ -47,7 +58,7 @@
       <label>Client<input type="text" name="customer"></label>
       <label>Montant du contrat (€)<input type="number" name="amount" step="1" required></label>
       <label>Date de signature<input type="date" name="signed_date" required></label>
-      <label>Part matériaux dans le contrat (%)<input type="number" name="materials_share_pct" value="30" step="1" min="0" max="100"></label>
+      <label>Part du contrat exposée à cet indice (%)<input type="number" name="materials_share_pct" value="30" step="1" min="0" max="100"></label>
       <button>Ajouter au suivi</button>
     </form>
     {% for ct in contracts %}
@@ -56,5 +67,5 @@
   </section>
 </div>
 
-<p class="muted" style="margin-top:18px;font-size:11px;">Méthode : le montant à risque est estimé en appliquant la variation de l'indice BT01 (depuis la signature jusqu'au dernier relevé) à la part matériaux déclarée du contrat. C'est une estimation indicative, pas un calcul comptable certifié.</p>
+<p class="muted" style="margin-top:18px;font-size:11px;">Méthode : le montant à risque est estimé en appliquant la variation de l'indice (depuis la signature jusqu'au dernier relevé) à la part du contrat exposée à cette variation. C'est une estimation indicative, pas un calcul comptable certifié.</p>
 {% endblock %}

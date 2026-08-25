@@ -11,7 +11,7 @@ def test_before_after_decision_intelligence_ui():
 
 def test_professional_landing_features():
     t=(ROOT/'templates/landing.html').read_text(encoding='utf-8')
-    for x in ['FINANCIAL OPERATING SYSTEM POUR LE BTP','Recouvrement intelligent','Économies et marge','Prévision de trésorerie','Décisions financières simulées','Une priorité claire','Développement commercial','BEFORE / AFTER DECISION INTELLIGENCE','Action Center','Financial Brain','Cash Intelligence','AI CFO PLANNER']:
+    for x in ['FINANCIAL OPERATING SYSTEM POUR VOTRE ENTREPRISE','Recouvrement intelligent','Économies et marge','Prévision de trésorerie','Décisions financières simulées','Une priorité claire','Développement commercial','BEFORE / AFTER DECISION INTELLIGENCE','Action Center','Financial Brain','Cash Intelligence','AI CFO PLANNER']:
         assert x in t
 
 def test_landing_has_conversion_ctas():

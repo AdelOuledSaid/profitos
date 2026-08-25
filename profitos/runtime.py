@@ -651,7 +651,7 @@ def init_tenant_db(org_id=None):
     if not org_id:
         raise RuntimeError('Organisation requise pour initialiser le schéma tenant')
     c=dbmod.connect_tenant(org_id, tenant_db(org_id)); c.executescript('''
-    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,price_index_name TEXT DEFAULT 'BT01',created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT);
@@ -668,7 +668,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
     '''); c.commit()
-    # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues de garantie.
+    # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
     for table,col in (('invoices','created_at'),('opportunities','created_at'),
                        ('invoices','kind'),('invoices','retention_release_date'),('invoices','retention_pct'),
                        ('invoices','customer_email'),('actions','sent_at'),('actions','sent_to'),
@@ -676,7 +676,8 @@ def init_tenant_db(org_id=None):
                        ('invoices','public_token'),
                        ('app_settings','slack_webhook_url'),('app_settings','teams_webhook_url'),
                        ('app_settings','accountant_email'),('app_settings','weekly_export_enabled'),
-                       ('app_settings','logo_url'),('app_settings','accent_color')):
+                       ('app_settings','logo_url'),('app_settings','accent_color'),
+                       ('app_settings','price_index_name')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
@@ -1115,7 +1116,7 @@ CHANGELOG_ENTRIES=[
     {'date':'2026-08-22','title':'Segmentation clients, performance équipe, export comptable automatisé'},
     {'date':'2026-08-22','title':'Score de risque acheteur croisé, benchmark sectoriel DSO, calendrier unifié'},
     {'date':'2026-08-22','title':'Programme de parrainage, portail client public, rapprochement bancaire'},
-    {'date':'2026-08-20','title':'Prévision de trésorerie, simulateur de caution, radar de cotraitance'},
+    {'date':'2026-08-20','title':'Prévision de trésorerie, simulateur de caution, radar de partenaires'},
     {'date':'2026-08-18','title':'Rôles équipe, PWA installable, export CSV/Excel'},
 ]
 
