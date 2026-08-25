@@ -889,7 +889,7 @@ def compute_weekly_digest(org_id, days=7):
         'has_signal':bool(new_recover or new_save or new_grow),
     }
 
-def send_email(to_email, subject, html, dry_run=None):
+def send_email(to_email, subject, html, dry_run=None, reply_to=None):
     """Envoie un email transactionnel.
 
     Ordre de préférence en production :
@@ -918,6 +918,8 @@ def send_email(to_email, subject, html, dry_run=None):
                 'subject': subject,
                 'html': html,
             }
+            if reply_to:
+                params['reply_to'] = reply_to
             result=resend.Emails.send(params)
             email_id = result.get('id') if isinstance(result,dict) else getattr(result,'id',None)
             return {'sent':True,'provider':'resend','id':email_id,'to':to_email,'subject':subject}
@@ -934,6 +936,8 @@ def send_email(to_email, subject, html, dry_run=None):
         msg['Subject']=subject
         msg['From']=os.environ.get('SMTP_FROM',from_email)
         msg['To']=to_email
+        if reply_to:
+            msg['Reply-To']=reply_to
         msg.attach(MIMEText(html,'html'))
         with smtplib.SMTP(smtp_host,int(os.environ.get('SMTP_PORT',587))) as server:
             server.starttls()

@@ -283,18 +283,23 @@ def register(app):
             ac=auth_cx()
             ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                 (full_name,company,email,phone,sector,company_size,primary_need,message,'NOUVEAU',now())); ac.commit(); ac.close()
-            admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','')
+            admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip()
+            reply_email=os.environ.get('DEMO_REPLY_EMAIL','contact@profitos.fr').strip() or 'contact@profitos.fr'
+
+            # 1) Notification commerciale complète vers l'administrateur.
             if admin_email:
-                details=(f"Contact : {full_name} | Email : {email}"
-                         + (f" | Téléphone : {phone}" if phone else '')
-                         + f" | Entreprise : {company} | Secteur : {sector}"
-                         + (f" | Taille : {company_size}" if company_size else '')
-                         + f" | Besoin principal : {primary_need}"
-                         + (f" | Message : {message}" if message else ''))
-                html=render_template('email_transactional.html',title='Nouvelle demande de démo',
-                    intro=details, cta_label=f'Répondre à {full_name}',cta_url=f'mailto:{email}',footer='Demande enregistrée dans ProfitOS.')
-                send_email(admin_email,f'Demande de démo — {company}',html)
-            return render_template('demo_thanks.html')
+                admin_html=render_template('email_demo_admin.html',full_name=full_name,company=company,
+                    email=email,phone=phone,sector=sector,company_size=company_size,
+                    primary_need=primary_need,message=message)
+                send_email(admin_email,f'Demande de démo — {company}',admin_html,reply_to=email)
+
+            # 2) Accusé de réception immédiat au prospect. Le Reply-To pointe vers
+            # une adresse humaine afin qu'une réponse ne parte jamais vers noreply@.
+            confirmation_html=render_template('email_demo_confirmation.html',full_name=full_name,
+                company=company,reply_email=reply_email)
+            send_email(email,'Votre demande de démonstration ProfitOS',confirmation_html,reply_to=reply_email)
+
+            return render_template('demo_thanks.html',contact_email=reply_email)
         return render_template('demo_request.html')
 
     @app.route('/admin/demo-requests',methods=['GET'])
