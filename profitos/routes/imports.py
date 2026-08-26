@@ -3,6 +3,160 @@ from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 
 
+
+
+def _pdf_money_value(raw):
+    """Convertit un montant FR/EN extrait d'un PDF en float, sans inventer de valeur."""
+    if raw is None:
+        return None
+    v=str(raw).replace('\u00a0',' ').replace('€','').strip()
+    v=re.sub(r'[^0-9,\.\- ]','',v).replace(' ','')
+    if not v:
+        return None
+    if ',' in v and '.' in v:
+        # 1.234,56 ou 1,234.56
+        if v.rfind(',') > v.rfind('.'):
+            v=v.replace('.','').replace(',','.')
+        else:
+            v=v.replace(',','')
+    elif ',' in v:
+        v=v.replace(',','.')
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def _pdf_first(patterns, text, flags=re.I|re.M):
+    for pat in patterns:
+        m=re.search(pat,text,flags)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _extract_invoice_pdf(path):
+    """Extraction prudente d'une facture PDF texte.
+
+    Cette première version ne fait pas d'OCR. Elle accepte les PDF dont le texte est
+    réellement extractible et refuse les documents ambigus au lieu d'inventer des champs.
+    """
+    reader=PdfReader(str(path))
+    pages=[]
+    for page in reader.pages[:12]:
+        try:
+            pages.append(page.extract_text() or '')
+        except Exception:
+            pages.append('')
+    text='\n'.join(pages).strip()
+    if len(text)<20:
+        raise ValueError("PDF sans texte exploitable (probablement scanné). Utilisez un PDF texte ou le CSV/XLSX pour cette version.")
+
+    # Numéro : les formats usuels FACTURE N°, Invoice #, ou le numéro juste sous le titre FACTURE.
+    num=_pdf_first([
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'\bFACTURE\s*\n\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+    ], text)
+
+    # Total TTC / net à payer / amount due. On privilégie les libellés explicites.
+    amount_raw=_pdf_first([
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
+    ], text)
+    amount=_pdf_money_value(amount_raw)
+
+    issue_raw=_pdf_first([
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    due_raw=_pdf_first([
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    issue=parse_date(issue_raw) if issue_raw else None
+    due=parse_date(due_raw) if due_raw else None
+
+    # Client : section CLIENT/FACTURÉ À/BILL TO, première ligne utile qui suit.
+    customer=None
+    cm=re.search(r'(?:^|\n)\s*(?:CLIENT|FACTUR(?:É|E)\s*(?:À|A)|BILL\s*TO)\s*\n([^\n]+)',text,re.I)
+    if cm:
+        candidate=cm.group(1).strip(' :-')
+        if candidate and not re.search(r'^(date|facture|invoice|adresse|email|téléphone|telephone)$',candidate,re.I):
+            customer=candidate
+    if not customer:
+        customer=_pdf_first([
+            r'(?:client|customer)\s*[:\-]\s*([^\n]{2,120})',
+            r'(?:factur(?:é|e)\s*(?:à|a)|bill\s*to)\s*[:\-]\s*([^\n]{2,120})',
+        ], text)
+
+    email=_pdf_first([r'([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})'],text,re.I)
+    phone=_pdf_first([r'(?<!\d)((?:\+33|0)\s*[1-9](?:[ .-]*\d{2}){4})(?!\d)'],text,re.I)
+
+    missing=[]
+    if not num: missing.append('numéro de facture')
+    if not customer: missing.append('client')
+    if amount is None or amount<=0: missing.append('montant TTC')
+    if not due: missing.append('échéance')
+    if missing:
+        raise ValueError('Champs non détectés dans le PDF : '+', '.join(missing)+'. Vérifiez que ces informations sont écrites explicitement dans le document.')
+
+    return {
+        'invoice_number':num,
+        'customer':customer,
+        'amount':amount,
+        'paid_amount':0.0,
+        'issue_date':issue.isoformat() if issue else '',
+        'due_date':due.isoformat(),
+        'status':'unpaid',
+        'type':'STANDARD',
+        'retention_release_date':'',
+        'customer_email':email or '',
+        'customer_phone':phone or '',
+    }
+
+
+def _load_invoice_uploads(files):
+    """Retourne un DataFrame uniforme pour CSV/XLSX ou un lot de PDF texte."""
+    files=[f for f in files if f and f.filename]
+    if not files:
+        raise ValueError('Aucun fichier sélectionné.')
+    exts={Path(secure_filename(f.filename)).suffix.lower() for f in files}
+    if '.pdf' in exts:
+        if exts != {'.pdf'}:
+            raise ValueError('Sélectionnez soit un CSV/XLSX, soit uniquement des PDF dans le même import.')
+        rows=[]
+        errors=[]
+        for f in files:
+            path=None
+            try:
+                path,_=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                rows.append(_extract_invoice_pdf(path))
+            except Exception as exc:
+                errors.append(f"{secure_filename(f.filename)} : {exc}")
+            finally:
+                if path: cleanup_upload(path)
+        if errors:
+            preview=' | '.join(errors[:5])
+            extra=f' (+{len(errors)-5} autre(s))' if len(errors)>5 else ''
+            raise ValueError('Import PDF interrompu : '+preview+extra)
+        if not rows:
+            raise ValueError('Aucune facture PDF exploitable.')
+        return pd.DataFrame(rows)
+
+    if len(files)!=1:
+        raise ValueError('Pour CSV/XLSX, sélectionnez un seul fichier.')
+    path=None
+    try:
+        path,_=save_upload(files[0],'imports',ALLOWED_INVOICE_EXTENSIONS)
+        ext=path.suffix.lower()
+        if ext in ('.xlsx','.xls'):
+            return pd.read_excel(path)
+        if ext=='.csv':
+            return pd.read_csv(path)
+        raise ValueError('Format de facture non pris en charge.')
+    finally:
+        if path: cleanup_upload(path)
+
 def register(app):
     @app.route('/upload/bank-statement',methods=['GET','POST'])
     @login_required
@@ -101,15 +255,12 @@ def register(app):
                 )
                 return redirect(request.url)
 
-            f=request.files.get('file')
-            if not f:return redirect(request.url)
+            files=request.files.getlist('file')
+            if not files or not any(f and f.filename for f in files): return redirect(request.url)
             try:
-                path, original_name=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
-                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+                df=_load_invoice_uploads(files)
             except Exception as e:
                 flash(f'Import refusé : {e}'); return redirect(request.url)
-            finally:
-                if 'path' in locals(): cleanup_upload(path)
 
             aliases={'num':['invoice_number','invoice','number','numero','numéro','n° facture','facture'],'customer':['customer','client','customer_name','nom client'],'amount':['amount','montant','montant ttc','total'],'paid':['paid_amount','montant payé','montant paye'],'issue':['issue_date','date facture','date'],'due':['due_date','échéance','echeance',"date d'échéance"],'status':['status','statut','etat','état'],'itype':['type','nature','kind'],'release':['retention_release_date','date liberation','date de liberation','date de levée','date de levee','date liberation retenue'],'email':['customer_email','email','email client','courriel','mail client'],'phone':['customer_phone','telephone','téléphone','phone','mobile','portable']}
             m=map_cols(df,aliases)

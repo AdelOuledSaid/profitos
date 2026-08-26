@@ -399,7 +399,7 @@ def login_required(fn):
 # ---------------------------------------------------------------------------
 # Security helpers / uploads
 # ---------------------------------------------------------------------------
-ALLOWED_INVOICE_EXTENSIONS={'.csv','.xlsx','.xls'}
+ALLOWED_INVOICE_EXTENSIONS={'.csv','.xlsx','.xls','.pdf'}
 ALLOWED_DCE_EXTENSIONS={'.pdf','.docx','.txt','.md'}
 WEBHOOK_HOST_SUFFIXES=('hooks.slack.com','webhook.office.com','logic.azure.com','outlook.office.com')
 
