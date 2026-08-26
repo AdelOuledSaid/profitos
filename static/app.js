@@ -125,3 +125,56 @@ document.addEventListener('click', function (event) {
   });
 })();
 
+// ---------------------------------------------------------------------------
+// Compteurs animés — éléments [data-count-to] comptent de 0 jusqu'à leur
+// valeur cible dès qu'ils entrent dans l'écran. Dégradation silencieuse :
+// sans IntersectionObserver, la valeur finale s'affiche directement.
+// ---------------------------------------------------------------------------
+(function () {
+  function formatNumber(n) {
+    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+  }
+
+  function animateCount(el) {
+    var target = parseFloat(el.getAttribute('data-count-to'));
+    var suffix = el.getAttribute('data-count-suffix') || '';
+    if (isNaN(target)) return;
+    var duration = 1200;
+    var start = null;
+    function step(timestamp) {
+      if (!start) start = timestamp;
+      var progress = Math.min((timestamp - start) / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = formatNumber(target * eased) + suffix;
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        el.textContent = formatNumber(target) + suffix;
+      }
+    }
+    window.requestAnimationFrame(step);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var items = document.querySelectorAll('[data-count-to]');
+    if (!items.length) return;
+    if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      items.forEach(function (el) {
+        var target = parseFloat(el.getAttribute('data-count-to'));
+        var suffix = el.getAttribute('data-count-suffix') || '';
+        if (!isNaN(target)) el.textContent = formatNumber(target) + suffix;
+      });
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          animateCount(entry.target);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.3 });
+    items.forEach(function (el) { observer.observe(el); });
+  });
+})();
+

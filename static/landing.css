@@ -1,7 +1,9 @@
 :root{--bg:#07101f;--panel:#0d1a30;--panel2:#101f38;--line:#233a5d;--text:#f4f7fb;--muted:#91acd6;--muted2:#60789f;--green:#5fe0ac;--blue:#79aefc;--red:#ff6e78;--gold:#f3bb4b;--purple:#b89cff;--teal:#5fd7d0}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body.landing-body{margin:0;background:radial-gradient(circle at 70% 0,#102342 0,transparent 32%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body.landing-body{margin:0;background:radial-gradient(circle at 70% 0,#102342 0,transparent 32%),var(--bg);background-size:200% 200%;animation:landingBgDrift 22s ease-in-out infinite;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+@keyframes landingBgDrift{0%,100%{background-position:70% 0,0 0}50%{background-position:35% 15%,0 0}}
+@media(prefers-reduced-motion:reduce){body.landing-body{animation:none}}
 a{color:inherit}
 .landing-shell{width:min(1180px,calc(100% - 48px));margin:0 auto}
 .landing-header{height:78px;width:min(1240px,calc(100% - 40px));margin:0 auto;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(117,156,211,.14);position:relative;z-index:3}
