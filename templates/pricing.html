@@ -1,23 +1,69 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tarifs · ProfitOS</title><link rel="stylesheet" href="{{ asset_url('style.css') }}"></head><body style="padding:60px 24px;max-width:1100px;margin:0 auto;">
-<div class="brand" style="margin-bottom:8px;">Profit<span>OS</span></div>
-<h1>Des tarifs simples, pas de surprise.</h1>
-<p class="muted" style="max-width:600px;">14 jours d'essai gratuit, sans carte bancaire. Annule à tout moment.</p>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tarifs · ProfitOS</title>
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('billing-v178.css') }}">
+</head>
+<body>
+<div class="pricing-public">
+  <header class="pricing-top">
+    <div class="brand">Profit<span>OS</span></div>
+    <div class="pricing-top-actions">
+      <a class="secondary button" href="{{ url_for('login') }}">Se connecter</a>
+      <a class="button" href="{{ url_for('signup') }}">Essayer gratuitement</a>
+    </div>
+  </header>
 
-<div class="cards" style="grid-template-columns:repeat(3,1fr);margin-top:40px;">
-  {% for key, plan in plans.items() %}
-  <div class="card" style="display:flex;flex-direction:column;">
-    <div class="label">{{ plan.name|upper }}</div>
-    <div class="big">{{ plan.price_eur }} €<span style="font-size:14px;font-weight:400;color:#8fa9d3;">/mois</span></div>
-    <ul style="list-style:none;padding:0;margin:16px 0;flex:1;">
-      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].team_members }} membres d'équipe</li>
-      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].organizations }} organisation(s)</li>
-      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ plan_limits[key].imports_per_month or 'Imports illimités' }}{% if plan_limits[key].imports_per_month %} imports/mois{% endif %}</li>
-      <li style="padding:6px 0;border-top:1px solid #233a5f;">{{ 'Fonctionnalités avancées incluses' if plan_limits[key].advanced_features else 'RECOVER/SAVE/GROW de base' }}</li>
-    </ul>
-    <a class="button" href="{{ url_for('signup') }}" style="text-align:center;">Essayer gratuitement</a>
+  <section class="pricing-hero">
+    <div class="eyebrow green">TARIFS PROFITOS</div>
+    <h1>Un pilotage financier complet, adapté à la taille de votre entreprise.</h1>
+    <p>Commencez avec le cœur de ProfitOS : cash, impayés, économies, marge et décisions. Passez à Pro ou Business lorsque vos volumes, vos équipes ou vos besoins d'automatisation augmentent.</p>
+    <div class="billing-pills"><span class="billing-pill"><strong>✓</strong> 14 jours d'essai gratuit</span><span class="billing-pill"><strong>✓</strong> Sans carte bancaire</span><span class="billing-pill"><strong>✓</strong> Annulation à tout moment</span></div>
+  </section>
+
+  <div class="billing-plan-grid">
+    {% for key,plan in plans.items() %}
+    {% set recommended = key=='PRO' %}
+    <article class="billing-plan {% if recommended %}is-pro{% endif %}">
+      {% if recommended %}<div class="billing-badge">RECOMMANDÉ</div>{% endif %}
+      <div class="billing-plan-head">
+        <div class="billing-plan-code">{{ key }}</div><h2>{{ plan.name }}</h2>
+        <div class="billing-price">{{ plan.price_eur }} € <small>/ mois</small></div>
+        {% if key=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent centraliser leur pilotage financier.</p>{% elif key=='PRO' %}<p class="billing-for">Pour les PME qui veulent plus de capacité et automatiser leurs workflows.</p>{% else %}<p class="billing-for">Pour les structures multi-équipes et multi-organisations avec des volumes importants.</p>{% endif %}
+      </div>
+      <div class="billing-feature-group"><div class="billing-feature-title">INCLUS</div>
+        <div class="billing-feature"><span class="tick">✓</span><span>Recover, Save & Money Hunter</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>Financial Brain & Cash Intelligence</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>AI CFO Planner & Cash Forecast</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>Margin Watch, GROW & Action Center</span></div>
+      </div>
+      <div class="billing-feature-group"><div class="billing-feature-title">CAPACITÉ</div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[key].team_members }} utilisateurs</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[key].organizations }} organisation(s)</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[key].imports_per_month %}{{ plan_limits[key].imports_per_month }} imports / mois{% else %}Imports illimités{% endif %}</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[key].reports_per_month %}{{ plan_limits[key].reports_per_month }} rapports / mois{% else %}Rapports illimités{% endif %}</span></div>
+      </div>
+      <div class="billing-feature-group"><div class="billing-feature-title">AVANCÉ</div>
+        {% if plan_limits[key].advanced_features %}
+        <div class="billing-feature"><span class="tick">✓</span><span>Actualisation BOAMP</span></div><div class="billing-feature"><span class="tick">✓</span><span>Envoi email automatique</span></div><div class="billing-feature"><span class="tick">✓</span><span>Analyse DCE</span></div>
+        {% else %}
+        <div class="billing-feature off"><span class="tick">—</span><span>BOAMP, email automatique et DCE</span></div>
+        {% endif %}
+      </div>
+      <a class="button {% if not recommended %}secondary{% endif %}" href="{{ url_for('signup') }}" style="text-align:center;margin-top:auto;">Essayer gratuitement</a>
+    </article>
+    {% endfor %}
   </div>
-  {% endfor %}
-</div>
 
-<p class="muted" style="margin-top:40px;"><a class="link" href="{{ url_for('login') }}">← Déjà client ? Se connecter</a></p>
+  <section class="billing-section"><div class="eyebrow">COMPARAISON</div><h2>Les différences essentielles</h2><div class="billing-matrix"><table><thead><tr><th>Fonction / limite</th><th>Starter</th><th>Pro</th><th>Business</th></tr></thead><tbody>
+  <tr><td>Cœur financier ProfitOS</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <tr><td>Imports / mois</td><td>20</td><td>200</td><td>Illimités</td></tr><tr><td>Rapports / mois</td><td>10</td><td>100</td><td>Illimités</td></tr><tr><td>Utilisateurs</td><td>2</td><td>10</td><td>50</td></tr><tr><td>Organisations</td><td>1</td><td>3</td><td>10</td></tr><tr><td>BOAMP, email automatique, DCE</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  </tbody></table></div></section>
+
+  <section class="pricing-cta"><h2>Vous préférez voir ProfitOS sur un cas concret ?</h2><p>Réservez une démonstration personnalisée ou commencez directement votre essai gratuit.</p><a class="button" href="{{ url_for('demo') }}">Demander une démo</a></section>
+  <p class="muted" style="margin-top:34px;text-align:center;"><a class="link" href="{{ url_for('home') }}">← Retour à ProfitOS</a></p>
+</div>
 </body></html>

@@ -1,203 +1,218 @@
-{% extends "base.html" %}{% block content %}
-<div class="page">
-  <div class="eyebrow">PLANS & BILLING</div>
-  <h1>Choisissez la formule adaptée à votre activité</h1>
-  <p class="muted" style="max-width:760px;margin-bottom:22px;">
-    Passez d'un essai limité à une utilisation complète de ProfitOS. Tous les plans payants incluent
-    Recover, Save, les imports, GROW et Action Center. Les fonctions avancées BOAMP, email et DCE sont
-    disponibles avec Pro et Business.
-  </p>
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ asset_url('billing-v178.css') }}">
+<div class="page billing-shell">
+  <section class="billing-hero">
+    <div class="eyebrow green">PLANS & BILLING</div>
+    <h1>Choisissez le niveau de pilotage financier adapté à votre entreprise.</h1>
+    <p class="billing-lead">ProfitOS réunit recouvrement, trésorerie, économies, marge et aide à la décision dans un même système. Commencez avec l'essentiel, puis augmentez les volumes et l'automatisation lorsque votre équipe grandit.</p>
+    <div class="billing-pills">
+      <span class="billing-pill"><strong>✓</strong> 14 jours d'essai</span>
+      <span class="billing-pill"><strong>✓</strong> Sans carte bancaire pendant l'essai</span>
+      <span class="billing-pill"><strong>✓</strong> Paiement sécurisé Stripe</span>
+      <span class="billing-pill"><strong>✓</strong> Annulation depuis le portail client</span>
+    </div>
+  </section>
 
   {% if not billing_enabled %}
-  <div class="panel">
-    <strong>Facturation non configurée.</strong>
-    <p class="muted">L'accès reste disponible en mode développement. En production, configurez la clé Stripe, le secret webhook et au moins un Price ID.</p>
-  </div>
+  <section class="panel">
+    <div class="eyebrow">MODE DÉVELOPPEMENT</div>
+    <h2>Facturation non configurée</h2>
+    <p class="muted">L'accès reste disponible en développement. En production, configurez la clé Stripe, le secret webhook et au moins un Price ID.</p>
+  </section>
   {% else %}
 
-  <div class="panel" style="margin-bottom:20px;">
-    <small class="muted">STATUT ACTUEL</small>
-    {% if org.status=='ACTIVE_PAID' %}
-      <h2>{{ org.plan|title }} — actif</h2>
-      <p class="muted">Votre abonnement est confirmé par Stripe.</p>
-    {% elif org.status=='PAST_DUE' %}
-      <h2>Paiement à régulariser</h2>
-      <p class="muted">Mettez à jour votre moyen de paiement dans le portail Stripe.</p>
-    {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}
-      <h2>Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</h2>
-      <p class="muted">Le mode essai permet de découvrir ProfitOS. Les fonctions opérationnelles payantes restent verrouillées.</p>
-    {% elif org.status=='CANCELED' %}
-      <h2>Abonnement annulé</h2>
-    {% else %}
-      <h2>Essai gratuit terminé</h2>
+  <section class="panel billing-status">
+    <div class="billing-status-copy">
+      <small class="muted">STATUT ACTUEL</small>
+      {% if org.status=='ACTIVE_PAID' %}
+        <h2>{{ org.plan|title }} — actif</h2>
+        <p class="muted">Votre abonnement est confirmé par Stripe et vos fonctions sont actives.</p>
+      {% elif org.status=='PAST_DUE' %}
+        <h2>Paiement à régulariser</h2>
+        <p class="muted">Mettez à jour votre moyen de paiement depuis le portail Stripe.</p>
+      {% elif org.plan=='TRIAL' and trial_days is not none and trial_days>0 %}
+        <h2>Essai gratuit — {{ trial_days }} jour{{ 's' if trial_days>1 else '' }} restant{{ 's' if trial_days>1 else '' }}</h2>
+        <p class="muted">Explorez ProfitOS avant de choisir la formule correspondant à votre volume et à votre niveau d'automatisation.</p>
+      {% elif org.status=='CANCELED' %}
+        <h2>Abonnement annulé</h2>
+        <p class="muted">Vous pouvez reprendre un abonnement lorsque vous le souhaitez.</p>
+      {% else %}
+        <h2>Essai gratuit terminé</h2>
+        <p class="muted">Choisissez une formule pour continuer à utiliser les fonctions opérationnelles.</p>
+      {% endif %}
+    </div>
+    {% if org.stripe_customer_id %}
+    <div class="billing-status-actions">
+      <form method="post" action="{{ url_for('billing_portal') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="secondary">Gérer mon abonnement</button>
+      </form>
+    </div>
     {% endif %}
-  </div>
+  </section>
 
   {% if quota_usage and org.plan in ('STARTER','PRO','BUSINESS') %}
-  <div class="panel" style="margin-bottom:20px;">
-    <small class="muted">UTILISATION CE MOIS-CI</small>
-    <h2 style="margin-top:6px;">Limites de votre formule {{ org.plan|title }}</h2>
-    <div class="cards" style="margin-top:14px;">
+  <section class="billing-section">
+    <div class="eyebrow">UTILISATION CE MOIS-CI</div>
+    <h2>Votre consommation {{ org.plan|title }}</h2>
+    <p class="billing-section-lead">Suivez les limites réellement appliquées côté serveur à votre organisation.</p>
+    {% set imports_pct = ((quota_usage.imports.used * 100) / quota_usage.imports.limit) if quota_usage.imports.limit else 100 %}
+    {% set reports_pct = ((quota_usage.reports.used * 100) / quota_usage.reports.limit) if quota_usage.reports.limit else 100 %}
+    {% set team_pct = ((quota_usage.team.used * 100) / quota_usage.team.limit) if quota_usage.team.limit else 100 %}
+    {% set organizations_pct = ((quota_usage.organizations.used * 100) / quota_usage.organizations.limit) if quota_usage.organizations.limit else 100 %}
+    <div class="quota-grid">
+      <div class="quota-card">
+        <div class="billing-plan-code">IMPORTS</div>
+        <h3>{{ quota_usage.imports.used }} / {% if quota_usage.imports.limit is none %}Illimité{% else %}{{ quota_usage.imports.limit }}{% endif %}</h3>
+        <div class="quota-bar"><div class="quota-fill {% if imports_pct >= 100 %}full{% elif imports_pct >= 80 %}warn{% endif %}" style="width:{{ 100 if imports_pct > 100 else imports_pct }}%"></div></div>
+        <p class="muted" style="margin:0;">Imports utilisés ce mois-ci.</p>
+      </div>
 
-      <section class="panel">
-        <div class="eyebrow">IMPORTS</div>
-        <h2 style="margin-bottom:6px;">
-          {{ quota_usage.imports.used }} /
-          {% if quota_usage.imports.limit is none %}Illimité{% else %}{{ quota_usage.imports.limit }}{% endif %}
-        </h2>
-        {% if quota_usage.imports.limit is not none %}
-          {% set pct_imports = ((quota_usage.imports.used * 100) / quota_usage.imports.limit) if quota_usage.imports.limit else 100 %}
-          {% if pct_imports > 100 %}{% set pct_imports = 100 %}{% endif %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:{{ pct_imports }}%;border-radius:999px;background:{% if pct_imports >= 100 %}#dc2626{% elif pct_imports >= 80 %}#d97706{% else %}#16a34a{% endif %};transition:width .25s ease;"></div>
-          </div>
-        {% else %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:100%;border-radius:999px;background:#16a34a;"></div>
-          </div>
-        {% endif %}
-        <p class="muted">Imports utilisés ce mois-ci.</p>
-      </section>
+      <div class="quota-card">
+        <div class="billing-plan-code">RAPPORTS</div>
+        <h3>{{ quota_usage.reports.used }} / {% if quota_usage.reports.limit is none %}Illimité{% else %}{{ quota_usage.reports.limit }}{% endif %}</h3>
+        <div class="quota-bar"><div class="quota-fill {% if reports_pct >= 100 %}full{% elif reports_pct >= 80 %}warn{% endif %}" style="width:{{ 100 if reports_pct > 100 else reports_pct }}%"></div></div>
+        <p class="muted" style="margin:0;">Rapports générés ou envoyés.</p>
+      </div>
 
-      <section class="panel">
-        <div class="eyebrow">RAPPORTS</div>
-        <h2 style="margin-bottom:6px;">
-          {{ quota_usage.reports.used }} /
-          {% if quota_usage.reports.limit is none %}Illimité{% else %}{{ quota_usage.reports.limit }}{% endif %}
-        </h2>
-        {% if quota_usage.reports.limit is not none %}
-          {% set pct_reports = ((quota_usage.reports.used * 100) / quota_usage.reports.limit) if quota_usage.reports.limit else 100 %}
-          {% if pct_reports > 100 %}{% set pct_reports = 100 %}{% endif %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:{{ pct_reports }}%;border-radius:999px;background:{% if pct_reports >= 100 %}#dc2626{% elif pct_reports >= 80 %}#d97706{% else %}#16a34a{% endif %};transition:width .25s ease;"></div>
-          </div>
-        {% else %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:100%;border-radius:999px;background:#16a34a;"></div>
-          </div>
-        {% endif %}
-        <p class="muted">Rapports générés ou envoyés ce mois-ci.</p>
-      </section>
+      <div class="quota-card">
+        <div class="billing-plan-code">ÉQUIPE</div>
+        <h3>{{ quota_usage.team.used }} / {% if quota_usage.team.limit is none %}Illimité{% else %}{{ quota_usage.team.limit }}{% endif %}</h3>
+        <div class="quota-bar"><div class="quota-fill {% if team_pct >= 100 %}full{% elif team_pct >= 80 %}warn{% endif %}" style="width:{{ 100 if team_pct > 100 else team_pct }}%"></div></div>
+        <p class="muted" style="margin:0;">Utilisateurs de l'organisation.</p>
+      </div>
 
-      <section class="panel">
-        <div class="eyebrow">ÉQUIPE</div>
-        <h2 style="margin-bottom:6px;">
-          {{ quota_usage.team.used }} /
-          {% if quota_usage.team.limit is none %}Illimité{% else %}{{ quota_usage.team.limit }}{% endif %}
-        </h2>
-        {% if quota_usage.team.limit is not none %}
-          {% set pct_team = ((quota_usage.team.used * 100) / quota_usage.team.limit) if quota_usage.team.limit else 100 %}
-          {% if pct_team > 100 %}{% set pct_team = 100 %}{% endif %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:{{ pct_team }}%;border-radius:999px;background:{% if pct_team >= 100 %}#dc2626{% elif pct_team >= 80 %}#d97706{% else %}#16a34a{% endif %};transition:width .25s ease;"></div>
-          </div>
-        {% else %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:100%;border-radius:999px;background:#16a34a;"></div>
-          </div>
-        {% endif %}
-        <p class="muted">Utilisateurs dans l'organisation actuelle.</p>
-      </section>
-
-      <section class="panel">
-        <div class="eyebrow">ORGANISATIONS</div>
-        <h2 style="margin-bottom:6px;">
-          {{ quota_usage.organizations.used }} /
-          {% if quota_usage.organizations.limit is none %}Illimité{% else %}{{ quota_usage.organizations.limit }}{% endif %}
-        </h2>
-        {% if quota_usage.organizations.limit is not none %}
-          {% set pct_orgs = ((quota_usage.organizations.used * 100) / quota_usage.organizations.limit) if quota_usage.organizations.limit else 100 %}
-          {% if pct_orgs > 100 %}{% set pct_orgs = 100 %}{% endif %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:{{ pct_orgs }}%;border-radius:999px;background:{% if pct_orgs >= 100 %}#dc2626{% elif pct_orgs >= 80 %}#d97706{% else %}#16a34a{% endif %};transition:width .25s ease;"></div>
-          </div>
-        {% else %}
-          <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 8px;">
-            <div style="height:100%;width:100%;border-radius:999px;background:#16a34a;"></div>
-          </div>
-        {% endif %}
-        <p class="muted">Organisations dont vous êtes propriétaire.</p>
-      </section>
-
+      <div class="quota-card">
+        <div class="billing-plan-code">ORGANISATIONS</div>
+        <h3>{{ quota_usage.organizations.used }} / {% if quota_usage.organizations.limit is none %}Illimité{% else %}{{ quota_usage.organizations.limit }}{% endif %}</h3>
+        <div class="quota-bar"><div class="quota-fill {% if organizations_pct >= 100 %}full{% elif organizations_pct >= 80 %}warn{% endif %}" style="width:{{ 100 if organizations_pct > 100 else organizations_pct }}%"></div></div>
+        <p class="muted" style="margin:0;">Organisations dont vous êtes propriétaire.</p>
+      </div>
     </div>
-  </div>
+  </section>
   {% endif %}
 
   {% if org.status not in ('ACTIVE_PAID','PAST_DUE') or not org.stripe_customer_id %}
-  <div class="cards" style="align-items:stretch;">
-    {% for code,p in plans.items() %}
-    {% set recommended = code=='PRO' %}
-    <section class="panel" style="position:relative;{% if recommended %}border:2px solid #2563eb;{% endif %}">
-      {% if recommended %}
-      <div style="position:absolute;top:-12px;right:16px;background:#2563eb;color:white;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800;">RECOMMANDÉ</div>
-      {% endif %}
-      <div class="eyebrow">{{ code }}</div>
-      <h2>{{ p.name }}</h2>
-      <div style="font-size:34px;font-weight:800;margin:10px 0 14px;">
-        {{ p.price_eur }} €
-        <small class="muted" style="font-size:14px;">/ mois</small>
-      </div>
+  <section class="billing-section">
+    <div class="eyebrow green">3 FORMULES</div>
+    <h2>Un même cœur financier. Plus de capacité et d'automatisation à chaque niveau.</h2>
+    <p class="billing-section-lead">Starter couvre le pilotage financier opérationnel. Pro ajoute les automatisations avancées. Business augmente fortement les volumes et la capacité multi-organisation.</p>
 
-      {% if code=='STARTER' %}
-        <p class="muted">Pour une petite structure qui veut utiliser les fonctions essentielles.</p>
-        <div style="line-height:1.9;margin:16px 0;">
-          <div>✓ Recover & Save</div>
-          <div>✓ GROW & Action Center</div>
-          <div>✓ 20 imports / mois</div>
-          <div>✓ 10 rapports / mois</div>
-          <div>✓ 2 utilisateurs</div>
-          <div>✓ 1 organisation</div>
-          <div class="muted">— Actualisation BOAMP avancée</div>
-          <div class="muted">— Envoi email automatique</div>
-          <div class="muted">— Analyse DCE</div>
+    <div class="billing-plan-grid">
+      {% for code,p in plans.items() %}
+      {% set recommended = code=='PRO' %}
+      <article class="billing-plan {% if recommended %}is-pro{% endif %}">
+        {% if recommended %}<div class="billing-badge">RECOMMANDÉ</div>{% endif %}
+        <div class="billing-plan-head">
+          <div class="billing-plan-code">{{ code }}</div>
+          <h2>{{ p.name }}</h2>
+          <div class="billing-price">{{ p.price_eur }} € <small>/ mois</small></div>
+          {% if code=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent piloter cash, impayés, dépenses et décisions au quotidien.</p>
+          {% elif code=='PRO' %}<p class="billing-for">Pour les PME qui utilisent ProfitOS régulièrement et veulent automatiser davantage leurs workflows.</p>
+          {% else %}<p class="billing-for">Pour les structures avec plusieurs équipes, plusieurs entités et des volumes importants.</p>{% endif %}
         </div>
-      {% elif code=='PRO' %}
-        <p class="muted">Pour les équipes qui utilisent ProfitOS régulièrement et veulent automatiser davantage.</p>
-        <div style="line-height:1.9;margin:16px 0;">
-          <div>✓ Tout Starter</div>
-          <div>✓ 200 imports / mois</div>
-          <div>✓ 100 rapports / mois</div>
-          <div>✓ 10 utilisateurs</div>
-          <div>✓ 3 organisations</div>
-          <div>✓ Actualisation BOAMP</div>
-          <div>✓ Envoi email automatique</div>
-          <div>✓ Analyse DCE</div>
+
+        <div class="billing-feature-group">
+          <div class="billing-feature-title">PILOTAGE FINANCIER</div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Money Hunter, Recover & Save</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Financial Brain & Cash Intelligence</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>AI CFO Planner & Cash Forecast</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Margin Watch, Calendar & GROW</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Action Center et imports de données</span></div>
         </div>
-      {% else %}
-        <p class="muted">Pour les organisations avec des volumes importants et plusieurs équipes.</p>
-        <div style="line-height:1.9;margin:16px 0;">
-          <div>✓ Tout Pro</div>
-          <div>✓ Imports illimités</div>
-          <div>✓ Rapports illimités</div>
-          <div>✓ 50 utilisateurs</div>
-          <div>✓ 10 organisations</div>
-          <div>✓ Fonctions avancées complètes</div>
+
+        <div class="billing-feature-group">
+          <div class="billing-feature-title">CAPACITÉ</div>
+          {% if code=='STARTER' %}
+            <div class="billing-feature"><span class="tick">✓</span><span>20 imports / mois</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>10 rapports / mois</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>2 utilisateurs · 1 organisation</span></div>
+          {% elif code=='PRO' %}
+            <div class="billing-feature"><span class="tick">✓</span><span>200 imports / mois</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>100 rapports / mois</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>10 utilisateurs · 3 organisations</span></div>
+          {% else %}
+            <div class="billing-feature"><span class="tick">✓</span><span>Imports illimités</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>Rapports illimités</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>50 utilisateurs · 10 organisations</span></div>
+          {% endif %}
         </div>
-      {% endif %}
 
-      <form method="post" action="{{ url_for('billing_checkout') }}" style="margin-top:18px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="plan" value="{{ code }}">
-        <button type="submit" style="width:100%;">Choisir {{ p.name }}</button>
-      </form>
-    </section>
-    {% endfor %}
-  </div>
+        <div class="billing-feature-group">
+          <div class="billing-feature-title">AUTOMATISATION AVANCÉE</div>
+          {% if code=='STARTER' %}
+            <div class="billing-feature off"><span class="tick">—</span><span>Actualisation BOAMP avancée</span></div>
+            <div class="billing-feature off"><span class="tick">—</span><span>Envoi email automatique</span></div>
+            <div class="billing-feature off"><span class="tick">—</span><span>Analyse DCE</span></div>
+          {% else %}
+            <div class="billing-feature"><span class="tick">✓</span><span>Actualisation BOAMP</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>Envoi email automatique</span></div>
+            <div class="billing-feature"><span class="tick">✓</span><span>Analyse DCE</span></div>
+          {% endif %}
+        </div>
 
-  <div class="panel" style="margin-top:20px;text-align:center;">
-    <strong>Paiement sécurisé par Stripe</strong>
-    <p class="muted" style="margin-bottom:0;">Vous pouvez gérer votre abonnement, votre moyen de paiement et votre résiliation depuis le portail Stripe.</p>
-  </div>
+        {% if code=='PRO' %}<div class="billing-note">Tout Starter, avec davantage de capacité et les fonctions avancées.</div>{% elif code=='BUSINESS' %}<div class="billing-note">Tout Pro, avec volumes étendus et capacité multi-organisation.</div>{% endif %}
 
-  {% else %}
-  <div class="panel" style="margin-bottom:20px;">
-    <h2>Gérer votre abonnement</h2>
-    <p class="muted">Modifiez votre formule, votre moyen de paiement ou votre résiliation depuis le portail sécurisé Stripe.</p>
+        <form method="post" action="{{ url_for('billing_checkout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="plan" value="{{ code }}">
+          <button type="submit" {% if not recommended %}class="secondary"{% endif %}>Choisir {{ p.name }}</button>
+        </form>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="billing-section">
+    <div class="eyebrow">COMPARAISON</div>
+    <h2>Comparez les formules en un coup d'œil</h2>
+    <div class="billing-matrix">
+      <table>
+        <thead><tr><th>Fonction / limite</th><th>Starter</th><th>Pro</th><th>Business</th></tr></thead>
+        <tbody>
+          <tr><td>Pilotage financier : Recover, Save, Money Hunter, Financial Brain</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+          <tr><td>Cash Intelligence, AI CFO Planner, Cash Forecast</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+          <tr><td>Margin Watch, GROW, Calendar, Action Center</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+          <tr><td>Imports / mois</td><td>20</td><td>200</td><td>Illimités</td></tr>
+          <tr><td>Rapports / mois</td><td>10</td><td>100</td><td>Illimités</td></tr>
+          <tr><td>Utilisateurs</td><td>2</td><td>10</td><td>50</td></tr>
+          <tr><td>Organisations</td><td>1</td><td>3</td><td>10</td></tr>
+          <tr><td>Actualisation BOAMP</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+          <tr><td>Envoi email automatique</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+          <tr><td>Analyse DCE</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="billing-trust">
+    <div class="panel"><div class="eyebrow green">SÉCURITÉ</div><h3>Paiement sécurisé par Stripe</h3><p class="muted">ProfitOS ne stocke pas vos données de carte bancaire. Le statut de l'abonnement est confirmé par webhook signé Stripe.</p></div>
+    <div class="panel"><div class="eyebrow green">FLEXIBILITÉ</div><h3>Gérez votre abonnement</h3><p class="muted">Moyen de paiement et abonnement restent accessibles depuis le portail client Stripe.</p></div>
+    <div class="panel"><div class="eyebrow green">ÉVOLUTIF</div><h3>Changez de niveau avec votre usage</h3><p class="muted">Les quotas sont centralisés et contrôlés côté serveur pour rester cohérents avec votre formule.</p></div>
+  </section>
+
+  <section class="billing-section">
+    <div class="eyebrow">QUESTIONS FRÉQUENTES</div>
+    <h2>Avant de choisir</h2>
+    <div class="billing-faq">
+      <details><summary>Quelle formule choisir pour commencer ?</summary><p>Starter convient lorsque vous voulez utiliser le cœur de ProfitOS avec une petite équipe et des volumes modérés. Pro devient pertinent dès que vous avez besoin de plus de capacité ou des fonctions avancées BOAMP, email et DCE.</p></details>
+      <details><summary>Les fonctions financières principales sont-elles réservées à Pro ?</summary><p>Non. Les plans payants incluent le cœur de pilotage financier. La différence principale entre Starter, Pro et Business porte sur les quotas, la taille d'équipe, le nombre d'organisations et les fonctions avancées actuellement contrôlées par le plan.</p></details>
+      <details><summary>Puis-je gérer mon abonnement moi-même ?</summary><p>Oui. Une fois un abonnement Stripe associé à l'organisation, le portail client permet de gérer le moyen de paiement et l'abonnement.</p></details>
+      <details><summary>Business est-il illimité partout ?</summary><p>Les imports et rapports sont illimités dans la configuration actuelle. Business autorise jusqu'à 50 utilisateurs et 10 organisations.</p></details>
+    </div>
+  </section>
+
+  {% if org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
+  <section class="panel" style="margin-top:28px;text-align:center;">
+    <strong>Votre abonnement est déjà géré par Stripe.</strong>
+    <p class="muted">Utilisez le portail pour modifier votre moyen de paiement ou gérer votre abonnement.</p>
     <form method="post" action="{{ url_for('billing_portal') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit">Gérer mon abonnement</button>
     </form>
-  </div>
+  </section>
   {% endif %}
 
   {% endif %}
