@@ -213,3 +213,11 @@
 .decision-before-after-arrow{display:flex;align-items:center;justify-content:center;color:#6d8eba;font-size:25px}
 @media(max-width:900px){.decision-before-after{grid-template-columns:1fr 1fr}.decision-before-after-arrow{display:none}}
 @media(max-width:620px){.decision-before-after{grid-template-columns:1fr}}
+
+/* V1.7.7 — AI CFO real business constraints */
+.decision-constraint-group{grid-column:1/-1;border:1px solid rgba(92,219,178,.28);background:rgba(21,58,55,.24);border-radius:18px;padding:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:end}
+.decision-constraint-group .eyebrow,.decision-constraint-group>p{grid-column:1/-1}
+.decision-check{display:flex!important;align-items:center;gap:10px;min-height:48px;padding:10px 12px;border:1px solid rgba(130,165,220,.22);border-radius:12px;background:rgba(8,20,40,.28)}
+.decision-check input{width:18px!important;height:18px!important;min-width:18px;margin:0}
+.decision-constraint-group input:disabled,.decision-constraint-group select:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:900px){.decision-constraint-group{grid-template-columns:1fr}}

@@ -178,3 +178,25 @@ document.addEventListener('click', function (event) {
   });
 })();
 
+
+
+// V1.7.7 — Decision Simulator real-business-constraint controls.
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.querySelector('.decision-form');
+  if (!form) return;
+  const delay = form.querySelector('[name="allow_delay"]');
+  const maxDelay = form.querySelector('[name="max_delay"]');
+  const split = form.querySelector('[name="allow_installments"]');
+  const maxInst = form.querySelector('[name="max_installments"]');
+  const financing = form.querySelector('[name="allow_financing"]');
+  const maxFin = form.querySelector('[name="max_financing"]');
+  const sync = function () {
+    if (maxDelay && delay) maxDelay.disabled = !delay.checked;
+    if (maxInst && split) maxInst.disabled = !split.checked;
+    if (maxFin && financing) maxFin.disabled = !financing.checked;
+  };
+  if (delay) delay.addEventListener('change', sync);
+  if (split) split.addEventListener('change', sync);
+  if (financing) financing.addEventListener('change', sync);
+  sync();
+});

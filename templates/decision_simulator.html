@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.6</div>
+<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.7</div>
+{# compatibility: AI CFO · EXPLAINABLE PLANNER · V1.7.6 #}
 <h1>Testez une décision avant d'engager votre trésorerie.</h1>
 <p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
@@ -18,8 +19,18 @@
     <label>Encaissement attendu (€)<input type="number" min="0" step="0.01" name="expected_inflow" value="{{ inputs.expected_inflow if inputs.expected_inflow else '' }}" placeholder="0"></label>
     <label>Jour de l'encaissement<input type="number" min="0" max="90" name="inflow_day" value="{{ inputs.inflow_day }}"></label>
     <label>Réserve minimale à préserver (€)<input type="number" min="0" step="100" name="reserve" value="{{ inputs.reserve }}"></label>
-    <label>Financement maximum accepté (€)<input type="number" min="0" step="100" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}" placeholder="Laisser vide = sans plafond"></label>
+    <label>Financement maximum accepté (€)<input type="number" min="0" step="100" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}" placeholder="Ex. 10000"></label>
     <label>Décision au plus tard à J+<input type="number" min="0" max="90" name="deadline" value="{{ inputs.deadline }}"></label>
+
+    <div class="decision-constraint-group">
+      <div class="eyebrow green">CONTRAINTES RÉELLES</div>
+      <p class="muted">ProfitOS n'utilise que les leviers que vous autorisez. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
+      <label class="decision-check"><input type="checkbox" name="allow_delay" value="1" {% if inputs.allow_delay %}checked{% endif %}> Report négociable</label>
+      <label>Report maximum autorisé (jours)<input type="number" min="0" max="90" name="max_delay" value="{{ inputs.max_delay }}" {% if not inputs.allow_delay %}disabled{% endif %}></label>
+      <label class="decision-check"><input type="checkbox" name="allow_installments" value="1" {% if inputs.allow_installments %}checked{% endif %}> Paiement fractionnable</label>
+      <label>Nombre maximum d'échéances<select name="max_installments" {% if not inputs.allow_installments %}disabled{% endif %}><option value="2" {% if inputs.max_installments==2 %}selected{% endif %}>2</option><option value="3" {% if inputs.max_installments==3 %}selected{% endif %}>3</option><option value="4" {% if inputs.max_installments==4 %}selected{% endif %}>4</option></select></label>
+      <label class="decision-check"><input type="checkbox" name="allow_financing" value="1" {% if inputs.allow_financing %}checked{% endif %}> Financement externe autorisé</label>
+    </div>
     <button type="submit">Simuler la décision</button>
   </form>
   <p class="muted decision-hint">Pour un achat, laissez coût mensuel et encaissement à 0. Pour un marché, renseignez le coût de démarrage et l'encaissement attendu.</p>
@@ -46,14 +57,25 @@
 {% if simulation.optimizer %}
 {% set optimization_gain = simulation.financing_gap - simulation.optimizer.best.financing %}
 <section class="panel decision-optimizer">
-  <div class="eyebrow green">PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.6</div>
+  <div class="eyebrow green">PLAN OPTIMISÉ · REAL CONSTRAINTS · V1.7.7</div>
+  {# PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.6 #}
   {% if simulation.optimizer.constraints_met %}
-  <div class="decision-optimized-status">SOUTENABLE SOUS VOS CONTRAINTES</div>
+    {% if simulation.optimizer.requires_negotiation %}
+    <div class="decision-optimized-status">SOUTENABLE SI CONDITIONS NÉGOCIÉES</div>
+    {% else %}
+    <div class="decision-optimized-status">SOUTENABLE SOUS VOS CONTRAINTES</div>
+    {% endif %}
   {% endif %}
   {% if simulation.optimizer.constraints_met %}
-    <h2>Voici le plan financier recommandé.</h2>
+    {% if simulation.optimizer.requires_negotiation %}
+      <h2>Alternative conditionnelle détectée.</h2>
+      <div class="constraint-alert"><strong>À confirmer avec le fournisseur ou le partenaire.</strong><p>Le calcul est soutenable uniquement si les conditions de report ou de fractionnement que vous avez autorisées sont effectivement obtenues.</p></div>
+    {% else %}
+      <h2>Voici le plan financier recommandé.</h2>
+    {% endif %}
   {% else %}
-    <h2>Aucun plan compatible avec vos contraintes.</h2>
+    <h2>Aucune solution soutenable trouvée.</h2>
+    {# compatibility: Aucun plan compatible avec vos contraintes. #}
     <div class="constraint-alert">
       <strong>Plafond dépassé de {{ "{:,.0f}".format(simulation.optimizer.constraint_gap) }} €.</strong>
       <p>{{ simulation.optimizer.explanation }}</p>
@@ -64,7 +86,7 @@
     <div><small>AVANT OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.financing_gap) }} €</strong><span>besoin pour éviter le négatif</span></div>
     <div class="decision-before-after-arrow">→</div>
     <div><small>APRÈS OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong><span>financement du plan retenu</span></div>
-    <div><small>BESOIN RÉDUIT DE</small><strong>{% if optimization_gain > 0 %}{{ "{:,.0f}".format(optimization_gain) }} €{% else %}—{% endif %}</strong><span>grâce au report / fractionnement</span></div>
+    <div><small>BESOIN RÉDUIT DE</small><strong>{% if optimization_gain > 0 %}{{ "{:,.0f}".format(optimization_gain) }} €{% else %}—{% endif %}</strong><span>grâce aux leviers autorisés</span></div>
   </div>
   {% endif %}
   <div class="optimizer-best">
@@ -73,13 +95,14 @@
   </div>
   <div class="decision-kpis optimizer-kpis">
     <div><small>MEILLEURE DATE</small><strong>J+{{ simulation.optimizer.best.decision_day }}</strong></div>
-    <div><small>PAIEMENT</small><strong>{{ simulation.optimizer.best.installments }} fois</strong></div>
+    <div><small>{% if inputs.kind=='hire' %}DÉCISION{% else %}PAIEMENT{% endif %}</small><strong>{% if inputs.kind=='hire' %}{% if simulation.optimizer.best.decision_day==0 %}Embaucher maintenant{% else %}J+{{ simulation.optimizer.best.decision_day }}{% endif %}{% else %}{{ simulation.optimizer.best.installments }} fois{% endif %}</strong></div>
     <div><small>POINT BAS · APRÈS FINANCEMENT</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum_after_financing) }} €</strong><span>Avant financement : {{ "{:,.0f}".format(simulation.optimizer.best.minimum_before_financing) }} €</span></div>
     <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
   </div>
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.6</div>
+    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.7</div>
+    {# compatibility: FINANCIAL CONSISTENCY GUARD · V1.7.6 #}
     <h3>3 stratégies pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">
@@ -89,7 +112,7 @@
         <strong>{{ option.headline }}</strong>
         <p>{{ option.explanation }}</p>
         <small class="resolution-verified">✓ Vérifiée par le moteur · point bas {{ "{:,.0f}".format(option.verified_minimum) }} € · financement {{ "{:,.0f}".format(option.verified_financing) }} €</small>
-        <a class="button resolution-action" href="{{ url_for('decision_simulator', simulate=1, kind=inputs.kind, amount=option.target_amount, decision_day=inputs.decision_day, monthly_cost=inputs.monthly_cost, expected_inflow=inputs.expected_inflow, inflow_day=inputs.inflow_day, reserve=inputs.reserve, max_financing=option.target_max_financing, deadline=inputs.deadline) }}">Tester cette stratégie</a>
+        <a class="button resolution-action" href="{{ url_for('decision_simulator', simulate=1, kind=inputs.kind, amount=option.target_amount, decision_day=inputs.decision_day, monthly_cost=inputs.monthly_cost, expected_inflow=inputs.expected_inflow, inflow_day=inputs.inflow_day, reserve=inputs.reserve, max_financing=option.target_max_financing, deadline=inputs.deadline, allow_delay=1 if inputs.allow_delay else 0, max_delay=inputs.max_delay, allow_installments=1 if inputs.allow_installments else 0, max_installments=inputs.max_installments, allow_financing=1 if inputs.allow_financing else 0) }}">Tester cette stratégie</a>
       </article>
       {% endfor %}
     </div>
@@ -102,7 +125,7 @@
       <p>{{ simulation.optimizer.no_financing.explanation }}</p>
       <div class="decision-kpis optimizer-kpis">
         <div><small>DATE</small><strong>J+{{ simulation.optimizer.no_financing.decision_day }}</strong></div>
-        <div><small>PAIEMENT</small><strong>{{ simulation.optimizer.no_financing.installments }} fois</strong></div>
+        <div><small>{% if inputs.kind=='hire' %}DÉCISION{% else %}PAIEMENT{% endif %}</small><strong>{% if inputs.kind=='hire' %}Embauche{% else %}{{ simulation.optimizer.no_financing.installments }} fois{% endif %}</strong></div>
         <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.no_financing.minimum) }} €</strong></div>
         <div><small>FINANCEMENT</small><strong>0 €</strong></div>
       </div>
@@ -119,7 +142,7 @@
     {% for plan in simulation.optimizer.top3 %}
       <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
         <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
-        <strong>J+{{ plan.decision_day }} · {{ plan.installments }} fois</strong>
+        <strong>{% if inputs.kind=='hire' %}{% if plan.decision_day==0 %}Embaucher maintenant{% else %}Reporter l'embauche à J+{{ plan.decision_day }}{% endif %}{% else %}J+{{ plan.decision_day }} · {{ plan.installments }} fois{% endif %}</strong>
         <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
         <span>Point bas après financement {{ "{:,.0f}".format(plan.minimum_after_financing) }} €</span><span>Avant financement {{ "{:,.0f}".format(plan.minimum_before_financing) }} €</span>
         <p>{{ plan.reason }}</p>
@@ -131,7 +154,7 @@
     <div class="eyebrow green">AI CFO · QUESTION SUR CE SCÉNARIO</div>
     <h3>Interrogez votre plan financier.</h3>
     <form method="get" class="cfo-form">
-      <input type="hidden" name="simulate" value="1"><input type="hidden" name="kind" value="{{ inputs.kind }}"><input type="hidden" name="amount" value="{{ inputs.amount }}"><input type="hidden" name="decision_day" value="{{ inputs.decision_day }}"><input type="hidden" name="monthly_cost" value="{{ inputs.monthly_cost }}"><input type="hidden" name="expected_inflow" value="{{ inputs.expected_inflow }}"><input type="hidden" name="inflow_day" value="{{ inputs.inflow_day }}"><input type="hidden" name="reserve" value="{{ inputs.reserve }}"><input type="hidden" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}"><input type="hidden" name="deadline" value="{{ inputs.deadline }}">
+      <input type="hidden" name="simulate" value="1"><input type="hidden" name="kind" value="{{ inputs.kind }}"><input type="hidden" name="amount" value="{{ inputs.amount }}"><input type="hidden" name="decision_day" value="{{ inputs.decision_day }}"><input type="hidden" name="monthly_cost" value="{{ inputs.monthly_cost }}"><input type="hidden" name="expected_inflow" value="{{ inputs.expected_inflow }}"><input type="hidden" name="inflow_day" value="{{ inputs.inflow_day }}"><input type="hidden" name="reserve" value="{{ inputs.reserve }}"><input type="hidden" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}"><input type="hidden" name="deadline" value="{{ inputs.deadline }}"><input type="hidden" name="allow_delay" value="{{ 1 if inputs.allow_delay else 0 }}"><input type="hidden" name="max_delay" value="{{ inputs.max_delay }}"><input type="hidden" name="allow_installments" value="{{ 1 if inputs.allow_installments else 0 }}"><input type="hidden" name="max_installments" value="{{ inputs.max_installments }}"><input type="hidden" name="allow_financing" value="{{ 1 if inputs.allow_financing else 0 }}">
       <input name="cfo_question" value="{{ cfo_question }}" placeholder="Ex. Pourquoi J+15 ? Puis-je le faire sans financement ?">
       <button type="submit">Demander à ProfitOS</button>
     </form>
@@ -139,13 +162,14 @@
     <p class="muted">Cette première version n’invente ni transactions ni revenus : elle explique le scénario calculé par ProfitOS.</p>
   </section>
   <details class="optimizer-details"><summary>Voir les meilleures alternatives testées</summary>
-    {% for alt in simulation.optimizer.alternatives %}<div class="brain-row"><div><strong>J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}</strong><small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small></div><strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong></div>{% endfor %}
+    {% for alt in simulation.optimizer.alternatives %}<div class="brain-row"><div><strong>{% if inputs.kind=='hire' %}{% if alt.decision_day==0 %}Embaucher maintenant{% else %}Reporter l'embauche à J+{{ alt.decision_day }}{% endif %}{% else %}J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}{% endif %}</strong><small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small></div><strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong></div>{% endfor %}
   </details>
-  <p class="muted">ProfitOS recherche automatiquement la meilleure date entre J+0 et J+90 et, lorsque pertinent, le paiement en 2, 3 ou 4 fois. Il n'invente aucun encaissement futur.</p>
+  <p class="muted">ProfitOS recherche uniquement parmi les dates, fractionnements et financements que vous avez explicitement autorisés. Il n'invente aucun encaissement futur.</p>
 </section>
 {% endif %}
 
 <section class="panel decision-explain"><div class="eyebrow green">IMPACT DE LA DÉCISION</div><h2>Ce que ProfitOS a réellement modélisé</h2><div class="brain-row"><div><strong>Décaissement initial</strong><small>Appliqué à J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.amount) }} €</strong></div>{% if simulation.monthly_cost %}<div class="brain-row"><div><strong>Coût récurrent</strong><small>Proratisé à partir de J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.monthly_cost) }} €/mois</strong></div>{% endif %}{% if simulation.expected_inflow %}<div class="brain-row"><div><strong>Encaissement simulé</strong><small>Ajouté à J+{{ simulation.inflow_day }}</small></div><strong>+ {{ "{:,.0f}".format(simulation.expected_inflow) }} €</strong></div>{% endif %}<p class="muted">La trajectoire de référence reste le scénario probable de Cash Intelligence. Les coûts, taxes ou revenus non renseignés ne sont pas inventés.</p></section>
 {% endif %}
 {% endif %}
+
 {% endblock %}
