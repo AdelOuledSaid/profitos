@@ -333,6 +333,67 @@ def register(app):
         """Page tarifs publique — aucune authentification requise."""
         return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS)
 
+    @app.route('/fonctionnalites')
+    def features_overview():
+        """Page publique listant toutes les fonctionnalités, organisées par catégorie.
+        Aucune authentification requise — reflète uniquement des fonctionnalités
+        réellement construites, pas une roadmap ou des intentions."""
+        categories=[
+            {'icon':'💶','color':'red','title':'Recouvrement','features':[
+                {'name':'Créances impayées priorisées','desc':"Score de risque calculé sur montant, retard et historique — pour savoir quoi relancer en premier."},
+                {'name':'Retenues contractuelles','desc':"Suivi des montants retenus et de leur date de libération, avec relance dédiée."},
+                {'name':'Simulateur de caution','desc':"Estime le coût de remplacer une retenue en numéraire par une caution bancaire."},
+                {'name':'Rapprochement bancaire','desc':"Importe un relevé bancaire, ProfitOS propose les correspondances avec les factures ouvertes."},
+                {'name':'Relances email et SMS','desc':"Rédigées automatiquement, jamais envoyées sans ta validation explicite."},
+                {'name':'Portail client public','desc':"Lien sécurisé permettant à un client de consulter le statut de sa facture, sans compte."},
+                {'name':'Score de risque partagé','desc':"Signal anonymisé si un acheteur a aussi été signalé en retard par d'autres organisations."},
+            ]},
+            {'icon':'📉','color':'gold','title':'Économies & marge','features':[
+                {'name':'Doublons de dépenses','desc':"Détecte les paiements en double au même fournisseur."},
+                {'name':'Hausses fournisseurs','desc':"Repère les augmentations de prix inhabituelles d'un mois sur l'autre."},
+                {'name':'Contrats dormants','desc':"Identifie les abonnements ou contrats payés sans activité récente."},
+                {'name':'Margin Watch','desc':"Suit l'érosion de marge sur tes contrats à prix fixe, avec l'indice de référence de ton choix."},
+            ]},
+            {'icon':'📈','color':'green','title':'Développement commercial','features':[
+                {'name':'Opportunités de marché','desc':"Appels d'offres publics (BOAMP) correspondant à ton profil d'activité."},
+                {'name':'Radar de partenaires','desc':"Trouve des entreprises complémentaires pour répondre ensemble à un marché."},
+                {'name':'Filtres avancés','desc':"Recherche par score, montant ou mot-clé sur toutes tes opportunités."},
+            ]},
+            {'icon':'🧠','color':'blue','title':'Trésorerie & décisions','features':[
+                {'name':'Prévision de trésorerie','desc':"Projection à 30/60/90 jours, pondérée par la probabilité de chaque opportunité."},
+                {'name':'Simulateur de décision','desc':"Compare un scénario avant/après optimisation, avec les hypothèses toujours visibles."},
+                {'name':'Financial Brain','desc':"Score de contrôle financier consolidé, recalculé à chaque nouvelle donnée importée."},
+                {'name':'Garde-fou de cohérence','desc':"N'invente jamais un revenu ou une charge non déclarée dans les recommandations."},
+            ]},
+            {'icon':'📅','color':'purple','title':'Pilotage & reporting','features':[
+                {'name':'Calendrier unifié','desc':"Échéances de factures, retenues et deadlines d'appels d'offres, en un seul endroit."},
+                {'name':'Rapport hebdomadaire','desc':"Résumé automatique des nouveautés RECOVER/SAVE/GROW de la semaine."},
+                {'name':'Rapport mensuel PDF','desc':"Document téléchargeable pour un comité de direction ou une banque."},
+                {'name':'Export vers ton comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement selon la fréquence choisie."},
+                {'name':'Journal d\'audit','desc':"Trace exportable de chaque action et changement de statut, utile en cas de contrôle."},
+                {'name':'Performance d\'équipe','desc':"Nombre d'actions traitées par personne, pour objectiver la charge de travail."},
+                {'name':'Benchmark sectoriel','desc':"Compare ton délai de paiement moyen à celui d'autres organisations, anonymisé."},
+            ]},
+            {'icon':'👥','color':'teal','title':'Organisation & équipe','features':[
+                {'name':'Rôles par personne','desc':"Propriétaire, administrateur, comptable, commercial — chacun ne voit que ce qui le concerne."},
+                {'name':'Multi-organisation','desc':"Un cabinet comptable gère plusieurs clients depuis un seul compte, avec vue consolidée."},
+                {'name':'Programme de parrainage','desc':"Un mois offert quand une organisation que tu parraines devient cliente."},
+            ]},
+            {'icon':'🔒','color':'red','title':'Sécurité & confiance','features':[
+                {'name':'Export de tes données','desc':"Téléchargement complet de tes données à tout moment, conforme RGPD."},
+                {'name':'Suppression de compte','desc':"Effacement définitif possible, avec confirmation explicite avant toute suppression."},
+                {'name':'Validation humaine partout','desc':"Aucune relance, aucun envoi, aucune action sensible sans ton approbation."},
+                {'name':'Isolation stricte des données','desc':"Chaque organisation est cloisonnée — aucune donnée financière n'est jamais partagée entre elles."},
+            ]},
+            {'icon':'🔗','color':'blue','title':'Intégrations & accès','features':[
+                {'name':'API en lecture seule','desc':"Connecte tes propres outils à tes données ProfitOS."},
+                {'name':'Application installable','desc':"Ajoute ProfitOS à ton écran d'accueil, comme une vraie application."},
+                {'name':'Marque personnalisée','desc':"Logo et couleur d'accent adaptables à ton identité, sur les plans concernés."},
+                {'name':'Thème clair ou sombre','desc':"Au choix, selon ta préférence."},
+            ]},
+        ]
+        return render_template('features_overview.html',categories=categories)
+
     @app.route('/customer-tags/set',methods=['POST'])
     @login_required
     @requires_active_plan

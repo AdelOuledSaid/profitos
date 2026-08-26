@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fonctionnalités · ProfitOS</title>
+  <meta name="description" content="Toutes les fonctionnalités de ProfitOS : recouvrement, économies, prévision de trésorerie, simulation de décisions, pilotage d'équipe et sécurité des données.">
+  <meta name="theme-color" content="#07101f">
+  <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ProfitOS">
+  <meta property="og:title" content="Fonctionnalités · ProfitOS">
+  <meta property="og:description" content="Toutes les fonctionnalités de ProfitOS, organisées par usage.">
+  <meta property="og:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
+  <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
+</head>
+<body class="landing-body">
+<header class="landing-header">
+  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="ProfitOS accueil">Profit<span>OS</span></a>
+  <nav class="landing-nav" aria-label="Navigation principale">
+    <div class="landing-nav-links">
+      <a href="{{ url_for('home') }}">Accueil</a>
+      <a href="{{ url_for('pricing') }}">Tarifs</a>
+      <a href="{{ url_for('login') }}">Connexion</a>
+    </div>
+    <a class="landing-btn landing-btn-primary landing-btn-small" href="{{ url_for('signup') }}">Essai gratuit</a>
+  </nav>
+</header>
+
+<section class="landing-section">
+  <div class="landing-shell">
+    <div class="landing-section-heading" style="text-align:center;margin:0 auto 50px;max-width:700px;">
+      <div class="landing-kicker" style="justify-content:center;"><span></span>TOUTES LES FONCTIONNALITÉS</div>
+      <h2>Un seul outil, du recouvrement au pilotage financier complet.</h2>
+      <p>Chaque module ci-dessous est réellement construit et testé — pas une liste d'intentions. Certains modules sont plus pertinents selon ton activité ; tous restent accessibles.</p>
+    </div>
+
+    {% for category in categories %}
+    <div style="margin-bottom:56px;">
+      <h3 style="font-size:22px;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+        <span class="cap-icon cap-{{ category.color }}" style="width:34px;height:34px;font-size:15px;margin-bottom:0;">{{ category.icon }}</span>
+        {{ category.title }}
+      </h3>
+      <div class="landing-capability-grid" style="min-height:auto;">
+        {% for feature in category.features %}
+        <div class="landing-capability" style="min-height:auto;">
+          <h4 style="font-size:16px;margin:0 0 8px;">{{ feature.name }}</h4>
+          <p style="margin:0;">{{ feature.desc }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="landing-final-cta">
+  <div class="landing-shell">
+    <div>
+      <h2>Prêt à voir tout ça sur tes propres données ?</h2>
+      <p>14 jours d'essai gratuit, aucune carte bancaire requise.</p>
+    </div>
+    <div class="landing-cta-row">
+      <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Commencer gratuitement</a>
+      <a class="landing-btn landing-btn-secondary" href="{{ url_for('request_demo') }}">Demander une démo</a>
+    </div>
+  </div>
+</section>
+
+<footer class="landing-footer"><div class="landing-shell"><div class="landing-brand">Profit<span>OS</span></div><p>Financial Operating System pour toutes les entreprises.</p><nav><a href="{{ url_for('home') }}">Accueil</a><a href="{{ url_for('pricing') }}">Tarifs</a><a href="{{ url_for('request_demo') }}">Démo</a><a href="{{ url_for('login') }}">Connexion</a></nav><span>© ProfitOS</span></div></footer>
+</body></html>
