@@ -162,14 +162,26 @@
     {% endif %}
   </section>
   <section class="planner-top3">
-    <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
-    <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
+    {% if simulation.optimizer.constraints_met %}
+      <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
+      <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
+    {% else %}
+      <div class="eyebrow green">3 ALTERNATIVES LES PLUS PROCHES DE VOS CONTRAINTES</div>
+      <h3>Aucune de ces alternatives n’est actuellement autorisée.</h3>
+      <p class="muted">Elles sont affichées uniquement pour montrer les scénarios les plus proches. Une contrainte réelle doit être modifiée avant de pouvoir les retenir.</p>
+    {% endif %}
     <div class="planner-plan-grid">
     {% for plan in simulation.optimizer.top3 %}
-      <article class="planner-plan-card {% if loop.first %}recommended{% endif %}">
-        <small>#{{ plan.rank }} {% if loop.first %}· RECOMMANDÉ{% endif %}</small>
+      {% set plan_cap = inputs.max_financing if inputs.max_financing is not none else (plan.financing if inputs.allow_financing else 0) %}
+      {% set plan_outside = plan.financing > plan_cap + 0.01 %}
+      <article class="planner-plan-card {% if loop.first and simulation.optimizer.constraints_met %}recommended{% endif %}">
+        <small>#{{ plan.rank }}{% if loop.first and simulation.optimizer.constraints_met %} · RECOMMANDÉ{% elif plan_outside %} · HORS CONTRAINTES{% endif %}</small>
         <strong>{% if inputs.kind=='hire' %}{% if plan.decision_day==0 %}Embaucher maintenant{% else %}Reporter l'embauche à J+{{ plan.decision_day }}{% endif %}{% else %}J+{{ plan.decision_day }} · {{ plan.installments }} fois{% endif %}</strong>
-        <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
+        {% if plan_outside %}
+          <span><strong>HORS CONTRAINTES — financement requis : {{ "{:,.0f}".format(plan.financing) }} € / plafond autorisé : {{ "{:,.0f}".format(plan_cap) }} €</strong></span>
+        {% else %}
+          <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
+        {% endif %}
         <span>Point bas après financement {{ "{:,.0f}".format(plan.minimum_after_financing) }} €</span><span>Avant financement {{ "{:,.0f}".format(plan.minimum_before_financing) }} €</span>
         <p>{{ plan.reason }}</p>
       </article>
