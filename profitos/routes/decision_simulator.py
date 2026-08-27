@@ -74,6 +74,29 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     }
 
 
+def _build_payment_schedule(amount, decision_day, installments):
+    """Construit l'échéancier exact utilisé par la simulation.
+
+    Les montants sont répartis en centimes entiers afin que la somme des
+    échéances soit toujours exactement égale au montant de la décision.
+    La cadence historique du moteur est conservée : une échéance tous les
+    30 jours, avec un horizon plafonné à J+90.
+    """
+    installments=max(1, min(4, int(installments or 1)))
+    total_cents=max(0, int(round(float(amount or 0.0) * 100)))
+    base_cents=total_cents // installments
+    remainder=total_cents % installments
+
+    schedule=[]
+    for i in range(installments):
+        cents=base_cents + (1 if i < remainder else 0)
+        schedule.append({
+            'day':min(90, int(decision_day) + 30*i),
+            'amount':round(cents / 100.0, 2),
+        })
+    return schedule
+
+
 def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                        expected_inflow=0.0, inflow_day=60, installments=1):
     baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
@@ -81,15 +104,23 @@ def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         return None
     values=list(baseline['values'])
     installments=max(1, min(4, int(installments or 1)))
-    payment_days=[min(90, decision_day + 30*i) for i in range(installments)]
-    payment=amount/installments if installments else amount
+
+    if kind in ('investment','expense','market'):
+        payment_schedule=_build_payment_schedule(amount, decision_day, installments)
+    else:
+        payment_schedule=[{
+            'day':int(decision_day),
+            'amount':round(float(amount or 0.0),2),
+        }]
+
+    payment_days=[item['day'] for item in payment_schedule]
     adjusted=[]
     for day,base in enumerate(values):
         impact=0.0
         if kind in ('investment','expense','market'):
-            for pday in payment_days:
-                if day>=pday:
-                    impact-=payment
+            for installment in payment_schedule:
+                if day>=installment['day']:
+                    impact-=installment['amount']
         elif kind=='hire':
             if day>=decision_day:
                 impact-=amount
@@ -99,10 +130,16 @@ def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         if expected_inflow and day>=inflow_day:
             impact+=expected_inflow
         adjusted.append(round(base+impact,2))
+
     return {
-        'values':adjusted, 'minimum':round(min(adjusted),2),
-        'min_day':adjusted.index(min(adjusted)), 'end_90':round(adjusted[-1],2),
-        'installments':installments, 'payment_days':payment_days,
+        'values':adjusted,
+        'minimum':round(min(adjusted),2),
+        'min_day':adjusted.index(min(adjusted)),
+        'end_90':round(adjusted[-1],2),
+        'installments':installments,
+        'payment_days':payment_days,
+        'payment_schedule':payment_schedule,
+        'payment_total':round(sum(x['amount'] for x in payment_schedule),2),
     }
 
 
@@ -204,7 +241,9 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                 'minimum_after_financing':minimum_after,'min_day':result['min_day'],
                 'end_90':end_90_before,'end_90_before_financing':end_90_before,
                 'end_90_after_financing':end_90_after,'financing':financing,
-                'payment_days':result['payment_days']})
+                'payment_days':result['payment_days'],
+                'payment_schedule':result.get('payment_schedule',[]),
+                'payment_total':result.get('payment_total',round(amount,2))})
     if not candidates:
         return None
 
