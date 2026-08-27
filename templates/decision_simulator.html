@@ -90,7 +90,7 @@
   </div>
   {% endif %}
   <div class="optimizer-best">
-    <div><small>{% if simulation.optimizer.constraints_met %}STRATÉGIE RECOMMANDÉE{% else %}PLAN LE PLUS PROCHE{% endif %}</small><strong>{{ simulation.optimizer.label }}</strong>{% if simulation.optimizer.constraints_met %}<p>{{ simulation.optimizer.explanation }}</p>{% endif %}</div>
+    <div><small>{% if simulation.optimizer.constraints_met %}STRATÉGIE RECOMMANDÉE{% else %}PLAN LE PLUS PROCHE — SOLUTION THÉORIQUE HORS CONTRAINTES{% endif %}</small><strong>{{ simulation.optimizer.label }}</strong>{% if simulation.optimizer.constraints_met %}<p>{{ simulation.optimizer.explanation }}</p>{% endif %}</div>
     <div class="decision-gap"><small>RÉSERVE CIBLE</small><strong>{{ "{:,.0f}".format(simulation.optimizer.reserve) }} €</strong></div>
   </div>
   <div class="decision-kpis optimizer-kpis">
