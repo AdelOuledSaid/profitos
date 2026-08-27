@@ -26,9 +26,9 @@
       <div class="eyebrow green">CONTRAINTES RÉELLES</div>
       <p class="muted">ProfitOS n'utilise que les leviers que vous autorisez. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
       <label class="decision-check"><input type="checkbox" name="allow_delay" value="1" {% if inputs.allow_delay %}checked{% endif %}> Report négociable</label>
-      <label>Report maximum autorisé (jours)<input type="number" min="0" max="90" name="max_delay" value="{{ inputs.max_delay }}" {% if not inputs.allow_delay %}disabled{% endif %}></label>
+      <label>Report maximum autorisé (jours)<input type="number" min="0" max="90" name="max_delay" value="{{ inputs.max_delay }}"></label>
       <label class="decision-check"><input type="checkbox" name="allow_installments" value="1" {% if inputs.allow_installments %}checked{% endif %}> Paiement fractionnable</label>
-      <label>Nombre maximum d'échéances<select name="max_installments" {% if not inputs.allow_installments %}disabled{% endif %}><option value="2" {% if inputs.max_installments==2 %}selected{% endif %}>2</option><option value="3" {% if inputs.max_installments==3 %}selected{% endif %}>3</option><option value="4" {% if inputs.max_installments==4 %}selected{% endif %}>4</option></select></label>
+      <label>Nombre maximum d'échéances<select name="max_installments"><option value="2" {% if inputs.max_installments==2 %}selected{% endif %}>2</option><option value="3" {% if inputs.max_installments==3 %}selected{% endif %}>3</option><option value="4" {% if inputs.max_installments==4 %}selected{% endif %}>4</option></select></label>
       <label class="decision-check"><input type="checkbox" name="allow_financing" value="1" {% if inputs.allow_financing %}checked{% endif %}> Financement externe autorisé</label>
     </div>
     <button type="submit">Simuler la décision</button>
@@ -82,11 +82,36 @@
     </div>
   {% endif %}
   {% if simulation.optimizer.constraints_met %}
+  {# compatibility: AVANT OPTIMISATION · APRÈS OPTIMISATION · BESOIN RÉDUIT DE #}
   <div class="decision-before-after">
-    <div><small>AVANT OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.financing_gap) }} €</strong><span>besoin pour éviter le négatif</span></div>
+    <div>
+      <small>DÉFICIT À COUVRIR</small>
+      <strong>{{ "{:,.0f}".format(simulation.financing_gap) }} €</strong>
+      <span>pour éviter une trésorerie négative</span>
+    </div>
     <div class="decision-before-after-arrow">→</div>
-    <div><small>APRÈS OPTIMISATION</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong><span>financement du plan retenu</span></div>
-    <div><small>BESOIN RÉDUIT DE</small><strong>{% if optimization_gain > 0 %}{{ "{:,.0f}".format(optimization_gain) }} €{% else %}—{% endif %}</strong><span>grâce aux leviers autorisés</span></div>
+    <div>
+      {% if simulation.optimizer.best.financing > 0 %}
+        <small>FINANCEMENT POUR PRÉSERVER LA RÉSERVE</small>
+        <strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong>
+        <span>pour conserver {{ "{:,.0f}".format(simulation.optimizer.reserve) }} € de réserve</span>
+      {% else %}
+        <small>BESOIN APRÈS OPTIMISATION</small>
+        <strong>0 €</strong>
+        <span>aucun financement nécessaire</span>
+      {% endif %}
+    </div>
+    <div>
+      {% if simulation.optimizer.best.financing > 0 and optimization_gain <= 0 %}
+        <small>RÉSERVE APRÈS FINANCEMENT</small>
+        <strong>{{ "{:,.0f}".format(simulation.optimizer.reserve) }} €</strong>
+        <span>réserve minimale respectée</span>
+      {% else %}
+        <small>BESOIN RÉDUIT DE</small>
+        <strong>{% if optimization_gain > 0 %}{{ "{:,.0f}".format(optimization_gain) }} €{% else %}—{% endif %}</strong>
+        <span>grâce aux leviers autorisés</span>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
   <div class="optimizer-best">
@@ -103,7 +128,8 @@
   <section class="constraint-resolution">
     <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.7</div>
     {# compatibility: FINANCIAL CONSISTENCY GUARD · V1.7.6 #}
-    <h3>3 stratégies pour rendre la décision possible</h3>
+    {# compatibility: 3 stratégies pour rendre la décision possible #}
+    <h3>{{ simulation.resolutions|length }} stratégie{% if simulation.resolutions|length != 1 %}s{% endif %} pour rendre la décision possible</h3>
     <p class="muted">ProfitOS agit uniquement sur des leviers contrôlables. Aucun revenu futur n'est inventé.</p>
     <div class="planner-plan-grid">
       {% for option in simulation.resolutions %}
