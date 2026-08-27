@@ -178,8 +178,9 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
 
     latest_day=min(deadline, decision_day + max_delay) if allow_delay else decision_day
     if allow_delay:
-        delays=sorted(set([decision_day, latest_day, 30, 60, 90] + list(range(decision_day, latest_day+1, 5))))
-        delays=[d for d in delays if decision_day<=d<=latest_day and d<=deadline]
+        # Search every calendar day so the recommended date is the earliest
+        # genuinely feasible date, not merely the first point on a 5-day grid.
+        delays=list(range(decision_day, latest_day+1))
     else:
         delays=[decision_day]
 
