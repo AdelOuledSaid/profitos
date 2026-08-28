@@ -184,11 +184,11 @@ document.addEventListener('click', function (event) {
 document.addEventListener('DOMContentLoaded', function () {
   const form = document.querySelector('.decision-form');
   if (!form) return;
-  const delay = form.querySelector('[name="allow_delay"]');
+  const delay = form.querySelector('input[type="checkbox"][name="allow_delay"]');
   const maxDelay = form.querySelector('[name="max_delay"]');
-  const split = form.querySelector('[name="allow_installments"]');
+  const split = form.querySelector('input[type="checkbox"][name="allow_installments"]');
   const maxInst = form.querySelector('[name="max_installments"]');
-  const financing = form.querySelector('[name="allow_financing"]');
+  const financing = form.querySelector('input[type="checkbox"][name="allow_financing"]');
   const maxFin = form.querySelector('[name="max_financing"]');
   const sync = function () {
     if (maxDelay && delay) maxDelay.disabled = !delay.checked;
