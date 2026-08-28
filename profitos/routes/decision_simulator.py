@@ -23,6 +23,19 @@ def _flag(value, default=False):
     return str(value).strip().lower() in {'1','true','yes','on','oui'}
 
 
+def _request_flag(name, default=False):
+    """Lit un booléen de formulaire GET de façon robuste.
+
+    Le template envoie toujours une valeur explicite 0, puis 1 si la case
+    est cochée. En cas de valeurs multiples, la dernière valeur reflète
+    donc l'état réel de la case.
+    """
+    values = request.args.getlist(name)
+    if not values:
+        return bool(default)
+    return _flag(values[-1], default)
+
+
 def _installment_count(value, default=1):
     try:
         return max(1, min(4, int(value)))
@@ -457,11 +470,11 @@ def register(app):
             'reserve':_num(request.args.get('reserve'),5000.0),
             'max_financing': (_num(request.args.get('max_financing')) if request.args.get('max_financing') not in (None,'') else None),
             'deadline': _day(request.args.get('deadline'),90),
-            'allow_delay': _flag(request.args.get('allow_delay'), False),
+            'allow_delay': _request_flag('allow_delay', False),
             'max_delay': _day(request.args.get('max_delay'),0),
-            'allow_installments': _flag(request.args.get('allow_installments'), False),
+            'allow_installments': _request_flag('allow_installments', False),
             'max_installments': _installment_count(request.args.get('max_installments'),1),
-            'allow_financing': _flag(request.args.get('allow_financing'), False),
+            'allow_financing': _request_flag('allow_financing', False),
         }
         if submitted and cash['cash_balance'] is not None:
             sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline','allow_delay','max_delay','allow_installments','max_installments','allow_financing')}

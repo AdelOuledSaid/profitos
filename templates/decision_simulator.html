@@ -54,11 +54,11 @@
     <div class="decision-constraint-group">
       <div class="eyebrow green">CONTRAINTES RÉELLES</div>
       <p class="muted">ProfitOS n'utilise que les leviers que vous autorisez. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
-      <label class="decision-check"><input type="checkbox" name="allow_delay" value="1" {% if inputs.allow_delay %}checked{% endif %}> Report négociable</label>
+      <input type="hidden" name="allow_delay" value="0"><label class="decision-check"><input type="checkbox" name="allow_delay" value="1" {% if inputs.allow_delay %}checked{% endif %}> Report négociable</label>
       <label>Report maximum autorisé (jours)<input type="number" min="0" max="90" name="max_delay" value="{{ inputs.max_delay }}"></label>
-      <label class="decision-check"><input type="checkbox" name="allow_installments" value="1" {% if inputs.allow_installments %}checked{% endif %}> Paiement fractionnable</label>
+      <input type="hidden" name="allow_installments" value="0"><label class="decision-check"><input type="checkbox" name="allow_installments" value="1" {% if inputs.allow_installments %}checked{% endif %}> Paiement fractionnable</label>
       <label>Nombre maximum d'échéances<select name="max_installments"><option value="2" {% if inputs.max_installments==2 %}selected{% endif %}>2</option><option value="3" {% if inputs.max_installments==3 %}selected{% endif %}>3</option><option value="4" {% if inputs.max_installments==4 %}selected{% endif %}>4</option></select></label>
-      <label class="decision-check"><input type="checkbox" name="allow_financing" value="1" {% if inputs.allow_financing %}checked{% endif %}> Financement externe autorisé</label>
+      <input type="hidden" name="allow_financing" value="0"><label class="decision-check"><input type="checkbox" name="allow_financing" value="1" {% if inputs.allow_financing %}checked{% endif %}> Financement externe autorisé</label>
     </div>
     <button type="submit">Simuler la décision</button>
   </form>
