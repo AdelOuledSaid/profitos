@@ -199,7 +199,8 @@
       <p class="muted">ProfitOS n'invente pas de recettes pour rendre artificiellement la décision possible.</p>
     {% endif %}
   </section>
-  <section class="planner-top3">
+  {% if optimizer and optimizer.top3 and optimizer.top3|length > 1 %}
+<section class="planner-top3">
     {% if simulation.optimizer.constraints_met %}
       <div class="eyebrow green">TOP 3 · COMPARAISON RAPIDE</div>
       <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
@@ -226,6 +227,7 @@
     {% endfor %}
     </div>
   </section>
+{% endif %}
   <section class="planner-cfo">
     <div class="eyebrow green">AI CFO · QUESTION SUR CE SCÉNARIO</div>
     <h3>Interrogez votre plan financier.</h3>
