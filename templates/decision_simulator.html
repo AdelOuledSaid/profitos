@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+{# TOP 3 · PLANS EXPLIQUÉS #}
+{# Échéancier détaillé affiché uniquement pour le plan recommandé. #}
 {% macro render_payment_schedule(plan, total_amount=none, compact=false) -%}
   {% if inputs.kind != 'hire' and plan and plan.installments|int > 1 %}
     {% if plan.payment_schedule is defined and plan.payment_schedule %}
@@ -156,6 +158,9 @@
     <div><small>POINT BAS · APRÈS FINANCEMENT</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.minimum_after_financing) }} €</strong><span>Avant financement : {{ "{:,.0f}".format(simulation.optimizer.best.minimum_before_financing) }} €</span></div>
     <div><small>FINANCEMENT À SÉCURISER</small><strong>{{ "{:,.0f}".format(simulation.optimizer.best.financing) }} €</strong></div>
   </div>
+  {% if inputs.kind != 'hire' and simulation.optimizer.best.installments|int > 1 %}
+  <p class="muted decision-schedule-note">Détail des échéances du plan recommandé :</p>
+  {% endif %}
   {{ render_payment_schedule(simulation.optimizer.best, simulation.amount) }}
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
@@ -178,7 +183,7 @@
   </section>
   {% endif %}
   <section class="planner-debt-free">
-    <div class="eyebrow green">PLAN SANS FINANCEMENT</div>
+    <div class="eyebrow green">PLAN SANS FINANCEMENT · RÉSUMÉ</div>
     {% if simulation.optimizer.no_financing.available %}
       <h3>{{ simulation.optimizer.no_financing.label }}</h3>
       <p>{{ simulation.optimizer.no_financing.explanation }}</p>
@@ -188,7 +193,6 @@
         <div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(simulation.optimizer.no_financing.minimum) }} €</strong></div>
         <div><small>FINANCEMENT</small><strong>0 €</strong></div>
       </div>
-      {{ render_payment_schedule(simulation.optimizer.no_financing, simulation.amount) }}
     {% else %}
       <h3>{{ simulation.optimizer.no_financing.label }}</h3>
       <p>{{ simulation.optimizer.no_financing.explanation }}</p>
@@ -197,7 +201,7 @@
   </section>
   <section class="planner-top3">
     {% if simulation.optimizer.constraints_met %}
-      <div class="eyebrow green">TOP 3 · PLANS EXPLIQUÉS</div>
+      <div class="eyebrow green">TOP 3 · COMPARAISON RAPIDE</div>
       <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
     {% else %}
       <div class="eyebrow green">3 ALTERNATIVES LES PLUS PROCHES DE VOS CONTRAINTES</div>
@@ -217,8 +221,7 @@
           <span>{{ "{:,.0f}".format(plan.financing) }} € à financer</span>
         {% endif %}
         <span>Point bas après financement {{ "{:,.0f}".format(plan.minimum_after_financing) }} €</span><span>Avant financement {{ "{:,.0f}".format(plan.minimum_before_financing) }} €</span>
-        {{ render_payment_schedule(plan, simulation.amount, true) }}
-        <p>{{ plan.reason }}</p>
+        <p class="muted planner-plan-summary">{% if loop.first and simulation.optimizer.constraints_met %}Plan retenu car il respecte vos contraintes avec le meilleur compromis détecté.{% elif plan_outside %}Alternative proche, mais elle dépasse au moins une contrainte autorisée.{% else %}Alternative valide, moins favorable que le plan recommandé selon les critères du moteur.{% endif %}</p>
       </article>
     {% endfor %}
     </div>
@@ -240,7 +243,6 @@
         <div>
           <strong>{% if inputs.kind=='hire' %}{% if alt.decision_day==0 %}Embaucher maintenant{% else %}Reporter l'embauche à J+{{ alt.decision_day }}{% endif %}{% else %}J+{{ alt.decision_day }} · {{ alt.installments }} paiement{% if alt.installments>1 %}s{% endif %}{% endif %}</strong>
           <small>Point bas {{ "{:,.0f}".format(alt.minimum) }} € · J+90 {{ "{:,.0f}".format(alt.end_90) }} €</small>
-          {{ render_payment_schedule(alt, simulation.amount, true) }}
         </div>
         <strong>{% if alt.financing %}{{ "{:,.0f}".format(alt.financing) }} € à financer{% else %}Soutenable{% endif %}</strong>
       </div>
