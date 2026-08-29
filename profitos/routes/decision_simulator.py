@@ -43,6 +43,17 @@ def _installment_count(value, default=1):
         return default
 
 
+def _inflow_is_available(day, inflow_day):
+    """Convention prudente de disponibilité des encaissements.
+
+    Un encaissement annoncé à J+n n'est considéré comme disponible pour
+    financer une décision qu'à partir de J+(n+1). Cela évite d'utiliser, le
+    même jour, une recette qui pourrait n'être créditée qu'après un paiement
+    fournisseur ou un prélèvement.
+    """
+    return int(day) > int(inflow_day)
+
+
 def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                        expected_inflow=0.0, inflow_day=60):
     baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
@@ -60,7 +71,7 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                 impact-=monthly_cost*((day-decision_day)/30.0)
         elif monthly_cost and day>=decision_day:
             impact-=monthly_cost*((day-decision_day)/30.0)
-        if expected_inflow and day>=inflow_day:
+        if expected_inflow and _inflow_is_available(day, inflow_day):
             impact+=expected_inflow
         adjusted.append(round(base+impact,2))
     minimum=min(adjusted); min_day=adjusted.index(minimum); end_90=adjusted[-1]
@@ -140,7 +151,7 @@ def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                 impact-=monthly_cost*((day-decision_day)/30.0)
         if kind!='hire' and monthly_cost and day>=decision_day:
             impact-=monthly_cost*((day-decision_day)/30.0)
-        if expected_inflow and day>=inflow_day:
+        if expected_inflow and _inflow_is_available(day, inflow_day):
             impact+=expected_inflow
         adjusted.append(round(base+impact,2))
 
