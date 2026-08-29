@@ -35,15 +35,11 @@ def _pdf_first(patterns, text, flags=re.I|re.M):
     return None
 
 
-def _extract_invoice_pdf(path):
-    """Extraction prudente d'une facture PDF texte.
-
-    Cette première version ne fait pas d'OCR. Elle accepte les PDF dont le texte est
-    réellement extractible et refuse les documents ambigus au lieu d'inventer des champs.
-    """
+def _pdf_text(path, max_pages=20):
+    """Extrait le texte d'un PDF natif. Pas d'OCR : un scan image est refusé."""
     reader=PdfReader(str(path))
     pages=[]
-    for page in reader.pages[:12]:
+    for page in reader.pages[:max_pages]:
         try:
             pages.append(page.extract_text() or '')
         except Exception:
@@ -51,6 +47,113 @@ def _extract_invoice_pdf(path):
     text='\n'.join(pages).strip()
     if len(text)<20:
         raise ValueError("PDF sans texte exploitable (probablement scanné). Utilisez un PDF texte ou le CSV/XLSX pour cette version.")
+    return text
+
+
+def _extract_expense_pdf(path):
+    """Extrait prudemment une dépense depuis une facture/reçu PDF texte."""
+    text=_pdf_text(path, max_pages=12)
+
+    amount_raw=_pdf_first([
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
+    ], text)
+    amount=_pdf_money_value(amount_raw)
+
+    date_raw=_pdf_first([
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    expense_date=parse_date(date_raw) if date_raw else None
+
+    vendor=_pdf_first([
+        r'(?:fournisseur|supplier|vendor)\s*[:\-]\s*([^\n]{2,120})',
+        r'(?:émis\s+par|emis\s+par|issued\s+by)\s*[:\-]\s*([^\n]{2,120})',
+    ], text)
+    if not vendor:
+        # À défaut d'un libellé explicite, on prend la première ligne d'en-tête plausible.
+        for line in [x.strip() for x in text.splitlines()[:15] if x.strip()]:
+            if len(line)<2 or len(line)>120:
+                continue
+            if re.search(r'^(facture|invoice|reçu|recu|receipt|date|n[°o]|total|client|bill\s*to)\b', line, re.I):
+                continue
+            if re.fullmatch(r'[0-9\s.,€+\-/]+', line):
+                continue
+            vendor=line
+            break
+
+    num=_pdf_first([
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+    ], text)
+    desc=(f'Facture {num}' if num else 'Dépense importée depuis PDF')
+
+    missing=[]
+    if not vendor: missing.append('fournisseur')
+    if amount is None or amount<=0: missing.append('montant TTC')
+    if not expense_date: missing.append('date')
+    if missing:
+        raise ValueError('Champs non détectés dans le PDF : '+', '.join(missing)+'. Vérifiez que ces informations sont écrites explicitement dans le document.')
+
+    return {
+        'vendor':vendor,
+        'description':desc,
+        'amount':amount,
+        'date':expense_date.isoformat(),
+        'category':'',
+    }
+
+
+def _extract_bank_statement_pdf(path):
+    """Extrait des lignes de relevé depuis un PDF texte.
+
+    Le parseur reste volontairement conservateur : une ligne doit contenir une date et
+    un montant. Les PDF scannés ne sont pas pris en charge sans OCR.
+    """
+    text=_pdf_text(path, max_pages=40)
+    rows=[]
+    date_pat=re.compile(r'(?<!\d)([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2}|(?:20)\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)(?!\d)')
+    amount_pat=re.compile(r'(?<!\d)([-+]?\s*\d{1,3}(?:[ .]\d{3})*(?:,\d{2}|\.\d{2})|[-+]?\s*\d+(?:,\d{2}|\.\d{2}))(?:\s*€)?(?!\d)')
+
+    for raw_line in text.splitlines():
+        line=' '.join(raw_line.split())
+        if len(line)<6:
+            continue
+        dm=date_pat.search(line)
+        if not dm:
+            continue
+        amounts=list(amount_pat.finditer(line))
+        if not amounts:
+            continue
+        # La dernière valeur monétaire de la ligne correspond le plus souvent à la colonne montant/crédit.
+        am=amounts[-1]
+        amount=_pdf_money_value(am.group(1))
+        if amount is None:
+            continue
+        d=parse_date(dm.group(1))
+        if not d:
+            continue
+        desc=(line[dm.end():am.start()].strip(' -–—;:') or 'Opération bancaire')[:240]
+        rows.append({'date':d.isoformat(),'description':desc,'amount':amount})
+
+    # Élimine les doublons exacts éventuellement créés par les en-têtes/pieds répétés.
+    unique=[]; seen=set()
+    for row in rows:
+        key=(row['date'],row['description'],round(float(row['amount']),2))
+        if key in seen:
+            continue
+        seen.add(key); unique.append(row)
+    if not unique:
+        raise ValueError("Aucune ligne bancaire exploitable détectée dans ce PDF. Vérifiez qu'il contient du texte et des lignes avec date + montant.")
+    return pd.DataFrame(unique)
+
+
+def _extract_invoice_pdf(path):
+    """Extraction prudente d'une facture PDF texte.
+
+    Cette première version ne fait pas d'OCR. Elle accepte les PDF dont le texte est
+    réellement extractible et refuse les documents ambigus au lieu d'inventer des champs.
+    """
+    text=_pdf_text(path, max_pages=12)
 
     # Numéro : les formats usuels FACTURE N°, Invoice #, ou le numéro juste sous le titre FACTURE.
     num=_pdf_first([
@@ -171,11 +274,22 @@ def register(app):
             f=request.files.get('file')
             if not f:
                 flash('Aucun fichier sélectionné.'); return redirect(request.url)
-            path=UP/f.filename; f.save(path)
+            path=None
             try:
-                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+                path,_=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                ext=path.suffix.lower()
+                if ext in ('.xlsx','.xls'):
+                    df=pd.read_excel(path)
+                elif ext=='.csv':
+                    df=pd.read_csv(path)
+                elif ext=='.pdf':
+                    df=_extract_bank_statement_pdf(path)
+                else:
+                    raise ValueError('Format de relevé non pris en charge.')
             except Exception as e:
-                flash(str(e)); return redirect(request.url)
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+            finally:
+                if path: cleanup_upload(path)
             aliases={'date':['date','date operation',"date d'opération",'date valeur'],
                      'desc':['description','libelle','libellé','intitule','intitulé','détail','detail'],
                      'amount':['amount','montant','credit','crédit']}
@@ -425,13 +539,22 @@ def register(app):
 
             f=request.files.get('file')
             if not f:return redirect(request.url)
+            path=None
             try:
                 path, original_name=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
-                df=pd.read_excel(path) if path.suffix.lower() in ('.xlsx','.xls') else pd.read_csv(path)
+                ext=path.suffix.lower()
+                if ext in ('.xlsx','.xls'):
+                    df=pd.read_excel(path)
+                elif ext=='.csv':
+                    df=pd.read_csv(path)
+                elif ext=='.pdf':
+                    df=pd.DataFrame([_extract_expense_pdf(path)])
+                else:
+                    raise ValueError('Format de dépense non pris en charge.')
             except Exception as e:
                 flash(f'Import refusé : {e}'); return redirect(request.url)
             finally:
-                if 'path' in locals(): cleanup_upload(path)
+                if path: cleanup_upload(path)
 
             aliases={'vendor':['vendor','supplier','fournisseur'],'desc':['description','libelle','libellé'],'amount':['amount','montant','total'],'date':['date','expense_date','date dépense','date depense'],'cat':['category','categorie','catégorie']}
             m=map_cols(df,aliases)
