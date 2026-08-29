@@ -2,6 +2,9 @@ from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 
+# Formats de données acceptés par les imports financiers.
+# Déclarés localement pour éviter qu'une ancienne constante runtime bloque les PDF.
+FINANCIAL_IMPORT_EXTENSIONS={'.csv','.xlsx','.xls','.pdf'}
 
 
 
@@ -232,7 +235,7 @@ def _load_invoice_uploads(files):
         for f in files:
             path=None
             try:
-                path,_=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                path,_=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
                 rows.append(_extract_invoice_pdf(path))
             except Exception as exc:
                 errors.append(f"{secure_filename(f.filename)} : {exc}")
@@ -250,7 +253,7 @@ def _load_invoice_uploads(files):
         raise ValueError('Pour CSV/XLSX, sélectionnez un seul fichier.')
     path=None
     try:
-        path,_=save_upload(files[0],'imports',ALLOWED_INVOICE_EXTENSIONS)
+        path,_=save_upload(files[0],'imports',FINANCIAL_IMPORT_EXTENSIONS)
         ext=path.suffix.lower()
         if ext in ('.xlsx','.xls'):
             return pd.read_excel(path)
@@ -276,7 +279,7 @@ def register(app):
                 flash('Aucun fichier sélectionné.'); return redirect(request.url)
             path=None
             try:
-                path,_=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                path,_=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
                 ext=path.suffix.lower()
                 if ext in ('.xlsx','.xls'):
                     df=pd.read_excel(path)
@@ -541,7 +544,7 @@ def register(app):
             if not f:return redirect(request.url)
             path=None
             try:
-                path, original_name=save_upload(f,'imports',ALLOWED_INVOICE_EXTENSIONS)
+                path, original_name=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
                 ext=path.suffix.lower()
                 if ext in ('.xlsx','.xls'):
                     df=pd.read_excel(path)
