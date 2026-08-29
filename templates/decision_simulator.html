@@ -98,7 +98,10 @@
   {% if simulation.optimizer.constraints_met %}
     {% if simulation.optimizer.requires_negotiation %}
       <h2>Alternative conditionnelle détectée.</h2>
-      <div class="constraint-alert"><strong>À confirmer avec le fournisseur ou le partenaire.</strong><p>Le calcul est soutenable uniquement si les conditions de report ou de fractionnement que vous avez autorisées sont effectivement obtenues.</p></div>
+      <div class="constraint-alert">
+        <strong>À confirmer avec le fournisseur ou le partenaire.</strong>
+        <p>{{ simulation.optimizer.negotiation_message }}</p>
+      </div>
     {% else %}
       <h2>Voici le plan financier recommandé.</h2>
     {% endif %}

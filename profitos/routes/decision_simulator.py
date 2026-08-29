@@ -197,8 +197,18 @@ def _plan_reason(plan, reserve, max_financing, deadline, kind='investment', cons
     if deadline is not None:
         text += f" Il respecte aussi l'échéance maximale J+{deadline}."
     text += f" Réserve cible : {reserve:,.0f} €."
-    if constraints and (plan['decision_day'] > constraints['original_day'] or plan['installments'] > 1):
-        text += " Cette alternative suppose que les conditions de report ou de fractionnement autorisées soient réellement obtenues ; elles doivent être confirmées avec le fournisseur ou le partenaire."
+    if constraints:
+        uses_delay = plan['decision_day'] > constraints['original_day']
+        uses_installments = plan['installments'] > 1
+        if uses_delay and uses_installments:
+            text += (f" Cette alternative suppose que le report à J+{plan['decision_day']} et le paiement en "
+                     f"{plan['installments']} fois soient effectivement acceptés et confirmés avec le fournisseur ou le partenaire.")
+        elif uses_delay:
+            text += (f" Cette alternative suppose que le report à J+{plan['decision_day']} soit effectivement accepté "
+                     "et confirmé avec le fournisseur ou le partenaire.")
+        elif uses_installments:
+            text += (f" Cette alternative suppose que le paiement en {plan['installments']} fois soit effectivement accepté "
+                     "et confirmé avec le fournisseur ou le partenaire.")
     return text
 
 
@@ -291,7 +301,20 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         'allow_financing':allow_financing,
     }
     label=_strategy_label(best,best['financing'],kind)
-    requires_negotiation=(best['decision_day']>decision_day or best['installments']>1)
+    uses_delay = best['decision_day'] > decision_day
+    uses_installments = best['installments'] > 1
+    requires_negotiation = uses_delay or uses_installments
+    if uses_delay and uses_installments:
+        negotiation_message = (f"Cette solution nécessite un report à J+{best['decision_day']} et un paiement en "
+                               f"{best['installments']} fois. Ces conditions doivent être confirmées avec le fournisseur ou le partenaire.")
+    elif uses_delay:
+        negotiation_message = (f"Cette solution nécessite de reporter la décision à J+{best['decision_day']}. "
+                               "Ce report doit être confirmé avec le fournisseur ou le partenaire.")
+    elif uses_installments:
+        negotiation_message = (f"Cette solution nécessite un paiement en {best['installments']} fois. "
+                               "Ce fractionnement doit être confirmé avec le fournisseur ou le partenaire.")
+    else:
+        negotiation_message = ""
     if constraints_met:
         explanation=_plan_reason(best,reserve,max_financing,deadline,kind,constraints)
         eq_key=(round(best['financing'],2),round(best['minimum'],2),best['installments'],round(best['end_90'],2))
@@ -335,6 +358,7 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     return {'reserve':reserve,'max_financing':max_financing,'deadline':deadline,'constraints_met':constraints_met,
         'best':best,'label':label,'explanation':explanation,'alternatives':ranked[:5],
         'top3':top3,'no_financing':no_financing,'requires_negotiation':requires_negotiation,
+        'uses_delay':uses_delay,'uses_installments':uses_installments,'negotiation_message':negotiation_message,
         'constraint_gap': round(max(0.0,best['financing']-accepted_cap),2) if not constraints_met else 0.0,
         'allow_delay':allow_delay,'max_delay':max_delay,'allow_installments':allow_installments,
         'max_installments':max_installments,'allow_financing':allow_financing,'kind':kind}
