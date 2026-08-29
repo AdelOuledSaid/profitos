@@ -431,13 +431,13 @@ def register(app):
         libérables, deadlines GROW — tout au même endroit, triées par date."""
         c=cx()
         events=[]
-        for r in c.execute("SELECT invoice_number,customer,due_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND kind!='RETENTION' AND due_date IS NOT NULL").fetchall():
-            events.append({'date':r['due_date'],'type':'RECOVER','label':f"Facture #{r['invoice_number']} — {r['customer']}",'value':r['outstanding']})
-        for r in c.execute("SELECT invoice_number,customer,retention_release_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date IS NOT NULL").fetchall():
-            events.append({'date':r['retention_release_date'],'type':'RETENTION','label':f"Retenue libérable — {r['customer']} (#{r['invoice_number']})",'value':r['outstanding']})
+        for r in c.execute("SELECT id,invoice_number,customer,due_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND kind!='RETENTION' AND due_date IS NOT NULL").fetchall():
+            events.append({'date':r['due_date'],'type':'RECOVER','label':f"Facture #{r['invoice_number']} — {r['customer']}",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id']})
+        for r in c.execute("SELECT id,invoice_number,customer,retention_release_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date IS NOT NULL").fetchall():
+            events.append({'date':r['retention_release_date'],'type':'RETENTION','label':f"Retenue libérable — {r['customer']} (#{r['invoice_number']})",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id']})
         if can_access('grow'):
-            for r in c.execute("SELECT title,buyer,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' AND deadline IS NOT NULL").fetchall():
-                events.append({'date':r['deadline'],'type':'GROW','label':f"{r['title']} — {r['buyer'] or ''}",'value':0})
+            for r in c.execute("SELECT id,title,buyer,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' AND deadline IS NOT NULL").fetchall():
+                events.append({'date':r['deadline'],'type':'GROW','label':f"{r['title']} — {r['buyer'] or ''}",'value':0,'detail_kind':'GROW','item_id':r['id']})
         c.close()
         events.sort(key=lambda e:e['date'] or '')
         today_iso=date.today().isoformat()
