@@ -21,7 +21,7 @@
   <div class="simpleline">
     <div>
       <strong>{{ a.contract.project_name }}</strong>
-      <small>{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
+      <small>{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · exposition {{ "{:,.0f}".format(a.contract.materials_share_pct) }} % · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
     </div>
     <div class="money" style="color:{{ '#ff6e78' if a.is_erosion else '#5fe0ac' }};">
       {{ '+' if a.at_risk>0 else '' }}{{ "{:,.0f}".format(a.at_risk) }} €
@@ -62,7 +62,13 @@
       <button>Ajouter au suivi</button>
     </form>
     {% for ct in contracts %}
-    <div class="simpleline"><span>{{ ct.project_name }}</span><span>{{ "{:,.0f}".format(ct.amount) }} €</span></div>
+    <div class="simpleline">
+      <span>
+        {{ ct.project_name }}
+        <small>Exposition à {{ index_name }} : {{ "{:,.0f}".format(ct.materials_share_pct) }} %</small>
+      </span>
+      <span>{{ "{:,.0f}".format(ct.amount) }} €</span>
+    </div>
     {% endfor %}
   </section>
 </div>
