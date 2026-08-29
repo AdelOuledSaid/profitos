@@ -5,14 +5,14 @@
 
 <section class="panel">
   {% for e in upcoming %}
-  <div class="simpleline">
+  <a class="simpleline clickable calendar-event" href="{{ url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
     <div>
       <span class="type {{ e.type|lower }}">{{ e.type }}</span>
       <strong>{{ e.label }}</strong>
       <small>{{ e.date }}</small>
     </div>
     {% if e.value %}<div class="money">{{ "{:,.0f}".format(e.value) }} €</div>{% endif %}
-  </div>
+  </a>
   {% else %}
   <p class="muted">Aucune échéance à venir pour l'instant.</p>
   {% endfor %}
