@@ -608,13 +608,29 @@ def register(app):
                 flash('Colonnes manquantes : '+', '.join(missing))
                 return redirect(request.url)
 
-            c=cx(); c.execute('DELETE FROM expenses'); c.execute("DELETE FROM opportunities WHERE type='SAVE'"); clean=[]
+            c=cx()
+            # Imports cumulatifs : conserver les dépenses existantes et éviter
+            # de réinsérer un doublon strict lors d'un nouvel import.
             for _,r in df.iterrows():
                 try:a=float(r[m['amount']])
                 except:continue
                 d=parse_date(r[m['date']]); v=str(r[m['vendor']]).strip(); desc=str(r[m['desc']]) if 'desc' in m else ''; cat=str(r[m['cat']]) if 'cat' in m else ''
-                c.execute('INSERT INTO expenses(vendor,description,amount,expense_date,category) VALUES(?,?,?,?,?)',(v,desc,a,d.isoformat() if d else None,cat))
-                clean.append((v,a,d,cat))
+                d_iso=d.isoformat() if d else None
+                exists=c.execute(
+                    '''SELECT 1 FROM expenses
+                       WHERE COALESCE(vendor,'')=? AND COALESCE(description,'')=?
+                         AND amount=? AND COALESCE(expense_date,'')=COALESCE(?, '')
+                         AND COALESCE(category,'')=? LIMIT 1''',
+                    (v,desc,a,d_iso,cat)
+                ).fetchone()
+                if not exists:
+                    c.execute('INSERT INTO expenses(vendor,description,amount,expense_date,category) VALUES(?,?,?,?,?)',(v,desc,a,d_iso,cat))
+
+            # SAVE est recalculé sur tout l'historique conservé.
+            c.execute("DELETE FROM opportunities WHERE type='SAVE'")
+            clean=[]
+            for er in c.execute('SELECT vendor,amount,expense_date,category FROM expenses').fetchall():
+                clean.append((er['vendor'],float(er['amount'] or 0),parse_date(er['expense_date']),er['category'] or ''))
 
             for opp in run_save_engine(clean):
                 c.execute("INSERT INTO opportunities(type,title,value,score,details,source,reasons,warnings,status,created_at) VALUES('SAVE',?,?,?,?,?,?,?,'OPEN',?)",
