@@ -35,6 +35,7 @@ def build_financial_brain():
         expenses=c.execute("SELECT COALESCE(SUM(amount),0) total,COUNT(*) n FROM expenses").fetchone()
         grows=c.execute("SELECT id,title,value,score,buyer,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall()
         margin=_margin_risk(c)
+        financial_settings=c.execute("SELECT cash_balance,cash_as_of FROM financial_settings WHERE id=1").fetchone()
     finally:
         c.close()
 
@@ -74,7 +75,9 @@ def build_financial_brain():
     grow_checks=[]
     for g in grows[:6]:
         value=_safe_float(g['value']); score=_confidence(g['score'])
-        missing=['cash disponible','coûts prévisionnels / marge']
+        cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None else _safe_float(financial_settings['cash_balance'])
+        missing=['coûts prévisionnels / marge']
+        if cash_balance is None: missing.insert(0,'cash disponible')
         if value<=0: missing.insert(0,'valeur du marché')
         grow_checks.append({
             'id':g['id'],'title':g['title'],'buyer':g['buyer'],'value':value,'score':score,
@@ -82,12 +85,14 @@ def build_financial_brain():
             'reason':'ProfitOS refuse un GO financier tant que les données de capacité financière sont incomplètes.'
         })
 
-    data_gaps=['Cash bancaire disponible non persisté dans ProfitOS.']
+    cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None else _safe_float(financial_settings['cash_balance'])
+    data_gaps=[]
+    if cash_balance is None: data_gaps.append('Solde bancaire actuel non renseigné. Saisissez-le dans Cash Intelligence ou importez un relevé contenant une colonne solde.')
     if not margin['available']: data_gaps.append('Risque de marge incomplet : historique de l’indice de référence / contrats insuffisant.')
     if not grows: data_gaps.append('Aucune opportunité GROW ouverte à tester.')
 
     return {
-        'money':money,
+        'money':money,'cash_balance':cash_balance,'cash_as_of':(financial_settings['cash_as_of'] if financial_settings else None),
         'control_score':control_score,'control_level':control_level,
         'recover_exposure':round(recover,2),'expected_recovery':round(expected_recovery,2),
         'save_monthly':round(save_monthly,2),'margin_risk':round(margin_risk,2),'margin':margin,

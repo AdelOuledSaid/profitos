@@ -320,7 +320,8 @@ def register(app):
                 if path: cleanup_upload(path)
             aliases={'date':['date','date operation',"date d'opération",'date valeur'],
                      'desc':['description','libelle','libellé','intitule','intitulé','détail','detail'],
-                     'amount':['amount','montant','credit','crédit']}
+                     'amount':['amount','montant','credit','crédit'],
+                     'balance':['balance','solde','solde bancaire','running balance','account balance']}
             m=map_cols(df,aliases)
             missing=[k for k in ('date','amount') if k not in m]
             if missing:
@@ -350,7 +351,35 @@ def register(app):
                 proposals.append({'bank_date':bank_date,'bank_desc':bank_desc,'bank_amount':bank_amount,
                     'match':match,'ambiguous':len(candidates)>1 and match is None,'candidates':candidates})
 
+            # Si le relevé fournit explicitement un solde après opération, on persiste
+            # le dernier solde daté. On ne tente jamais de reconstruire un solde à partir
+            # des seuls mouvements : cela éviterait d'inventer un point de départ.
+            imported_balance=None; imported_balance_date=None
+            if 'balance' in m:
+                balance_rows=[]
+                for _,row in df.iterrows():
+                    try:
+                        raw_balance=str(row[m['balance']]).strip().replace(' ','').replace('\u202f','').replace(',','.')
+                        bal=float(raw_balance)
+                    except Exception:
+                        continue
+                    d=parse_date(row[m['date']])
+                    if d:
+                        balance_rows.append((d,bal))
+                if balance_rows:
+                    imported_balance_date,imported_balance=max(balance_rows,key=lambda x:x[0])
+                    c=cx()
+                    c.execute(
+                        "INSERT INTO financial_settings(id,cash_balance,cash_as_of,updated_at) VALUES(1,?,?,?) "
+                        "ON CONFLICT(id) DO UPDATE SET cash_balance=excluded.cash_balance,cash_as_of=excluded.cash_as_of,updated_at=excluded.updated_at",
+                        (imported_balance,imported_balance_date.isoformat(),now())
+                    )
+                    c.commit(); c.close()
+                    log_activity('CASH_BALANCE_IMPORT','Solde bancaire mis à jour depuis un relevé importé')
+
             matched_count=sum(1 for p in proposals if p['match'])
+            if imported_balance is not None:
+                flash(f'Solde bancaire détecté dans le relevé : {imported_balance:,.2f} € au {imported_balance_date.isoformat()}.')
             return render_template('bank_reconciliation.html',proposals=proposals,matched_count=matched_count,total_rows=len(proposals))
 
         return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement')

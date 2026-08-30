@@ -2,7 +2,7 @@
 {% block content %}
 <div class="eyebrow green">FINANCIAL BRAIN · V1.6.3</div>
 <h1>Quelle décision protège le plus votre argent ?</h1>
-<p class="muted">ProfitOS croise RECOVER, SAVE, GROW et Margin Watch. Aucun cash bancaire ni aucune marge de marché n'est inventé : les données manquantes sont signalées.</p>
+<p class="muted">ProfitOS croise RECOVER, SAVE, GROW, Margin Watch et le solde bancaire enregistré dans Cash Intelligence. Aucune donnée financière manquante n'est inventée.</p>
 
 <div class="brain-kpis">
   <section class="panel brain-score"><small>FINANCIAL CONTROL SCORE</small><div class="brain-score-value">{{ brain.control_score }}/100</div><strong>{{ brain.control_level }}</strong><p class="muted">Score de pilotage basé sur les signaux connus, pas une note de solvabilité.</p></section>
@@ -33,7 +33,8 @@
 
 <section class="panel brain-gaps" style="margin-top:20px;">
   <div class="eyebrow amber">QUALITÉ DES DONNÉES</div><h2>Ce que ProfitOS ne sait pas encore</h2>
-  {% for x in brain.data_gaps %}<div class="bullet warntext">⚠ {{ x }}</div>{% endfor %}
+  {% if brain.cash_balance is not none %}<div class="bullet">✓ Solde bancaire utilisé : <strong>{{ "{:,.0f}".format(brain.cash_balance) }} €</strong>{% if brain.cash_as_of %} au {{ brain.cash_as_of }}{% endif %}.</div>{% endif %}
+  {% for x in brain.data_gaps %}<div class="bullet warntext">⚠ {{ x }}</div>{% else %}<div class="bullet">✓ Aucun manque bloquant détecté sur les données financières actuellement requises.</div>{% endfor %}
   <p class="muted">Ces limites empêchent volontairement ProfitOS de produire un faux GO/NO-GO ou une fausse prévision de trésorerie.</p>
 </section>
 {% endblock %}

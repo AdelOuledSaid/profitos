@@ -16,7 +16,11 @@ def test_financial_brain_is_explainable():
 
 def test_financial_brain_does_not_invent_cash():
     t=(ROOT/'profitos'/'routes'/'financial_brain.py').read_text(encoding='utf-8')
-    assert 'Cash bancaire disponible non persisté dans ProfitOS.' in t
+    # Financial Brain doit lire le solde persistant partagé, jamais en inventer un.
+    assert "SELECT cash_balance,cash_as_of FROM financial_settings WHERE id=1" in t
+    assert "cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None" in t
+    assert "if cash_balance is None" in t
+    assert 'Solde bancaire actuel non renseigné.' in t
     assert "decision':'À QUALIFIER'" in t
 
 def test_financial_brain_template_has_core_sections():
