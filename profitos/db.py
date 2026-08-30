@@ -282,6 +282,43 @@ def connect_tenant(org_id, sqlite_path):
     return SQLiteConnection(sqlite_path)
 
 
+def delete_tenant_storage(org_id, sqlite_path):
+    """Supprime définitivement le stockage privé d'une organisation.
+
+    PostgreSQL : supprime tout le schéma ``org_<id>`` avec CASCADE. Cela évite
+    d'oublier une table tenant ajoutée dans une version future.
+    SQLite : supprime le fichier tenant ``org_<id>.db``.
+
+    Cette fonction ne touche jamais aux tables AUTH du schéma public ; leur
+    nettoyage est effectué séparément par la route de suppression de compte.
+    """
+    org_id = int(org_id)
+    if USE_POSTGRES:
+        schema = f'org_{org_id}'
+        conn = psycopg2.connect(
+            DATABASE_URL,
+            connect_timeout=PG_CONNECT_TIMEOUT,
+            application_name=PG_APPLICATION_NAME,
+        )
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                conn.commit()
+            finally:
+                cur.close()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return
+
+    path = os.fspath(sqlite_path)
+    if os.path.exists(path):
+        os.remove(path)
+
+
 def backend_name():
     return 'postgresql' if USE_POSTGRES else 'sqlite'
 

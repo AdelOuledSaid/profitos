@@ -447,31 +447,80 @@ def register(app):
                     flash("Tu es le seul propriétaire de cette organisation. Promeus d'abord quelqu'un d'autre au rôle Propriétaire (page Team) avant de partir.")
                     return redirect(url_for('team'))
 
-            ac.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(user['id'],org['id'])); ac.commit()
-            remaining_members=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
-
-            if remaining_members==0:
+            if member_count==1:
+                # Dernier membre : effacer d'abord les fichiers puis le stockage tenant.
+                # On ne retire l'adhésion / l'organisation qu'après ces suppressions afin
+                # d'éviter une organisation orpheline si l'effacement échoue.
                 try:
-                    tc=tenant_cx_direct(org['id'])
-                    for table in ('invoices','expenses','opportunities','actions','outcomes','company','app_settings',
-                                  'status_history','dso_snapshots','customer_tags','fixed_price_contracts',
-                                  'price_index_readings','audit_runs','dce_documents','weekly_reports'):
-                        try: tc.execute(f'DELETE FROM {table}')
-                        except Exception: pass
-                    tc.commit(); tc.close()
+                    import shutil
+                    upload_dir=UP/f"org_{int(org['id'])}"
+                    if upload_dir.exists():
+                        shutil.rmtree(upload_dir)
                 except Exception:
-                    current_app.logger.exception('Tenant data wipe failed for org %s',org['id'])
-                for table in ('buyer_signals','sector_dso_signals','public_invoice_tokens','export_tokens','api_keys','partner_directory','referrals'):
-                    try: ac.execute(f'DELETE FROM {table} WHERE organization_id=?',(org['id'],))
-                    except Exception: pass
-                ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],)); ac.commit()
+                    ac.close()
+                    current_app.logger.exception('Tenant uploads deletion failed for org %s',org['id'])
+                    flash("La suppression des fichiers importés a échoué. L'organisation et le compte ont été conservés afin de pouvoir réessayer en sécurité.")
+                    return redirect(url_for('settings'))
+
+                try:
+                    # PostgreSQL : DROP SCHEMA org_<id> CASCADE.
+                    # SQLite : suppression du fichier tenant org_<id>.db.
+                    # Cela inclut financial_settings et toute future table tenant.
+                    dbmod.delete_tenant_storage(org['id'], tenant_db(org['id']))
+                except Exception:
+                    ac.close()
+                    current_app.logger.exception('Tenant storage deletion failed for org %s',org['id'])
+                    flash("La suppression complète des données de l'organisation a échoué. Le compte a été conservé et aucune confirmation de suppression totale n'a été affichée.")
+                    return redirect(url_for('settings'))
+
+                # Nettoyage des données AUTH/partagées liées à l'organisation.
+                auth_deletes=(
+                    ('buyer_signals','organization_id'),
+                    ('sector_dso_signals','organization_id'),
+                    ('public_invoice_tokens','organization_id'),
+                    ('export_tokens','organization_id'),
+                    ('api_keys','organization_id'),
+                    ('partner_directory','organization_id'),
+                    ('integration_interest','organization_id'),
+                    ('activity_log','organization_id'),
+                    ('security_events','organization_id'),
+                    ('plan_usage','organization_id'),
+                )
+                for table,column in auth_deletes:
+                    try:
+                        ac.execute(f'DELETE FROM {table} WHERE {column}=?',(org['id'],))
+                        ac.commit()
+                    except Exception:
+                        # Compatibilité avec anciennes bases où certaines tables
+                        # n'existent pas encore. PGConnection rollbacke l'instruction
+                        # fautive, sans annuler les suppressions déjà commitées.
+                        pass
+                try:
+                    ac.execute('DELETE FROM referrals WHERE referrer_org_id=? OR referred_org_id=?',(org['id'],org['id']))
+                    ac.commit()
+                except Exception:
+                    pass
+                ac.execute('DELETE FROM memberships WHERE organization_id=?',(org['id'],))
+                ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],))
+                ac.commit()
+                remaining_members=0
+            else:
+                # L'organisation continue d'exister : seul l'utilisateur la quitte.
+                ac.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(user['id'],org['id']))
+                ac.commit()
+                remaining_members=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
 
             remaining_orgs=ac.execute('SELECT COUNT(*) c FROM memberships WHERE user_id=?',(user['id'],)).fetchone()['c']
             if remaining_orgs==0:
                 ac.execute('DELETE FROM users WHERE id=?',(user['id'],)); ac.commit()
             ac.close()
 
-            log_activity('ACCOUNT_DELETED',f"Compte/organisation supprimé par {user['email']}")
+            if remaining_members==0:
+                # Ne pas recréer une trace AUTH rattachée à l'organisation après
+                # son effacement complet. Le journal applicatif Render reste suffisant.
+                current_app.logger.info('GDPR organization deletion completed for org_id=%s',org['id'])
+            else:
+                log_activity('ACCOUNT_LEFT_ORG',f"Utilisateur retiré de l'organisation : {user['email']}")
             session.clear()
             flash('Toutes les données ont été supprimées.' if remaining_members==0 else 'Tu as quitté cette organisation.')
             return redirect(url_for('login'))
