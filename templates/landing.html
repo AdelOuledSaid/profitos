@@ -149,7 +149,26 @@
 </section>
 </main>
 
-<footer class="landing-footer"><div class="landing-shell"><div class="landing-brand">Profit<span>OS</span></div><p>Financial Operating System pour toutes les entreprises.</p><nav><a href="#plateforme">Plateforme</a><a href="{{ url_for('features_overview') }}">Fonctionnalités</a><a href="{{ url_for('pricing') }}">Tarifs</a><a href="{{ url_for('request_demo') }}">Démo</a><a href="{{ url_for('login') }}">Connexion</a></nav><span>© ProfitOS</span></div></footer>
+<footer class="landing-footer">
+  <div class="landing-shell">
+    <div class="landing-brand">Profit<span>OS</span></div>
+    <p>Financial Operating System pour toutes les entreprises.</p>
+    <nav>
+      <a href="#plateforme">Plateforme</a>
+      <a href="{{ url_for('features_overview') }}">Fonctionnalités</a>
+      <a href="{{ url_for('pricing') }}">Tarifs</a>
+      <a href="{{ url_for('request_demo') }}">Démo</a>
+      <a href="{{ url_for('login') }}">Connexion</a>
+    </nav>
+    <nav class="landing-legal-links" aria-label="Informations juridiques">
+      <a href="{{ url_for('legal_notice') }}">Mentions légales</a>
+      <a href="{{ url_for('privacy_policy') }}">Politique de confidentialité</a>
+      <a href="{{ url_for('terms_of_use') }}">CGU</a>
+      <a href="{{ url_for('terms_of_sale') }}">CGV</a>
+    </nav>
+    <span>© ProfitOS</span>
+  </div>
+</footer>
 <script src="{{ asset_url('app.js') }}" defer></script>
 </body>
 </html>

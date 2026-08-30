@@ -13,6 +13,22 @@ def register(app):
             return render_template('landing.html')
         return _home_dashboard()
 
+    @app.route('/mentions-legales')
+    def legal_notice():
+        return render_template('legal.html', legal_page='mentions')
+
+    @app.route('/politique-confidentialite')
+    def privacy_policy():
+        return render_template('legal.html', legal_page='privacy')
+
+    @app.route('/cgu')
+    def terms_of_use():
+        return render_template('legal.html', legal_page='cgu')
+
+    @app.route('/cgv')
+    def terms_of_sale():
+        return render_template('legal.html', legal_page='cgv')
+
     @requires_active_plan
     def _home_dashboard():
         c=cx(); recover=c.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']; save=c.execute("SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
