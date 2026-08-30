@@ -45,5 +45,5 @@ databases:
   - name: profitos-db
     databaseName: profitos
     user: profitos
-    plan: free
+    plan: 0.1c-256mb
     region: frankfurt
