@@ -4,61 +4,184 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% if legal_page == 'mentions' %}Mentions légales{% elif legal_page == 'privacy' %}Politique de confidentialité{% elif legal_page == 'cgu' %}CGU{% else %}CGV{% endif %} — ProfitOS</title>
-  <meta name="robots" content="index,follow">
-  <style>
-    body{margin:0;background:#f6f8fb;color:#172033;font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif}
-    .top{background:#081426;color:#fff;padding:18px 24px}.top a{color:#fff;text-decoration:none;font-weight:800;font-size:21px}
-    .wrap{max-width:900px;margin:42px auto;padding:0 22px}.card{background:#fff;border:1px solid #e5e9f0;border-radius:18px;padding:34px;box-shadow:0 12px 35px rgba(10,25,50,.06)}
-    h1{font-size:34px;margin:0 0 8px}h2{font-size:21px;margin-top:30px}a{color:#1659c7}.muted{color:#667085}.notice{padding:14px 16px;background:#fff8e6;border:1px solid #f2d48a;border-radius:10px}
-    footer{max-width:900px;margin:20px auto 45px;padding:0 22px;color:#667085}footer a{margin-right:14px}
-  </style>
+  <meta name="description" content="Informations juridiques et conditions d'utilisation de ProfitOS.">
+  <meta name="theme-color" content="#07101f">
+  <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
+  <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
 </head>
-<body>
-<header class="top"><a href="{{ url_for('home') }}">ProfitOS</a></header>
-<main class="wrap"><article class="card">
-{% if legal_page == 'mentions' %}
-<h1>Mentions légales</h1><p class="muted">Dernière mise à jour : 30 août 2026</p>
-<h2>Éditeur du service</h2>
-<p>Le site et le service ProfitOS sont édités par l'exploitant de ProfitOS. Les informations d'identification légale de l'éditeur (raison sociale ou nom, forme juridique, capital le cas échéant, adresse du siège, SIREN/RCS et coordonnées de contact) doivent correspondre aux informations officielles de l'entreprise exploitante.</p>
-<div class="notice"><strong>Avant ouverture commerciale :</strong> renseigner ici les coordonnées légales exactes de l'entreprise qui exploite ProfitOS. Elles ne sont pas présentes dans le code fourni et ne sont donc pas inventées.</div>
-<h2>Hébergement</h2><p>L'application ProfitOS est hébergée sur l'infrastructure Render. Les informations détaillées relatives à l'hébergeur peuvent être complétées avec les coordonnées contractuelles figurant sur le compte d'hébergement.</p>
-<h2>Propriété intellectuelle</h2><p>Les marques, éléments graphiques, textes, logiciels, interfaces et contenus propres à ProfitOS sont protégés par les règles applicables à la propriété intellectuelle. Toute reproduction ou exploitation non autorisée est interdite.</p>
-<h2>Contact</h2><p>Les demandes relatives au service et aux données personnelles doivent être adressées au canal de contact officiel indiqué par ProfitOS.</p>
+<body class="landing-body">
 
-{% elif legal_page == 'privacy' %}
-<h1>Politique de confidentialité</h1><p class="muted">Dernière mise à jour : 30 août 2026</p>
-<p>Cette politique décrit les principales catégories de données traitées lors de l'utilisation de ProfitOS.</p>
-<h2>Données traitées</h2><p>ProfitOS peut traiter des données de compte et d'organisation, des données financières et opérationnelles importées par l'utilisateur, des informations relatives aux actions réalisées dans l'application, ainsi que des données techniques nécessaires à la sécurité et au fonctionnement du service.</p>
-<h2>Finalités</h2><p>Les données sont utilisées pour fournir le service, authentifier les utilisateurs, produire les analyses demandées, administrer les abonnements, sécuriser la plateforme, assurer le support et respecter les obligations légales applicables.</p>
-<h2>Destinataires et prestataires</h2><p>Les données sont accessibles aux utilisateurs autorisés de l'organisation et, lorsque cela est nécessaire au fonctionnement du service, aux prestataires techniques utilisés par ProfitOS, notamment pour l'hébergement, le paiement et l'envoi d'e-mails.</p>
-<h2>Durée de conservation</h2><p>Les données sont conservées pendant la durée nécessaire à la fourniture du service et aux obligations applicables. Les journaux de sécurité et données de facturation peuvent faire l'objet de durées spécifiques.</p>
-<h2>Droits</h2><p>Selon la réglementation applicable, une personne peut demander l'accès, la rectification, l'effacement ou la portabilité de ses données, ainsi que l'exercice des autres droits prévus par le RGPD. ProfitOS comporte également des fonctions d'export et de suppression de compte/données selon les droits de l'utilisateur.</p>
-<h2>Sécurité</h2><p>ProfitOS met en œuvre des mesures techniques et organisationnelles destinées à protéger les données, notamment des contrôles d'accès, l'isolation des organisations, des mécanismes de sauvegarde et des protections de session.</p>
+<header class="landing-header">
+  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="ProfitOS accueil">Profit<span>OS</span></a>
+  <nav class="landing-nav" aria-label="Navigation principale">
+    <div class="landing-nav-links">
+      <a href="{{ url_for('home') }}">Accueil</a>
+      <a href="{{ url_for('pricing') }}">Tarifs</a>
+      <a href="{{ url_for('request_demo') }}">Démo</a>
+      <a href="{{ url_for('login') }}">Connexion</a>
+    </div>
+    <a class="landing-btn landing-btn-primary landing-btn-small" href="{{ url_for('signup') }}">Essai gratuit</a>
+  </nav>
+</header>
 
-{% elif legal_page == 'cgu' %}
-<h1>Conditions générales d'utilisation (CGU)</h1><p class="muted">Dernière mise à jour : 30 août 2026</p>
-<h2>Objet</h2><p>Les présentes CGU encadrent l'accès et l'utilisation de la plateforme ProfitOS.</p>
-<h2>Compte et accès</h2><p>L'utilisateur est responsable de la confidentialité de ses identifiants et de l'utilisation de son compte. Les droits d'accès peuvent dépendre de son rôle dans l'organisation et du plan souscrit.</p>
-<h2>Utilisation du service</h2><p>L'utilisateur s'engage à utiliser ProfitOS conformément aux lois applicables, à ne pas compromettre la sécurité du service et à ne pas tenter d'accéder aux données d'une autre organisation.</p>
-<h2>Données et décisions</h2><p>ProfitOS est un outil d'aide au pilotage et à la décision. Les calculs, scores, prévisions et recommandations dépendent des données fournies et des hypothèses affichées. Ils ne remplacent pas le jugement professionnel, comptable, fiscal, juridique ou financier de l'utilisateur.</p>
-<h2>Disponibilité</h2><p>ProfitOS met en œuvre des moyens raisonnables pour assurer la disponibilité et la sécurité du service. Des interruptions peuvent toutefois intervenir pour maintenance, incident technique ou événement indépendant de sa volonté.</p>
-<h2>Suspension</h2><p>L'accès peut être limité ou suspendu en cas d'utilisation abusive, de risque de sécurité, de non-respect des présentes conditions ou selon l'état de l'abonnement.</p>
+<main>
+  <section class="landing-section landing-shell">
+    <div class="landing-section-heading">
+      <div class="landing-kicker"><span></span> INFORMATIONS JURIDIQUES</div>
 
-{% else %}
-<h1>Conditions générales de vente (CGV)</h1><p class="muted">Dernière mise à jour : 30 août 2026</p>
-<h2>Champ d'application</h2><p>Les présentes CGV s'appliquent aux abonnements payants à ProfitOS souscrits par des clients professionnels, sous réserve des conditions particulières éventuellement convenues.</p>
-<h2>Offres et prix</h2><p>Les fonctionnalités, limites et prix applicables sont ceux présentés sur la page Tarifs au moment de la souscription. Les montants et taxes applicables sont précisés lors du paiement.</p>
-<h2>Souscription et paiement</h2><p>La souscription aux offres payantes est réalisée au moyen du parcours de paiement proposé par ProfitOS. Le traitement des paiements est assuré par le prestataire de paiement intégré à la plateforme.</p>
-<h2>Renouvellement et résiliation</h2><p>Sauf indication contraire lors de la souscription, l'abonnement est renouvelé selon la périodicité choisie. Le client peut gérer ou résilier son abonnement depuis le portail de gestion prévu à cet effet. Une résiliation programmée prend effet à la fin de la période déjà couverte, sauf disposition différente affichée lors de l'opération.</p>
-<h2>Impayés</h2><p>En cas d'échec ou de défaut de paiement, l'accès aux fonctionnalités payantes peut être limité ou suspendu conformément à l'état de l'abonnement.</p>
-<h2>Responsabilité</h2><p>ProfitOS fournit un outil logiciel d'aide au pilotage. Le client reste responsable des données saisies ou importées et des décisions prises sur la base des informations produites par le service.</p>
-<h2>Données et fin de contrat</h2><p>Les modalités d'export, de suppression et de traitement des données sont décrites dans la politique de confidentialité et dans les fonctions disponibles dans le compte.</p>
-{% endif %}
-</article></main>
-<footer>
-<a href="{{ url_for('legal_notice') }}">Mentions légales</a>
-<a href="{{ url_for('privacy_policy') }}">Confidentialité</a>
-<a href="{{ url_for('terms_of_use') }}">CGU</a>
-<a href="{{ url_for('terms_of_sale') }}">CGV</a>
+      {% if legal_page == 'mentions' %}
+      <h2>Mentions légales</h2>
+      <p>Dernière mise à jour : 30 août 2026</p>
+      {% elif legal_page == 'privacy' %}
+      <h2>Politique de confidentialité</h2>
+      <p>Dernière mise à jour : 30 août 2026</p>
+      {% elif legal_page == 'cgu' %}
+      <h2>Conditions générales d'utilisation</h2>
+      <p>Dernière mise à jour : 30 août 2026</p>
+      {% else %}
+      <h2>Conditions générales de vente</h2>
+      <p>Dernière mise à jour : 30 août 2026</p>
+      {% endif %}
+    </div>
+
+    <div class="landing-capability-grid">
+
+      {% if legal_page == 'mentions' %}
+      <article class="landing-capability">
+        <small>ÉDITEUR</small>
+        <h3>Éditeur du service</h3>
+        <p>Le site et le service ProfitOS sont édités par l'exploitant de ProfitOS. Les informations d'identification légale de l'éditeur — raison sociale ou nom, forme juridique, capital le cas échéant, adresse du siège, SIREN/RCS et coordonnées de contact — doivent correspondre aux informations officielles de l'entreprise exploitante.</p>
+      </article>
+      <article class="landing-capability">
+        <small>HÉBERGEMENT</small>
+        <h3>Hébergeur</h3>
+        <p>L'application ProfitOS est hébergée sur l'infrastructure Render. Les coordonnées contractuelles complètes de l'hébergeur doivent être renseignées conformément au compte d'hébergement utilisé par l'exploitant.</p>
+      </article>
+      <article class="landing-capability">
+        <small>PROPRIÉTÉ INTELLECTUELLE</small>
+        <h3>Contenus et logiciel</h3>
+        <p>Les marques, éléments graphiques, textes, logiciels, interfaces et contenus propres à ProfitOS sont protégés par les règles applicables à la propriété intellectuelle. Toute reproduction ou exploitation non autorisée est interdite.</p>
+      </article>
+      <article class="landing-capability">
+        <small>CONTACT</small>
+        <h3>Nous contacter</h3>
+        <p>Les demandes relatives au service et aux données personnelles doivent être adressées au canal de contact officiel indiqué par ProfitOS.</p>
+      </article>
+
+      {% elif legal_page == 'privacy' %}
+      <article class="landing-capability">
+        <small>DONNÉES</small>
+        <h3>Données traitées</h3>
+        <p>ProfitOS peut traiter des données de compte et d'organisation, des données financières et opérationnelles importées par l'utilisateur, des informations relatives aux actions réalisées dans l'application, ainsi que des données techniques nécessaires à la sécurité et au fonctionnement du service.</p>
+      </article>
+      <article class="landing-capability">
+        <small>FINALITÉS</small>
+        <h3>Pourquoi ces données sont utilisées</h3>
+        <p>Les données sont utilisées pour fournir le service, authentifier les utilisateurs, produire les analyses demandées, administrer les abonnements, sécuriser la plateforme, assurer le support et respecter les obligations légales applicables.</p>
+      </article>
+      <article class="landing-capability">
+        <small>DESTINATAIRES</small>
+        <h3>Prestataires et utilisateurs autorisés</h3>
+        <p>Les données sont accessibles aux utilisateurs autorisés de l'organisation et, lorsque cela est nécessaire, aux prestataires techniques utilisés par ProfitOS, notamment pour l'hébergement, le paiement et l'envoi d'e-mails.</p>
+      </article>
+      <article class="landing-capability">
+        <small>CONSERVATION</small>
+        <h3>Durée de conservation</h3>
+        <p>Les données sont conservées pendant la durée nécessaire à la fourniture du service et aux obligations applicables. Les journaux de sécurité et données de facturation peuvent faire l'objet de durées spécifiques.</p>
+      </article>
+      <article class="landing-capability">
+        <small>RGPD</small>
+        <h3>Vos droits</h3>
+        <p>Selon la réglementation applicable, une personne peut demander l'accès, la rectification, l'effacement ou la portabilité de ses données, ainsi que l'exercice des autres droits prévus par le RGPD. ProfitOS comporte également des fonctions d'export et de suppression de compte ou de données selon les droits de l'utilisateur.</p>
+      </article>
+      <article class="landing-capability">
+        <small>SÉCURITÉ</small>
+        <h3>Protection des données</h3>
+        <p>ProfitOS met en œuvre des mesures techniques et organisationnelles destinées à protéger les données, notamment des contrôles d'accès, l'isolation des organisations, des mécanismes de sauvegarde et des protections de session.</p>
+      </article>
+
+      {% elif legal_page == 'cgu' %}
+      <article class="landing-capability">
+        <small>OBJET</small>
+        <h3>Utilisation de ProfitOS</h3>
+        <p>Les présentes CGU encadrent l'accès et l'utilisation de la plateforme ProfitOS.</p>
+      </article>
+      <article class="landing-capability">
+        <small>COMPTE</small>
+        <h3>Compte et accès</h3>
+        <p>L'utilisateur est responsable de la confidentialité de ses identifiants et de l'utilisation de son compte. Les droits d'accès peuvent dépendre de son rôle dans l'organisation et du plan souscrit.</p>
+      </article>
+      <article class="landing-capability">
+        <small>RÈGLES</small>
+        <h3>Utilisation du service</h3>
+        <p>L'utilisateur s'engage à utiliser ProfitOS conformément aux lois applicables, à ne pas compromettre la sécurité du service et à ne pas tenter d'accéder aux données d'une autre organisation.</p>
+      </article>
+      <article class="landing-capability">
+        <small>DÉCISION</small>
+        <h3>Données et recommandations</h3>
+        <p>ProfitOS est un outil d'aide au pilotage et à la décision. Les calculs, scores, prévisions et recommandations dépendent des données fournies et des hypothèses affichées. Ils ne remplacent pas le jugement professionnel, comptable, fiscal, juridique ou financier de l'utilisateur.</p>
+      </article>
+      <article class="landing-capability">
+        <small>DISPONIBILITÉ</small>
+        <h3>Continuité du service</h3>
+        <p>ProfitOS met en œuvre des moyens raisonnables pour assurer la disponibilité et la sécurité du service. Des interruptions peuvent toutefois intervenir pour maintenance, incident technique ou événement indépendant de sa volonté.</p>
+      </article>
+      <article class="landing-capability">
+        <small>SUSPENSION</small>
+        <h3>Restriction d'accès</h3>
+        <p>L'accès peut être limité ou suspendu en cas d'utilisation abusive, de risque de sécurité, de non-respect des présentes conditions ou selon l'état de l'abonnement.</p>
+      </article>
+
+      {% else %}
+      <article class="landing-capability">
+        <small>ABONNEMENT</small>
+        <h3>Champ d'application</h3>
+        <p>Les présentes CGV s'appliquent aux abonnements payants à ProfitOS souscrits par des clients professionnels, sous réserve des conditions particulières éventuellement convenues.</p>
+      </article>
+      <article class="landing-capability">
+        <small>TARIFS</small>
+        <h3>Offres et prix</h3>
+        <p>Les fonctionnalités, limites et prix applicables sont ceux présentés sur la page Tarifs au moment de la souscription. Les montants et taxes applicables sont précisés lors du paiement.</p>
+      </article>
+      <article class="landing-capability">
+        <small>PAIEMENT</small>
+        <h3>Souscription et paiement</h3>
+        <p>La souscription aux offres payantes est réalisée au moyen du parcours de paiement proposé par ProfitOS. Le traitement des paiements est assuré par le prestataire de paiement intégré à la plateforme.</p>
+      </article>
+      <article class="landing-capability">
+        <small>RÉSILIATION</small>
+        <h3>Renouvellement et résiliation</h3>
+        <p>Sauf indication contraire lors de la souscription, l'abonnement est renouvelé selon la périodicité choisie. Le client peut gérer ou résilier son abonnement depuis le portail prévu à cet effet. Une résiliation programmée prend effet à la fin de la période déjà couverte, sauf disposition différente affichée lors de l'opération.</p>
+      </article>
+      <article class="landing-capability">
+        <small>IMPAIÉS</small>
+        <h3>Défaut de paiement</h3>
+        <p>En cas d'échec ou de défaut de paiement, l'accès aux fonctionnalités payantes peut être limité ou suspendu conformément à l'état de l'abonnement.</p>
+      </article>
+      <article class="landing-capability">
+        <small>RESPONSABILITÉ</small>
+        <h3>Utilisation des résultats</h3>
+        <p>ProfitOS fournit un outil logiciel d'aide au pilotage. Le client reste responsable des données saisies ou importées et des décisions prises sur la base des informations produites par le service.</p>
+      </article>
+      {% endif %}
+
+    </div>
+  </section>
+</main>
+
+<footer class="landing-footer">
+  <div class="landing-shell">
+    <div class="landing-brand">Profit<span>OS</span></div>
+    <p>Financial Operating System pour votre entreprise.</p>
+    <nav aria-label="Informations juridiques">
+      <a href="{{ url_for('legal_notice') }}">Mentions légales</a>
+      <a href="{{ url_for('privacy_policy') }}">Confidentialité</a>
+      <a href="{{ url_for('terms_of_use') }}">CGU</a>
+      <a href="{{ url_for('terms_of_sale') }}">CGV</a>
+    </nav>
+    <span>© ProfitOS</span>
+  </div>
 </footer>
-</body></html>
+
+</body>
+</html>
