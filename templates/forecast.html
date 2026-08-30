@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block content %}
 <div class="eyebrow">CASH FORECAST</div>
-<h1>{{ "{:,.0f}".format(total_90j) }} € attendus sur 90 jours</h1>
-<p class="muted">Estimation indicative pondérée par le score de chaque opportunité — pas une garantie de trésorerie. Basée sur {{ invoice_count }} créance(s) RECOVER et {{ save_count }} signal(aux) SAVE ouverts.</p>
+<h1>{{ "{:,.0f}".format(total_90j) }} € nets projetés sur 90 jours</h1>
+<p class="muted">Estimation indicative — pas une garantie de trésorerie. Ressources pondérées : {{ "{:,.0f}".format(gross_expected) }} €. Sorties futures importées : {{ "{:,.0f}".format(planned_outflows) }} € ({{ future_expense_count }} échéance(s)).</p>
 
 {% if chart %}
 <section class="panel" style="margin:18px 0;">
@@ -17,12 +17,20 @@
   {% endfor %}
 </section>
 
+<section class="panel" style="margin-top:18px;">
+  <h2>Sorties planifiées intégrées</h2>
+  <div class="simpleline"><span>0–30 jours</span><span class="money">−{{ "{:,.0f}".format(obligation_buckets['0-30j']) }} €</span></div>
+  <div class="simpleline"><span>31–60 jours</span><span class="money">−{{ "{:,.0f}".format(obligation_buckets['31-60j']) }} €</span></div>
+  <div class="simpleline"><span>61–90 jours</span><span class="money">−{{ "{:,.0f}".format(obligation_buckets['61-90j']) }} €</span></div>
+  <p class="muted">Inclut les dépenses futures importées : factures fournisseurs, URSSAF, TVA, impôts et autres charges datées dans les 90 prochains jours.</p>
+</section>
+
 <section class="panel" style="margin-top:18px;background:#0a1529;">
   <h2>Pipeline GROW (hors horizon 90 jours)</h2>
   <p class="muted">{{ grow_total }} opportunité(s) de marché public ouvertes — cycle de décision généralement supérieur à 90 jours, donc non inclus dans le chiffrage ci-dessus. Consulte <a class="link" href="{{ url_for('grow') }}">GROW</a> pour le détail.</p>
 </section>
 
 <p class="muted" style="margin-top:18px;font-size:12px;">
-Méthode : RECOVER est pondéré par le score de chaque créance (proxy de probabilité de recouvrement) et classé selon l'ancienneté actuelle du retard (plus une créance est déjà en retard, plus son horizon de résolution est repoussé par prudence). SAVE est pondéré par le score et classé selon la facilité présumée de mise en œuvre. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
+Méthode : RECOVER est pondéré par le score de chaque créance. SAVE est pondéré par le score et classé selon la facilité présumée de mise en œuvre. Les dépenses futures importées sont soustraites à leur date d'échéance. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
 </p>
 {% endblock %}

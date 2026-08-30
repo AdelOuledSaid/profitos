@@ -36,6 +36,11 @@ def register(app):
         invoices=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchall()
         saves=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchall()
         grow_total=c.execute("SELECT COALESCE(SUM(1),0) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['n']
+        future_expenses=c.execute(
+            "SELECT vendor,description,category,amount,expense_date FROM expenses "
+            "WHERE expense_date IS NOT NULL AND expense_date>? AND expense_date<=? ORDER BY expense_date" ,
+            (date.today().isoformat(),(date.today()+timedelta(days=90)).isoformat())
+        ).fetchall()
         c.close()
 
         buckets={'0-30j':0.0,'31-60j':0.0,'61-90j':0.0}
@@ -54,6 +59,21 @@ def register(app):
             elif s['score']>=50: buckets['31-60j']+=expected
             else: buckets['61-90j']+=expected
 
+        gross_expected=sum(buckets.values())
+        obligation_buckets={'0-30j':0.0,'31-60j':0.0,'61-90j':0.0}
+        today=date.today()
+        for e in future_expenses:
+            try: d=datetime.strptime(str(e['expense_date'])[:10],'%Y-%m-%d').date()
+            except Exception: continue
+            days=(d-today).days
+            amount=max(0.0,float(e['amount'] or 0))
+            if days<=30: key='0-30j'
+            elif days<=60: key='31-60j'
+            else: key='61-90j'
+            obligation_buckets[key]+=amount
+            buckets[key]-=amount
+
+        planned_outflows=sum(obligation_buckets.values())
         total_90j=sum(buckets.values())
         chart=bars_svg(list(buckets.items()))
         cumulative=[]
@@ -63,7 +83,9 @@ def register(app):
 
         return render_template('forecast.html',buckets=buckets,total_90j=total_90j,chart=chart,
             cumulative=cumulative,grow_total=grow_total,
-            invoice_count=len(invoices),save_count=len(saves))
+            invoice_count=len(invoices),save_count=len(saves),
+            gross_expected=gross_expected,planned_outflows=planned_outflows,
+            obligation_buckets=obligation_buckets,future_expense_count=len(future_expenses))
 
     @app.route('/reports/monthly.pdf')
     @login_required

@@ -53,57 +53,82 @@ def _pdf_text(path, max_pages=20):
     return text
 
 
+def _classify_expense_document(text, vendor=''):
+    """Classe un document de dépense à partir de marqueurs explicites, sans IA externe."""
+    hay=norm((vendor or '')+' '+text)
+    rules=[
+        ('Cotisations sociales - URSSAF', [r'\burssaf\b', r'cotisations? sociales?', r'declaration sociale nominative', r'\bdsn\b']),
+        ('TVA', [r'\btva\b', r'taxe sur la valeur ajoutee', r'ca3', r'ca12']),
+        ('Impôts et taxes', [r'dgfip', r'impots?\.gouv', r'impot sur les societes', r'\bis\b', r'\bcfe\b', r'cotisation fonciere', r'taxe sur les salaires']),
+        ('Salaires et paie', [r'bulletin de paie', r'fiche de paie', r'salaire net', r'net a payer avant impot']),
+        ('Assurance', [r'assurance', r'assureur', r'prime d.assurance']),
+        ('Énergie', [r'electricite', r'energie', r'\bedf\b', r'engie', r'gaz naturel']),
+        ('Télécom / Internet', [r'telecom', r'internet', r'orange', r'sfr', r'bouygues telecom', r'free pro']),
+        ('Loyer / Immobilier', [r'loyer', r'avis d.echeance', r'bail']),
+        ('Banque / Frais financiers', [r'frais bancaires?', r'commission bancaire', r'agios']),
+        ('Logiciels / Abonnements', [r'abonnement', r'licence logiciel', r'saas']),
+    ]
+    for category,patterns in rules:
+        if any(re.search(pat,hay,re.I) for pat in patterns):
+            return category
+    return 'Facture fournisseur'
+
+
 def _extract_expense_pdf(path):
-    """Extrait prudemment une dépense depuis une facture/reçu PDF texte."""
-    text=_pdf_text(path, max_pages=12)
+    """Extrait une dépense depuis un PDF texte : fournisseur, URSSAF, TVA, impôts, paie, etc."""
+    text=_pdf_text(path, max_pages=20)
 
     amount_raw=_pdf_first([
-        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
-        r'(?:total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|montant\s*du|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:solde\s*(?:à|a)\s*payer|total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
     ], text)
     amount=_pdf_money_value(amount_raw)
 
     date_raw=_pdf_first([
+        r'(?:date\s+limite\s+de\s+paiement|date\s+d[’\']?échéance|échéance|echeance|date\s+de\s+prélèvement|date\s+de\s+prelevement)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
         r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
         r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
     ], text)
     expense_date=parse_date(date_raw) if date_raw else None
 
-    vendor=_pdf_first([
-        r'(?:fournisseur|supplier|vendor)\s*[:\-]\s*([^\n]{2,120})',
-        r'(?:émis\s+par|emis\s+par|issued\s+by)\s*[:\-]\s*([^\n]{2,120})',
-    ], text)
-    if not vendor:
-        # À défaut d'un libellé explicite, on prend la première ligne d'en-tête plausible.
-        for line in [x.strip() for x in text.splitlines()[:15] if x.strip()]:
-            if len(line)<2 or len(line)>120:
-                continue
-            if re.search(r'^(facture|invoice|reçu|recu|receipt|date|n[°o]|total|client|bill\s*to)\b', line, re.I):
-                continue
-            if re.fullmatch(r'[0-9\s.,€+\-/]+', line):
-                continue
-            vendor=line
-            break
+    # Organismes publics / sociaux : on privilégie le nom officiel plutôt qu'une ligne d'en-tête arbitraire.
+    ntext=norm(text)
+    if re.search(r'\burssaf\b',ntext):
+        vendor='URSSAF'
+    elif re.search(r'dgfip|impots?\.gouv|direction generale des finances publiques',ntext):
+        vendor='DGFiP / Impôts'
+    else:
+        vendor=_pdf_first([
+            r'(?:fournisseur|supplier|vendor|créancier|creancier|organisme)\s*[:\-]\s*([^\n]{2,120})',
+            r'(?:émis\s+par|emis\s+par|issued\s+by)\s*[:\-]\s*([^\n]{2,120})',
+        ], text)
 
+    if not vendor:
+        for line in [x.strip() for x in text.splitlines()[:20] if x.strip()]:
+            if len(line)<2 or len(line)>120: continue
+            if re.search(r'^(facture|invoice|reçu|recu|receipt|date|n[°o]|total|client|bill\s*to|avis|déclaration|declaration)\b', line, re.I): continue
+            if re.fullmatch(r'[0-9\s.,€+\-/]+', line): continue
+            vendor=line; break
+
+    category=_classify_expense_document(text,vendor)
     num=_pdf_first([
         r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'(?:référence|reference)\s*[:\-]\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
     ], text)
-    desc=(f'Facture {num}' if num else 'Dépense importée depuis PDF')
+    if category=='Cotisations sociales - URSSAF': desc='Cotisations sociales URSSAF'
+    elif category=='TVA': desc='TVA'
+    elif category=='Impôts et taxes': desc='Impôts et taxes'
+    elif num: desc=f'Facture {num}'
+    else: desc='Dépense importée depuis PDF'
 
     missing=[]
-    if not vendor: missing.append('fournisseur')
-    if amount is None or amount<=0: missing.append('montant TTC')
-    if not expense_date: missing.append('date')
+    if not vendor: missing.append('fournisseur / organisme')
+    if amount is None or amount<=0: missing.append('montant à payer')
+    if not expense_date: missing.append('date / échéance')
     if missing:
         raise ValueError('Champs non détectés dans le PDF : '+', '.join(missing)+'. Vérifiez que ces informations sont écrites explicitement dans le document.')
 
-    return {
-        'vendor':vendor,
-        'description':desc,
-        'amount':amount,
-        'date':expense_date.isoformat(),
-        'category':'',
-    }
+    return {'vendor':vendor,'description':desc,'amount':amount,'date':expense_date.isoformat(),'category':category}
 
 
 def _extract_bank_statement_pdf(path):
@@ -521,8 +546,25 @@ def register(app):
                     warnings=['obtenir 3 devis avant renouvellement automatique']))
         return out
 
+    NON_OPTIMIZABLE_EXPENSE_MARKERS=(
+        'urssaf','cotisations sociales','tva','impots et taxes','impôts et taxes',
+        'salaires et paie','salaire','paie'
+    )
+
+    def _save_optimizable_expense(row):
+        """Évite de présenter les obligations légales/sociales comme des économies négociables.
+
+        Les doublons restent contrôlés séparément : un double prélèvement URSSAF/TVA peut
+        réellement mériter une vérification, mais on ne génère ni hausse fournisseur ni
+        renouvellement de contrat sur ces catégories.
+        """
+        v,a,d,cat=row
+        text=norm(f'{cat or ""} {v or ""}')
+        return not any(marker in text for marker in NON_OPTIMIZABLE_EXPENSE_MARKERS)
+
     def run_save_engine(clean):
-        return detect_duplicates(clean)+detect_price_increases(clean)+detect_stale_contracts(clean)
+        optimizable=[row for row in clean if _save_optimizable_expense(row)]
+        return detect_duplicates(clean)+detect_price_increases(optimizable)+detect_stale_contracts(optimizable)
 
     @app.route('/upload/expenses',methods=['GET','POST'])
     @login_required

@@ -32,11 +32,16 @@ def _curve_points(values, width=920, height=220, pad=18):
     return ' '.join(pts)
 
 
-def _simulate_curve(cash, daily_burn, receivables, mode='probable', top_delay=None):
+def _simulate_curve(cash, daily_burn, receivables, scheduled_outflows=None, mode='probable', top_delay=None):
     """Courbe 0..90 j. Les hypothèses restent explicites et déterministes."""
     factors={'prudent':0.55,'probable':1.0,'optimiste':1.12}
     factor=factors.get(mode,1.0)
     events={}
+    outflow_events={}
+    for item in (scheduled_outflows or []):
+        day=max(0,min(90,int(item.get('day',0))))
+        if day>0:
+            outflow_events[day]=outflow_events.get(day,0.0)+_safe_float(item.get('amount'))
     top=receivables[0] if receivables else None
     for idx,r in enumerate(receivables):
         if idx==0 and top_delay is not None:
@@ -54,6 +59,7 @@ def _simulate_curve(cash, daily_burn, receivables, mode='probable', top_delay=No
     minimum=cash; min_day=0
     for day in range(1,91):
         running-=daily_burn
+        running-=outflow_events.get(day,0.0)
         running+=events.get(day,0.0)
         running=round(running,2)
         values.append(running)
@@ -76,7 +82,7 @@ def build_cash_intelligence():
             "ORDER BY outstanding DESC"
         ).fetchall()
         expenses=c.execute(
-            "SELECT amount,expense_date FROM expenses WHERE expense_date IS NOT NULL ORDER BY expense_date DESC"
+            "SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL ORDER BY expense_date DESC"
         ).fetchall()
     finally:
         c.close()
@@ -84,15 +90,28 @@ def build_cash_intelligence():
     today=date.today()
     cash=None if settings['cash_balance'] is None else _safe_float(settings['cash_balance'])
 
-    # Dépense quotidienne observée : moyenne des dépenses des 90 derniers jours disponibles.
+    # Dépense quotidienne observée : moyenne des dépenses passées des 90 derniers jours.
+    # Les dépenses datées dans le futur (URSSAF, TVA, impôts, factures à échéance...)
+    # sont traitées comme sorties planifiées et ne sont donc pas noyées dans le burn moyen.
     recent=[]
+    scheduled_outflows=[]
     for e in expenses:
         d=_iso_date(e['expense_date'])
-        if d and 0 <= (today-d).days <= 90:
-            recent.append(_safe_float(e['amount']))
+        amount=_safe_float(e['amount'])
+        if not d or amount<=0:
+            continue
+        delta=(d-today).days
+        if -90 <= delta <= 0:
+            recent.append(amount)
+        elif 1 <= delta <= 90:
+            scheduled_outflows.append({
+                'date':d.isoformat(),'day':delta,'amount':round(amount,2),
+                'vendor':e['vendor'],'description':e['description'],'category':e['category'],
+            })
     observed_90=sum(recent)
     daily_burn=observed_90/90.0 if recent else 0.0
     monthly_burn=daily_burn*30.0
+    planned_outflows_90=round(sum(x['amount'] for x in scheduled_outflows),2)
 
     receivables=[]
     for inv in invoices:
@@ -113,18 +132,23 @@ def build_cash_intelligence():
     if cash is not None:
         for h in horizons:
             inflow=sum(r['expected_amount'] for r in receivables if (_iso_date(r['expected_date'])-today).days<=h)
-            horizons[h]=round(cash + inflow - daily_burn*h,2)
+            planned=sum(x['amount'] for x in scheduled_outflows if x['day']<=h)
+            horizons[h]=round(cash + inflow - daily_burn*h - planned,2)
 
     min_cash=None; min_day=None
     if cash is not None:
         running=cash
         events={}
+        outflow_events={}
         for r in receivables:
             day=(_iso_date(r['expected_date'])-today).days
             if 1<=day<=90: events[day]=events.get(day,0.0)+r['expected_amount']
+        for x in scheduled_outflows:
+            outflow_events[x['day']]=outflow_events.get(x['day'],0.0)+x['amount']
         min_cash=running; min_day=0
         for day in range(1,91):
             running-=daily_burn
+            running-=outflow_events.get(day,0.0)
             running+=events.get(day,0.0)
             if running<min_cash:
                 min_cash=running; min_day=day
@@ -141,8 +165,12 @@ def build_cash_intelligence():
             for r in receivables[1:]:
                 d=(_iso_date(r['expected_date'])-today).days
                 if 1<=d<=90: other_events[d]=other_events.get(d,0.0)+r['expected_amount']
+            outflow_events={}
+            for x in scheduled_outflows:
+                outflow_events[x['day']]=outflow_events.get(x['day'],0.0)+x['amount']
             for day in range(1,91):
                 running-=daily_burn
+                running-=outflow_events.get(day,0.0)
                 running+=other_events.get(day,0.0)
                 if day==delay: running+=top['amount']
                 minimum=min(minimum,running)
@@ -152,7 +180,7 @@ def build_cash_intelligence():
     selected_delay=None
     if cash is not None:
         for mode in ('prudent','probable','optimiste'):
-            curves.append(_simulate_curve(cash,daily_burn,receivables,mode=mode))
+            curves.append(_simulate_curve(cash,daily_burn,receivables,scheduled_outflows=scheduled_outflows,mode=mode))
 
     risk_day=(today+timedelta(days=min_day)).isoformat() if min_cash is not None and min_cash<0 else None
     if cash is None:
@@ -167,10 +195,11 @@ def build_cash_intelligence():
     return {
         'cash_balance':cash,'cash_as_of':settings['cash_as_of'],'monthly_burn':round(monthly_burn,2),
         'observed_90':round(observed_90,2),'expense_rows':len(recent),'horizons':horizons,
+        'scheduled_outflows':scheduled_outflows,'planned_outflows_90':planned_outflows_90,
         'receivables':receivables,'top_receivable':top,'scenarios':scenarios,
         'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,
         'alert_level':alert_level,'alert':alert,'curves':curves,
-        'method_note':'Prévision calculée à partir du solde saisi, des créances RECOVER pondérées par leur score et de la dépense quotidienne observée sur les 90 derniers jours.',
+        'method_note':'Prévision calculée à partir du solde saisi, des créances RECOVER pondérées par leur score, de la dépense quotidienne observée sur les 90 derniers jours et des dépenses/charges futures importées (URSSAF, TVA, impôts, factures, etc.).',
     }
 
 
@@ -204,7 +233,7 @@ def register(app):
             mapping={'today':0,'7':7,'30':30,'60':60,'never':-1}
             if raw_delay in mapping:
                 daily_burn=cash['monthly_burn']/30.0
-                custom=_simulate_curve(cash['cash_balance'],daily_burn,cash['receivables'],mode='probable',top_delay=mapping[raw_delay])
+                custom=_simulate_curve(cash['cash_balance'],daily_burn,cash['receivables'],scheduled_outflows=cash.get('scheduled_outflows',[]),mode='probable',top_delay=mapping[raw_delay])
                 custom['label']={'today':"Aujourd'hui",'7':'Sous 7 jours','30':'Sous 30 jours','60':'Sous 60 jours','never':"Pas d'encaissement sur 90 j"}[raw_delay]
                 custom['choice']=raw_delay
         log_activity('CASH_INTELLIGENCE_VIEW','Consultation de Cash Intelligence')
