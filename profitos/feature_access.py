@@ -15,7 +15,11 @@ def is_paid_plan(plan):
 
 def current_plan_is_paid():
     org = current_org()
-    return bool(org and is_paid_plan(org["plan"]))
+    return bool(
+        org
+        and is_paid_plan(org["plan"])
+        and org["status"] == "ACTIVE_PAID"
+    )
 
 
 def _deny_paid_feature(target="paid_plan"):

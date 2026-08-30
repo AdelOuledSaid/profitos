@@ -525,14 +525,21 @@ def trial_days_left(org):
     return max(0,(end-datetime.now(timezone.utc)).days)
 
 def org_has_access(org):
-    """True si l'organisation peut utiliser l'app : abonnement actif, ou trial non expiré,
-    ou billing désactivé (mode démo/dev sans Stripe configuré — jamais bloquant)."""
-    if not org: return False
-    if not BILLING_ENABLED: return True
-    if org['status']=='ACTIVE_PAID': return True
-    if org['plan']=='TRIAL':
-        days=trial_days_left(org)
-        return days is None or days>0
+    """True si l'organisation peut utiliser l'app.
+
+    En production, une configuration Stripe absente ou incomplète ne doit jamais
+    ouvrir l'accès par défaut. Le mode permissif sans Stripe reste réservé au
+    développement local.
+    """
+    if not org:
+        return False
+    if not BILLING_ENABLED:
+        return os.environ.get("PROFITOS_ENV", "development").strip().lower() != "production"
+    if org['status'] == 'ACTIVE_PAID':
+        return True
+    if org['plan'] == 'TRIAL':
+        days = trial_days_left(org)
+        return days is None or days > 0
     return False
 
 def requires_active_plan(fn):
