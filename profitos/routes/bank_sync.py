@@ -184,7 +184,7 @@ def register(app):
             powens_configured=_configured(),
         )
 
-    @app.post("/banking/connect")
+    @app.get("/banking/connect")
     @login_required
     @requires_paid_plan
     def banking_connect():

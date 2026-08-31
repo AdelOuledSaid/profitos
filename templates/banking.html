@@ -23,10 +23,7 @@
       {% endif %}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <form method="post" action="{{ url_for('banking_connect') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" {% if not powens_configured %}disabled{% endif %}>{{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}</button>
-      </form>
+      <a class="primary" href="{{ url_for('banking_connect') }}">{{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}</a>
       {% if connection %}
       <form method="post" action="{{ url_for('banking_sync') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
