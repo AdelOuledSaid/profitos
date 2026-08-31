@@ -46,6 +46,7 @@
     {% endif %}
 
     <a href="{{ url_for('company') }}">Profil entreprise</a>
+    {% if can_access('invoicing') %}<a href="{{ url_for('invoicing_list') }}">Facturation</a>{% endif %}
 
     <div class="navhead">ACCOUNT</div>
     {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a><a href="{{ url_for('team_performance') }}">Performance</a>{% endif %}

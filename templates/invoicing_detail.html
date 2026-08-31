@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION</div>
+<div class="detailhead">
+  <div><h1>{{ inv.invoice_number }}</h1><p class="muted">{{ inv.client_name }} · émise le {{ inv.issue_date }}{% if inv.due_date %} · échéance {{ inv.due_date }}{% endif %}</p></div>
+  <div class="heroScore">{{ "{:,.0f}".format(inv.total) }} €<span>TTC</span></div>
+</div>
+
+<div class="actionbuttons" style="margin:16px 0;">
+  <a class="button secondary" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
+  {% if inv.status!='paid' %}
+  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Envoyer par email</button></form>
+  <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Marquer comme payée</button></form>
+  {% endif %}
+  <span class="status">{{ {'draft':'Brouillon','sent':'Envoyée','paid':'Payée'}.get(inv.status, inv.status) }}</span>
+</div>
+
+<section class="panel">
+  {% for it in items %}
+  <div class="simpleline"><span>{{ it.label }} <small>({{ it.qty }} × {{ "{:,.2f}".format(it.unit_price) }} € · TVA {{ it.vat_rate }}%)</small></span><span class="money">{{ "{:,.2f}".format(it.line_total) }} €</span></div>
+  {% endfor %}
+  <div class="simpleline"><span>Sous-total HT</span><span class="money">{{ "{:,.2f}".format(inv.subtotal) }} €</span></div>
+  <div class="simpleline"><span>TVA</span><span class="money">{{ "{:,.2f}".format(inv.vat_amount) }} €</span></div>
+  <div class="simpleline"><strong>Total TTC</strong><strong class="money">{{ "{:,.2f}".format(inv.total) }} €</strong></div>
+</section>
+
+{% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
+
+<div class="panel" style="margin-top:18px;background:#0a1529;">
+  <h3 style="margin:0 0 6px;font-size:14px;">Lien de consultation client</h3>
+  <code style="display:block;padding:8px;background:#000;border-radius:6px;word-break:break-all;font-size:12px;">{{ request.host_url }}facture/{{ inv.public_token }}</code>
+</div>
+
+<p class="muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. Ce document n'est pas émis via une Plateforme Agréée DGFiP au sens de la réforme de facturation électronique (obligatoire à partir du 1er septembre 2026).</p>
+{% endblock %}

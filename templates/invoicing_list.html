@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION</div>
+<h1>Factures émises</h1>
+<p class="muted">Crée, envoie et suis tes factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
+
+<div class="cards" style="grid-template-columns:repeat(3,1fr);">
+  <div class="card"><div class="label">Brouillons</div><div class="big">{{ "{:,.0f}".format(totals.draft) }} €</div></div>
+  <div class="card"><div class="label amber">Envoyées</div><div class="big">{{ "{:,.0f}".format(totals.sent) }} €</div></div>
+  <div class="card"><div class="label green">Payées</div><div class="big">{{ "{:,.0f}".format(totals.paid) }} €</div></div>
+</div>
+
+<a class="button" href="{{ url_for('invoicing_new') }}" style="display:inline-block;margin:20px 0;">+ Nouvelle facture</a>
+
+<section class="panel">
+  {% for r in rows %}
+  <a class="row clickable" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}">
+    <div><strong>{{ r.invoice_number }}</strong><small>{{ r.client_name }} · émise le {{ r.issue_date }}</small></div>
+    <div class="money">{{ "{:,.0f}".format(r.total) }} €</div>
+    <div class="status">{{ {'draft':'Brouillon','sent':'Envoyée','paid':'Payée'}.get(r.status, r.status) }}</div>
+  </a>
+  {% else %}
+  <p class="muted">Aucune facture pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endblock %}

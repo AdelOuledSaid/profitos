@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION</div>
+<h1>Nouvelle facture</h1>
+<p class="muted">Jusqu'à 8 lignes — laisse vides celles dont tu n'as pas besoin.</p>
+
+<section class="panel formpanel">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nom du client<input name="client_name" required></label>
+    <label>Email du client<input type="email" name="client_email" placeholder="pour l'envoi"></label>
+    <label class="wide">Adresse du client<input name="client_address"></label>
+    <label>Date d'échéance<input type="date" name="due_date"></label>
+    <div></div>
+
+    <div class="wide">
+      <h2 style="font-size:16px;margin:10px 0;">Lignes de facture</h2>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;font-size:11px;color:#8fa9d3;margin-bottom:6px;">
+        <span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span>
+      </div>
+      {% for i in range(1,9) %}
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+        <input name="label_{{ i }}" placeholder="ex: Prestation de conseil">
+        <input type="number" name="qty_{{ i }}" value="1" step="0.01" min="0">
+        <input type="number" name="price_{{ i }}" step="0.01" min="0" placeholder="0.00">
+        <input type="number" name="vat_{{ i }}" value="20" step="0.1" min="0">
+      </div>
+      {% endfor %}
+    </div>
+
+    <label class="wide">Notes (optionnel)<textarea name="notes" rows="3"></textarea></label>
+    <div class="wide"><button>Créer la facture (brouillon)</button></div>
+  </form>
+</section>
+
+<p class="muted" style="margin-top:16px;font-size:12px;">Émetteur : {{ company.name }}{% if company.siret %} · SIRET {{ company.siret }}{% endif %} — <a class="link" href="{{ url_for('company') }}">modifier</a></p>
+{% endblock %}

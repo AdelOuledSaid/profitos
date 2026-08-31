@@ -1,0 +1,57 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Facture {{ inv.invoice_number }} · {{ company.name if company else '' }}</title><link rel="stylesheet" href="{{ asset_url('style.css') }}"></head>
+<body style="background:#f4f6fb;color:#1a2436;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:40px 20px;">
+<div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;box-shadow:0 12px 40px rgba(20,30,60,.08);overflow:hidden;">
+
+  <div style="padding:32px 36px;border-bottom:1px solid #e6ebf5;display:flex;justify-content:space-between;align-items:start;">
+    <div>
+      <div style="font-size:12px;color:#8894ac;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">FACTURE</div>
+      <h1 style="font-size:24px;margin:0;color:#0f1c33;">{{ inv.invoice_number }}</h1>
+    </div>
+    <a href="{{ url_for('public_invoice_pdf',token=token) }}" style="background:#0f1c33;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;">Télécharger PDF</a>
+  </div>
+
+  <div style="padding:28px 36px;display:grid;grid-template-columns:1fr 1fr;gap:24px;border-bottom:1px solid #e6ebf5;">
+    <div>
+      <div style="font-size:11px;color:#8894ac;text-transform:uppercase;margin-bottom:6px;">Émetteur</div>
+      <strong>{{ company.name if company else '' }}</strong>
+      {% if company and company.address %}<div style="color:#5b6c8f;font-size:13px;">{{ company.address }}</div>{% endif %}
+      {% if company and company.siret %}<div style="color:#5b6c8f;font-size:13px;">SIRET {{ company.siret }}</div>{% endif %}
+    </div>
+    <div>
+      <div style="font-size:11px;color:#8894ac;text-transform:uppercase;margin-bottom:6px;">Facturé à</div>
+      <strong>{{ inv.client_name }}</strong>
+      {% if inv.client_address %}<div style="color:#5b6c8f;font-size:13px;">{{ inv.client_address }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div style="padding:16px 36px;display:flex;gap:32px;font-size:13px;color:#5b6c8f;border-bottom:1px solid #e6ebf5;">
+    <div>Date d'émission<br><strong style="color:#0f1c33;">{{ inv.issue_date }}</strong></div>
+    {% if inv.due_date %}<div>Échéance<br><strong style="color:#0f1c33;">{{ inv.due_date }}</strong></div>{% endif %}
+    <div>Statut<br><strong style="color:{{ '#0f7a4d' if inv.status=='paid' else '#0f1c33' }};">{{ {'draft':'En préparation','sent':'À régler','paid':'Payée'}.get(inv.status, inv.status) }}</strong></div>
+  </div>
+
+  <div style="padding:24px 36px;">
+    {% for it in items %}
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f8;font-size:14px;">
+      <span>{{ it.label }}<br><small style="color:#8894ac;">{{ it.qty }} × {{ "{:,.2f}".format(it.unit_price) }} € · TVA {{ it.vat_rate }}%</small></span>
+      <span style="font-weight:600;">{{ "{:,.2f}".format(it.line_total) }} €</span>
+    </div>
+    {% endfor %}
+    <div style="display:flex;justify-content:space-between;padding:14px 0 0;font-size:14px;color:#5b6c8f;">
+      <span>Sous-total HT</span><span>{{ "{:,.2f}".format(inv.subtotal) }} €</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:14px;color:#5b6c8f;">
+      <span>TVA</span><span>{{ "{:,.2f}".format(inv.vat_amount) }} €</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:14px 0 0;font-size:20px;font-weight:800;color:#0f1c33;border-top:1px solid #e6ebf5;margin-top:8px;">
+      <span>Total TTC</span><span>{{ "{:,.2f}".format(inv.total) }} €</span>
+    </div>
+  </div>
+
+  {% if inv.notes %}<div style="padding:0 36px 24px;color:#5b6c8f;font-size:13px;">{{ inv.notes }}</div>{% endif %}
+
+  <div style="padding:16px 36px;background:#f8f9fc;color:#9aa7c2;font-size:11px;">
+    Document généré via ProfitOS. Ce document n'est pas émis via une Plateforme Agréée DGFiP au sens de la réforme de facturation électronique.
+  </div>
+</div>
+</body></html>

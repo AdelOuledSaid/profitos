@@ -79,8 +79,9 @@ def register(app):
             if not can_access('settings'):
                 c.close(); flash('Seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
             dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep
-            vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),now())
-            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
+            vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),
+                  request.form.get('siret','').strip(),request.form.get('address','').strip(),request.form.get('vat_number','').strip(),now())
+            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,siret,address,vat_number,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,siret=excluded.siret,address=excluded.address,vat_number=excluded.vat_number,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
             org=current_org()
             if org and feature_enabled(org['plan'],'advanced_features'):
                 try:flash(f'GROW actualisé : {sync_grow()} opportunités pertinentes.')
