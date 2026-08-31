@@ -1,4 +1,4 @@
-const CACHE_NAME = 'profitos-shell-v1';
+const CACHE_NAME = 'profitos-shell-v2';
 const SHELL_ASSETS = [
   '/static/style.css',
   '/static/manifest.json',
@@ -49,7 +49,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Pages applicatives : toujours reseau (jamais de cache de donnees sensibles).
+  // IMPORTANT: ne jamais intercepter les navigations non-GET.
+  // Un POST applicatif peut renvoyer une redirection vers un domaine externe
+  // (ex. Webview Powens). Le navigateur doit suivre cette redirection nativement.
+  if (req.mode === 'navigate' && req.method !== 'GET') {
+    return;
+  }
+
+  // Pages applicatives GET : toujours reseau (jamais de cache de donnees sensibles).
   // En cas d'echec (hors ligne), un ecran simple plutot que des donnees perimees.
   if (req.mode === 'navigate') {
     event.respondWith(
