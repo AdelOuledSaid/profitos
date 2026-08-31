@@ -36,8 +36,28 @@ def _headers(token):
 
 
 def _json(resp):
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = ""
+        try:
+            payload = resp.json()
+            detail = payload.get("message") or payload.get("error_description") or payload.get("error") or str(payload)
+        except Exception:
+            detail = (resp.text or "").strip()[:300]
+        raise RuntimeError(
+            f"Powens HTTP {resp.status_code}" + (f" : {detail}" if detail else "")
+        ) from exc
     return resp.json() if resp.content else {}
+
+
+def _callback_url():
+    configured = os.environ.get("POWENS_REDIRECT_URI", "").strip()
+    if configured:
+        return configured
+    if os.environ.get("PROFITOS_ENV", "").lower() == "production":
+        return "https://app.profitos.fr/banking/callback"
+    return url_for("banking_callback", _external=True)
 
 
 def _renew_token(provider_user_id):
@@ -166,6 +186,14 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_connect():
+        # POST -> GET first. This avoids browsers/service-workers keeping the
+        # application on /banking when following an external redirect.
+        return redirect(url_for("banking_connect_start"), code=303)
+
+    @app.get("/banking/connect/start")
+    @login_required
+    @requires_paid_plan
+    def banking_connect_start():
         if not _configured():
             flash("Connexion bancaire non configurée : ajoutez POWENS_DOMAIN, POWENS_CLIENT_ID et POWENS_CLIENT_SECRET.")
             return redirect(url_for("banking"))
@@ -176,7 +204,6 @@ def register(app):
             row = _connection_row(c)
             if row and row["provider_user_id"]:
                 token = _renew_token(row["provider_user_id"])
-                provider_user_id = row["provider_user_id"]
             else:
                 data = _json(requests.post(
                     _api_url("/auth/init"),
@@ -195,6 +222,9 @@ def register(app):
                 )
                 c.commit()
 
+            if not token:
+                raise RuntimeError("Powens n'a pas renvoyé de jeton utilisateur.")
+
             code_data = _json(requests.get(
                 _api_url("/auth/token/code"),
                 headers=_headers(token),
@@ -207,7 +237,8 @@ def register(app):
 
             state = secrets.token_urlsafe(24)
             session["powens_connect_state"] = state
-            callback = url_for("banking_callback", _external=True, _scheme="https" if os.environ.get("PROFITOS_ENV") == "production" else None)
+            callback = _callback_url()
+
             params = {
                 "domain": f"{domain}.biapi.pro",
                 "client_id": client_id,
@@ -216,7 +247,15 @@ def register(app):
                 "state": state,
                 "connector_capabilities": "bank",
             }
-            return redirect("https://webview.powens.com/fr/connect?" + urlencode(params))
+            webview_url = "https://webview.powens.com/fr/connect?" + urlencode(params)
+
+            # Never log the temporary code. Keep only safe information.
+            app.logger.info(
+                "POWENS_WEBVIEW_REDIRECT domain=%s client_id=%s redirect_uri=%s",
+                f"{domain}.biapi.pro", client_id, callback
+            )
+            return redirect(webview_url, code=303)
+
         except Exception as exc:
             app.logger.exception("Échec démarrage connexion Powens")
             flash(f"Connexion bancaire indisponible : {exc}")
