@@ -12,7 +12,9 @@ def test_cash_scenarios_chart_css_visible():
     assert 'height:230px' in t
     assert '.cash-line.prudent{stroke:#ffb454}' in t
     assert '.cash-line.probable{stroke:#79a9ff}' in t
-    assert '.cash-line.optimiste{stroke:#5fe0ac}' in t
+    # Le vert de marque a été harmonisé (#5fe0ac -> #3ddc84) sur l'ensemble de l'app —
+    # la couleur "optimiste" reste verte, seule la nuance exacte a changé.
+    assert '.cash-line.optimiste{stroke:#3ddc84}' in t
     assert '.cash-legend .legend::before' in t
 
 def test_cash_scenarios_template_contains_svg_curves():
