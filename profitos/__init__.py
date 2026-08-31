@@ -46,7 +46,7 @@ def create_app(config_object=None):
     init_auth_db()
     init_runtime(app)
 
-    from .routes import account, dce, main, actions, reports, imports, api, money_hunter, financial_brain, cash_intelligence, decision_simulator, invoicing
+    from .routes import account, dce, main, actions, reports, imports, api, money_hunter, financial_brain, cash_intelligence, decision_simulator, invoicing, bank_sync
     account.register(app)
     dce.register(app)
     main.register(app)
@@ -59,6 +59,7 @@ def create_app(config_object=None):
     cash_intelligence.register(app)
     decision_simulator.register(app)
     invoicing.register(app)
+    bank_sync.register(app)
 
     @app.before_request
     def request_context():
