@@ -116,7 +116,9 @@ def _sync_powens(c, row):
                  currency=excluded.currency,balance=excluded.balance,disabled=excluded.disabled,
                  last_synced_at=excluded.last_synced_at""",
             ("powens", aid, a.get("name") or a.get("original_name") or "Compte bancaire",
-             a.get("iban"), a.get("type"), a.get("currency") or "EUR", balance,
+             a.get("iban"), a.get("type"),
+             ((a.get("currency") or {}).get("id") if isinstance(a.get("currency"), dict) else (a.get("currency") or "EUR")),
+             balance,
              1 if disabled else 0, now),
         )
 
@@ -186,82 +188,33 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_connect():
-        # POST -> GET first. This avoids browsers/service-workers keeping the
-        # application on /banking when following an external redirect.
-        return redirect(url_for("banking_connect_start"), code=303)
-
-    @app.get("/banking/connect/start")
-    @login_required
-    @requires_paid_plan
-    def banking_connect_start():
         if not _configured():
-            flash("Connexion bancaire non configurée : ajoutez POWENS_DOMAIN, POWENS_CLIENT_ID et POWENS_CLIENT_SECRET.")
+            flash("Connexion bancaire non configurée.")
             return redirect(url_for("banking"))
 
-        domain, client_id, client_secret = _cfg()
-        c = cx()
-        try:
-            row = _connection_row(c)
-            if row and row["provider_user_id"]:
-                token = _renew_token(row["provider_user_id"])
-            else:
-                data = _json(requests.post(
-                    _api_url("/auth/init"),
-                    json={"client_id": client_id, "client_secret": client_secret},
-                    timeout=POWENS_TIMEOUT,
-                ))
-                token = data.get("auth_token") or data.get("access_token") or data.get("token")
-                provider_user_id = data.get("id_user")
-                if not token or provider_user_id is None:
-                    raise RuntimeError("Réponse d'initialisation Powens incomplète.")
-                now = datetime.utcnow().replace(microsecond=0).isoformat()
-                c.execute(
-                    """INSERT INTO bank_connections(provider,provider_user_id,status,created_at,updated_at)
-                       VALUES('powens',?,'PENDING',?,?)""",
-                    (str(provider_user_id), now, now),
-                )
-                c.commit()
+        domain, client_id, _ = _cfg()
+        state = secrets.token_urlsafe(24)
+        session["powens_connect_state"] = state
+        callback = _callback_url()
 
-            if not token:
-                raise RuntimeError("Powens n'a pas renvoyé de jeton utilisateur.")
+        # Powens officially supports a Connect Webview without a pre-created
+        # API user/code. Powens then creates the anonymous user and returns a
+        # one-time code on the callback. This is also the flow used by the
+        # Console Webview tester and avoids failures before opening Webview.
+        params = {
+            "domain": f"{domain}.biapi.pro",
+            "client_id": client_id,
+            "redirect_uri": callback,
+            "state": state,
+            "connector_capabilities": "bank",
+        }
+        webview_url = "https://webview.powens.com/fr/connect?" + urlencode(params)
 
-            code_data = _json(requests.get(
-                _api_url("/auth/token/code"),
-                headers=_headers(token),
-                params={"type": "singleAccess"},
-                timeout=POWENS_TIMEOUT,
-            ))
-            code = code_data.get("code")
-            if not code:
-                raise RuntimeError("Powens n'a pas renvoyé de code Webview.")
-
-            state = secrets.token_urlsafe(24)
-            session["powens_connect_state"] = state
-            callback = _callback_url()
-
-            params = {
-                "domain": f"{domain}.biapi.pro",
-                "client_id": client_id,
-                "redirect_uri": callback,
-                "code": code,
-                "state": state,
-                "connector_capabilities": "bank",
-            }
-            webview_url = "https://webview.powens.com/fr/connect?" + urlencode(params)
-
-            # Never log the temporary code. Keep only safe information.
-            app.logger.info(
-                "POWENS_WEBVIEW_REDIRECT domain=%s client_id=%s redirect_uri=%s",
-                f"{domain}.biapi.pro", client_id, callback
-            )
-            return redirect(webview_url, code=303)
-
-        except Exception as exc:
-            app.logger.exception("Échec démarrage connexion Powens")
-            flash(f"Connexion bancaire indisponible : {exc}")
-            return redirect(url_for("banking"))
-        finally:
-            c.close()
+        app.logger.info(
+            "POWENS_CONNECT_REDIRECT domain=%s client_id=%s redirect_uri=%s",
+            f"{domain}.biapi.pro", client_id, callback
+        )
+        return redirect(webview_url, code=303)
 
     @app.get("/banking/callback")
     @login_required
@@ -272,30 +225,112 @@ def register(app):
         if not expected or not received or not secrets.compare_digest(expected, received):
             flash("Retour bancaire refusé : état de sécurité invalide.")
             return redirect(url_for("banking"))
+
         if request.args.get("error"):
-            flash("La banque n'a pas été connectée : " + request.args.get("error_description", request.args["error"]))
+            flash("La banque n'a pas été connectée.")
+            app.logger.warning(
+                "Powens callback error=%s description=%s",
+                request.args.get("error"),
+                request.args.get("error_description"),
+            )
             return redirect(url_for("banking"))
 
-        connection_id = request.args.get("connection_id") or request.args.get("id_connection")
+        connection_id = (
+            request.args.get("connection_id")
+            or request.args.get("id_connection")
+        )
+        callback_code = request.args.get("code")
+
         c = cx()
         try:
             row = _connection_row(c)
-            if not row:
-                raise RuntimeError("Connexion locale introuvable.")
-            now = datetime.utcnow().replace(microsecond=0).isoformat()
-            if connection_id:
+            provider_user_id = row["provider_user_id"] if row else None
+
+            # When Connect was started without an initial user-scoped code,
+            # Powens returns a temporary authorization code. Exchange it for
+            # a permanent user token, then retrieve /users/me to get the user id.
+            if callback_code:
+                _, client_id, client_secret = _cfg()
+                token_data = _json(requests.post(
+                    _api_url("/auth/token/access"),
+                    json={
+                        "grant_type": "authorization_code",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "code": callback_code,
+                    },
+                    timeout=POWENS_TIMEOUT,
+                ))
+                token = (
+                    token_data.get("access_token")
+                    or token_data.get("auth_token")
+                    or token_data.get("token")
+                )
+                if not token:
+                    raise RuntimeError("Powens n'a pas renvoyé de jeton permanent.")
+
+                user_data = _json(requests.get(
+                    _api_url("/users/me"),
+                    headers=_headers(token),
+                    timeout=POWENS_TIMEOUT,
+                ))
+                provider_user_id = user_data.get("id")
+                if provider_user_id is None:
+                    raise RuntimeError("Identifiant utilisateur Powens introuvable.")
+
+                now = datetime.utcnow().replace(microsecond=0).isoformat()
+                if row:
+                    c.execute(
+                        """UPDATE bank_connections
+                           SET provider_user_id=?,provider_connection_id=?,status='CONNECTED',updated_at=?
+                           WHERE id=?""",
+                        (
+                            str(provider_user_id),
+                            str(connection_id) if connection_id else row["provider_connection_id"],
+                            now,
+                            row["id"],
+                        ),
+                    )
+                else:
+                    c.execute(
+                        """INSERT INTO bank_connections(
+                               provider,provider_user_id,provider_connection_id,status,created_at,updated_at
+                           ) VALUES('powens',?,?, 'CONNECTED',?,?)""",
+                        (
+                            str(provider_user_id),
+                            str(connection_id) if connection_id else None,
+                            now,
+                            now,
+                        ),
+                    )
+                c.commit()
+                row = _connection_row(c)
+
+            elif row and connection_id:
+                now = datetime.utcnow().replace(microsecond=0).isoformat()
                 c.execute(
-                    "UPDATE bank_connections SET provider_connection_id=?,status='CONNECTED',updated_at=? WHERE id=?",
+                    """UPDATE bank_connections
+                       SET provider_connection_id=?,status='CONNECTED',updated_at=? WHERE id=?""",
                     (str(connection_id), now, row["id"]),
                 )
                 c.commit()
+                row = _connection_row(c)
+
+            if not row or not row["provider_user_id"]:
+                raise RuntimeError("Utilisateur Powens introuvable après connexion.")
+
             count_accounts, count_txs = _sync_powens(c, row)
-            flash(f"Banque connectée : {count_accounts} compte(s), {count_txs} transaction(s) synchronisée(s).")
+            flash(
+                f"Banque connectée : {count_accounts} compte(s), "
+                f"{count_txs} transaction(s) synchronisée(s)."
+            )
+
         except Exception as exc:
             app.logger.exception("Échec callback/synchronisation Powens")
-            flash(f"Banque connectée mais synchronisation incomplète : {exc}")
+            flash("Connexion bancaire terminée, mais la synchronisation doit être finalisée.")
         finally:
             c.close()
+
         return redirect(url_for("banking"))
 
     @app.post("/banking/sync")
