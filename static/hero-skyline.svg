@@ -1,46 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMaxYMax slice">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#111111"/>
-      <stop offset="100%" stop-color="#000000"/>
-    </linearGradient>
-    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#000000" stop-opacity="1"/>
-      <stop offset="45%" stop-color="#000000" stop-opacity=".55"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+  <rect width="1600" height="900" fill="#050505"/>
 
-  <rect width="1600" height="900" fill="url(#sky)"/>
-
-  <!-- silhouettes de tours, du plus loin (gris fonc\u00e9) au plus proche -->
-  <g fill="#1c1c1c">
-    <rect x="1180" y="120" width="90" height="780"/>
-    <rect x="1290" y="220" width="70" height="680"/>
-    <rect x="980" y="260" width="80" height="640"/>
-  </g>
-  <g fill="#161616">
-    <rect x="1080" y="60" width="110" height="840"/>
-    <rect x="1380" y="180" width="95" height="720"/>
-    <rect x="850" y="340" width="70" height="560"/>
-  </g>
-  <g fill="#101010">
-    <rect x="1230" y="0" width="130" height="900"/>
-    <rect x="1470" y="260" width="110" height="640"/>
+  <!-- rangée la plus lointaine (plus claire, brume) -->
+  <g fill="#2e2e2e">
+    <rect x="40"  y="260" width="90" height="640"/>
+    <rect x="180" y="200" width="110" height="700"/>
+    <rect x="340" y="320" width="80" height="580"/>
+    <rect x="1180" y="220" width="95" height="680"/>
+    <rect x="1330" y="300" width="75" height="600"/>
+    <rect x="1470" y="180" width="105" height="720"/>
   </g>
 
-  <!-- fen\u00eatres allum\u00e9es, tr\u00e8s discr\u00e8tes -->
-  <g fill="#f2c94c" opacity=".18">
-    <rect x="1245" y="40" width="6" height="6"/><rect x="1265" y="40" width="6" height="6"/>
-    <rect x="1245" y="70" width="6" height="6"/><rect x="1285" y="90" width="6" height="6"/>
-    <rect x="1245" y="120" width="6" height="6"/><rect x="1265" y="150" width="6" height="6"/>
-    <rect x="1305" y="60" width="6" height="6"/><rect x="1325" y="100" width="6" height="6"/>
-    <rect x="1100" y="100" width="6" height="6"/><rect x="1120" y="140" width="6" height="6"/>
-    <rect x="1140" y="90" width="6" height="6"/><rect x="1160" y="200" width="6" height="6"/>
-    <rect x="1400" y="220" width="6" height="6"/><rect x="1420" y="260" width="6" height="6"/>
-    <rect x="1440" y="300" width="6" height="6"/><rect x="1490" y="300" width="6" height="6"/>
-    <rect x="1510" y="340" width="6" height="6"/><rect x="1530" y="380" width="6" height="6"/>
+  <!-- rangée intermédiaire -->
+  <g fill="#3a3a3a">
+    <rect x="480" y="140" width="100" height="760"/>
+    <rect x="620" y="260" width="85" height="640"/>
+    <rect x="1020" y="120" width="115" height="780"/>
+    <rect x="1250" y="60"  width="90"  height="840"/>
   </g>
 
-  <rect width="1600" height="900" fill="url(#fade)"/>
+  <!-- rangée la plus proche (plus foncée et contrastée, premier plan) -->
+  <g fill="#171717">
+    <rect x="760" y="40"  width="130" height="860"/>
+    <rect x="900" y="200" width="100" height="700"/>
+    <rect x="1400" y="0"   width="140" height="900"/>
+    <rect x="240" y="60"  width="100" height="840"/>
+  </g>
+
+  <!-- fenêtres allumées -->
+  <g fill="#f2c94c" opacity=".35">
+    <rect x="785" y="80" width="7" height="7"/><rect x="810" y="80" width="7" height="7"/><rect x="835" y="80" width="7" height="7"/>
+    <rect x="785" y="120" width="7" height="7"/><rect x="835" y="120" width="7" height="7"/>
+    <rect x="785" y="170" width="7" height="7"/><rect x="810" y="170" width="7" height="7"/>
+    <rect x="920" y="240" width="7" height="7"/><rect x="945" y="260" width="7" height="7"/><rect x="970" y="280" width="7" height="7"/>
+    <rect x="1420" y="40" width="7" height="7"/><rect x="1445" y="60" width="7" height="7"/><rect x="1470" y="80" width="7" height="7"/>
+    <rect x="1420" y="100" width="7" height="7"/><rect x="1495" y="100" width="7" height="7"/>
+    <rect x="260" y="100" width="7" height="7"/><rect x="285" y="120" width="7" height="7"/><rect x="310" y="140" width="7" height="7"/>
+    <rect x="1030" y="160" width="7" height="7"/><rect x="1055" y="180" width="7" height="7"/><rect x="1080" y="200" width="7" height="7"/>
+  </g>
+
+  <!-- léger voile pour la profondeur, sans cacher les tours -->
+  <rect width="1600" height="900" fill="#000000" opacity=".25"/>
 </svg>

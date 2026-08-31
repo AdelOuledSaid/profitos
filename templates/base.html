@@ -60,31 +60,31 @@
     <span>{{ auth_user.full_name or auth_user.email }}</span>
 
     {% if user_orgs|length>1 %}
-    <a href="{{ url_for('portfolio') }}" style="display:block;font-size:11px;color:#a9c8fa;margin-bottom:6px;">Vue consolidée (portfolio) →</a>
-    <div style="margin:8px 0;display:flex;flex-direction:column;gap:4px;">
+    <a href="{{ url_for('portfolio') }}" style="display:block;margin-bottom:10px;">Vue consolidée (portfolio) →</a>
+    <div style="margin:8px 0;display:flex;flex-direction:column;gap:6px;">
       {% for o in user_orgs %}
         {% if o.id!=auth_org.id %}
         <form method="post" action="{{ url_for('org_switch',org_id=o.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="secondary" style="width:100%;font-size:11px;padding:6px 8px;">→ {{ o.name }}</button>
+          <button type="submit" class="secondary" style="width:100%;font-size:13px;padding:9px 10px;">→ {{ o.name }}</button>
         </form>
         {% endif %}
       {% endfor %}
     </div>
     {% endif %}
 
-    <details style="margin:8px 0;">
-      <summary style="font-size:11px;color:#a9c8fa;cursor:pointer;">+ Nouvelle organisation</summary>
-      <form method="post" action="{{ url_for('org_new') }}" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+    <details style="margin:10px 0;">
+      <summary style="font-size:13px;color:#3ddc84;cursor:pointer;">+ Nouvelle organisation</summary>
+      <form method="post" action="{{ url_for('org_new') }}" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input name="org_name" placeholder="Nom du client" style="font-size:12px;padding:6px 8px;" required>
-        <button type="submit" style="font-size:11px;padding:6px 8px;">Créer</button>
+        <input name="org_name" placeholder="Nom du client" style="font-size:13px;padding:9px 10px;" required>
+        <button type="submit" style="font-size:13px;padding:9px 10px;">Créer</button>
       </form>
     </details>
 
-    <form method="post" action="{{ url_for('toggle_theme') }}" style="margin:0 0 8px;">
+    <form method="post" action="{{ url_for('toggle_theme') }}" style="margin:0 0 10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="secondary" style="width:100%;font-size:11px;padding:6px 8px;">{{ '☀ Thème clair' if (auth_user.theme_preference or 'dark')=='dark' else '🌙 Thème sombre' }}</button>
+      <button type="submit" class="secondary" style="width:100%;font-size:13px;padding:9px 10px;">{{ '☀ Thème clair' if (auth_user.theme_preference or 'dark')=='dark' else '🌙 Thème sombre' }}</button>
     </form>
 
     <form method="post" action="{{ url_for('logout') }}" style="margin:0">
