@@ -23,7 +23,13 @@
       {% endif %}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <a class="primary" href="{{ url_for('banking_connect') }}">{{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}</a>
+      <a href="{{ url_for('banking_connect') }}"
+         style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;
+                padding:0 28px;border-radius:999px;background:#43e38f;color:#06110b;
+                text-decoration:none;font-weight:800;font-size:16px;line-height:1;
+                border:1px solid transparent;cursor:pointer;">
+        {{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}
+      </a>
       {% if connection %}
       <form method="post" action="{{ url_for('banking_sync') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
