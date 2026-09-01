@@ -179,7 +179,7 @@ def register(app):
             if not client_name:
                 c.close(); flash("Le nom du client est requis.")
                 return redirect(url_for('invoicing_quote_new'))
-            items=_parse_items(request.form)
+            items=_compute_line_items(request.form)
             if not items:
                 c.close(); flash("Au moins une ligne de devis est requise.")
                 return redirect(url_for('invoicing_quote_new'))
