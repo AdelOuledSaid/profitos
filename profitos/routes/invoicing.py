@@ -285,10 +285,13 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_accept(quote_id):
-        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
-        if not q: c.close(); abort(404)
+        c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q:
+            c.close(); abort(404)
         if q['status']!='sent':
-            c.close(); flash("Seul un devis envoyé peut être accepté.")
+            c.close()
+            flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
         c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=?",(now(),quote_id))
         c.commit(); c.close()
@@ -302,10 +305,13 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_refuse(quote_id):
-        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
-        if not q: c.close(); abort(404)
-        if q['status'] not in ('sent','accepted'):
-            c.close(); flash("Ce devis ne peut pas être refusé dans son état actuel.")
+        c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q:
+            c.close(); abort(404)
+        if q['status']!='sent':
+            c.close()
+            flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
         c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=?",(now(),quote_id))
         c.commit(); c.close()
