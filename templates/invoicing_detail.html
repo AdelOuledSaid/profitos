@@ -8,12 +8,15 @@
 <div class="actionbuttons" style="margin:16px 0;">
   <a class="button secondary" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
   {% if inv.status=='draft' %}<a class="button secondary" href="{{ url_for('invoicing_edit',invoice_id=inv.id) }}">Modifier le brouillon</a>{% endif %}
-  {% if inv.status not in ('paid','cancelled') %}
-  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Envoyer par email</button></form>
+  {% if inv.status=='draft' %}
+  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Émettre et envoyer</button></form>
+  <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Annuler le brouillon</button></form>
+  {% elif inv.status=='sent' %}
+  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Renvoyer par email</button></form>
   <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Marquer comme payée</button></form>
-  <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Annuler la facture</button></form>
   {% endif %}
   <span class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
+  {% if inv.status in ('sent','paid') %}<span class="muted">Facture émise — contenu verrouillé.</span>{% endif %}
 </div>
 
 <section class="panel">

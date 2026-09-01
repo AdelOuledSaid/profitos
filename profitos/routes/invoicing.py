@@ -181,7 +181,9 @@ def register(app):
         if result.get('dry_run'):
             flash(f"Service email non configuré — facture non envoyée réellement (mode simulation) à {inv['client_email']}.")
         elif result.get('sent'):
-            c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=? WHERE id=?",(now(),invoice_id))
+            issue_date = date.today().isoformat() if inv['status']=='draft' else inv['issue_date']
+            c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=?,issue_date=? WHERE id=?",
+                      (now(),issue_date,invoice_id))
             c.commit()
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Facture envoyée à {inv['client_email']}.")
@@ -256,9 +258,9 @@ def register(app):
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
         if not inv:
             c.close(); abort(404)
-        if inv['status']=='paid':
+        if inv['status'] in ('sent','paid'):
             c.close()
-            flash("Une facture payée ne peut pas être annulée ici.")
+            flash("Une facture émise ne peut plus être annulée directement.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if inv['status']=='cancelled':
             c.close()
