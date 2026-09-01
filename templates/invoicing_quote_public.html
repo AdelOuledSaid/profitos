@@ -1,4 +1,15 @@
-{% extends "base.html" %}{% block content %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ q.quote_number }} — Devis</title>
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('theme-light.css') }}">
+  <meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+<main>
 <div style="max-width:900px;margin:40px auto;padding:20px;">
 <div class="eyebrow green">DEVIS</div>
 <h1>{{ q.quote_number }}</h1>
@@ -27,4 +38,6 @@
 {% endif %}
 <p class="muted">Statut : {{ status_label }}</p>
 </div>
-{% endblock %}
+</main>
+</body>
+</html>
