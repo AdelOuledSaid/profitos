@@ -7,55 +7,69 @@
 <label>Email du client<input id="invoice-client-email" name="client_email" type="email"></label>
 <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
 <label>Valable jusqu'au<input name="valid_until" type="date"></label><div></div>
-<div class="wide"><h3>Lignes du devis</h3><div class="line-head"><span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span></div>
-<div class="line-row">
-<input name="desc_1" placeholder="Description">
-<input name="qty_1" type="number" step="0.01" min="0" value="1">
-<input name="price_1" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_1" type="number" step="0.1" min="0" value="20">
+
+<div class="wide">
+  <h3>Lignes du devis</h3>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;font-size:11px;color:#8fa9d3;margin-bottom:6px;">
+    <span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span>
+  </div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_1" placeholder="Description">
+  <input name="qty_1" type="number" step="0.01" min="0" value="1">
+  <input name="price_1" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_1" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_2" placeholder="Description">
-<input name="qty_2" type="number" step="0.01" min="0" value="1">
-<input name="price_2" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_2" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_2" placeholder="Description">
+  <input name="qty_2" type="number" step="0.01" min="0" value="1">
+  <input name="price_2" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_2" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_3" placeholder="Description">
-<input name="qty_3" type="number" step="0.01" min="0" value="1">
-<input name="price_3" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_3" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_3" placeholder="Description">
+  <input name="qty_3" type="number" step="0.01" min="0" value="1">
+  <input name="price_3" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_3" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_4" placeholder="Description">
-<input name="qty_4" type="number" step="0.01" min="0" value="1">
-<input name="price_4" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_4" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_4" placeholder="Description">
+  <input name="qty_4" type="number" step="0.01" min="0" value="1">
+  <input name="price_4" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_4" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_5" placeholder="Description">
-<input name="qty_5" type="number" step="0.01" min="0" value="1">
-<input name="price_5" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_5" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_5" placeholder="Description">
+  <input name="qty_5" type="number" step="0.01" min="0" value="1">
+  <input name="price_5" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_5" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_6" placeholder="Description">
-<input name="qty_6" type="number" step="0.01" min="0" value="1">
-<input name="price_6" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_6" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_6" placeholder="Description">
+  <input name="qty_6" type="number" step="0.01" min="0" value="1">
+  <input name="price_6" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_6" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_7" placeholder="Description">
-<input name="qty_7" type="number" step="0.01" min="0" value="1">
-<input name="price_7" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_7" type="number" step="0.1" min="0" value="20">
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_7" placeholder="Description">
+  <input name="qty_7" type="number" step="0.01" min="0" value="1">
+  <input name="price_7" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_7" type="number" step="0.1" min="0" value="20">
 </div>
-<div class="line-row">
-<input name="desc_8" placeholder="Description">
-<input name="qty_8" type="number" step="0.01" min="0" value="1">
-<input name="price_8" type="number" step="0.01" min="0" value="0.00">
-<input name="vat_8" type="number" step="0.1" min="0" value="20">
-</div></div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+  <input name="desc_8" placeholder="Description">
+  <input name="qty_8" type="number" step="0.01" min="0" value="1">
+  <input name="price_8" type="number" step="0.01" min="0" value="0.00">
+  <input name="vat_8" type="number" step="0.1" min="0" value="20">
+</div>
+</div>
 <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
 <div class="wide"><button>Créer le devis</button> <a class="button secondary" href="{{ url_for('invoicing_quotes') }}">Retour</a></div>
 </form></section>
