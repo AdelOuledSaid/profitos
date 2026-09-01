@@ -160,6 +160,44 @@ def _sync_powens(c, row):
     return len(accounts), len(txs)
 
 
+def _reconciliation_suggestions(c, transactions):
+    reconciled_tx = {
+        r["bank_transaction_id"]
+        for r in c.execute("SELECT bank_transaction_id FROM bank_invoice_reconciliations").fetchall()
+    }
+    invoices = c.execute(
+        "SELECT * FROM outgoing_invoices WHERE status='sent' AND total>0 ORDER BY issue_date,id"
+    ).fetchall()
+    suggestions = []
+    for t in transactions:
+        if t["id"] in reconciled_tx:
+            continue
+        try:
+            amount = float(t["amount"] or 0)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+
+        exact = [inv for inv in invoices if abs(float(inv["total"] or 0) - amount) <= 0.01]
+        if not exact:
+            continue
+
+        label = (t["label"] or "").lower()
+        numbered = [inv for inv in exact if (inv["invoice_number"] or "").lower() in label]
+        if len(numbered) == 1:
+            candidate = numbered[0]
+        elif len(exact) == 1:
+            candidate = exact[0]
+        else:
+            # Same amount on several invoices and no unique reference in wording:
+            # do not guess.
+            continue
+
+        suggestions.append({"transaction": t, "invoice": candidate})
+    return suggestions
+
+
 def register(app):
     @app.route("/banking")
     @login_required
@@ -174,6 +212,14 @@ def register(app):
             transactions = c.execute(
                 "SELECT * FROM bank_transactions WHERE provider='powens' ORDER BY transaction_date DESC,id DESC LIMIT 50"
             ).fetchall()
+            reconciliation_suggestions = _reconciliation_suggestions(c, transactions)
+            reconciliations = c.execute(
+                '''SELECT r.*,t.transaction_date,t.label,t.amount,i.invoice_number,i.client_name
+                   FROM bank_invoice_reconciliations r
+                   JOIN bank_transactions t ON t.id=r.bank_transaction_id
+                   JOIN outgoing_invoices i ON i.id=r.invoice_id
+                   ORDER BY r.id DESC LIMIT 20'''
+            ).fetchall()
         finally:
             c.close()
         return render_template(
@@ -181,6 +227,8 @@ def register(app):
             connection=connection,
             accounts=accounts,
             transactions=transactions,
+            reconciliation_suggestions=reconciliation_suggestions,
+            reconciliations=reconciliations,
             powens_configured=_configured(),
         )
 
@@ -331,6 +379,54 @@ def register(app):
         finally:
             c.close()
 
+        return redirect(url_for("banking"))
+
+    @app.post("/banking/reconcile/<int:transaction_id>/<int:invoice_id>")
+    @login_required
+    @requires_paid_plan
+    def banking_reconcile(transaction_id, invoice_id):
+        c = cx()
+        try:
+            t = c.execute("SELECT * FROM bank_transactions WHERE id=?",(transaction_id,)).fetchone()
+            inv = c.execute("SELECT * FROM outgoing_invoices WHERE id=?",(invoice_id,)).fetchone()
+            if not t or not inv:
+                abort(404)
+
+            if inv["status"] != "sent":
+                flash("Cette facture n'est plus disponible pour le rapprochement.")
+                return redirect(url_for("banking"))
+
+            amount = float(t["amount"] or 0)
+            total = float(inv["total"] or 0)
+            if amount <= 0 or abs(amount-total) > 0.01:
+                flash("Rapprochement refusé : le montant bancaire ne correspond pas exactement à la facture.")
+                return redirect(url_for("banking"))
+
+            already = c.execute(
+                "SELECT 1 FROM bank_invoice_reconciliations WHERE bank_transaction_id=? OR invoice_id=?",
+                (transaction_id,invoice_id)
+            ).fetchone()
+            if already:
+                flash("Cette transaction ou cette facture est déjà rapprochée.")
+                return redirect(url_for("banking"))
+
+            matched_at = now()
+            c.execute(
+                "INSERT INTO bank_invoice_reconciliations(bank_transaction_id,invoice_id,matched_amount,matched_at) VALUES(?,?,?,?)",
+                (transaction_id,invoice_id,amount,matched_at)
+            )
+            c.execute(
+                "UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=?",
+                (matched_at,invoice_id)
+            )
+            c.commit()
+            log_activity(
+                'INVOICE_BANK_RECONCILED',
+                f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {amount:,.2f} €"
+            )
+            flash(f"Facture {inv['invoice_number']} rapprochée et marquée payée.")
+        finally:
+            c.close()
         return redirect(url_for("banking"))
 
     @app.post("/banking/sync")

@@ -65,6 +65,53 @@
 </section>
 {% endif %}
 
+{% if reconciliation_suggestions %}
+<section class="panel">
+  <div class="eyebrow">RAPPROCHEMENT</div>
+  <h2>Paiements à rapprocher</h2>
+  <p class="muted">ProfitOS propose uniquement les correspondances dont le montant bancaire est exactement égal au total d'une facture envoyée. La validation reste manuelle.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th></th></tr></thead>
+    <tbody>
+    {% for m in reconciliation_suggestions %}
+      <tr>
+        <td>{{ m.transaction.transaction_date or '—' }}<br><span class="muted">{{ m.transaction.label or '—' }}</span></td>
+        <td><strong>{{ "{:,.2f}".format(m.transaction.amount or 0) }} €</strong></td>
+        <td>{{ m.invoice.invoice_number }}</td>
+        <td>{{ m.invoice.client_name }}</td>
+        <td>
+          <form method="post" action="{{ url_for('banking_reconcile',transaction_id=m.transaction.id,invoice_id=m.invoice.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Confirmer le paiement</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if reconciliations %}
+<section class="panel">
+  <h2>Rapprochements confirmés</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
+    <tbody>
+    {% for r in reconciliations %}
+      <tr>
+        <td>{{ r.transaction_date or '—' }}</td>
+        <td>{{ r.label or '—' }}</td>
+        <td>{{ r.invoice_number }}</td>
+        <td>{{ r.client_name }}</td>
+        <td>{{ "{:,.2f}".format(r.matched_amount or 0) }} €</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
 {% if transactions %}
 <section class="panel">
   <h2>Dernières transactions</h2>
