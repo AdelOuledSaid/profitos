@@ -142,6 +142,12 @@ def init_auth_db():
         invoice_local_id INTEGER NOT NULL,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS outgoing_quote_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        quote_local_id INTEGER NOT NULL,
+        created_at TEXT
+    );
     '''); c.commit()
     # Migration douce pour les bases auth créées avant l'ajout des colonnes de vérification/reset.
     cols=[r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]

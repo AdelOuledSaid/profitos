@@ -198,6 +198,11 @@ def register(app):
             c.commit()
             quote_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
+            quote_token=secrets.token_urlsafe(24)
+            ac=auth_cx()
+            ac.execute('INSERT INTO outgoing_quote_tokens(token,organization_id,quote_local_id,created_at) VALUES(?,?,?,?)',
+                       (quote_token,session['org_id'],quote_id,now()))
+            ac.commit(); ac.close()
             log_activity('QUOTE_CREATED',f"Devis {quote_number} créé en brouillon")
             flash(f"Devis {quote_number} créé en brouillon.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
@@ -220,15 +225,58 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_send(quote_id):
-        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
-        if not q: c.close(); abort(404)
-        if q['status']!='draft':
-            c.close(); flash("Seul un devis brouillon peut être envoyé.")
+        c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q:
+            c.close(); abort(404)
+        if q['status'] not in ('draft','sent'):
+            c.close()
+            flash("Ce devis ne peut plus être envoyé.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=?",(now(),quote_id))
-        c.commit(); c.close()
-        log_activity('QUOTE_SENT',f"Devis {q['quote_number']} marqué envoyé")
-        flash(f"Devis {q['quote_number']} marqué comme envoyé.")
+        if not q['client_email']:
+            c.close()
+            flash("Aucun email client renseigné pour ce devis.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+
+        ac=auth_cx()
+        mapping=ac.execute(
+            'SELECT * FROM outgoing_quote_tokens WHERE organization_id=? AND quote_local_id=?',
+            (session['org_id'],quote_id)
+        ).fetchone()
+        if mapping:
+            quote_token=mapping['token']
+        else:
+            quote_token=secrets.token_urlsafe(24)
+            ac.execute(
+                'INSERT INTO outgoing_quote_tokens(token,organization_id,quote_local_id,created_at) VALUES(?,?,?,?)',
+                (quote_token,session['org_id'],quote_id,now())
+            )
+            ac.commit()
+        ac.close()
+
+        org=current_org()
+        base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
+        link=f"{base}{url_for('public_quote_view',token=quote_token)}"
+        html=render_template(
+            'email_transactional.html',
+            title=f"Devis {q['quote_number']} — {org['name']}",
+            intro=f"Voici votre devis {q['quote_number']} de {org['name']}, d'un montant de {q['total']:,.2f} € TTC.",
+            cta_label='Consulter et répondre au devis',
+            cta_url=link,
+            footer="Vous pouvez accepter ou refuser ce devis depuis la page sécurisée."
+        )
+        result=send_email(q['client_email'],f"Devis {q['quote_number']} — {org['name']}",html)
+
+        if result.get('dry_run'):
+            flash(f"Service email non configuré — devis non envoyé réellement (mode simulation) à {q['client_email']}.")
+        elif result.get('sent'):
+            c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=?",(now(),quote_id))
+            c.commit()
+            log_activity('QUOTE_SENT',f"Devis {q['quote_number']} envoyé à {q['client_email']}")
+            flash(f"Devis envoyé à {q['client_email']}.")
+        else:
+            flash(f"Échec de l'envoi : {result.get('error','erreur inconnue')}")
+        c.close()
         return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
 
     @app.post('/facturation/devis/<int:quote_id>/accepter')
@@ -620,6 +668,72 @@ def register(app):
             return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{credit["credit_number"]}.pdf"'})
+
+    @app.route('/devis/<token>')
+    def public_quote_view(token):
+        ac=auth_cx()
+        mapping=ac.execute('SELECT * FROM outgoing_quote_tokens WHERE token=?',(token,)).fetchone()
+        ac.close()
+        if not mapping: abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
+        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if q else None
+        tc.close()
+        if not q: abort(404)
+        return render_template('invoicing_quote_public.html',q=q,
+                               items=json.loads(q['line_items'] or '[]'),
+                               company=company_row,token=token,
+                               status_label=_quote_status_label(q['status']))
+
+    @app.post('/devis/<token>/accepter')
+    def public_quote_accept(token):
+        ac=auth_cx()
+        mapping=ac.execute('SELECT * FROM outgoing_quote_tokens WHERE token=?',(token,)).fetchone()
+        ac.close()
+        if not mapping: abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
+        if not q:
+            tc.close(); abort(404)
+        if q['status']=='sent':
+            tc.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=?",
+                       (now(),mapping['quote_local_id']))
+            tc.commit()
+        tc.close()
+        return redirect(url_for('public_quote_view',token=token))
+
+    @app.post('/devis/<token>/refuser')
+    def public_quote_refuse(token):
+        ac=auth_cx()
+        mapping=ac.execute('SELECT * FROM outgoing_quote_tokens WHERE token=?',(token,)).fetchone()
+        ac.close()
+        if not mapping: abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
+        if not q:
+            tc.close(); abort(404)
+        if q['status']=='sent':
+            tc.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=?",
+                       (now(),mapping['quote_local_id']))
+            tc.commit()
+        tc.close()
+        return redirect(url_for('public_quote_view',token=token))
+
+    @app.route('/devis/<token>/pdf')
+    def public_quote_pdf(token):
+        ac=auth_cx()
+        mapping=ac.execute('SELECT * FROM outgoing_quote_tokens WHERE token=?',(token,)).fetchone()
+        ac.close()
+        if not mapping: abort(404)
+        tc=tenant_cx_direct(mapping['organization_id'])
+        q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
+        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if q else None
+        tc.close()
+        if not q: abort(404)
+        pdf_bytes=_render_quote_pdf(q,company_row)
+        if pdf_bytes is None: abort(404)
+        return Response(pdf_bytes,mimetype='application/pdf',
+            headers={'Content-Disposition':f'inline; filename="{q["quote_number"]}.pdf"'})
 
     @app.route('/facture/<token>')
     def public_invoice_view(token):

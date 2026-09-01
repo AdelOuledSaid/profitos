@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block content %}
+<div style="max-width:900px;margin:40px auto;padding:20px;">
+<div class="eyebrow green">DEVIS</div>
+<h1>{{ q.quote_number }}</h1>
+<p class="muted">{{ company.name if company else '' }} · {{ q.client_name }} · {{ q.issue_date }}</p>
+<section class="panel">
+{% for it in items %}
+<div class="simpleline"><span>{{ it.label }} · {{ it.qty }} × {{ "{:,.2f}".format(it.unit_price) }} € · TVA {{ it.vat_rate }}%</span><span>{{ "{:,.2f}".format(it.line_total) }} €</span></div>
+{% endfor %}
+<div class="simpleline"><span>Sous-total HT</span><span>{{ "{:,.2f}".format(q.subtotal) }} €</span></div>
+<div class="simpleline"><span>TVA</span><span>{{ "{:,.2f}".format(q.vat_amount) }} €</span></div>
+<div class="simpleline"><strong>Total TTC</strong><strong>{{ "{:,.2f}".format(q.total) }} €</strong></div>
+{% if q.notes %}<p>{{ q.notes }}</p>{% endif %}
+</section>
+<p><a class="button secondary" href="{{ url_for('public_quote_pdf',token=token) }}">Voir le PDF</a></p>
+{% if q.status=='sent' %}
+<div class="actionbuttons">
+<form method="post" action="{{ url_for('public_quote_accept',token=token) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Accepter le devis</button></form>
+<form method="post" action="{{ url_for('public_quote_refuse',token=token) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Refuser le devis</button></form>
+</div>
+{% elif q.status=='accepted' %}
+<div class="flash">Devis accepté. Merci, votre réponse a bien été enregistrée.</div>
+{% elif q.status=='refused' %}
+<div class="flash">Devis refusé. Votre réponse a bien été enregistrée.</div>
+{% elif q.status=='converted' %}
+<div class="flash">Ce devis a été accepté et transformé en facture.</div>
+{% endif %}
+<p class="muted">Statut : {{ status_label }}</p>
+</div>
+{% endblock %}
