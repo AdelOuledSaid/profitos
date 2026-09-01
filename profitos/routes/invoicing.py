@@ -276,7 +276,7 @@ def register(app):
         if q['status']!='accepted' or q['converted_invoice_id']:
             c.close(); flash("Seul un devis accepté et non encore facturé peut être converti.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        invoice_number=_next_number(c)
+        invoice_number=_next_invoice_number(c)
         token=secrets.token_urlsafe(24)
         due=(date.today()+timedelta(days=30)).isoformat()
         c.execute("""INSERT INTO outgoing_invoices
