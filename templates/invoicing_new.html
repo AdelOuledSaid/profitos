@@ -37,6 +37,7 @@
 </section>
 
 <p class="muted" style="margin-top:16px;font-size:12px;">Émetteur : {{ company.name }}{% if company.siret %} · SIRET {{ company.siret }}{% endif %} — <a class="link" href="{{ url_for('company') }}">modifier</a></p>
-{% endblock %}
 
 <script src="{{ url_for('static',filename='invoicing_clients.js') }}" defer></script>
+{% endblock %}
+
