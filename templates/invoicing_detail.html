@@ -17,6 +17,9 @@
   {% endif %}
   <span class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
   {% if inv.status in ('sent','paid') %}<span class="muted">Facture émise — contenu verrouillé.</span>{% endif %}
+  {% if inv.status in ('sent','paid') and creditable_total > 0.005 %}
+  <a class="button secondary" href="{{ url_for('invoicing_credit_new',invoice_id=inv.id) }}">Créer un avoir</a>
+  {% endif %}
 </div>
 
 <section class="panel">
@@ -29,6 +32,16 @@
 </section>
 
 {% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
+{% if credits %}
+<section class="panel" style="margin-top:18px;">
+  <h3>Avoirs liés</h3>
+  {% for cr in credits %}
+  <div class="simpleline"><a href="{{ url_for('invoicing_credit_detail',credit_id=cr.id) }}">{{ cr.credit_number }}</a>
+  <span class="money">-{{ "{:,.2f}".format(cr.total) }} €</span></div>
+  {% endfor %}
+  <div class="simpleline"><strong>Total crédité</strong><strong class="money">-{{ "{:,.2f}".format(credited_total) }} €</strong></div>
+</section>
+{% endif %}
 
 <div class="panel" style="margin-top:18px;background:#0a1529;">
   <h3 style="margin:0 0 6px;font-size:14px;">Lien de consultation client</h3>

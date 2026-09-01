@@ -693,10 +693,23 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'INDICE',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS bank_connections(id INTEGER PRIMARY KEY AUTOINCREMENT,provider TEXT NOT NULL,provider_user_id TEXT,provider_connection_id TEXT,status TEXT DEFAULT 'PENDING',last_synced_at TEXT,created_at TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS bank_accounts(id INTEGER PRIMARY KEY AUTOINCREMENT,provider TEXT NOT NULL,provider_account_id TEXT NOT NULL,name TEXT,iban TEXT,account_type TEXT,currency TEXT,balance REAL,disabled INTEGER DEFAULT 0,last_synced_at TEXT,UNIQUE(provider,provider_account_id));
-    CREATE TABLE IF NOT EXISTS bank_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT,provider TEXT NOT NULL,provider_transaction_id TEXT NOT NULL,provider_account_id TEXT,transaction_date TEXT,label TEXT,amount REAL,raw_status TEXT,last_synced_at TEXT,UNIQUE(provider,provider_transaction_id));
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
+    CREATE TABLE IF NOT EXISTS outgoing_credit_notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        credit_number TEXT UNIQUE,
+        original_invoice_id INTEGER NOT NULL,
+        original_invoice_number TEXT NOT NULL,
+        client_name TEXT,
+        issue_date TEXT,
+        line_items TEXT,
+        subtotal REAL,
+        vat_amount REAL,
+        total REAL,
+        reason TEXT,
+        status TEXT DEFAULT 'issued',
+        created_at TEXT
+    );
+
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
     for table,col in (('invoices','created_at'),('opportunities','created_at'),

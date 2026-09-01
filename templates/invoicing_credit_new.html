@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION · AVOIR</div><h1>Créer un avoir</h1>
+<p class="muted">Facture d'origine : <strong>{{ inv.invoice_number }}</strong> · {{ inv.client_name }}</p>
+<section class="panel formpanel"><form method="post" class="formgrid">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Montant TTC de l'avoir (€)<input type="number" name="amount_ttc" min="0.01" max="{{ '%.2f'|format(remaining) }}" step="0.01" required></label>
+<label>Maximum disponible<input value="{{ '%.2f'|format(remaining) }} €" disabled></label>
+<label class="wide">Motif de l'avoir<input name="reason" required placeholder="Ex. remboursement partiel, erreur de facturation"></label>
+<div class="wide"><button>Créer l'avoir</button> <a class="button secondary" href="{{ url_for('invoicing_detail',invoice_id=inv.id) }}">Retour</a></div>
+</form></section>{% endblock %}

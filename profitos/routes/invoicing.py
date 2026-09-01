@@ -56,6 +56,24 @@ def _next_invoice_number(c):
         candidate+=1
     return f"{prefix}{candidate:03d}"
 
+
+def _next_credit_number(c):
+    year=datetime.now(timezone.utc).year
+    prefix=f"AV-{year}-"
+    rows=c.execute("SELECT credit_number FROM outgoing_credit_notes WHERE credit_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['credit_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    return f"{prefix}{highest+1:03d}"
+
+
+def _credited_total(c, invoice_id):
+    row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND status='issued'",(invoice_id,)).fetchone()
+    return float(row['n'] or 0)
+
 def register(app):
     @app.route('/facturation')
     @login_required
@@ -132,7 +150,13 @@ def register(app):
         c.close()
         if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
-        return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv))
+        c=cx()
+        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? ORDER BY id DESC",(invoice_id,)).fetchall()
+        credited_total=_credited_total(c,invoice_id)
+        c.close()
+        return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
+                               credits=credits,credited_total=credited_total,
+                               creditable_total=max(0,float(inv['total'] or 0)-credited_total))
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required
@@ -271,6 +295,94 @@ def register(app):
         flash(f"Facture {inv['invoice_number']} annulée.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
+    @app.route('/facturation/<int:invoice_id>/avoir',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_credit_new(invoice_id):
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        if not inv:
+            c.close(); abort(404)
+        if inv['status'] not in ('sent','paid'):
+            c.close()
+            flash("Un avoir ne peut être créé que pour une facture émise.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        already=_credited_total(c,invoice_id)
+        remaining=max(0,float(inv['total'] or 0)-already)
+        if remaining <= 0.005:
+            c.close()
+            flash("Cette facture est déjà intégralement créditée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+        if request.method=='POST':
+            reason=request.form.get('reason','').strip()
+            try:
+                amount_ttc=float(request.form.get('amount_ttc','0').replace(',','.'))
+            except ValueError:
+                amount_ttc=0
+            if not reason or amount_ttc <= 0 or amount_ttc > remaining + 0.005:
+                c.close()
+                flash(f"Motif requis et montant TTC compris entre 0,01 € et {remaining:.2f} €.")
+                return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
+
+            ratio=amount_ttc/float(inv['total'])
+            source_items=json.loads(inv['line_items'] or '[]')
+            items=[]
+            for it in source_items:
+                line_total=round(float(it['line_total'])*ratio,2)
+                items.append({'label':f"Avoir — {it['label']}",'qty':1.0,
+                              'unit_price':line_total,'vat_rate':float(it['vat_rate']),
+                              'line_total':line_total})
+            subtotal=round(float(inv['subtotal'])*ratio,2)
+            vat_amount=round(amount_ttc-subtotal,2)
+            credit_number=_next_credit_number(c)
+            c.execute("""INSERT INTO outgoing_credit_notes
+                (credit_number,original_invoice_id,original_invoice_number,client_name,issue_date,
+                 line_items,subtotal,vat_amount,total,reason,status,created_at)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,'issued',?)""",
+                (credit_number,invoice_id,inv['invoice_number'],inv['client_name'],date.today().isoformat(),
+                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,round(amount_ttc,2),reason,now()))
+            c.commit()
+            credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            c.close()
+            log_activity('CREDIT_NOTE_CREATED',f"Avoir {credit_number} créé pour {inv['invoice_number']} ({amount_ttc:.2f} € TTC)")
+            flash(f"Avoir {credit_number} créé.")
+            return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+
+        c.close()
+        return render_template('invoicing_credit_new.html',inv=inv,remaining=remaining)
+
+    @app.route('/facturation/avoir/<int:credit_id>')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_credit_detail(credit_id):
+        c=cx()
+        credit=c.execute('SELECT * FROM outgoing_credit_notes WHERE id=?',(credit_id,)).fetchone()
+        c.close()
+        if not credit: abort(404)
+        items=json.loads(credit['line_items'] or '[]')
+        return render_template('invoicing_credit_detail.html',credit=credit,items=items)
+
+    @app.route('/facturation/avoir/<int:credit_id>/pdf')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_credit_pdf(credit_id):
+        c=cx()
+        credit=c.execute('SELECT * FROM outgoing_credit_notes WHERE id=?',(credit_id,)).fetchone()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        c.close()
+        if not credit: abort(404)
+        pdf_bytes=_render_credit_pdf(credit,company_row)
+        if pdf_bytes is None:
+            flash("La génération PDF nécessite le paquet 'fpdf2'.")
+            return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+        return Response(pdf_bytes,mimetype='application/pdf',
+            headers={'Content-Disposition':f'attachment; filename="{credit["credit_number"]}.pdf"'})
+
     @app.route('/facture/<token>')
     def public_invoice_view(token):
         """Vue publique d'une facture émise — aucune authentification requise.
@@ -377,4 +489,42 @@ def _render_invoice_pdf(inv,company_row):
     pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
     pdf.multi_cell(0,4,safe("Document genere via ProfitOS. Ce document n'est pas emis via une Plateforme Agreee DGFiP au sens de la reforme de facturation electronique."))
 
+    return bytes(pdf.output(dest='S'))
+
+
+def _render_credit_pdf(credit,company_row):
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        repl={'—':'-','–':'-','€':'EUR','\xa0':' '}
+        for a,b in repl.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+    items=json.loads(credit['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4'); pdf.add_page()
+    pdf.set_font('Helvetica','B',20)
+    pdf.cell(0,12,safe(f"Avoir {credit['credit_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+    pdf.ln(5)
+    pdf.set_font('Helvetica','B',11)
+    pdf.cell(0,7,safe(f"Facture d'origine : {credit['original_invoice_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    pdf.cell(0,6,safe(f"Client : {credit['client_name']}"),ln=1)
+    pdf.cell(0,6,safe(f"Date : {credit['issue_date']}"),ln=1)
+    pdf.multi_cell(0,6,safe(f"Motif : {credit['reason']}"))
+    pdf.ln(5)
+    for it in items:
+        pdf.cell(130,7,safe(it['label']))
+        pdf.cell(50,7,safe(f"-{it['line_total']:,.2f} EUR"),align='R',ln=1)
+    pdf.ln(5); pdf.set_font('Helvetica','',11)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"-{credit['subtotal']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"-{credit['vat_amount']:,.2f} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(140,9,'Total TTC avoir',align='R'); pdf.cell(40,9,safe(f"-{credit['total']:,.2f} EUR"),align='R',ln=1)
     return bytes(pdf.output(dest='S'))
