@@ -1,1 +1,20 @@
-document.addEventListener('DOMContentLoaded',()=>{const s=document.getElementById('saved-client');if(!s)return;s.addEventListener('change',()=>{const o=s.options[s.selectedIndex];if(!o||!o.value)return;const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v||''};set('invoice-client-name',o.dataset.name);set('invoice-client-email',o.dataset.email);set('invoice-client-address',o.dataset.address);});});
+document.addEventListener('DOMContentLoaded', function () {
+  const select = document.getElementById('saved-client');
+  if (!select) return;
+
+  function fillClient() {
+    const option = select.options[select.selectedIndex];
+    if (!option || !option.value) return;
+
+    const name = document.getElementById('invoice-client-name');
+    const email = document.getElementById('invoice-client-email');
+    const address = document.getElementById('invoice-client-address');
+
+    if (name) name.value = option.dataset.name || '';
+    if (email) email.value = option.dataset.email || '';
+    if (address) address.value = option.dataset.address || '';
+  }
+
+  select.addEventListener('change', fillClient);
+  fillClient();
+});
