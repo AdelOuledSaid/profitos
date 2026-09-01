@@ -198,8 +198,8 @@ def register(app):
             flash(f'Facture {invoice_number} créée en brouillon.')
             return redirect(url_for('invoicing_detail',invoice_id=new_id))
 
-        c.close()
         clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        c.close()
         return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat(),clients=clients)
 
     @app.route('/facturation/<int:invoice_id>')
