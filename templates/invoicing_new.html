@@ -6,9 +6,13 @@
 <section class="panel formpanel">
   <form method="post" class="formgrid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Nom du client<input name="client_name" required></label>
-    <label>Email du client<input type="email" name="client_email" placeholder="pour l'envoi"></label>
-    <label class="wide">Adresse du client<input name="client_address"></label>
+<div class="wide"><label>Client enregistré
+<select id="saved-client"><option value="">— Saisie manuelle —</option>
+{% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}">{{ c.name }}</option>{% endfor %}
+</select></label><p class="muted"><a href="{{ url_for('invoicing_client_new') }}">+ Ajouter un nouveau client</a></p></div>
+    <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
+    <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
+    <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
     <label>Date d'échéance<input type="date" name="due_date"></label>
     <div></div>
 
@@ -34,3 +38,5 @@
 
 <p class="muted" style="margin-top:16px;font-size:12px;">Émetteur : {{ company.name }}{% if company.siret %} · SIRET {{ company.siret }}{% endif %} — <a class="link" href="{{ url_for('company') }}">modifier</a></p>
 {% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static',filename='invoicing_clients.js') }}"></script>{% endblock %}

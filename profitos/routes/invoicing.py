@@ -75,6 +75,67 @@ def _credited_total(c, invoice_id):
     return float(row['n'] or 0)
 
 def register(app):
+    @app.route('/facturation/clients')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_clients():
+        c=cx()
+        rows=c.execute("""SELECT cl.*,
+          (SELECT COUNT(*) FROM outgoing_invoices i WHERE lower(i.client_name)=lower(cl.name)) invoice_count,
+          (SELECT COALESCE(SUM(i.total),0) FROM outgoing_invoices i WHERE lower(i.client_name)=lower(cl.name) AND i.status='paid') paid_total
+          FROM invoicing_clients cl ORDER BY lower(cl.name)""").fetchall()
+        c.close()
+        return render_template('invoicing_clients.html',rows=rows)
+
+    @app.route('/facturation/clients/nouveau',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_client_new():
+        if request.method=='POST':
+            name=request.form.get('name','').strip()
+            if not name:
+                flash("Le nom du client est requis.")
+                return redirect(url_for('invoicing_client_new'))
+            c=cx()
+            c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at)
+                         VALUES(?,?,?,?,?,?,?,?,?)""",
+              (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
+               request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),now()))
+            c.commit(); client_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]; c.close()
+            flash(f"Client {name} créé.")
+            return redirect(url_for('invoicing_client_detail',client_id=client_id))
+        return render_template('invoicing_client_form.html')
+
+    @app.route('/facturation/clients/<int:client_id>',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_client_detail(client_id):
+        c=cx()
+        client=c.execute('SELECT * FROM invoicing_clients WHERE id=?',(client_id,)).fetchone()
+        if not client: c.close(); abort(404)
+        if request.method=='POST':
+            name=request.form.get('name','').strip()
+            if not name:
+                c.close(); flash("Le nom du client est requis.")
+                return redirect(url_for('invoicing_client_detail',client_id=client_id))
+            c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=? WHERE id=?""",
+              (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
+               request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),client_id))
+            c.commit(); client=c.execute('SELECT * FROM invoicing_clients WHERE id=?',(client_id,)).fetchone()
+            flash("Fiche client mise à jour.")
+        invoices=c.execute("SELECT * FROM outgoing_invoices WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
+        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
+        c.close()
+        return render_template('invoicing_client_detail.html',client=client,invoices=invoices,credits=credits)
+
     @app.route('/facturation')
     @login_required
     @requires_active_plan
@@ -138,7 +199,8 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=new_id))
 
         c.close()
-        return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat())
+        clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat(),clients=clients)
 
     @app.route('/facturation/<int:invoice_id>')
     @login_required

@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}<div class="eyebrow green">FACTURATION · CLIENT</div><h1>{{ client.name }}</h1>
+<section class="panel formpanel"><form method="post" class="formgrid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Nom / raison sociale<input name="name" required value="{{ client.name }}"></label><label>Email<input type="email" name="email" value="{{ client.email or '' }}"></label>
+<label class="wide">Adresse<input name="address" value="{{ client.address or '' }}"></label><label>SIRET<input name="siret" value="{{ client.siret or '' }}"></label>
+<label>N° TVA intracommunautaire<input name="vat_number" value="{{ client.vat_number or '' }}"></label><label>Téléphone<input name="phone" value="{{ client.phone or '' }}"></label>
+<label class="wide">Notes<textarea name="notes" rows="3">{{ client.notes or '' }}</textarea></label><div class="wide"><button>Enregistrer</button> <a class="button secondary" href="{{ url_for('invoicing_new') }}">Créer une facture</a></div></form></section>
+<section class="panel" style="margin-top:18px;"><h2>Historique</h2>{% for i in invoices %}<div class="simpleline"><a href="{{ url_for('invoicing_detail',invoice_id=i.id) }}">{{ i.invoice_number }}</a><span>{{ i.status }} · {{ "{:,.2f}".format(i.total or 0) }} €</span></div>{% endfor %}
+{% for a in credits %}<div class="simpleline"><a href="{{ url_for('invoicing_credit_detail',credit_id=a.id) }}">{{ a.credit_number }}</a><span>Avoir · -{{ "{:,.2f}".format(a.total or 0) }} €</span></div>{% endfor %}
+{% if not invoices and not credits %}<p class="muted">Aucun document pour ce client.</p>{% endif %}</section>{% endblock %}

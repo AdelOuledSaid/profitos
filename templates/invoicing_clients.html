@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION</div><h1>Clients</h1>
+<p><a class="button" href="{{ url_for('invoicing_client_new') }}">+ Nouveau client</a></p>
+<section class="panel">{% for c in rows %}<div class="simpleline"><div><a href="{{ url_for('invoicing_client_detail',client_id=c.id) }}"><strong>{{ c.name }}</strong></a><div class="muted">{{ c.email or '—' }}{% if c.siret %} · SIRET {{ c.siret }}{% endif %}</div></div><div>{{ c.invoice_count }} facture(s) · {{ "{:,.2f}".format(c.paid_total) }} € payés</div></div>{% else %}<p class="muted">Aucun client enregistré.</p>{% endfor %}</section>{% endblock %}

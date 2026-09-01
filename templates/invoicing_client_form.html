@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block content %}<div class="eyebrow green">FACTURATION · CLIENT</div><h1>Nouveau client</h1>
+<section class="panel formpanel"><form method="post" class="formgrid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Nom / raison sociale<input name="name" required></label><label>Email<input type="email" name="email"></label>
+<label class="wide">Adresse<input name="address"></label><label>SIRET<input name="siret"></label><label>N° TVA intracommunautaire<input name="vat_number"></label>
+<label>Téléphone<input name="phone"></label><div></div><label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+<div class="wide"><button>Créer le client</button> <a class="button secondary" href="{{ url_for('invoicing_clients') }}">Retour</a></div></form></section>{% endblock %}
