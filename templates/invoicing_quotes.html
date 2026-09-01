@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION</div><h1>Devis</h1>
+<p><a class="button" href="{{ url_for('invoicing_quote_new') }}">+ Nouveau devis</a> <a class="button secondary" href="{{ url_for('invoicing_list') }}">Factures</a></p>
+<section class="panel">{% for q in rows %}<div class="simpleline"><div><a href="{{ url_for('invoicing_quote_detail',quote_id=q.id) }}"><strong>{{ q.quote_number }}</strong></a><div class="muted">{{ q.client_name }} · {{ q.issue_date }}</div></div><div>{{ "{:,.2f}".format(q.total or 0) }} € · {{ quote_status_label(q.status) }}</div></div>{% else %}<p class="muted">Aucun devis.</p>{% endfor %}</section>{% endblock %}

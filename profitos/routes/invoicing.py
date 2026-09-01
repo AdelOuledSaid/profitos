@@ -74,6 +74,24 @@ def _credited_total(c, invoice_id):
     row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND status='issued'",(invoice_id,)).fetchone()
     return float(row['n'] or 0)
 
+
+def _next_quote_number(c):
+    year=datetime.now(timezone.utc).year
+    prefix=f"DEV-{year}-"
+    rows=c.execute("SELECT quote_number FROM outgoing_quotes WHERE quote_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['quote_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    return f"{prefix}{highest+1:03d}"
+
+
+def _quote_status_label(status):
+    return {'draft':'Brouillon','sent':'Envoyé','accepted':'Accepté','refused':'Refusé','converted':'Facturé'}.get(status,status)
+
+
 def register(app):
     @app.route('/facturation/clients')
     @login_required
@@ -135,6 +153,164 @@ def register(app):
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
         c.close()
         return render_template('invoicing_client_detail.html',client=client,invoices=invoices,credits=credits)
+
+    @app.route('/facturation/devis')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quotes():
+        c=cx()
+        rows=c.execute("SELECT * FROM outgoing_quotes ORDER BY id DESC").fetchall()
+        c.close()
+        return render_template('invoicing_quotes.html',rows=rows,quote_status_label=_quote_status_label)
+
+    @app.route('/facturation/devis/nouveau',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_new():
+        c=cx()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        if request.method=='POST':
+            client_name=request.form.get('client_name','').strip()
+            if not client_name:
+                c.close(); flash("Le nom du client est requis.")
+                return redirect(url_for('invoicing_quote_new'))
+            items=_parse_items(request.form)
+            if not items:
+                c.close(); flash("Au moins une ligne de devis est requise.")
+                return redirect(url_for('invoicing_quote_new'))
+            subtotal=round(sum(x['line_total'] for x in items),2)
+            vat_amount=round(sum(x['line_total']*x['vat_rate']/100 for x in items),2)
+            total=round(subtotal+vat_amount,2)
+            quote_number=_next_quote_number(c)
+            c.execute("""INSERT INTO outgoing_quotes
+              (quote_number,client_name,client_address,client_email,issue_date,valid_until,line_items,
+               subtotal,vat_amount,total,notes,status,created_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?)""",
+              (quote_number,client_name,request.form.get('client_address','').strip(),
+               request.form.get('client_email','').strip(),date.today().isoformat(),
+               request.form.get('valid_until') or None,json.dumps(items,ensure_ascii=False),
+               subtotal,vat_amount,total,request.form.get('notes','').strip(),now()))
+            c.commit()
+            quote_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            c.close()
+            log_activity('QUOTE_CREATED',f"Devis {quote_number} créé en brouillon")
+            flash(f"Devis {quote_number} créé en brouillon.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        c.close()
+        return render_template('invoicing_quote_new.html',company=company_row,clients=clients,today=date.today().isoformat())
+
+    @app.route('/facturation/devis/<int:quote_id>')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_quote_detail(quote_id):
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone(); c.close()
+        if not q: abort(404)
+        return render_template('invoicing_quote_detail.html',q=q,items=json.loads(q['line_items'] or '[]'),
+                               status_label=_quote_status_label(q['status']))
+
+    @app.post('/facturation/devis/<int:quote_id>/envoyer')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_send(quote_id):
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status']!='draft':
+            c.close(); flash("Seul un devis brouillon peut être envoyé.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=?",(now(),quote_id))
+        c.commit(); c.close()
+        log_activity('QUOTE_SENT',f"Devis {q['quote_number']} marqué envoyé")
+        flash(f"Devis {q['quote_number']} marqué comme envoyé.")
+        return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+
+    @app.post('/facturation/devis/<int:quote_id>/accepter')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_accept(quote_id):
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status']!='sent':
+            c.close(); flash("Seul un devis envoyé peut être accepté.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=?",(now(),quote_id))
+        c.commit(); c.close()
+        log_activity('QUOTE_ACCEPTED',f"Devis {q['quote_number']} accepté")
+        flash(f"Devis {q['quote_number']} accepté.")
+        return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+
+    @app.post('/facturation/devis/<int:quote_id>/refuser')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_refuse(quote_id):
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status'] not in ('sent','accepted'):
+            c.close(); flash("Ce devis ne peut pas être refusé dans son état actuel.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=?",(now(),quote_id))
+        c.commit(); c.close()
+        log_activity('QUOTE_REFUSED',f"Devis {q['quote_number']} refusé")
+        flash(f"Devis {q['quote_number']} refusé.")
+        return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+
+    @app.post('/facturation/devis/<int:quote_id>/convertir')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_convert(quote_id):
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status']!='accepted' or q['converted_invoice_id']:
+            c.close(); flash("Seul un devis accepté et non encore facturé peut être converti.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        invoice_number=_next_number(c)
+        token=secrets.token_urlsafe(24)
+        due=(date.today()+timedelta(days=30)).isoformat()
+        c.execute("""INSERT INTO outgoing_invoices
+          (invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,
+           subtotal,vat_amount,total,notes,status,public_token,created_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+          (invoice_number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,
+           q['line_items'],q['subtotal'],q['vat_amount'],q['total'],
+           f"Créée depuis le devis {q['quote_number']}." + (("\\n"+q['notes']) if q['notes'] else ""),
+           token,now()))
+        c.commit()
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+        c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=?",(invoice_id,quote_id))
+        c.commit(); c.close()
+        log_activity('QUOTE_CONVERTED',f"Devis {q['quote_number']} converti en {invoice_number}")
+        flash(f"Devis {q['quote_number']} converti en facture {invoice_number}.")
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+    @app.route('/facturation/devis/<int:quote_id>/pdf')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_quote_pdf(quote_id):
+        c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        c.close()
+        if not q: abort(404)
+        pdf_bytes=_render_quote_pdf(q,company_row)
+        if pdf_bytes is None:
+            flash("La génération PDF nécessite le paquet 'fpdf2'.")
+            return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        return Response(pdf_bytes,mimetype='application/pdf',
+          headers={'Content-Disposition':f'attachment; filename="{q["quote_number"]}.pdf"'})
 
     @app.route('/facturation')
     @login_required
@@ -589,4 +765,39 @@ def _render_credit_pdf(credit,company_row):
     pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"-{credit['vat_amount']:,.2f} EUR"),align='R',ln=1)
     pdf.set_font('Helvetica','B',13)
     pdf.cell(140,9,'Total TTC avoir',align='R'); pdf.cell(40,9,safe(f"-{credit['total']:,.2f} EUR"),align='R',ln=1)
+    return bytes(pdf.output(dest='S'))
+
+
+def _render_quote_pdf(q,company_row):
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        for a,b in {'—':'-','–':'-','€':'EUR','\xa0':' '}.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+    items=json.loads(q['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4'); pdf.add_page()
+    pdf.set_font('Helvetica','B',20); pdf.cell(0,12,safe(f"Devis {q['quote_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+    pdf.ln(4); pdf.cell(0,6,safe(f"Client : {q['client_name']}"),ln=1)
+    if q['client_address']: pdf.multi_cell(0,6,safe(q['client_address']))
+    pdf.cell(0,6,safe(f"Date : {q['issue_date']}"),ln=1)
+    if q['valid_until']: pdf.cell(0,6,safe(f"Valable jusqu'au : {q['valid_until']}"),ln=1)
+    pdf.ln(5)
+    for it in items:
+        pdf.cell(130,7,safe(f"{it['label']} ({it['qty']} x {it['unit_price']:.2f} EUR, TVA {it['vat_rate']:.1f}%)"))
+        pdf.cell(50,7,safe(f"{it['line_total']:,.2f} EUR"),align='R',ln=1)
+    pdf.ln(5)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"{q['subtotal']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"{q['vat_amount']:,.2f} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(140,9,'Total TTC',align='R'); pdf.cell(40,9,safe(f"{q['total']:,.2f} EUR"),align='R',ln=1)
+    if q['notes']:
+        pdf.ln(5); pdf.set_font('Helvetica','',10); pdf.multi_cell(0,6,safe(q['notes']))
     return bytes(pdf.output(dest='S'))

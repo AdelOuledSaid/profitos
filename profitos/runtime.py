@@ -694,6 +694,26 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
+    CREATE TABLE IF NOT EXISTS outgoing_quotes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_number TEXT UNIQUE,
+        client_name TEXT NOT NULL,
+        client_address TEXT,
+        client_email TEXT,
+        issue_date TEXT,
+        valid_until TEXT,
+        line_items TEXT,
+        subtotal REAL,
+        vat_amount REAL,
+        total REAL,
+        notes TEXT,
+        status TEXT DEFAULT 'draft',
+        created_at TEXT,
+        sent_at TEXT,
+        accepted_at TEXT,
+        refused_at TEXT,
+        converted_invoice_id INTEGER
+    );
     CREATE TABLE IF NOT EXISTS invoicing_clients(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL, email TEXT, address TEXT, siret TEXT, vat_number TEXT,

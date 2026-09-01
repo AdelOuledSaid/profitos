@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION · DEVIS</div><h1>Nouveau devis</h1>
+<section class="panel formpanel"><form method="post" class="formgrid">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="wide"><label>Client enregistré<select id="saved-client"><option value="">— Saisie manuelle —</option>{% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}">{{ c.name }}</option>{% endfor %}</select></label></div>
+<label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
+<label>Email du client<input id="invoice-client-email" name="client_email" type="email"></label>
+<label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
+<label>Valable jusqu'au<input name="valid_until" type="date"></label><div></div>
+<div class="wide"><h3>Lignes du devis</h3><div class="line-head"><span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span></div>
+<div class="line-row">
+<input name="desc_1" placeholder="Description">
+<input name="qty_1" type="number" step="0.01" min="0" value="1">
+<input name="price_1" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_1" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_2" placeholder="Description">
+<input name="qty_2" type="number" step="0.01" min="0" value="1">
+<input name="price_2" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_2" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_3" placeholder="Description">
+<input name="qty_3" type="number" step="0.01" min="0" value="1">
+<input name="price_3" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_3" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_4" placeholder="Description">
+<input name="qty_4" type="number" step="0.01" min="0" value="1">
+<input name="price_4" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_4" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_5" placeholder="Description">
+<input name="qty_5" type="number" step="0.01" min="0" value="1">
+<input name="price_5" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_5" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_6" placeholder="Description">
+<input name="qty_6" type="number" step="0.01" min="0" value="1">
+<input name="price_6" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_6" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_7" placeholder="Description">
+<input name="qty_7" type="number" step="0.01" min="0" value="1">
+<input name="price_7" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_7" type="number" step="0.1" min="0" value="20">
+</div>
+<div class="line-row">
+<input name="desc_8" placeholder="Description">
+<input name="qty_8" type="number" step="0.01" min="0" value="1">
+<input name="price_8" type="number" step="0.01" min="0" value="0.00">
+<input name="vat_8" type="number" step="0.1" min="0" value="20">
+</div></div>
+<label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+<div class="wide"><button>Créer le devis</button> <a class="button secondary" href="{{ url_for('invoicing_quotes') }}">Retour</a></div>
+</form></section>
+<script src="{{ url_for('static',filename='invoicing_clients.js') }}" defer></script>
+{% endblock %}
