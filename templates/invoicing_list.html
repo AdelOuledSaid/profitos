@@ -3,9 +3,10 @@
 <h1>Factures émises</h1>
 <p class="muted">Crée, envoie et suis tes factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
 
-<div class="cards" style="grid-template-columns:repeat(3,1fr);">
+<div class="cards" style="grid-template-columns:repeat(4,1fr);">
   <div class="card"><div class="label">Brouillons</div><div class="big">{{ "{:,.0f}".format(totals.draft) }} €</div></div>
   <div class="card"><div class="label amber">Envoyées</div><div class="big">{{ "{:,.0f}".format(totals.sent) }} €</div></div>
+  <div class="card"><div class="label amber">En retard</div><div class="big">{{ "{:,.0f}".format(totals.overdue) }} €</div></div>
   <div class="card"><div class="label green">Payées</div><div class="big">{{ "{:,.0f}".format(totals.paid) }} €</div></div>
 </div>
 
@@ -16,7 +17,7 @@
   <a class="row clickable" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}">
     <div><strong>{{ r.invoice_number }}</strong><small>{{ r.client_name }} · émise le {{ r.issue_date }}</small></div>
     <div class="money">{{ "{:,.0f}".format(r.total) }} €</div>
-    <div class="status">{{ {'draft':'Brouillon','sent':'Envoyée','paid':'Payée'}.get(r.status, r.status) }}</div>
+    <div class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_statuses[r.id], display_statuses[r.id]) }}</div>
   </a>
   {% else %}
   <p class="muted">Aucune facture pour l'instant.</p>

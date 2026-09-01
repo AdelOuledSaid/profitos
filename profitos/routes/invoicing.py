@@ -29,6 +29,33 @@ def _totals(items):
     return subtotal,vat_amount,subtotal+vat_amount
 
 
+
+def _display_status(inv):
+    status=inv['status']
+    if status=='sent' and inv['due_date']:
+        try:
+            if date.fromisoformat(inv['due_date']) < date.today():
+                return 'overdue'
+        except (TypeError,ValueError):
+            pass
+    return status
+
+
+def _next_invoice_number(c):
+    year=datetime.now(timezone.utc).year
+    prefix=f"FA-{year}-"
+    rows=c.execute("SELECT invoice_number FROM outgoing_invoices WHERE invoice_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['invoice_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    candidate=highest+1
+    while c.execute("SELECT 1 FROM outgoing_invoices WHERE invoice_number=?",(f"{prefix}{candidate:03d}",)).fetchone():
+        candidate+=1
+    return f"{prefix}{candidate:03d}"
+
 def register(app):
     @app.route('/facturation')
     @login_required
@@ -38,10 +65,13 @@ def register(app):
         c=cx()
         rows=c.execute('SELECT * FROM outgoing_invoices ORDER BY id DESC').fetchall()
         c.close()
-        totals={'draft':0,'sent':0,'paid':0}
+        totals={'draft':0,'sent':0,'overdue':0,'paid':0,'cancelled':0}
+        display_statuses={}
         for r in rows:
-            if r['status'] in totals: totals[r['status']]+=r['total'] or 0
-        return render_template('invoicing_list.html',rows=rows,totals=totals)
+            status=_display_status(r)
+            display_statuses[r['id']]=status
+            if status in totals: totals[status]+=r['total'] or 0
+        return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses)
 
     @app.route('/facturation/nouvelle',methods=['GET','POST'])
     @login_required
@@ -70,8 +100,7 @@ def register(app):
                 return redirect(url_for('invoicing_new'))
 
             subtotal,vat_amount,total=_totals(items)
-            count=c.execute('SELECT COUNT(*) n FROM outgoing_invoices').fetchone()['n']
-            invoice_number=f"FA-{datetime.now(timezone.utc).year}-{count+1:03d}"
+            invoice_number=_next_invoice_number(c)
             issue_date=date.today().isoformat()
             token=secrets.token_urlsafe(20)
 
@@ -103,7 +132,7 @@ def register(app):
         c.close()
         if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
-        return render_template('invoicing_detail.html',inv=inv,items=items)
+        return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv))
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required
@@ -132,6 +161,10 @@ def register(app):
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
         if not inv:
             c.close(); abort(404)
+        if inv['status'] in ('paid','cancelled'):
+            c.close()
+            flash("Cette facture ne peut plus être envoyée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if not inv['client_email']:
             c.close()
             flash("Aucun email client renseigné pour cette facture.")
@@ -166,10 +199,74 @@ def register(app):
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
         if not inv:
             c.close(); abort(404)
+        if inv['status']=='cancelled':
+            c.close()
+            flash("Une facture annulée ne peut pas être marquée comme payée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=?",(now(),invoice_id))
         c.commit(); c.close()
         log_activity('INVOICE_PAID',f"Facture {inv['invoice_number']} marquée payée")
         flash(f"Facture {inv['invoice_number']} marquée comme payée.")
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+
+    @app.route('/facturation/<int:invoice_id>/modifier',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_edit(invoice_id):
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        if not inv:
+            c.close(); abort(404)
+        if inv['status']!='draft':
+            c.close()
+            flash("Seule une facture en brouillon peut être modifiée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        if request.method=='POST':
+            client_name=request.form.get('client_name','').strip()
+            client_address=request.form.get('client_address','').strip()
+            client_email=request.form.get('client_email','').strip()
+            due_date=request.form.get('due_date','').strip()
+            notes=request.form.get('notes','').strip()
+            items=_compute_line_items(request.form)
+            if not client_name or not items:
+                c.close()
+                flash('Nom du client et au moins une ligne de facture requis.')
+                return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
+            subtotal,vat_amount,total=_totals(items)
+            c.execute("UPDATE outgoing_invoices SET client_name=?,client_address=?,client_email=?,due_date=?,line_items=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=? AND status='draft'",
+                (client_name,client_address,client_email,due_date or None,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,invoice_id))
+            c.commit(); c.close()
+            log_activity('INVOICE_UPDATED',f"Facture {inv['invoice_number']} modifiée")
+            flash(f"Facture {inv['invoice_number']} mise à jour.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        items=json.loads(inv['line_items'] or '[]')
+        c.close()
+        return render_template('invoicing_edit.html',inv=inv,items=items)
+
+    @app.route('/facturation/<int:invoice_id>/annuler',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_cancel(invoice_id):
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        if not inv:
+            c.close(); abort(404)
+        if inv['status']=='paid':
+            c.close()
+            flash("Une facture payée ne peut pas être annulée ici.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        if inv['status']=='cancelled':
+            c.close()
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        c.execute("UPDATE outgoing_invoices SET status='cancelled' WHERE id=?",(invoice_id,))
+        c.commit(); c.close()
+        log_activity('INVOICE_CANCELLED',f"Facture {inv['invoice_number']} annulée")
+        flash(f"Facture {inv['invoice_number']} annulée.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.route('/facture/<token>')
