@@ -366,6 +366,78 @@ def register(app):
         return Response(pdf_bytes,mimetype='application/pdf',
           headers={'Content-Disposition':f'attachment; filename="{q["quote_number"]}.pdf"'})
 
+    @app.get('/facturation/creances')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_receivables():
+        c=cx()
+        rows=c.execute("""
+            SELECT i.*,
+                   COALESCE((SELECT SUM(ABS(cn.total))
+                             FROM credit_notes cn
+                             WHERE cn.invoice_id=i.id),0) AS credited_total
+            FROM outgoing_invoices i
+            WHERE i.status='sent'
+            ORDER BY i.due_date ASC, i.id DESC
+        """).fetchall()
+
+        today=date.today()
+        invoices=[]
+        by_client={}
+        total_due=0.0
+        overdue_due=0.0
+
+        for r in rows:
+            total=float(r['total'] or 0)
+            credited=float(r['credited_total'] or 0)
+            remaining=max(0.0,total-credited)
+            if remaining <= 0.01:
+                continue
+
+            due=None
+            try:
+                due=datetime.strptime(r['due_date'],'%Y-%m-%d').date() if r['due_date'] else None
+            except Exception:
+                due=None
+            overdue=bool(due and due < today)
+            days_overdue=(today-due).days if overdue else 0
+            total_due += remaining
+            if overdue:
+                overdue_due += remaining
+
+            item={
+                'id':r['id'],
+                'invoice_number':r['invoice_number'],
+                'client_name':r['client_name'],
+                'client_email':r['client_email'],
+                'due_date':r['due_date'],
+                'remaining':remaining,
+                'overdue':overdue,
+                'days_overdue':days_overdue,
+            }
+            invoices.append(item)
+
+            client=(r['client_name'] or 'Client sans nom').strip()
+            agg=by_client.setdefault(client,{'client_name':client,'total':0.0,'overdue':0.0,'count':0})
+            agg['total'] += remaining
+            agg['count'] += 1
+            if overdue:
+                agg['overdue'] += remaining
+
+        clients=sorted(by_client.values(),key=lambda x:(x['overdue'],x['total']),reverse=True)
+        c.close()
+        return render_template(
+            'invoicing_receivables.html',
+            invoices=invoices,
+            clients=clients,
+            total_due=total_due,
+            overdue_due=overdue_due,
+            unpaid_count=len(invoices),
+            overdue_count=sum(1 for x in invoices if x['overdue'])
+        )
+
     @app.route('/facturation')
     @login_required
     @requires_active_plan

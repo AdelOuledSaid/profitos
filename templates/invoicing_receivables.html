@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">FACTURATION</div>
+    <h1>Créances clients</h1>
+    <p class="muted">Suivi des factures envoyées restant à encaisser.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('invoicing_list') }}">Retour aux factures</a>
+</div>
+
+<div class="kpi-grid">
+  <section class="panel">
+    <div class="muted">À encaisser</div>
+    <h2>{{ "%.2f"|format(total_due) }} €</h2>
+  </section>
+  <section class="panel">
+    <div class="muted">En retard</div>
+    <h2>{{ "%.2f"|format(overdue_due) }} €</h2>
+  </section>
+  <section class="panel">
+    <div class="muted">Factures impayées</div>
+    <h2>{{ unpaid_count }}</h2>
+  </section>
+  <section class="panel">
+    <div class="muted">Factures en retard</div>
+    <h2>{{ overdue_count }}</h2>
+  </section>
+</div>
+
+<section class="panel" style="margin-top:18px;">
+  <h3>Par client</h3>
+  {% if clients %}
+    {% for c in clients %}
+      <div class="simpleline">
+        <span><strong>{{ c.client_name }}</strong> · {{ c.count }} facture{% if c.count > 1 %}s{% endif %}</span>
+        <span>{{ "%.2f"|format(c.total) }} €{% if c.overdue > 0 %} · <strong>{{ "%.2f"|format(c.overdue) }} € en retard</strong>{% endif %}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Aucune créance client.</p>
+  {% endif %}
+</section>
+
+<section class="panel" style="margin-top:18px;">
+  <h3>Factures à encaisser</h3>
+  {% if invoices %}
+    {% for inv in invoices %}
+      <div class="simpleline">
+        <span>
+          <a href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a>
+          · {{ inv.client_name }}
+          · échéance {{ inv.due_date or "—" }}
+          {% if inv.overdue %}· <strong>En retard de {{ inv.days_overdue }} jour{% if inv.days_overdue > 1 %}s{% endif %}</strong>{% endif %}
+        </span>
+        <span><strong>{{ "%.2f"|format(inv.remaining) }} €</strong></span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Toutes les factures envoyées sont réglées.</p>
+  {% endif %}
+</section>
+{% endblock %}
