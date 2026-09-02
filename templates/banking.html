@@ -126,4 +126,30 @@
   </table></div>
 </section>
 {% endif %}
+
+<section class="panel" style="margin-top:18px;">
+  <h3>Rapprochement fournisseurs</h3>
+  <p class="muted">ProfitOS propose une facture fournisseur pour les sorties bancaires de même montant. Aucune facture n'est marquée payée sans confirmation.</p>
+  {% for tx in transactions %}
+    {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) %}
+    {% if suggestions %}
+      <div style="padding:12px 0;border-top:1px solid var(--border,#2a2a2a);">
+        <strong>{{ tx.transaction_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }} €</strong>
+        {% for s in suggestions[:3] %}
+          <div style="margin-top:8px;">
+            {{ s.purchase.invoice_number }} · {{ s.purchase.supplier_name }} · {{ '%.2f'|format(s.purchase.total) }} €
+            · Confiance {{ s.confidence }} ({{ s.score }}/125) · {{ s.reasons }}
+            <form method="post" action="{{ url_for('confirm_purchase_reconciliation') }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="bank_transaction_id" value="{{ tx.id }}">
+              <input type="hidden" name="purchase_invoice_id" value="{{ s.purchase.id }}">
+              <button type="submit">Confirmer le paiement fournisseur</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</section>
+
 {% endblock %}

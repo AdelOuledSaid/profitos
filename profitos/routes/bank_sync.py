@@ -193,6 +193,49 @@ def _name_similarity(client_name, bank_label):
     return 10
 
 
+
+def _purchase_reconciliation_suggestions(c, tx):
+    # Supplier payments are negative bank transactions.
+    amount = float(tx['amount'] or 0)
+    if amount >= 0:
+        return []
+    target = abs(amount)
+
+    rows=c.execute("""
+        SELECT p.*
+        FROM purchase_invoices p
+        LEFT JOIN bank_purchase_reconciliations r ON r.purchase_invoice_id=p.id
+        WHERE p.status='unpaid' AND r.id IS NULL
+        ORDER BY p.due_date ASC, p.id ASC
+    """).fetchall()
+
+    tx_label=_norm_text(tx['label'] or '')
+    out=[]
+    for p in rows:
+        total=float(p['total'] or 0)
+        if abs(total-target)>0.01:
+            continue
+        score=60
+        reasons=['montant exact']
+        inv_no=_norm_text(p['invoice_number'] or '')
+        supplier=_norm_text(p['supplier_name'] or '')
+        if inv_no and inv_no in tx_label:
+            score += 35
+            reasons.append('n° facture')
+        sim=_name_similarity(supplier, tx_label) if supplier else 0
+        if sim >= .85:
+            score += 30; reasons.append('fournisseur très proche')
+        elif sim >= .65:
+            score += 20; reasons.append('fournisseur proche')
+        elif sim >= .45:
+            score += 10; reasons.append('fournisseur partiel')
+        confidence='Élevée' if score>=90 else ('Moyenne' if score>=75 else 'Faible')
+        out.append({'purchase':p,'score':score,'confidence':confidence,
+                    'reasons':', '.join(reasons),'amount':target})
+    out.sort(key=lambda x:(-x['score'], x['purchase']['due_date'] or '', x['purchase']['id']))
+    # Exact same amount can be ambiguous: keep all suggestions visible, never auto-pay.
+    return out
+
 def _reconciliation_suggestions(c, transactions):
     reconciled_tx = {
         r["bank_transaction_id"]
@@ -538,3 +581,43 @@ def register(app):
         finally:
             c.close()
         return redirect(url_for("banking"))
+
+
+    @app.post('/banking/rapprochement-achat/confirmer')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def confirm_purchase_reconciliation():
+        tx_id=int(request.form.get('bank_transaction_id') or 0)
+        purchase_id=int(request.form.get('purchase_invoice_id') or 0)
+        c=cx()
+        tx=c.execute("SELECT * FROM bank_transactions WHERE id=?",(tx_id,)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        if not tx or not p:
+            c.close(); abort(404)
+        if float(tx['amount'] or 0) >= 0:
+            c.close(); flash("Cette opération bancaire n'est pas une sortie d'argent.")
+            return redirect(url_for('banking'))
+        if p['status'] != 'unpaid':
+            c.close(); flash("Cette facture fournisseur n'est plus à payer.")
+            return redirect(url_for('banking'))
+        amount=abs(float(tx['amount'] or 0))
+        total=float(p['total'] or 0)
+        if abs(amount-total)>0.01:
+            c.close(); flash("Le montant bancaire ne correspond pas au total de la facture fournisseur.")
+            return redirect(url_for('banking'))
+        exists=c.execute("""SELECT id FROM bank_purchase_reconciliations
+                            WHERE bank_transaction_id=? OR purchase_invoice_id=?""",
+                         (tx_id,purchase_id)).fetchone()
+        if exists:
+            c.close(); flash("Cette opération ou cette facture est déjà rapprochée.")
+            return redirect(url_for('banking'))
+        c.execute("""INSERT INTO bank_purchase_reconciliations
+                     (bank_transaction_id,purchase_invoice_id,matched_amount,matched_at)
+                     VALUES(?,?,?,?)""",(tx_id,purchase_id,amount,now()))
+        c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE id=?",(now(),purchase_id))
+        c.commit(); c.close()
+        flash("Rapprochement fournisseur confirmé. La facture a été marquée payée.")
+        return redirect(url_for('banking'))
+
