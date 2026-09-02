@@ -25,7 +25,7 @@
 <div class="simpleline"><span>Statut</span><strong>{% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</strong></div>
 {% if p.notes %}<div class="simpleline"><span>Notes</span><span>{{ p.notes }}</span></div>{% endif %}
 <div class="simpleline"><span>Justificatif PDF</span><span>
-{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for(\'purchase_document_view\',purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
+{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for('purchase_document_view', purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
 {% else %}Aucun justificatif{% endif %}</span></div>
 </section>
 <section class="panel" style="margin-top:18px;">
