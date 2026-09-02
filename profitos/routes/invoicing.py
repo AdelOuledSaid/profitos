@@ -375,9 +375,10 @@ def register(app):
         c=cx()
         rows=c.execute("""
             SELECT i.*,
-                   COALESCE((SELECT SUM(ABS(cn.total))
-                             FROM credit_notes cn
-                             WHERE cn.invoice_id=i.id),0) AS credited_total
+                   COALESCE((SELECT SUM(cn.total)
+                             FROM outgoing_credit_notes cn
+                             WHERE cn.original_invoice_id=i.id
+                               AND cn.status='issued'),0) AS credited_total
             FROM outgoing_invoices i
             WHERE i.status='sent'
             ORDER BY i.due_date ASC, i.id DESC
