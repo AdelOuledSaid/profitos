@@ -12,6 +12,7 @@
 
 <a class="button" href="{{ url_for('invoicing_new') }}" style="display:inline-block;margin:20px 0;">+ Nouvelle facture</a> <a class="button secondary" href="{{ url_for('invoicing_quotes') }}">Devis</a> <a class="button secondary" href="{{ url_for('invoicing_clients') }}">Clients</a>
 <a class="button secondary" href="{{ url_for('invoicing_receivables') }}">Créances clients</a>
+<a class="button secondary" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
 
 <section class="panel">
   {% for r in rows %}
