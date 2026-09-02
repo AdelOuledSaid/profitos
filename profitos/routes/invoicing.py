@@ -105,6 +105,25 @@ def _purchase_money(raw):
     try: return float(v)
     except Exception: return None
 
+
+def _purchase_pdf_date(raw):
+    if not raw:
+        return None
+    v=str(raw).strip()
+    # ISO: YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD
+    m=re.fullmatch(r'(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})',v)
+    if m:
+        try: return date(int(m.group(1)),int(m.group(2)),int(m.group(3)))
+        except ValueError: return None
+    # French invoices: DD/MM/YYYY (also accepts - and .)
+    m=re.fullmatch(r'(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})',v)
+    if m:
+        year=int(m.group(3))
+        if year < 100: year += 2000
+        try: return date(year,int(m.group(2)),int(m.group(1)))
+        except ValueError: return None
+    return None
+
 def _purchase_pdf_extract(path):
     reader=PdfReader(str(path))
     text='\n'.join((page.extract_text() or '') for page in reader.pages[:12]).strip()
@@ -118,8 +137,8 @@ def _purchase_pdf_extract(path):
         return None
 
     number=first([
-        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
-        r'\bFACTURE\s*\n\s*([A-Z0-9][A-Z0-9._\-/]{2,})'
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'(?:n(?:°|o)?\s*(?:de\s+)?facture|num(?:e|é)ro\s+(?:de\s+)?facture|invoice\s*(?:number|no\.?))\s*[:\-]?\s*\n?\s*([A-Z0-9][A-Z0-9._\-/]{2,})'
     ])
     issue_raw=first([
         r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
@@ -152,8 +171,13 @@ def _purchase_pdf_extract(path):
             if re.fullmatch(r'[0-9\s.,€+\-/]+',line): continue
             vendor=line; break
 
-    issue=parse_date(issue_raw) if issue_raw else None
-    due=parse_date(due_raw) if due_raw else None
+    issue=_purchase_pdf_date(issue_raw) if issue_raw else None
+    due=_purchase_pdf_date(due_raw) if due_raw else None
+    if issue_raw and not issue:
+        raise ValueError("Date de facture détectée mais illisible. Vérifiez-la manuellement.")
+    if due_raw and not due:
+        raise ValueError("Date d'échéance détectée mais illisible. Vérifiez-la manuellement.")
+
     missing=[]
     if not vendor: missing.append("fournisseur")
     if not number: missing.append("numéro")
