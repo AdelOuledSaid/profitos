@@ -95,6 +95,81 @@ def _quote_status_label(status):
 
 _PURCHASE_PDF_MAX_BYTES = 5 * 1024 * 1024
 
+def _purchase_money(raw):
+    if raw is None: return None
+    v=str(raw).replace('\u00a0',' ').replace('€','').strip()
+    v=re.sub(r'[^0-9,\.\- ]','',v).replace(' ','')
+    if ',' in v and '.' in v:
+        v=v.replace('.','').replace(',','.') if v.rfind(',')>v.rfind('.') else v.replace(',','')
+    elif ',' in v: v=v.replace(',','.')
+    try: return float(v)
+    except Exception: return None
+
+def _purchase_pdf_extract(path):
+    reader=PdfReader(str(path))
+    text='\n'.join((page.extract_text() or '') for page in reader.pages[:12]).strip()
+    if len(text)<20:
+        raise ValueError("PDF sans texte exploitable. Les PDF scannés ne sont pas encore pris en charge.")
+
+    def first(patterns):
+        for pat in patterns:
+            m=re.search(pat,text,re.I|re.M)
+            if m: return m.group(1).strip()
+        return None
+
+    number=first([
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'\bFACTURE\s*\n\s*([A-Z0-9][A-Z0-9._\-/]{2,})'
+    ])
+    issue_raw=first([
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)'
+    ])
+    due_raw=first([
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)'
+    ])
+    total=_purchase_money(first([
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
+    ]))
+    subtotal=_purchase_money(first([
+        r'(?:sous[\-\s]?total\s*ht|total\s*ht|montant\s*ht|subtotal)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
+    ]))
+    vat=_purchase_money(first([
+        r'(?:montant\s*)?tva(?:\s*\([^)]*\))?\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:vat)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
+    ]))
+    if subtotal is None and total is not None and vat is not None: subtotal=round(total-vat,2)
+    if vat is None and total is not None and subtotal is not None: vat=round(total-subtotal,2)
+
+    vendor=first([
+        r'(?:fournisseur|supplier|vendor|émis\s+par|emis\s+par|issued\s+by)\s*[:\-]\s*([^\n]{2,120})'
+    ])
+    if not vendor:
+        for line in [x.strip() for x in text.splitlines()[:18] if x.strip()]:
+            if len(line)<2 or len(line)>100: continue
+            if re.search(r'^(facture|invoice|date|échéance|echeance|total|tva|client|description)\b',line,re.I): continue
+            if re.fullmatch(r'[0-9\s.,€+\-/]+',line): continue
+            vendor=line; break
+
+    issue=parse_date(issue_raw) if issue_raw else None
+    due=parse_date(due_raw) if due_raw else None
+    missing=[]
+    if not vendor: missing.append("fournisseur")
+    if not number: missing.append("numéro")
+    if subtotal is None: missing.append("HT")
+    if vat is None: missing.append("TVA")
+    if total is None: missing.append("TTC")
+    if missing:
+        raise ValueError("Champs non détectés : "+", ".join(missing)+". Corrigez le PDF ou saisissez la facture manuellement.")
+    if abs(round(subtotal+vat-total,2))>0.02:
+        raise ValueError("Les montants HT + TVA ne correspondent pas au TTC. Import refusé par sécurité.")
+    return {'supplier_name':vendor,'invoice_number':number,
+            'issue_date':issue.isoformat() if issue else '',
+            'due_date':due.isoformat() if due else '',
+            'subtotal':subtotal,'vat_amount':vat,'total':total}
+
+
 def _purchase_pdf_dir():
     org_id = session.get('org_id')
     if not org_id:
@@ -519,6 +594,33 @@ def register(app):
             return redirect(url_for('purchase_list'))
         return render_template('supplier_new.html')
 
+    @app.post('/facturation/achats/importer-pdf')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_import_pdf():
+        uploaded=request.files.get('document')
+        try:
+            stored=_save_purchase_pdf(uploaded)
+            if not stored:
+                raise ValueError("Sélectionnez un fichier PDF.")
+            path=_purchase_pdf_dir()/stored
+            detected=_purchase_pdf_extract(path)
+        except ValueError as e:
+            if 'stored' in locals() and stored:
+                try: (_purchase_pdf_dir()/stored).unlink(missing_ok=True)
+                except OSError: pass
+            flash(str(e))
+            return redirect(url_for('purchase_new'))
+
+        c=cx()
+        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        c.close()
+        flash("PDF analysé. Vérifiez les informations avant d'enregistrer.")
+        return render_template('purchase_new.html',suppliers=suppliers,
+                               detected=detected,pending_document=stored)
+
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
     @login_required
     @requires_active_plan
@@ -547,15 +649,21 @@ def register(app):
                 c.close()
                 flash("Fournisseur, numéro et montants valides sont obligatoires.")
                 return redirect(url_for('purchase_new'))
+            pending_document=(request.form.get('pending_document') or '').strip()
+            if pending_document and not re.fullmatch(r'[0-9a-f]{32}\.pdf',pending_document):
+                c.close(); abort(400)
+            if pending_document and not (_purchase_pdf_dir()/pending_document).is_file():
+                c.close(); flash("Le PDF temporaire n'est plus disponible. Réimportez-le.")
+                return redirect(url_for('purchase_new'))
             c.execute("""INSERT INTO purchase_invoices(
                          supplier_id,supplier_name,invoice_number,issue_date,due_date,
-                         subtotal,vat_amount,total,status,notes,created_at)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                         subtotal,vat_amount,total,status,notes,created_at,document_path)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
                        request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
-                       (request.form.get('notes') or '').strip(),now()))
+                       (request.form.get('notes') or '').strip(),now(),pending_document or None))
             c.commit(); c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
