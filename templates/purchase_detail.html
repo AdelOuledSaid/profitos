@@ -1,4 +1,18 @@
 {% extends "base.html" %}{% block content %}
+
+<style>
+.purchase-detail-link{
+  color:#39e58c !important;
+  font-weight:700;
+  text-decoration:none;
+}
+.purchase-detail-link:hover,
+.purchase-detail-link:focus{
+  color:#ffffff !important;
+  text-decoration:underline;
+}
+</style>
+
 <div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>{{ p.invoice_number }}</h1><p class="muted">{{ p.supplier_name }} · facture fournisseur</p></div>
 <a class="button secondary" href="{{ url_for('purchase_list') }}">Retour aux achats</a></div>
 <section class="panel">
@@ -11,7 +25,7 @@
 <div class="simpleline"><span>Statut</span><strong>{% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</strong></div>
 {% if p.notes %}<div class="simpleline"><span>Notes</span><span>{{ p.notes }}</span></div>{% endif %}
 <div class="simpleline"><span>Justificatif PDF</span><span>
-{% if p.document_path %}<a href="{{ url_for('purchase_document_view',purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
+{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for(\'purchase_document_view\',purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
 {% else %}Aucun justificatif{% endif %}</span></div>
 </section>
 <section class="panel" style="margin-top:18px;">
