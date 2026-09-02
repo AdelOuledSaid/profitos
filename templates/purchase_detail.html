@@ -10,7 +10,20 @@
 <div class="simpleline"><span>Total TTC</span><strong>{{ "%.2f"|format(p.total) }} €</strong></div>
 <div class="simpleline"><span>Statut</span><strong>{% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</strong></div>
 {% if p.notes %}<div class="simpleline"><span>Notes</span><span>{{ p.notes }}</span></div>{% endif %}
-</section><div style="margin-top:18px;">
+<div class="simpleline"><span>Justificatif PDF</span><span>
+{% if p.document_path %}<a href="{{ url_for('purchase_document_view',purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
+{% else %}Aucun justificatif{% endif %}</span></div>
+</section>
+<section class="panel" style="margin-top:18px;">
+<h3>Document fournisseur</h3>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('purchase_document_upload',purchase_id=p.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="file" name="document" accept="application/pdf,.pdf" required>
+<button type="submit">{% if p.document_path %}Remplacer le PDF{% else %}Ajouter le PDF{% endif %}</button>
+</form>
+<p class="muted">PDF uniquement · 5 Mo maximum.</p>
+</section>
+<div style="margin-top:18px;">
 {% if p.status=='unpaid' %}<a class="button secondary" href="{{ url_for('purchase_edit',purchase_id=p.id) }}">Modifier</a>
 <form style="display:inline" method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Marquer payée</button></form>
 {% else %}<span class="muted">Facture payée — contenu verrouillé.</span>{% endif %}</div>{% endblock %}

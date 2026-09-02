@@ -1,3 +1,4 @@
+import uuid
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -90,6 +91,31 @@ def _next_quote_number(c):
 
 def _quote_status_label(status):
     return {'draft':'Brouillon','sent':'Envoyé','accepted':'Accepté','refused':'Refusé','converted':'Facturé'}.get(status,status)
+
+
+_PURCHASE_PDF_MAX_BYTES = 5 * 1024 * 1024
+
+def _purchase_pdf_dir():
+    org_id = session.get('org_id')
+    if not org_id:
+        raise RuntimeError("Organisation non sélectionnée")
+    root = UP / "purchase_documents" / str(int(org_id))
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+def _save_purchase_pdf(uploaded):
+    if not uploaded or not uploaded.filename:
+        return None
+    if not uploaded.filename.lower().endswith(".pdf"):
+        raise ValueError("Le justificatif doit être un fichier PDF.")
+    data = uploaded.read(_PURCHASE_PDF_MAX_BYTES + 1)
+    if len(data) > _PURCHASE_PDF_MAX_BYTES:
+        raise ValueError("Le PDF dépasse la taille maximale de 5 Mo.")
+    if not data.startswith(b"%PDF-"):
+        raise ValueError("Le fichier envoyé n'est pas un PDF valide.")
+    stored = uuid.uuid4().hex + ".pdf"
+    (_purchase_pdf_dir() / stored).write_bytes(data)
+    return stored
 
 
 def register(app):
@@ -610,6 +636,62 @@ def register(app):
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         c.close()
         return render_template('purchase_edit.html',p=p,suppliers=suppliers)
+
+    @app.post('/facturation/achats/<int:purchase_id>/justificatif')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_document_upload(purchase_id):
+        c=cx()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        if not p:
+            c.close(); abort(404)
+        try:
+            stored=_save_purchase_pdf(request.files.get('document'))
+        except ValueError as e:
+            c.close()
+            flash(str(e))
+            return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        if not stored:
+            c.close()
+            flash("Sélectionnez un fichier PDF.")
+            return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+
+        old=p['document_path']
+        c.execute("UPDATE purchase_invoices SET document_path=? WHERE id=?",(stored,purchase_id))
+        c.commit(); c.close()
+
+        if old and old != stored:
+            try:
+                (_purchase_pdf_dir() / old).unlink(missing_ok=True)
+            except OSError:
+                pass
+        flash("Justificatif PDF enregistré.")
+        return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+
+    @app.get('/facturation/achats/<int:purchase_id>/justificatif')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_document_view(purchase_id):
+        c=cx()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        c.close()
+        if not p or not p['document_path']:
+            abort(404)
+
+        # document_path contains only a generated UUID filename, never a user path.
+        path=_purchase_pdf_dir() / p['document_path']
+        if not path.is_file():
+            abort(404)
+        data=path.read_bytes()
+        response=Response(data,mimetype='application/pdf')
+        safe_number=re.sub(r'[^A-Za-z0-9._-]+','-',p['invoice_number'] or 'facture')
+        response.headers['Content-Disposition']=f'inline; filename="justificatif-{safe_number}.pdf"'
+        response.headers['X-Content-Type-Options']='nosniff'
+        return response
 
     @app.post('/facturation/achats/<int:purchase_id>/payer')
     @login_required
