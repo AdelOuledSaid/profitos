@@ -536,6 +536,81 @@ def register(app):
         c.close()
         return render_template('purchase_new.html',suppliers=suppliers)
 
+    @app.get('/facturation/fournisseurs/<int:supplier_id>')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def supplier_detail(supplier_id):
+        c=cx()
+        supplier=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        if not supplier:
+            c.close(); abort(404)
+        purchases=c.execute("SELECT * FROM purchase_invoices WHERE supplier_id=? ORDER BY issue_date DESC,id DESC",(supplier_id,)).fetchall()
+        total=sum(float(p['total'] or 0) for p in purchases)
+        unpaid=sum(float(p['total'] or 0) for p in purchases if p['status']=='unpaid')
+        c.close()
+        return render_template('supplier_detail.html',supplier=supplier,purchases=purchases,total=total,unpaid=unpaid)
+
+    @app.get('/facturation/achats/<int:purchase_id>')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_detail(purchase_id):
+        c=cx()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        if not p:
+            c.close(); abort(404)
+        supplier=None
+        if p['supplier_id']:
+            supplier=c.execute("SELECT * FROM suppliers WHERE id=?",(p['supplier_id'],)).fetchone()
+        c.close()
+        return render_template('purchase_detail.html',p=p,supplier=supplier)
+
+    @app.route('/facturation/achats/<int:purchase_id>/modifier',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_edit(purchase_id):
+        c=cx()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        if not p:
+            c.close(); abort(404)
+        if p['status']!='unpaid':
+            c.close()
+            flash("Une facture fournisseur payée est verrouillée.")
+            return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        if request.method=='POST':
+            supplier_id=request.form.get('supplier_id') or None
+            supplier_name=(request.form.get('supplier_name') or '').strip()
+            if supplier_id:
+                s=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+                if s:
+                    supplier_name=s['name']
+            number=(request.form.get('invoice_number') or '').strip()
+            try:
+                subtotal=float(request.form.get('subtotal') or 0)
+                vat=float(request.form.get('vat_amount') or 0)
+            except ValueError:
+                c.close(); flash("Montants invalides.")
+                return redirect(url_for('purchase_edit',purchase_id=purchase_id))
+            if not supplier_name or not number or subtotal<0 or vat<0:
+                c.close(); flash("Fournisseur, numéro et montants valides sont obligatoires.")
+                return redirect(url_for('purchase_edit',purchase_id=purchase_id))
+            c.execute("""UPDATE purchase_invoices SET supplier_id=?,supplier_name=?,invoice_number=?,
+                         issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=?""",
+                      (supplier_id,supplier_name,number,request.form.get('issue_date') or None,
+                       request.form.get('due_date') or None,subtotal,vat,round(subtotal+vat,2),
+                       (request.form.get('notes') or '').strip(),purchase_id))
+            c.commit(); c.close()
+            flash("Facture fournisseur mise à jour.")
+            return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        c.close()
+        return render_template('purchase_edit.html',p=p,suppliers=suppliers)
+
     @app.post('/facturation/achats/<int:purchase_id>/payer')
     @login_required
     @requires_active_plan

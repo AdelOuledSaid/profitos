@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block content %}
+<div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>{{ supplier.name }}</h1><p class="muted">Fiche fournisseur</p></div><a class="button secondary" href="{{ url_for('purchase_list') }}">Retour aux achats</a></div>
+<div class="kpi-grid"><section class="panel"><div class="muted">Total facturé</div><h2>{{ "%.2f"|format(total) }} €</h2></section>
+<section class="panel"><div class="muted">Reste à payer</div><h2>{{ "%.2f"|format(unpaid) }} €</h2></section>
+<section class="panel"><div class="muted">Factures</div><h2>{{ purchases|length }}</h2></section></div>
+<section class="panel" style="margin-top:18px;"><h3>Coordonnées</h3>
+<div class="simpleline"><span>Email</span><span>{{ supplier.email or "—" }}</span></div><div class="simpleline"><span>Téléphone</span><span>{{ supplier.phone or "—" }}</span></div>
+<div class="simpleline"><span>Adresse</span><span>{{ supplier.address or "—" }}</span></div><div class="simpleline"><span>SIRET</span><span>{{ supplier.siret or "—" }}</span></div>
+<div class="simpleline"><span>N° TVA</span><span>{{ supplier.vat_number or "—" }}</span></div></section>
+<section class="panel" style="margin-top:18px;"><h3>Historique des factures</h3>{% if purchases %}{% for p in purchases %}<div class="simpleline">
+<span><a href="{{ url_for('purchase_detail',purchase_id=p.id) }}"><strong>{{ p.invoice_number }}</strong></a> · {{ p.issue_date or "—" }}</span>
+<span>{{ "%.2f"|format(p.total) }} € · {% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</span></div>{% endfor %}{% else %}<p class="muted">Aucune facture fournisseur.</p>{% endif %}</section>{% endblock %}

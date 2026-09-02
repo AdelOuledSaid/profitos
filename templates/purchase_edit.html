@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">FACTURATION</div><h1>Modifier la facture fournisseur</h1>
+<form method="post" class="panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Fournisseur enregistré<select name="supplier_id"><option value="">— Saisie manuelle —</option>{% for s in suppliers %}<option value="{{ s.id }}" {% if p.supplier_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></label>
+<label>Nom du fournisseur<input name="supplier_name" value="{{ p.supplier_name }}"></label>
+<label>N° facture fournisseur<input name="invoice_number" value="{{ p.invoice_number }}" required></label>
+<label>Date de facture<input name="issue_date" type="date" value="{{ p.issue_date or '' }}"></label>
+<label>Date d'échéance<input name="due_date" type="date" value="{{ p.due_date or '' }}"></label>
+<label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" value="{{ p.subtotal }}" required></label>
+<label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ p.vat_amount }}"></label>
+<label>Notes<textarea name="notes">{{ p.notes or '' }}</textarea></label>
+<button>Enregistrer les modifications</button></form>{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block content %}
+<div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>{{ p.invoice_number }}</h1><p class="muted">{{ p.supplier_name }} · facture fournisseur</p></div>
+<a class="button secondary" href="{{ url_for('purchase_list') }}">Retour aux achats</a></div>
+<section class="panel">
+<div class="simpleline"><span>Fournisseur</span><strong>{% if supplier %}<a href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}</strong></div>
+<div class="simpleline"><span>Date de facture</span><strong>{{ p.issue_date or "—" }}</strong></div>
+<div class="simpleline"><span>Échéance</span><strong>{{ p.due_date or "—" }}</strong></div>
+<div class="simpleline"><span>HT</span><strong>{{ "%.2f"|format(p.subtotal) }} €</strong></div>
+<div class="simpleline"><span>TVA</span><strong>{{ "%.2f"|format(p.vat_amount) }} €</strong></div>
+<div class="simpleline"><span>Total TTC</span><strong>{{ "%.2f"|format(p.total) }} €</strong></div>
+<div class="simpleline"><span>Statut</span><strong>{% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</strong></div>
+{% if p.notes %}<div class="simpleline"><span>Notes</span><span>{{ p.notes }}</span></div>{% endif %}
+</section><div style="margin-top:18px;">
+{% if p.status=='unpaid' %}<a class="button secondary" href="{{ url_for('purchase_edit',purchase_id=p.id) }}">Modifier</a>
+<form style="display:inline" method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Marquer payée</button></form>
+{% else %}<span class="muted">Facture payée — contenu verrouillé.</span>{% endif %}</div>{% endblock %}
