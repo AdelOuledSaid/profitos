@@ -13,14 +13,23 @@
   <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Annuler le brouillon</button></form>
   {% elif inv.status=='sent' %}
   <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Renvoyer par email</button></form>
+  {% if display_status=='overdue' %}
+  <form method="post" action="{{ url_for('invoicing_remind',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Relancer le client</button></form>
+  {% endif %}
   <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Marquer comme payée</button></form>
   {% endif %}
   <span class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
   {% if inv.status in ('sent','paid') %}<span class="muted">Facture émise — contenu verrouillé.</span>{% endif %}
-  {% if inv.status in ('sent','paid') and creditable_total > 0.005 %}
-  <a class="button secondary" href="{{ url_for('invoicing_credit_new',invoice_id=inv.id) }}">Créer un avoir</a>
-  {% endif %}
 </div>
+
+{% if reminders %}
+<section class="panel" style="margin-bottom:18px;">
+  <h3>Historique des relances</h3>
+  {% for r in reminders %}
+  <div class="simpleline"><span>Relance n°{{ r.reminder_number }} · {{ r.recipient_email }}</span><span>{{ r.sent_at[:10] }}</span></div>
+  {% endfor %}
+</section>
+{% endif %}
 
 <section class="panel">
   {% for it in items %}
@@ -32,16 +41,6 @@
 </section>
 
 {% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
-{% if credits %}
-<section class="panel" style="margin-top:18px;">
-  <h3>Avoirs liés</h3>
-  {% for cr in credits %}
-  <div class="simpleline"><a href="{{ url_for('invoicing_credit_detail',credit_id=cr.id) }}">{{ cr.credit_number }}</a>
-  <span class="money">-{{ "{:,.2f}".format(cr.total) }} €</span></div>
-  {% endfor %}
-  <div class="simpleline"><strong>Total crédité</strong><strong class="money">-{{ "{:,.2f}".format(credited_total) }} €</strong></div>
-</section>
-{% endif %}
 
 <div class="panel" style="margin-top:18px;background:#0a1529;">
   <h3 style="margin:0 0 6px;font-size:14px;">Lien de consultation client</h3>

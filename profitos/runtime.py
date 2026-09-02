@@ -741,6 +741,14 @@ def init_tenant_db(org_id=None):
         matched_amount REAL NOT NULL,
         matched_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS invoice_reminders(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL,
+        recipient_email TEXT NOT NULL,
+        sent_at TEXT NOT NULL,
+        reminder_number INTEGER NOT NULL,
+        UNIQUE(invoice_id,reminder_number)
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,

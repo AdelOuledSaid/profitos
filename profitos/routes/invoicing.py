@@ -445,9 +445,10 @@ def register(app):
         c=cx()
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? ORDER BY id DESC",(invoice_id,)).fetchall()
         credited_total=_credited_total(c,invoice_id)
+        reminders=c.execute("SELECT * FROM invoice_reminders WHERE invoice_id=? ORDER BY reminder_number DESC",(invoice_id,)).fetchall()
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
-                               credits=credits,credited_total=credited_total,
+                               credits=credits,credited_total=credited_total,reminders=reminders,
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total))
 
     @app.route('/facturation/<int:invoice_id>/pdf')
@@ -505,6 +506,57 @@ def register(app):
             flash(f"Facture envoyée à {inv['client_email']}.")
         else:
             flash(f"Échec de l'envoi : {result.get('error','erreur inconnue')}")
+        c.close()
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+    @app.route('/facturation/<int:invoice_id>/relancer',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_remind(invoice_id):
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        if not inv:
+            c.close(); abort(404)
+        if inv['status']!='sent' or _display_status(inv)!='overdue':
+            c.close()
+            flash("Seule une facture envoyée et échue peut être relancée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        if not inv['client_email']:
+            c.close()
+            flash("Aucun email client renseigné pour cette facture.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        if _credited_total(c,invoice_id) >= float(inv['total'] or 0)-0.01:
+            c.close()
+            flash("Cette facture est entièrement couverte par un avoir et ne peut pas être relancée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+        row=c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=?",(invoice_id,)).fetchone()
+        reminder_number=int(row['n'] or 0)+1
+        org=current_org()
+        base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
+        link=f"{base}{url_for('public_invoice_view',token=inv['public_token'])}"
+        html=render_template(
+            'email_transactional.html',
+            title=f"Relance facture {inv['invoice_number']} — {org['name']}",
+            intro=(f"Sauf erreur de notre part, la facture {inv['invoice_number']} "
+                   f"d'un montant de {inv['total']:,.2f} € TTC, échue le {inv['due_date']}, "
+                   f"reste impayée. Si votre règlement a déjà été effectué, merci de ne pas tenir compte de cette relance."),
+            cta_label='Consulter la facture',cta_url=link,footer=''
+        )
+        result=send_email(inv['client_email'],f"Relance facture {inv['invoice_number']} — {org['name']}",html)
+        if result.get('dry_run'):
+            flash(f"Service email non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
+        elif result.get('sent'):
+            sent_at=now()
+            c.execute("INSERT INTO invoice_reminders(invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?)",
+                      (invoice_id,inv['client_email'],sent_at,reminder_number))
+            c.commit()
+            log_activity('INVOICE_REMINDER_SENT',f"Relance n°{reminder_number} pour {inv['invoice_number']} envoyée à {inv['client_email']}")
+            flash(f"Relance n°{reminder_number} envoyée à {inv['client_email']}.")
+        else:
+            flash(f"Échec de la relance : {result.get('error','erreur inconnue')}")
         c.close()
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
