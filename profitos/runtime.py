@@ -734,15 +734,13 @@ def init_tenant_db(org_id=None):
         last_synced_at TEXT,
         UNIQUE(provider,provider_transaction_id)
     );
-    c.execute("""
     CREATE TABLE IF NOT EXISTS bank_purchase_reconciliations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         bank_transaction_id INTEGER NOT NULL UNIQUE,
         purchase_invoice_id INTEGER NOT NULL UNIQUE,
         matched_amount REAL NOT NULL,
         matched_at TEXT NOT NULL
-    )
-    """)
+    );
     CREATE TABLE IF NOT EXISTS bank_invoice_reconciliations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         bank_transaction_id INTEGER NOT NULL UNIQUE,
