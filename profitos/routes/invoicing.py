@@ -439,6 +439,121 @@ def register(app):
             overdue_count=sum(1 for x in invoices if x['overdue'])
         )
 
+    @app.get('/facturation/achats')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_list():
+        c=cx()
+        purchases=c.execute("SELECT * FROM purchase_invoices ORDER BY due_date ASC, id DESC").fetchall()
+        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        today=date.today()
+        total_unpaid=0.0
+        total_overdue=0.0
+        view=[]
+        for p in purchases:
+            overdue=False
+            if p['status']=='unpaid' and p['due_date']:
+                try:
+                    overdue=datetime.strptime(p['due_date'],'%Y-%m-%d').date() < today
+                except Exception:
+                    overdue=False
+            if p['status']=='unpaid':
+                total_unpaid += float(p['total'] or 0)
+                if overdue:
+                    total_overdue += float(p['total'] or 0)
+            view.append({'row':p,'overdue':overdue})
+        c.close()
+        return render_template('purchase_list.html',purchases=view,suppliers=suppliers,
+                               total_unpaid=total_unpaid,total_overdue=total_overdue)
+
+    @app.route('/facturation/fournisseurs/nouveau',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def supplier_new():
+        if request.method=='POST':
+            name=(request.form.get('name') or '').strip()
+            if not name:
+                flash("Le nom du fournisseur est obligatoire.")
+                return redirect(url_for('supplier_new'))
+            c=cx()
+            c.execute("""INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,created_at)
+                         VALUES(?,?,?,?,?,?,?,?)""",
+                      (name,(request.form.get('email') or '').strip(),
+                       (request.form.get('phone') or '').strip(),
+                       (request.form.get('address') or '').strip(),
+                       (request.form.get('siret') or '').strip(),
+                       (request.form.get('vat_number') or '').strip(),
+                       (request.form.get('notes') or '').strip(),now()))
+            c.commit(); c.close()
+            flash("Fournisseur ajouté.")
+            return redirect(url_for('purchase_list'))
+        return render_template('supplier_new.html')
+
+    @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_new():
+        c=cx()
+        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        if request.method=='POST':
+            supplier_id=request.form.get('supplier_id') or None
+            supplier_name=(request.form.get('supplier_name') or '').strip()
+            if supplier_id:
+                s=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+                if s:
+                    supplier_name=s['name']
+            number=(request.form.get('invoice_number') or '').strip()
+            try:
+                subtotal=float(request.form.get('subtotal') or 0)
+                vat=float(request.form.get('vat_amount') or 0)
+            except ValueError:
+                c.close()
+                flash("Montants invalides.")
+                return redirect(url_for('purchase_new'))
+            total=round(subtotal+vat,2)
+            if not supplier_name or not number or subtotal < 0 or vat < 0:
+                c.close()
+                flash("Fournisseur, numéro et montants valides sont obligatoires.")
+                return redirect(url_for('purchase_new'))
+            c.execute("""INSERT INTO purchase_invoices(
+                         supplier_id,supplier_name,invoice_number,issue_date,due_date,
+                         subtotal,vat_amount,total,status,notes,created_at)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                      (supplier_id,supplier_name,number,
+                       request.form.get('issue_date') or None,
+                       request.form.get('due_date') or None,
+                       subtotal,vat,total,'unpaid',
+                       (request.form.get('notes') or '').strip(),now()))
+            c.commit(); c.close()
+            flash("Facture fournisseur enregistrée.")
+            return redirect(url_for('purchase_list'))
+        c.close()
+        return render_template('purchase_new.html',suppliers=suppliers)
+
+    @app.post('/facturation/achats/<int:purchase_id>/payer')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_mark_paid(purchase_id):
+        c=cx()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        if not p:
+            c.close()
+            abort(404)
+        if p['status']=='unpaid':
+            c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?",(now(),purchase_id))
+            c.commit()
+            flash("Facture fournisseur marquée comme payée.")
+        c.close()
+        return redirect(url_for('purchase_list'))
+
     @app.route('/facturation')
     @login_required
     @requires_active_plan

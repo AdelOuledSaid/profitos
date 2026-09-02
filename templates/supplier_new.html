@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">FACTURATION</div><h1>Nouveau fournisseur</h1>
+<form method="post" class="panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Nom du fournisseur<input name="name" required></label>
+<label>Email<input name="email" type="email"></label>
+<label>Téléphone<input name="phone"></label>
+<label>Adresse<input name="address"></label>
+<label>SIRET<input name="siret"></label>
+<label>N° TVA<input name="vat_number"></label>
+<label>Notes<textarea name="notes"></textarea></label>
+<button>Enregistrer le fournisseur</button></form>{% endblock %}

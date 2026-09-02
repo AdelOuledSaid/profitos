@@ -749,6 +749,32 @@ def init_tenant_db(org_id=None):
         reminder_number INTEGER NOT NULL,
         UNIQUE(invoice_id,reminder_number)
     );
+    CREATE TABLE IF NOT EXISTS suppliers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        address TEXT,
+        siret TEXT,
+        vat_number TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS purchase_invoices(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER,
+        supplier_name TEXT NOT NULL,
+        invoice_number TEXT NOT NULL,
+        issue_date TEXT,
+        due_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        vat_amount REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'unpaid',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        paid_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block content %}
+<div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>Achats & fournisseurs</h1>
+<p class="muted">Suivi des factures fournisseurs et de leurs échéances.</p></div>
+<div><a class="button secondary" href="{{ url_for('supplier_new') }}">+ Fournisseur</a>
+<a class="button" href="{{ url_for('purchase_new') }}">+ Facture d'achat</a></div></div>
+<div class="kpi-grid">
+<section class="panel"><div class="muted">À payer</div><h2>{{ "%.2f"|format(total_unpaid) }} €</h2></section>
+<section class="panel"><div class="muted">En retard</div><h2>{{ "%.2f"|format(total_overdue) }} €</h2></section>
+<section class="panel"><div class="muted">Fournisseurs</div><h2>{{ suppliers|length }}</h2></section>
+</div>
+<section class="panel" style="margin-top:18px;"><h3>Factures fournisseurs</h3>
+{% if purchases %}{% for item in purchases %}{% set p=item.row %}
+<div class="simpleline"><span><strong>{{ p.invoice_number }}</strong> · {{ p.supplier_name }}
+· échéance {{ p.due_date or "—" }}{% if item.overdue %} · <strong>En retard</strong>{% endif %}</span>
+<span><strong>{{ "%.2f"|format(p.total) }} €</strong>
+{% if p.status=='unpaid' %}<form style="display:inline" method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Marquer payée</button></form>
+{% else %} · Payée{% endif %}</span></div>{% endfor %}
+{% else %}<p class="muted">Aucune facture fournisseur.</p>{% endif %}</section>{% endblock %}
