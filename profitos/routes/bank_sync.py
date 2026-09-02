@@ -1,3 +1,5 @@
+import re
+import unicodedata
 import os
 import secrets
 from datetime import datetime
@@ -160,6 +162,37 @@ def _sync_powens(c, row):
     return len(accounts), len(txs)
 
 
+
+def _norm_text(value):
+    value = (value or "").strip().lower()
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+def _name_similarity(client_name, bank_label):
+    """
+    Conservative lexical score based only on tokens actually present in the bank label.
+    Company-form words are ignored. No fuzzy guessing.
+    """
+    ignore = {"sas","sasu","sarl","eurl","sa","sc","sci","societe","entreprise",
+              "company","ltd","limited","inc","gmbh","bv","the","de","du","des","et"}
+    client_tokens = [t for t in _norm_text(client_name).split() if len(t) >= 3 and t not in ignore]
+    label_tokens = set(_norm_text(bank_label).split())
+    if not client_tokens:
+        return 0
+    hits = sum(1 for t in client_tokens if t in label_tokens)
+    if hits == 0:
+        return 0
+    ratio = hits / len(client_tokens)
+    if ratio >= 1:
+        return 30
+    if ratio >= 0.5:
+        return 20
+    return 10
+
+
 def _reconciliation_suggestions(c, transactions):
     reconciled_tx = {
         r["bank_transaction_id"]
@@ -168,6 +201,7 @@ def _reconciliation_suggestions(c, transactions):
     invoices = c.execute(
         "SELECT * FROM outgoing_invoices WHERE status='sent' AND total>0 ORDER BY issue_date,id"
     ).fetchall()
+
     suggestions = []
     for t in transactions:
         if t["id"] in reconciled_tx:
@@ -183,18 +217,49 @@ def _reconciliation_suggestions(c, transactions):
         if not exact:
             continue
 
-        label = (t["label"] or "").lower()
-        numbered = [inv for inv in exact if (inv["invoice_number"] or "").lower() in label]
-        if len(numbered) == 1:
-            candidate = numbered[0]
-        elif len(exact) == 1:
-            candidate = exact[0]
-        else:
-            # Same amount on several invoices and no unique reference in wording:
-            # do not guess.
-            continue
+        label = t["label"] or ""
+        scored = []
+        for inv in exact:
+            score = 60  # exact amount
+            reasons = ["montant exact"]
 
-        suggestions.append({"transaction": t, "invoice": candidate})
+            invoice_ref = (inv["invoice_number"] or "").strip()
+            if invoice_ref and _norm_text(invoice_ref) in _norm_text(label):
+                score += 35
+                reasons.append("n° de facture trouvé dans le libellé")
+
+            name_score = _name_similarity(inv["client_name"], label)
+            if name_score:
+                score += name_score
+                reasons.append("nom client reconnu")
+
+            scored.append((score, inv, reasons))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        best_score, candidate, reasons = scored[0]
+        second_score = scored[1][0] if len(scored) > 1 else None
+
+        # If several invoices have the same amount, require a unique stronger identity signal.
+        if len(scored) > 1:
+            if best_score < 80:
+                continue
+            if second_score is not None and best_score - second_score < 15:
+                continue
+
+        if best_score >= 90:
+            confidence = "Élevée"
+        elif best_score >= 75:
+            confidence = "Moyenne"
+        else:
+            confidence = "Faible"
+
+        suggestions.append({
+            "transaction": t,
+            "invoice": candidate,
+            "score": best_score,
+            "confidence": confidence,
+            "reasons": ", ".join(reasons),
+        })
     return suggestions
 
 

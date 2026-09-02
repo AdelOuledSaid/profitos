@@ -69,9 +69,9 @@
 <section class="panel">
   <div class="eyebrow">RAPPROCHEMENT</div>
   <h2>Paiements à rapprocher</h2>
-  <p class="muted">ProfitOS propose uniquement les correspondances dont le montant bancaire est exactement égal au total d'une facture envoyée. La validation reste manuelle.</p>
+  <p class="muted">ProfitOS compare le montant, le numéro de facture et le nom du client quand ils sont présents dans le libellé bancaire. La validation reste toujours manuelle.</p>
   <div class="table-wrap"><table>
-    <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th></th></tr></thead>
+    <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th>Confiance</th><th></th></tr></thead>
     <tbody>
     {% for m in reconciliation_suggestions %}
       <tr>
@@ -79,6 +79,7 @@
         <td><strong>{{ "{:,.2f}".format(m.transaction.amount or 0) }} €</strong></td>
         <td>{{ m.invoice.invoice_number }}</td>
         <td>{{ m.invoice.client_name }}</td>
+        <td><strong>{{ m.confidence }}</strong><br><span class="muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
         <td>
           <form method="post" action="{{ url_for('banking_reconcile',transaction_id=m.transaction.id,invoice_id=m.invoice.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
