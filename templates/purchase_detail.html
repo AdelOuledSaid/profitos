@@ -1,18 +1,5 @@
 {% extends "base.html" %}{% block content %}
 
-<style>
-.purchase-detail-link{
-  color:#39e58c !important;
-  font-weight:700;
-  text-decoration:none;
-}
-.purchase-detail-link:hover,
-.purchase-detail-link:focus{
-  color:#ffffff !important;
-  text-decoration:underline;
-}
-</style>
-
 <div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>{{ p.invoice_number }}</h1><p class="muted">{{ p.supplier_name }} · facture fournisseur</p></div>
 <a class="button secondary" href="{{ url_for('purchase_list') }}">Retour aux achats</a></div>
 <section class="panel">
