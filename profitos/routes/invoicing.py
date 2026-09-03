@@ -721,8 +721,8 @@ def register(app):
         today = date.today()
         d7 = today + timedelta(days=7)
         d30 = today + timedelta(days=30)
-        with tenant_db() as c:
-            rows = c.execute("""
+        c = cx()
+        rows = c.execute("""
                 SELECT id, supplier_id, supplier_name, invoice_number,
                        issue_date, due_date, total, status, created_at
                 FROM purchase_invoices
@@ -730,6 +730,7 @@ def register(app):
                 ORDER BY CASE WHEN due_date IS NULL OR due_date='' THEN 1 ELSE 0 END,
                          due_date ASC, id DESC
             """).fetchall()
+        c.close()
 
         invoices = []
         total_due = overdue = due_7 = due_30 = 0.0
