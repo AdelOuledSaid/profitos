@@ -357,7 +357,8 @@
           </tr>
         </thead>
         <tbody>
-        {% for inv in purchases|default([]) %}
+        {% for item in purchases|default([]) %}
+          {% set inv = item.row %}
           <tr>
             <td>
               <div class="purchase-supplier">
@@ -379,8 +380,8 @@
             <td>{{ inv.due_date or '—' }}</td>
             <td>
               {% set st = (inv.status or 'unpaid') %}
-              <span class="purchase-status {% if st == 'paid' %}paid{% endif %}">
-                {% if st == 'paid' %}Payée{% else %}À payer{% endif %}
+              <span class="purchase-status {% if st == 'paid' %}paid{% elif item.overdue %}overdue{% endif %}">
+                {% if st == 'paid' %}Payée{% elif item.overdue %}En retard{% else %}À payer{% endif %}
               </span>
             </td>
             <td><strong>{{ '%.2f'|format(inv.total or 0) }} €</strong></td>
