@@ -43,11 +43,14 @@
 {% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
 
 <section class="panel" style="margin-top:18px;">
-  <h3 style="margin:0 0 10px;font-size:15px;">Mentions obligatoires — vérification indicative</h3>
+  <h3 style="margin:0 0 10px;font-size:15px;">Facturation électronique</h3>
   {% if missing_mentions %}
-  <p class="muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} mention{{ 's' if missing_mentions|length > 1 else '' }} à compléter avant l'envoi.</p>
+  <p style="font-size:14px;font-weight:700;color:#ffc149;margin-bottom:6px;">⚠️ Informations manquantes</p>
+  <p class="muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} élément{{ 's' if missing_mentions|length > 1 else '' }} à compléter :</p>
   {% else %}
-  <p style="font-size:12px;margin-bottom:10px;color:#3ddc84;">✓ Toutes les mentions courantes sont renseignées.</p>
+  <p style="font-size:14px;font-weight:700;color:#3ddc84;margin-bottom:6px;">✅ Prête</p>
+  <p class="muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
+  <a class="button secondary" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
   {% endif %}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;">
     {% for check in mention_checks %}
@@ -56,7 +59,7 @@
     </div>
     {% endfor %}
   </div>
-  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X.</p>
+  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. Cette étape prépare et vérifie les données ; rien n'est encore transmis à l'administration ou à une plateforme agréée.</p>
 </section>
 
 <div class="panel" style="margin-top:18px;background:#0a1529;">

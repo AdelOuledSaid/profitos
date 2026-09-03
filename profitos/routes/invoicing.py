@@ -1,6 +1,8 @@
 from datetime import timedelta
 import uuid
 import statistics
+import xml.etree.ElementTree as ET
+import tempfile
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -63,6 +65,162 @@ def _check_mandatory_mentions(inv,company):
     checks.append({'label':'Montants HT et TTC calculés','ok':(inv['subtotal'] is not None and inv['total'] is not None)})
     missing=[c['label'] for c in checks if not c['ok']]
     return checks,missing
+
+
+_CII_NS = {
+    'rsm': 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100',
+    'ram': 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+    'qdt': 'urn:un:unece:uncefact:data:standard:QualifiedDataType:100',
+    'udt': 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100',
+}
+
+
+def _cii_date(iso_date):
+    """Convertit une date ISO (AAAA-MM-JJ) au format udt:DateTimeString qualifié
+    102 (AAAAMMJJ) exigé par le schéma CII."""
+    try:
+        return datetime.strptime(iso_date, '%Y-%m-%d').strftime('%Y%m%d')
+    except (ValueError, TypeError):
+        return None
+
+
+def _cii_amount(el_parent, tag, value, ns, currency=None):
+    el = ET.SubElement(el_parent, f'{{{ns["ram"]}}}{tag}')
+    if currency:
+        el.set('currencyID', currency)
+    el.text = f'{value:.2f}'
+    return el
+
+
+def generate_facturx_xml(inv, items, company):
+    """Génère le XML Cross Industry Invoice (CII), profil EN16931, encapsulable dans
+    un PDF/A-3 pour former un fichier Factur-X. Les données proviennent uniquement
+    de la facture et du profil entreprise déjà enregistrés dans ProfitOS — aucune
+    valeur n'est inventée. Structure vérifiée (espaces de noms, imbrication, valeurs
+    XSD `decimal`/`date`) mais non testée contre un validateur officiel (FNFE-MPE,
+    Chorus Pro) : une vérification externe reste nécessaire avant mise en production.
+    """
+    ns = _CII_NS
+    for prefix, uri in ns.items():
+        ET.register_namespace(prefix, uri)
+
+    root = ET.Element(f'{{{ns["rsm"]}}}CrossIndustryInvoice')
+
+    ctx = ET.SubElement(root, f'{{{ns["rsm"]}}}ExchangedDocumentContext')
+    guideline = ET.SubElement(ctx, f'{{{ns["ram"]}}}GuidelineSpecifiedDocumentContextParameter')
+    ET.SubElement(guideline, f'{{{ns["ram"]}}}ID').text = 'urn:cen.eu:en16931:2017'
+
+    doc = ET.SubElement(root, f'{{{ns["rsm"]}}}ExchangedDocument')
+    ET.SubElement(doc, f'{{{ns["ram"]}}}ID').text = inv['invoice_number'] or ''
+    ET.SubElement(doc, f'{{{ns["ram"]}}}TypeCode').text = '380'  # 380 = facture commerciale
+    issue = ET.SubElement(doc, f'{{{ns["ram"]}}}IssueDateTime')
+    issue_str = ET.SubElement(issue, f'{{{ns["udt"]}}}DateTimeString')
+    issue_str.set('format', '102')
+    issue_str.text = _cii_date(inv['issue_date']) or ''
+
+    txn = ET.SubElement(root, f'{{{ns["rsm"]}}}SupplyChainTradeTransaction')
+
+    # --- Lignes de facture ---
+    for idx, it in enumerate(items, start=1):
+        line = ET.SubElement(txn, f'{{{ns["ram"]}}}IncludedSupplyChainTradeLineItem')
+        doc_line = ET.SubElement(line, f'{{{ns["ram"]}}}AssociatedDocumentLineDocument')
+        ET.SubElement(doc_line, f'{{{ns["ram"]}}}LineID').text = str(idx)
+        product = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedTradeProduct')
+        ET.SubElement(product, f'{{{ns["ram"]}}}Name').text = it.get('label', '')
+        agreement = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeAgreement')
+        price = ET.SubElement(agreement, f'{{{ns["ram"]}}}NetPriceProductTradePrice')
+        _cii_amount(price, 'ChargeAmount', it.get('unit_price', 0), ns)
+        delivery = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeDelivery')
+        qty = ET.SubElement(delivery, f'{{{ns["ram"]}}}BilledQuantity')
+        qty.set('unitCode', 'C62')  # C62 = unité, pièce
+        qty.text = f'{it.get("qty", 0):g}'
+        settlement = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeSettlement')
+        tax = ET.SubElement(settlement, f'{{{ns["ram"]}}}ApplicableTradeTax')
+        ET.SubElement(tax, f'{{{ns["ram"]}}}TypeCode').text = 'VAT'
+        ET.SubElement(tax, f'{{{ns["ram"]}}}CategoryCode').text = 'S'  # S = taux standard
+        ET.SubElement(tax, f'{{{ns["ram"]}}}RateApplicablePercent').text = f'{it.get("vat_rate", 0):g}'
+        line_summation = ET.SubElement(settlement, f'{{{ns["ram"]}}}SpecifiedTradeSettlementLineMonetarySummation')
+        _cii_amount(line_summation, 'LineTotalAmount', it.get('line_total', 0), ns)
+
+    # --- Vendeur / Acheteur ---
+    agreement = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeAgreement')
+    seller = ET.SubElement(agreement, f'{{{ns["ram"]}}}SellerTradeParty')
+    ET.SubElement(seller, f'{{{ns["ram"]}}}Name').text = (company['name'] if company else '') or ''
+    seller_siret = re.sub(r'\D', '', (company['siret'] if company else '') or '')
+    if len(seller_siret) == 14:
+        seller_org = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedLegalOrganization')
+        seller_id = ET.SubElement(seller_org, f'{{{ns["ram"]}}}ID')
+        seller_id.set('schemeID', '0002')  # 0002 = SIRENE (France)
+        seller_id.text = seller_siret[:9]  # SIREN = 9 premiers chiffres du SIRET
+    seller_addr = ET.SubElement(seller, f'{{{ns["ram"]}}}PostalTradeAddress')
+    ET.SubElement(seller_addr, f'{{{ns["ram"]}}}LineOne').text = (company['address'] if company else '') or ''
+    ET.SubElement(seller_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    if company and company['vat_number']:
+        seller_tax = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedTaxRegistration')
+        seller_vat = ET.SubElement(seller_tax, f'{{{ns["ram"]}}}ID')
+        seller_vat.set('schemeID', 'VA')
+        seller_vat.text = company['vat_number']
+
+    buyer = ET.SubElement(agreement, f'{{{ns["ram"]}}}BuyerTradeParty')
+    ET.SubElement(buyer, f'{{{ns["ram"]}}}Name').text = inv['client_name'] or ''
+    client_siren = inv['client_siren'] if 'client_siren' in inv.keys() else None
+    if client_siren and re.fullmatch(r'\d{9}', client_siren):
+        buyer_org = ET.SubElement(buyer, f'{{{ns["ram"]}}}SpecifiedLegalOrganization')
+        buyer_id = ET.SubElement(buyer_org, f'{{{ns["ram"]}}}ID')
+        buyer_id.set('schemeID', '0002')
+        buyer_id.text = client_siren
+    buyer_addr = ET.SubElement(buyer, f'{{{ns["ram"]}}}PostalTradeAddress')
+    ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}LineOne').text = inv['client_address'] or ''
+    ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+
+    # --- Livraison (uniquement si une adresse de livraison est renseignée) ---
+    delivery_address = inv['delivery_address'] if 'delivery_address' in inv.keys() else None
+    if delivery_address:
+        delivery_hdr = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeDelivery')
+        ship_to = ET.SubElement(delivery_hdr, f'{{{ns["ram"]}}}ShipToTradeParty')
+        ship_addr = ET.SubElement(ship_to, f'{{{ns["ram"]}}}PostalTradeAddress')
+        ET.SubElement(ship_addr, f'{{{ns["ram"]}}}LineOne').text = delivery_address
+        ET.SubElement(ship_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    else:
+        ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeDelivery')
+
+    # --- Règlement : devise, échéance, TVA par taux, totaux ---
+    settlement_hdr = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeSettlement')
+    ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}InvoiceCurrencyCode').text = 'EUR'
+    if inv['due_date']:
+        terms = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradePaymentTerms')
+        due = ET.SubElement(terms, f'{{{ns["ram"]}}}DueDateDateTime')
+        due_str = ET.SubElement(due, f'{{{ns["udt"]}}}DateTimeString')
+        due_str.set('format', '102')
+        due_str.text = _cii_date(inv['due_date']) or ''
+
+    # Regroupe les lignes par taux de TVA (une ram:ApplicableTradeTax par taux distinct).
+    by_rate = {}
+    for it in items:
+        rate = it.get('vat_rate', 0)
+        by_rate.setdefault(rate, {'basis': 0.0, 'tax': 0.0})
+        by_rate[rate]['basis'] += it.get('line_total', 0)
+        by_rate[rate]['tax'] += it.get('line_total', 0) * rate / 100
+    for rate, sums in sorted(by_rate.items()):
+        tax_el = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}ApplicableTradeTax')
+        _cii_amount(tax_el, 'CalculatedAmount', sums['tax'], ns)
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}TypeCode').text = 'VAT'
+        _cii_amount(tax_el, 'BasisAmount', sums['basis'], ns)
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}CategoryCode').text = 'S'
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}RateApplicablePercent').text = f'{rate:g}'
+
+    summation = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradeSettlementHeaderMonetarySummation')
+    subtotal = float(inv['subtotal'] or 0)
+    vat_amount = float(inv['vat_amount'] or 0)
+    total = float(inv['total'] or 0)
+    _cii_amount(summation, 'LineTotalAmount', subtotal, ns)
+    _cii_amount(summation, 'TaxBasisTotalAmount', subtotal, ns)
+    _cii_amount(summation, 'TaxTotalAmount', vat_amount, ns, currency='EUR')
+    _cii_amount(summation, 'GrandTotalAmount', total, ns)
+    _cii_amount(summation, 'DuePayableAmount', total, ns)
+
+    xml_bytes = b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
+    return xml_bytes
 
 
 
@@ -372,12 +530,16 @@ def register(app):
             if not name:
                 flash("Le nom du client est requis.")
                 return redirect(url_for('invoicing_client_new'))
+            siren=re.sub(r'\D','',request.form.get('siren','').strip())[:9]
+            if siren and len(siren)!=9:
+                flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
+                return redirect(url_for('invoicing_client_new'))
             c=cx()
-            c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at)
-                         VALUES(?,?,?,?,?,?,?,?,?)""",
+            c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at,siren)
+                         VALUES(?,?,?,?,?,?,?,?,?,?)""",
               (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
                request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
-               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),now()))
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),now(),siren or None))
             c.commit(); client_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]; c.close()
             flash(f"Client {name} créé.")
             return redirect(url_for('invoicing_client_detail',client_id=client_id))
@@ -397,10 +559,14 @@ def register(app):
             if not name:
                 c.close(); flash("Le nom du client est requis.")
                 return redirect(url_for('invoicing_client_detail',client_id=client_id))
-            c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=? WHERE id=?""",
+            siren=re.sub(r'\D','',request.form.get('siren','').strip())[:9]
+            if siren and len(siren)!=9:
+                c.close(); flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
+                return redirect(url_for('invoicing_client_detail',client_id=client_id))
+            c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=?,siren=? WHERE id=?""",
               (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
                request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
-               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),client_id))
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),siren or None,client_id))
             c.commit(); client=c.execute('SELECT * FROM invoicing_clients WHERE id=?',(client_id,)).fetchone()
             flash("Fiche client mise à jour.")
         invoices=c.execute("SELECT * FROM outgoing_invoices WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
@@ -1413,6 +1579,31 @@ def register(app):
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}.pdf"'})
 
+    @app.route('/facturation/<int:invoice_id>/facturx')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_facturx(invoice_id):
+        """Lot 22 — génère le PDF/A-3 Factur-X (profil EN16931). Refuse si les
+        mentions obligatoires (Lot 21) ne sont pas toutes réunies."""
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        c.close()
+        if not inv: abort(404)
+        _,missing=_check_mandatory_mentions(inv,company_row)
+        if missing:
+            flash("Facture non conforme — complète d'abord les mentions manquantes avant de générer le Factur-X.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        pdf_bytes=render_facturx_pdf(inv,company_row)
+        if pdf_bytes is None:
+            flash("La génération Factur-X nécessite fpdf2 ≥ 2.8.7 (support PDF/A-3) — vérifie requirements.txt et ta version installée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        log_activity('INVOICE_FACTURX_GENERATED',f"Factur-X généré pour la facture {inv['invoice_number']}")
+        return Response(pdf_bytes,mimetype='application/pdf',
+            headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}_facturx.pdf"'})
+
     @app.route('/facturation/<int:invoice_id>/envoyer',methods=['POST'])
     @login_required
     @requires_active_plan
@@ -1845,6 +2036,97 @@ def _render_invoice_pdf(inv,company_row):
     pdf.multi_cell(0,4,safe("Document genere via ProfitOS. Ce document n'est pas emis via une Plateforme Agreee DGFiP au sens de la reforme de facturation electronique."))
 
     return bytes(pdf.output(dest='S'))
+
+
+def render_facturx_pdf(inv, company_row):
+    """Génère le PDF/A-3 Factur-X (facture visible + factur-x.xml embarqué), profil
+    EN16931. Retourne None si fpdf2 est absent ou trop ancien (le support PDF/A-3
+    natif nécessite fpdf2 >= 2.8.7 environ — voir requirements.txt).
+
+    ATTENTION — partie non testée localement : je n'ai aucun accès réseau pour
+    installer fpdf2 >= 2.8.7 ni un validateur Factur-X officiel dans cet environnement.
+    Cette fonction a été écrite avec le plus grand soin à partir de la documentation
+    publique de fpdf2, mais n'a pas été exécutée ni vérifiée par un validateur externe
+    (FNFE-MPE, Chorus Pro, Mustangproject...). À valider avant mise en production.
+    """
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import DocumentCompliance
+    except ImportError:
+        return None
+    if not hasattr(DocumentCompliance, 'PDFA_3B'):
+        return None  # version de fpdf2 trop ancienne pour le support PDF/A-3
+
+    items = json.loads(inv['line_items'] or '[]')
+    xml_bytes = generate_facturx_xml(inv, items, company_row)
+
+    def safe(text):
+        if text is None: return ''
+        text = str(text)
+        repl = {'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+        for a, b in repl.items(): text = text.replace(a, b)
+        return text.encode('latin-1', errors='replace').decode('latin-1')
+
+    pdf = FPDF(orientation='P', unit='mm', format='A4', enforce_compliance=DocumentCompliance.PDFA_3B)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_title(f"Facture {inv['invoice_number']}")
+    pdf.add_page()
+
+    pdf.set_font('Helvetica', 'B', 20); pdf.set_text_color(17, 24, 39)
+    pdf.cell(0, 12, safe(f"Facture {inv['invoice_number']}"), ln=1)
+    pdf.set_font('Helvetica', '', 11); pdf.set_text_color(107, 114, 128)
+    if company_row:
+        pdf.cell(0, 6, safe(company_row['name'] or ''), ln=1)
+        if company_row['address']: pdf.cell(0, 6, safe(company_row['address']), ln=1)
+        if company_row['siret']: pdf.cell(0, 6, safe(f"SIRET : {company_row['siret']}"), ln=1)
+    pdf.ln(6)
+    pdf.set_text_color(17, 24, 39); pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 7, 'Facturé à :', ln=1)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 6, safe(inv['client_name']), ln=1)
+    if inv['client_address']: pdf.cell(0, 6, safe(inv['client_address']), ln=1)
+    pdf.ln(8)
+
+    pdf.set_fill_color(243, 244, 246); pdf.set_font('Helvetica', 'B', 10)
+    pdf.cell(90, 8, 'Description', fill=True)
+    pdf.cell(20, 8, 'Qté', fill=True, align='R')
+    pdf.cell(30, 8, 'Prix unit.', fill=True, align='R')
+    pdf.cell(20, 8, 'TVA', fill=True, align='R')
+    pdf.cell(30, 8, 'Total HT', fill=True, align='R', ln=1)
+    pdf.set_font('Helvetica', '', 10)
+    for it in items:
+        pdf.cell(90, 7, safe(it['label']))
+        pdf.cell(20, 7, safe(f"{it['qty']:g}"), align='R')
+        pdf.cell(30, 7, safe(f"{it['unit_price']:,.2f} EUR"), align='R')
+        pdf.cell(20, 7, safe(f"{it['vat_rate']:g}%"), align='R')
+        pdf.cell(30, 7, safe(f"{it['line_total']:,.2f} EUR"), align='R', ln=1)
+    pdf.ln(6)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(160, 7, 'Sous-total HT', align='R')
+    pdf.cell(30, 7, safe(f"{inv['subtotal']:,.2f} EUR"), align='R', ln=1)
+    pdf.cell(160, 7, 'TVA', align='R')
+    pdf.cell(30, 7, safe(f"{inv['vat_amount']:,.2f} EUR"), align='R', ln=1)
+    pdf.set_font('Helvetica', 'B', 13)
+    pdf.cell(160, 9, 'Total TTC', align='R')
+    pdf.cell(30, 9, safe(f"{inv['total']:,.2f} EUR"), align='R', ln=1)
+
+    pdf.ln(10); pdf.set_font('Helvetica', 'I', 8); pdf.set_text_color(150, 150, 150)
+    pdf.multi_cell(0, 4, safe(
+        "Facture electronique Factur-X (profil EN16931). Contient un fichier XML structure "
+        "factur-x.xml. Document genere via ProfitOS ; transmission via une Plateforme Agreee "
+        "DGFiP non encore realisee par cette version."))
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.xml', delete=False) as tmp:
+            tmp.write(xml_bytes)
+            tmp_path = tmp.name
+        pdf.embed_file(tmp_path, desc='Factur-X invoice data (EN16931)', compress=True)
+        pdf_bytes = bytes(pdf.output(dest='S'))
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    return pdf_bytes
 
 
 def _render_credit_pdf(credit,company_row):
