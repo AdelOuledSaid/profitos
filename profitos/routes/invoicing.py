@@ -32,6 +32,39 @@ def _totals(items):
     return subtotal,vat_amount,subtotal+vat_amount
 
 
+def _check_mandatory_mentions(inv,company):
+    """Vérification des mentions obligatoires les plus courantes pour une facture
+    française (Code de commerce art. L441-9, CGI). Vérification indicative — ne
+    remplace pas un avis juridique ou comptable professionnel, et ne constitue pas
+    une certification de conformité Factur-X."""
+    checks=[]
+    checks.append({'label':"Nom de l'émetteur",'ok':bool(company and company['name'])})
+    checks.append({'label':"Adresse de l'émetteur",'ok':bool(company and company['address'])})
+    siret=(company['siret'] if company else '') or ''
+    checks.append({'label':"SIRET de l'émetteur (14 chiffres)",'ok':bool(re.fullmatch(r'\d{14}',re.sub(r'\D','',siret)))})
+    checks.append({'label':"N° TVA intracommunautaire de l'émetteur",'ok':bool(company and company['vat_number'])})
+    checks.append({'label':'Nom du client','ok':bool(inv['client_name'])})
+    checks.append({'label':'Adresse du client','ok':bool(inv['client_address'])})
+    siren=(inv['client_siren'] if 'client_siren' in inv.keys() else '') or ''
+    checks.append({'label':'SIREN du client (9 chiffres)','ok':bool(re.fullmatch(r'\d{9}',siren))})
+    checks.append({'label':'Numéro de facture unique','ok':bool(inv['invoice_number'])})
+    checks.append({'label':"Date d'émission",'ok':bool(inv['issue_date'])})
+    checks.append({'label':"Date d'échéance / conditions de règlement",'ok':bool(inv['due_date'])})
+    op_nature=inv['operation_nature'] if 'operation_nature' in inv.keys() else None
+    checks.append({'label':"Nature de l'opération (biens / services / mixte)",'ok':bool(op_nature)})
+    if op_nature in ('biens','mixte'):
+        delivery=inv['delivery_address'] if 'delivery_address' in inv.keys() else None
+        checks.append({'label':'Adresse de livraison (requise pour une livraison de biens)','ok':bool(delivery)})
+    try:
+        items=json.loads(inv['line_items'] or '[]')
+    except (json.JSONDecodeError,TypeError):
+        items=[]
+    checks.append({'label':'Au moins une ligne avec désignation, quantité, prix unitaire et taux de TVA','ok':bool(items)})
+    checks.append({'label':'Montants HT et TTC calculés','ok':(inv['subtotal'] is not None and inv['total'] is not None)})
+    missing=[c['label'] for c in checks if not c['ok']]
+    return checks,missing
+
+
 
 def _display_status(inv):
     status=inv['status']
@@ -1297,6 +1330,11 @@ def register(app):
             client_name=request.form.get('client_name','').strip()
             client_address=request.form.get('client_address','').strip()
             client_email=request.form.get('client_email','').strip()
+            client_siren=re.sub(r'\D','',request.form.get('client_siren','').strip())[:9]
+            operation_nature=request.form.get('operation_nature','services')
+            if operation_nature not in ('biens','services','mixte'): operation_nature='services'
+            vat_on_debits=1 if request.form.get('vat_on_debits')=='on' else 0
+            delivery_address=request.form.get('delivery_address','').strip()
             due_date=request.form.get('due_date','').strip()
             notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
@@ -1305,6 +1343,10 @@ def register(app):
                 c.close()
                 flash('Nom du client et au moins une ligne de facture requis.')
                 return redirect(url_for('invoicing_new'))
+            if client_siren and len(client_siren)!=9:
+                c.close()
+                flash('Le SIREN client doit comporter exactement 9 chiffres (laisse vide si inconnu).')
+                return redirect(url_for('invoicing_new'))
 
             subtotal,vat_amount,total=_totals(items)
             invoice_number=_next_invoice_number(c)
@@ -1312,10 +1354,12 @@ def register(app):
             token=secrets.token_urlsafe(20)
 
             c.execute('''INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,
-                         line_items,subtotal,vat_amount,total,notes,status,public_token,created_at)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?)''',
+                         line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,
+                         client_siren,operation_nature,vat_on_debits,delivery_address)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?)''',
                 (invoice_number,client_name,client_address,client_email,issue_date,due_date or None,
-                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,token,now()))
+                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,token,now(),
+                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None))
             c.commit()
             new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
@@ -1337,9 +1381,11 @@ def register(app):
     def invoicing_detail(invoice_id):
         c=cx()
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         c.close()
         if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
+        mention_checks,missing_mentions=_check_mandatory_mentions(inv,company_row)
         c=cx()
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? ORDER BY id DESC",(invoice_id,)).fetchall()
         credited_total=_credited_total(c,invoice_id)
@@ -1347,7 +1393,8 @@ def register(app):
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,
-                               creditable_total=max(0,float(inv['total'] or 0)-credited_total))
+                               creditable_total=max(0,float(inv['total'] or 0)-credited_total),
+                               mention_checks=mention_checks,missing_mentions=missing_mentions)
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required

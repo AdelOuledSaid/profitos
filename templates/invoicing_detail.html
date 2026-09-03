@@ -42,6 +42,23 @@
 
 {% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
 
+<section class="panel" style="margin-top:18px;">
+  <h3 style="margin:0 0 10px;font-size:15px;">Mentions obligatoires — vérification indicative</h3>
+  {% if missing_mentions %}
+  <p class="muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} mention{{ 's' if missing_mentions|length > 1 else '' }} à compléter avant l'envoi.</p>
+  {% else %}
+  <p style="font-size:12px;margin-bottom:10px;color:#3ddc84;">✓ Toutes les mentions courantes sont renseignées.</p>
+  {% endif %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;">
+    {% for check in mention_checks %}
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:{{ '#3ddc84' if check.ok else '#ff8b8b' }};">
+      <span>{{ '✓' if check.ok else '✗' }}</span><span>{{ check.label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X.</p>
+</section>
+
 <div class="panel" style="margin-top:18px;background:#0a1529;">
   <h3 style="margin:0 0 6px;font-size:14px;">Lien de consultation client</h3>
   <code style="display:block;padding:8px;background:#000;border-radius:6px;word-break:break-all;font-size:12px;">{{ request.host_url }}facture/{{ inv.public_token }}</code>

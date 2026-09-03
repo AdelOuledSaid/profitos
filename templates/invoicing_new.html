@@ -13,7 +13,15 @@
     <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
     <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
     <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
+    <label>SIREN du client<input name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>
     <label>Date d'échéance<input type="date" name="due_date"></label>
+    <label>Nature de l'opération<select name="operation_nature">
+      <option value="services">Prestation de services</option>
+      <option value="biens">Livraison de biens</option>
+      <option value="mixte">Mixte (biens + services)</option>
+    </select></label>
+    <label class="wide">Adresse de livraison <span style="font-weight:400;">(si différente, requise pour une vente de biens)</span><input name="delivery_address"></label>
+    <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="vat_on_debits" style="width:auto;"> TVA sur les débits (plutôt que sur les encaissements)</label>
     <div></div>
 
     <div class="wide">
