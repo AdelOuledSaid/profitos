@@ -1625,6 +1625,7 @@ def register(app):
         if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
         mention_checks,missing_mentions=_check_mandatory_mentions(inv,company_row)
+        emitter_missing_count=sum(1 for m in missing_mentions if 'émetteur' in m)
         c=cx()
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? ORDER BY id DESC",(invoice_id,)).fetchall()
         credited_total=_credited_total(c,invoice_id)
@@ -1633,7 +1634,8 @@ def register(app):
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total),
-                               mention_checks=mention_checks,missing_mentions=missing_mentions)
+                               mention_checks=mention_checks,missing_mentions=missing_mentions,
+                               emitter_missing_count=emitter_missing_count)
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required

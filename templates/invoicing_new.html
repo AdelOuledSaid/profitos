@@ -8,12 +8,12 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="wide"><label>Client enregistré
 <select id="saved-client"><option value="">— Saisie manuelle —</option>
-{% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}">{{ c.name }}</option>{% endfor %}
-</select></label><p class="muted"><a href="{{ url_for('invoicing_client_new') }}">+ Ajouter un nouveau client</a></p></div>
+{% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}" data-siren="{{ (c.siren or '')|e }}">{{ c.name }}</option>{% endfor %}
+</select></label><a class="button secondary" href="{{ url_for('invoicing_client_new') }}" style="display:inline-block;margin-top:10px;">+ Ajouter un nouveau client</a></div>
     <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
     <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
     <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
-    <label>SIREN du client<input name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>
+    <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>
     <label>Date d'échéance<input type="date" name="due_date"></label>
     <label>Nature de l'opération<select name="operation_nature">
       <option value="services">Prestation de services</option>

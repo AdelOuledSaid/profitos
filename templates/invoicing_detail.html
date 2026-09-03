@@ -47,6 +47,9 @@
   {% if missing_mentions %}
   <p style="font-size:14px;font-weight:700;color:#ffc149;margin-bottom:6px;">⚠️ Informations manquantes</p>
   <p class="muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} élément{{ 's' if missing_mentions|length > 1 else '' }} à compléter :</p>
+  {% if emitter_missing_count %}
+  <a class="button secondary" href="{{ url_for('company') }}" style="display:inline-block;margin-bottom:14px;">Compléter le profil entreprise ({{ emitter_missing_count }} élément{{ 's' if emitter_missing_count > 1 else '' }})</a>
+  {% endif %}
   {% else %}
   <p style="font-size:14px;font-weight:700;color:#3ddc84;margin-bottom:6px;">✅ Prête</p>
   <p class="muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
