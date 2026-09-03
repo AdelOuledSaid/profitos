@@ -1,3 +1,4 @@
+from datetime import timedelta
 import uuid
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
@@ -709,6 +710,58 @@ def register(app):
         unpaid=sum(float(p['total'] or 0) for p in purchases if p['status']=='unpaid')
         c.close()
         return render_template('supplier_detail.html',supplier=supplier,purchases=purchases,total=total,unpaid=unpaid)
+
+
+    @app.get('/facturation/dettes-fournisseurs')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def supplier_debts():
+        today = date.today()
+        d7 = today + timedelta(days=7)
+        d30 = today + timedelta(days=30)
+        with tenant_db() as c:
+            rows = c.execute("""
+                SELECT id, supplier_id, supplier_name, invoice_number,
+                       issue_date, due_date, total, status, created_at
+                FROM purchase_invoices
+                WHERE COALESCE(status, 'unpaid') != 'paid'
+                ORDER BY CASE WHEN due_date IS NULL OR due_date='' THEN 1 ELSE 0 END,
+                         due_date ASC, id DESC
+            """).fetchall()
+
+        invoices = []
+        total_due = overdue = due_7 = due_30 = 0.0
+        for row in rows:
+            inv = dict(row)
+            amount = float(inv.get('total') or 0)
+            total_due += amount
+            due = None
+            if inv.get('due_date'):
+                try:
+                    due = date.fromisoformat(str(inv['due_date'])[:10])
+                except Exception:
+                    pass
+            inv['is_overdue'] = bool(due and due < today)
+            inv['due_in_7'] = bool(due and today <= due <= d7)
+            inv['due_in_30'] = bool(due and today <= due <= d30)
+            if inv['is_overdue']:
+                overdue += amount
+            if inv['due_in_7']:
+                due_7 += amount
+            if inv['due_in_30']:
+                due_30 += amount
+            invoices.append(inv)
+
+        return render_template(
+            'supplier_debts.html',
+            invoices=invoices,
+            total_due=total_due,
+            overdue=overdue,
+            due_7=due_7,
+            due_30=due_30,
+        )
 
     @app.get('/facturation/achats/<int:purchase_id>')
     @login_required

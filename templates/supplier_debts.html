@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">ACHATS</div>
+    <h1>Dettes fournisseurs</h1>
+    <p class="muted">Factures fournisseurs restant à payer et prochaines échéances.</p>
+  </div>
+  <a class="btn secondary" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
+</div>
+
+<div class="grid cards-4" style="margin-top:18px;">
+  <div class="panel"><div class="muted">À payer</div><h2>{{ '%.2f'|format(total_due) }} €</h2></div>
+  <div class="panel"><div class="muted">En retard</div><h2>{{ '%.2f'|format(overdue) }} €</h2></div>
+  <div class="panel"><div class="muted">À 7 jours</div><h2>{{ '%.2f'|format(due_7) }} €</h2></div>
+  <div class="panel"><div class="muted">À 30 jours</div><h2>{{ '%.2f'|format(due_30) }} €</h2></div>
+</div>
+
+<section class="panel" style="margin-top:18px;">
+  <h2>Factures à payer</h2>
+  {% if invoices %}
+  <div style="overflow-x:auto">
+    <table style="width:100%">
+      <thead><tr><th>Fournisseur</th><th>Facture</th><th>Échéance</th><th>Montant</th><th>Situation</th></tr></thead>
+      <tbody>
+      {% for inv in invoices %}
+        <tr>
+          <td>{{ inv.supplier_name }}</td>
+          <td><a href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+          <td>{{ inv.due_date or '—' }}</td>
+          <td>{{ '%.2f'|format(inv.total or 0) }} €</td>
+          <td>{% if inv.is_overdue %}<strong>En retard</strong>{% elif inv.due_in_7 %}Sous 7 jours{% elif inv.due_in_30 %}Sous 30 jours{% else %}À venir{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">Aucune dette fournisseur en cours.</p>
+  {% endif %}
+</section>
+{% endblock %}

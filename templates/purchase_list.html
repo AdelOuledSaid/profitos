@@ -1,4 +1,6 @@
 {% extends "base.html" %}{% block content %}
+<p><a class="btn secondary" href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a></p>
+
 <div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>Achats & fournisseurs</h1>
 <p class="muted">Suivi des factures fournisseurs et de leurs échéances.</p></div>
 <div><a class="button secondary" href="{{ url_for('supplier_new') }}">+ Fournisseur</a>
@@ -10,8 +12,7 @@
 </div>
 <section class="panel" style="margin-top:18px;"><h3>Factures fournisseurs</h3>
 {% if purchases %}{% for item in purchases %}{% set p=item.row %}
-<div class="simpleline"><span><a href="{{ url_for('purchase_detail',purchase_id=p.id) }}"><strong>{{ p.invoice_number }}</strong></a> ·
-{% if p.supplier_id %}<a href="{{ url_for('supplier_detail',supplier_id=p.supplier_id) }}">{{ p.supplier_name }}</a>{% else %}{{ p.supplier_name }}{% endif %}
+<div class="simpleline"><span><strong>{{ p.invoice_number }}</strong> · {{ p.supplier_name }}
 · échéance {{ p.due_date or "—" }}{% if item.overdue %} · <strong>En retard</strong>{% endif %}</span>
 <span><strong>{{ "%.2f"|format(p.total) }} €</strong>
 {% if p.status=='unpaid' %}<form style="display:inline" method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}">
