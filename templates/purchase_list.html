@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block content %}
-<p><a class="btn secondary" href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a></p>
+<p><a class="btn secondary" href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a>
+<a class="btn secondary" href="{{ url_for('supplier_payment_forecast') }}">Calendrier paiements</a></p>
 
 <div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>Achats & fournisseurs</h1>
 <p class="muted">Suivi des factures fournisseurs et de leurs échéances.</p></div>

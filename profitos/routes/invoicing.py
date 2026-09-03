@@ -764,6 +764,106 @@ def register(app):
             due_30=due_30,
         )
 
+
+    @app.get('/facturation/previsions-paiements-fournisseurs')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def supplier_payment_forecast():
+        today = date.today()
+        d7 = today + timedelta(days=7)
+        d30 = today + timedelta(days=30)
+
+        c = cx()
+        rows = c.execute("""
+            SELECT id, supplier_id, supplier_name, invoice_number,
+                   issue_date, due_date, total, status, created_at
+            FROM purchase_invoices
+            WHERE COALESCE(status, 'unpaid') != 'paid'
+            ORDER BY
+              CASE WHEN due_date IS NULL OR due_date='' THEN 1 ELSE 0 END,
+              due_date ASC, id DESC
+        """).fetchall()
+        c.close()
+
+        overdue = []
+        weeks_map = {}
+        no_due_date = []
+        supplier_map = {}
+        total_forecast = 0.0
+        due_7 = 0.0
+        due_30 = 0.0
+
+        for row in rows:
+            inv = dict(row)
+            amount = float(inv.get('total') or 0)
+            due = None
+            if inv.get('due_date'):
+                try:
+                    due = date.fromisoformat(str(inv['due_date'])[:10])
+                except Exception:
+                    due = None
+
+            inv['amount'] = amount
+            inv['due_date_obj'] = due
+            inv['alert'] = None
+
+            supplier_name = (inv.get('supplier_name') or 'Fournisseur sans nom').strip()
+            agg = supplier_map.setdefault(
+                supplier_name,
+                {'supplier_name': supplier_name, 'total': 0.0, 'count': 0}
+            )
+            agg['total'] += amount
+            agg['count'] += 1
+
+            if due is None:
+                no_due_date.append(inv)
+                continue
+
+            total_forecast += amount
+
+            if due < today:
+                inv['alert'] = 'En retard'
+                overdue.append(inv)
+                continue
+
+            if due <= d7:
+                due_7 += amount
+                inv['alert'] = 'Échéance proche'
+            if due <= d30:
+                due_30 += amount
+
+            week_start = due - timedelta(days=due.weekday())
+            week_end = week_start + timedelta(days=6)
+            key = week_start.isoformat()
+            bucket = weeks_map.setdefault(
+                key,
+                {
+                    'week_start': week_start,
+                    'week_end': week_end,
+                    'total': 0.0,
+                    'invoices': [],
+                }
+            )
+            bucket['total'] += amount
+            bucket['invoices'].append(inv)
+
+        weeks = [weeks_map[k] for k in sorted(weeks_map)]
+        suppliers = sorted(supplier_map.values(), key=lambda x: x['total'], reverse=True)
+
+        return render_template(
+            'supplier_payment_forecast.html',
+            today=today,
+            overdue=overdue,
+            weeks=weeks,
+            no_due_date=no_due_date,
+            suppliers=suppliers,
+            total_forecast=total_forecast,
+            due_7=due_7,
+            due_30=due_30,
+        )
+
     @app.get('/facturation/achats/<int:purchase_id>')
     @login_required
     @requires_active_plan

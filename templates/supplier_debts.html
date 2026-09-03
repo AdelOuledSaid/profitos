@@ -6,7 +6,10 @@
     <h1>Dettes fournisseurs</h1>
     <p class="muted">Factures fournisseurs restant à payer et prochaines échéances.</p>
   </div>
-  <a class="btn secondary" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <a class="btn secondary" href="{{ url_for('supplier_payment_forecast') }}">Calendrier des paiements</a>
+    <a class="btn secondary" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
+  </div>
 </div>
 
 <div class="grid cards-4" style="margin-top:18px;">

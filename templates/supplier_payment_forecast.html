@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">ACHATS</div>
+    <h1>Calendrier des paiements fournisseurs</h1>
+    <p class="muted">Prévision basée uniquement sur les factures fournisseurs impayées et leurs dates d'échéance.</p>
+  </div>
+  <a class="btn secondary" href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a>
+</div>
+
+<div class="grid cards-3" style="margin-top:18px;">
+  <div class="panel">
+    <div class="muted">Paiements futurs planifiés</div>
+    <h2>{{ '%.2f'|format(total_forecast) }} €</h2>
+  </div>
+  <div class="panel">
+    <div class="muted">À décaisser sous 7 jours</div>
+    <h2>{{ '%.2f'|format(due_7) }} €</h2>
+  </div>
+  <div class="panel">
+    <div class="muted">À décaisser sous 30 jours</div>
+    <h2>{{ '%.2f'|format(due_30) }} €</h2>
+  </div>
+</div>
+
+{% if overdue %}
+<section class="panel" style="margin-top:18px;">
+  <h2>Échéances dépassées</h2>
+  <p class="muted">Ces factures sont toujours impayées alors que leur date d'échéance est passée.</p>
+  <div style="overflow-x:auto;">
+    <table style="width:100%;">
+      <thead><tr><th>Fournisseur</th><th>Facture</th><th>Échéance</th><th>Montant</th><th>Alerte</th></tr></thead>
+      <tbody>
+      {% for inv in overdue %}
+        <tr>
+          <td>{{ inv.supplier_name }}</td>
+          <td><a href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+          <td>{{ inv.due_date }}</td>
+          <td>{{ '%.2f'|format(inv.amount) }} €</td>
+          <td><strong>En retard</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel" style="margin-top:18px;">
+  <h2>Prévision semaine par semaine</h2>
+  {% if weeks %}
+    {% for week in weeks %}
+      <div style="padding:16px 0;{% if not loop.first %}border-top:1px solid var(--border,#2a2a2a);{% endif %}">
+        <h3 style="margin-bottom:8px;">
+          Du {{ week.week_start.strftime('%d/%m/%Y') }} au {{ week.week_end.strftime('%d/%m/%Y') }}
+          · {{ '%.2f'|format(week.total) }} €
+        </h3>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;">
+            <thead><tr><th>Date</th><th>Fournisseur</th><th>Facture</th><th>Montant</th><th>Situation</th></tr></thead>
+            <tbody>
+            {% for inv in week.invoices %}
+              <tr>
+                <td>{{ inv.due_date }}</td>
+                <td>{{ inv.supplier_name }}</td>
+                <td><a href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+                <td>{{ '%.2f'|format(inv.amount) }} €</td>
+                <td>{{ inv.alert or 'Planifié' }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Aucun paiement fournisseur futur planifié.</p>
+  {% endif %}
+</section>
+
+{% if suppliers %}
+<section class="panel" style="margin-top:18px;">
+  <h2>Engagements par fournisseur</h2>
+  <div style="overflow-x:auto;">
+    <table style="width:100%;">
+      <thead><tr><th>Fournisseur</th><th>Factures impayées</th><th>Montant</th></tr></thead>
+      <tbody>
+      {% for s in suppliers %}
+        <tr>
+          <td>{{ s.supplier_name }}</td>
+          <td>{{ s.count }}</td>
+          <td>{{ '%.2f'|format(s.total) }} €</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if no_due_date %}
+<section class="panel" style="margin-top:18px;">
+  <h2>Factures sans date d'échéance</h2>
+  <p class="muted">Elles restent impayées mais ne peuvent pas être placées dans le calendrier.</p>
+  {% for inv in no_due_date %}
+    <div style="padding:8px 0;">
+      {{ inv.supplier_name }} ·
+      <a href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a>
+      · {{ '%.2f'|format(inv.amount) }} €
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
