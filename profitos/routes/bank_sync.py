@@ -321,6 +321,16 @@ def register(app):
                 "SELECT * FROM bank_transactions WHERE provider='powens' ORDER BY transaction_date DESC,id DESC LIMIT 50"
             ).fetchall()
             reconciliation_suggestions = _reconciliation_suggestions(c, transactions)
+
+            # Lot 14: suggestions de rapprochement des paiements fournisseurs.
+            # La vue banking.html attend un dictionnaire indexé par l'id
+            # de la transaction bancaire.
+            purchase_reconciliation_suggestions = {}
+            for tx in transactions:
+                suggestions = _purchase_reconciliation_suggestions(c, tx)
+                if suggestions:
+                    purchase_reconciliation_suggestions[tx["id"]] = suggestions
+
             reconciliations = c.execute(
                 '''SELECT r.*,t.transaction_date,t.label,t.amount,i.invoice_number,i.client_name
                    FROM bank_invoice_reconciliations r
@@ -336,6 +346,7 @@ def register(app):
             accounts=accounts,
             transactions=transactions,
             reconciliation_suggestions=reconciliation_suggestions,
+            purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
             powens_configured=_configured(),
         )
