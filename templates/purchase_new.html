@@ -30,6 +30,7 @@
 <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
 <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected else '' }}"></label>
 <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected else '0' }}"></label>
+<label>Catégorie<select name="category">{% for key, label in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
 {% if detected %}<p><strong>Total TTC détecté : {{ '%.2f'|format(detected.total) }} €</strong></p>{% endif %}
 <label>Notes<textarea name="notes"></textarea></label>
 <button>Enregistrer la facture</button>

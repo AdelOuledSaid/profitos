@@ -781,7 +781,8 @@ def init_tenant_db(org_id=None):
         notes TEXT,
         created_at TEXT NOT NULL,
         paid_at TEXT,
-        document_path TEXT
+        document_path TEXT,
+        category TEXT DEFAULT 'autre'
     );
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
@@ -837,7 +838,7 @@ def init_tenant_db(org_id=None):
                        ('app_settings','logo_url'),('app_settings','accent_color'),
                        ('app_settings','price_index_name'),
                        ('company','siret'),('company','address'),('company','vat_number'),
-                       ('purchase_invoices','document_path')):
+                       ('purchase_invoices','document_path'),('purchase_invoices','category')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:

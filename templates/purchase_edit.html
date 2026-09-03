@@ -8,5 +8,6 @@
 <label>Date d'échéance<input name="due_date" type="date" value="{{ p.due_date or '' }}"></label>
 <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" value="{{ p.subtotal }}" required></label>
 <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ p.vat_amount }}"></label>
+<label>Catégorie<select name="category">{% for key, label in categories %}<option value="{{ key }}" {% if (p.category or 'autre')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
 <label>Notes<textarea name="notes">{{ p.notes or '' }}</textarea></label>
 <button>Enregistrer les modifications</button></form>{% endblock %}

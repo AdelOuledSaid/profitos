@@ -218,6 +218,19 @@ def _save_purchase_pdf(uploaded):
     return stored
 
 
+PURCHASE_CATEGORIES = [
+    ('carburant', 'Carburant'),
+    ('logiciel_saas', 'Logiciel / SaaS'),
+    ('assurance', 'Assurance'),
+    ('telephone', 'Téléphone'),
+    ('sous_traitance', 'Sous-traitance'),
+    ('materiel', 'Matériel'),
+    ('loyer', 'Loyer'),
+    ('autre', 'Autre'),
+]
+PURCHASE_CATEGORY_LABELS = dict(PURCHASE_CATEGORIES)
+
+
 def register(app):
     @app.route('/facturation/clients')
     @login_required
@@ -647,10 +660,25 @@ def register(app):
         evolution_chart=bars_svg(monthly_series[-12:]) if len(monthly_series)>=2 else None
         top_suppliers_chart=bars_svg([(s['name'][:12],round(s['ttc'])) for s in top_suppliers[:6]]) if top_suppliers else None
 
+        # Dépenses par catégorie, avec répartition en pourcentage.
+        by_category={}
+        for r in rows:
+            cat=r['category'] or 'autre'
+            if cat not in PURCHASE_CATEGORY_LABELS: cat='autre'
+            by_category[cat]=by_category.get(cat,0.0)+(r['total'] or 0)
+        category_rows=sorted(
+            [{'key':k,'label':PURCHASE_CATEGORY_LABELS[k],'ttc':v,
+              'pct':round(v/total_ttc*100,1) if total_ttc else 0}
+             for k,v in by_category.items()],
+            key=lambda x:x['ttc'],reverse=True
+        )
+        category_chart=bars_svg([(c['label'][:12],round(c['ttc'])) for c in category_rows]) if category_rows else None
+
         return render_template('purchase_analytics.html',
             total_ht=total_ht,total_vat=total_vat,total_ttc=total_ttc,invoice_count=invoice_count,
             supplier_rows=supplier_rows,top_suppliers=top_suppliers,monthly_series=monthly_series,
             evolution_chart=evolution_chart,top_suppliers_chart=top_suppliers_chart,
+            category_rows=category_rows,category_chart=category_chart,
             date_from=date_from,date_to=date_to)
 
     @app.route('/facturation/achats/export')
@@ -673,6 +701,7 @@ def register(app):
                "Date d'émission":p['issue_date'] or '',"Date d'échéance":p['due_date'] or '',
                'Montant HT (€)':round(p['subtotal'] or 0,2),'TVA (€)':round(p['vat_amount'] or 0,2),
                'Montant TTC (€)':round(p['total'] or 0,2),
+               'Catégorie':PURCHASE_CATEGORY_LABELS.get(p['category'] or 'autre','Autre'),
                'Statut':'Payée' if p['status']=='paid' else 'À payer'} for p in purchases]
         record_usage('reports_per_month',organization_id=org['id'])
         return export_response(data,'profitos-achats-fournisseurs')
@@ -763,20 +792,22 @@ def register(app):
             if pending_document and not (_purchase_pdf_dir()/pending_document).is_file():
                 c.close(); flash("Le PDF temporaire n'est plus disponible. Réimportez-le.")
                 return redirect(url_for('purchase_new'))
+            category=request.form.get('category','autre')
+            if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             c.execute("""INSERT INTO purchase_invoices(
                          supplier_id,supplier_name,invoice_number,issue_date,due_date,
-                         subtotal,vat_amount,total,status,notes,created_at,document_path)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         subtotal,vat_amount,total,status,notes,created_at,document_path,category)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
                        request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
-                       (request.form.get('notes') or '').strip(),now(),pending_document or None))
+                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category))
             c.commit(); c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
         c.close()
-        return render_template('purchase_new.html',suppliers=suppliers)
+        return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES)
 
     @app.get('/facturation/fournisseurs/<int:supplier_id>')
     @login_required
@@ -995,16 +1026,18 @@ def register(app):
             if not supplier_name or not number or subtotal<0 or vat<0:
                 c.close(); flash("Fournisseur, numéro et montants valides sont obligatoires.")
                 return redirect(url_for('purchase_edit',purchase_id=purchase_id))
+            category=request.form.get('category','autre')
+            if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             c.execute("""UPDATE purchase_invoices SET supplier_id=?,supplier_name=?,invoice_number=?,
-                         issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=?""",
+                         issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=?,category=? WHERE id=?""",
                       (supplier_id,supplier_name,number,request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,subtotal,vat,round(subtotal+vat,2),
-                       (request.form.get('notes') or '').strip(),purchase_id))
+                       (request.form.get('notes') or '').strip(),category,purchase_id))
             c.commit(); c.close()
             flash("Facture fournisseur mise à jour.")
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         c.close()
-        return render_template('purchase_edit.html',p=p,suppliers=suppliers)
+        return render_template('purchase_edit.html',p=p,suppliers=suppliers,categories=PURCHASE_CATEGORIES)
 
     @app.post('/facturation/achats/<int:purchase_id>/justificatif')
     @login_required

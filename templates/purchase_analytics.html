@@ -52,6 +52,29 @@
   </section>
 
   <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Dépenses par catégorie</h2></div>
+    {% if category_chart %}
+      {{ category_chart|safe }}
+    {% endif %}
+    <div class="purchase-table-wrap" style="margin-top:12px;">
+      <table class="purchase-table">
+        <thead><tr><th>Catégorie</th><th>Total TTC</th><th>Part</th></tr></thead>
+        <tbody>
+        {% for cat in category_rows %}
+          <tr>
+            <td>{{ cat.label }}</td>
+            <td><strong>{{ '%.2f'|format(cat.ttc) }} €</strong></td>
+            <td>{{ cat.pct }}%</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="purchase-empty">Aucune donnée sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Dépenses par fournisseur</h2></div>
     <div class="purchase-table-wrap">
       <table class="purchase-table">
