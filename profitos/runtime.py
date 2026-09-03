@@ -784,6 +784,11 @@ def init_tenant_db(org_id=None):
         document_path TEXT,
         category TEXT DEFAULT 'autre'
     );
+    CREATE TABLE IF NOT EXISTS purchase_budgets(
+        category TEXT PRIMARY KEY,
+        monthly_amount REAL NOT NULL DEFAULT 0,
+        updated_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,

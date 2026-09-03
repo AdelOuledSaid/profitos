@@ -681,6 +681,56 @@ def register(app):
             category_rows=category_rows,category_chart=category_chart,
             date_from=date_from,date_to=date_to)
 
+    @app.route('/facturation/achats/budgets',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_budgets():
+        """Budgets mensuels par catégorie, comparés aux factures d'achat réellement
+        enregistrées dans purchase_invoices. N'agit ni ne dépend de Cash Intelligence,
+        Financial Brain ou AI CFO Planner — module Achats uniquement."""
+        c=cx()
+        if request.method=='POST':
+            for key,_ in PURCHASE_CATEGORIES:
+                raw=request.form.get(f'budget_{key}','').strip()
+                try:
+                    amount=max(0.0,float(raw)) if raw else 0.0
+                except ValueError:
+                    amount=0.0
+                c.execute("""INSERT INTO purchase_budgets(category,monthly_amount,updated_at) VALUES(?,?,?)
+                             ON CONFLICT(category) DO UPDATE SET monthly_amount=excluded.monthly_amount,updated_at=excluded.updated_at""",
+                          (key,amount,now()))
+            c.commit(); c.close()
+            flash("Budgets mis à jour.")
+            return redirect(url_for('purchase_budgets',month=request.form.get('month','')))
+
+        month=request.args.get('month','').strip()
+        if not re.fullmatch(r'\d{4}-\d{2}',month or ''):
+            month=date.today().strftime('%Y-%m')
+
+        budget_rows=c.execute("SELECT * FROM purchase_budgets").fetchall()
+        budgets={r['category']:r['monthly_amount'] for r in budget_rows}
+
+        spent_rows=c.execute("SELECT category, SUM(total) as spent FROM purchase_invoices WHERE issue_date LIKE ? GROUP BY category",(f'{month}%',)).fetchall()
+        spent={(r['category'] or 'autre'):(r['spent'] or 0) for r in spent_rows}
+        c.close()
+
+        overview=[]
+        any_overrun=False
+        for key,label in PURCHASE_CATEGORIES:
+            budget=budgets.get(key,0.0)
+            consumed=spent.get(key,0.0)
+            remaining=budget-consumed
+            pct=round(consumed/budget*100,1) if budget else (100.0 if consumed else 0.0)
+            overrun=budget>0 and consumed>budget
+            if overrun: any_overrun=True
+            overview.append({'key':key,'label':label,'budget':budget,'consumed':consumed,
+                              'remaining':remaining,'pct':pct,'overrun':overrun,'has_budget':budget>0})
+
+        return render_template('purchase_budgets.html',overview=overview,month=month,
+                               budgets=budgets,any_overrun=any_overrun,categories=PURCHASE_CATEGORIES)
+
     @app.route('/facturation/achats/export')
     @login_required
     @requires_active_plan
