@@ -577,36 +577,46 @@ def register(app):
         today=date.today()
         total_unpaid=0.0
         total_overdue=0.0
-        due_7=0.0
-        due_30=0.0
         view=[]
-        d7=today + timedelta(days=7)
-        d30=today + timedelta(days=30)
         for p in purchases:
             overdue=False
-            due_date_obj=None
-            if p['due_date']:
+            if p['status']=='unpaid' and p['due_date']:
                 try:
-                    due_date_obj=datetime.strptime(p['due_date'],'%Y-%m-%d').date()
+                    overdue=datetime.strptime(p['due_date'],'%Y-%m-%d').date() < today
                 except Exception:
-                    due_date_obj=None
-            if p['status']=='unpaid' and due_date_obj:
-                overdue=due_date_obj < today
+                    overdue=False
             if p['status']=='unpaid':
-                amount=float(p['total'] or 0)
-                total_unpaid += amount
+                total_unpaid += float(p['total'] or 0)
                 if overdue:
-                    total_overdue += amount
-                elif due_date_obj:
-                    if due_date_obj <= d7:
-                        due_7 += amount
-                    if due_date_obj <= d30:
-                        due_30 += amount
+                    total_overdue += float(p['total'] or 0)
             view.append({'row':p,'overdue':overdue})
         c.close()
         return render_template('purchase_list.html',purchases=view,suppliers=suppliers,
-                               total_unpaid=total_unpaid,total_overdue=total_overdue,
-                               due_7=due_7,due_30=due_30)
+                               total_unpaid=total_unpaid,total_overdue=total_overdue)
+
+    @app.route('/facturation/achats/export')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_export():
+        """Export comptable des factures fournisseurs (CSV/Excel) — même mécanisme et
+        même quota mensuel que les autres exports de l'app (RECOVER, etc.)."""
+        org=current_org()
+        quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])
+        if not quota['allowed']:
+            flash(f"Quota mensuel d'exports atteint pour la formule {org['plan']} ({quota['used']}/{quota['limit']}). Passez à une formule supérieure.")
+            return redirect(url_for('purchase_list'))
+        c=cx()
+        purchases=c.execute("SELECT * FROM purchase_invoices ORDER BY due_date ASC, id DESC").fetchall()
+        c.close()
+        data=[{'Fournisseur':p['supplier_name'],'N° facture':p['invoice_number'],
+               "Date d'émission":p['issue_date'] or '',"Date d'échéance":p['due_date'] or '',
+               'Montant HT (€)':round(p['subtotal'] or 0,2),'TVA (€)':round(p['vat_amount'] or 0,2),
+               'Montant TTC (€)':round(p['total'] or 0,2),
+               'Statut':'Payée' if p['status']=='paid' else 'À payer'} for p in purchases]
+        record_usage('reports_per_month',organization_id=org['id'])
+        return export_response(data,'profitos-achats-fournisseurs')
 
     @app.route('/facturation/fournisseurs/nouveau',methods=['GET','POST'])
     @login_required
@@ -836,6 +846,7 @@ def register(app):
                 continue
 
             total_forecast += amount
+
             if due < today:
                 inv['alert'] = 'En retard'
                 overdue.append(inv)
@@ -852,8 +863,12 @@ def register(app):
             key = week_start.isoformat()
             bucket = weeks_map.setdefault(
                 key,
-                {'week_start': week_start, 'week_end': week_end,
-                 'total': 0.0, 'invoices': []}
+                {
+                    'week_start': week_start,
+                    'week_end': week_end,
+                    'total': 0.0,
+                    'invoices': [],
+                }
             )
             bucket['total'] += amount
             bucket['invoices'].append(inv)
@@ -863,9 +878,14 @@ def register(app):
 
         return render_template(
             'supplier_payment_forecast.html',
-            today=today, overdue=overdue, weeks=weeks,
-            no_due_date=no_due_date, suppliers=suppliers,
-            total_forecast=total_forecast, due_7=due_7, due_30=due_30
+            today=today,
+            overdue=overdue,
+            weeks=weeks,
+            no_due_date=no_due_date,
+            suppliers=suppliers,
+            total_forecast=total_forecast,
+            due_7=due_7,
+            due_30=due_30,
         )
 
     @app.get('/facturation/achats/<int:purchase_id>')

@@ -69,6 +69,10 @@
   <section class="purchase-panel">
     <div class="purchase-panel-head">
       <h2>Factures fournisseurs</h2>
+      <div style="display:flex;gap:10px;">
+        <a class="purchase-nav-btn" href="{{ url_for('purchase_export',format='xlsx') }}">Export Excel</a>
+        <a class="purchase-nav-btn" href="{{ url_for('purchase_export',format='csv') }}">Export CSV</a>
+      </div>
     </div>
 
     <div class="purchase-table-wrap">
