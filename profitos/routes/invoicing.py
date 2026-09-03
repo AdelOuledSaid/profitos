@@ -155,6 +155,15 @@ def generate_facturx_xml(inv, items, company):
     seller_addr = ET.SubElement(seller, f'{{{ns["ram"]}}}PostalTradeAddress')
     ET.SubElement(seller_addr, f'{{{ns["ram"]}}}LineOne').text = (company['address'] if company else '') or ''
     ET.SubElement(seller_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    # BT-34 — adresse électronique vendeur, pour le routage via une plateforme agréée.
+    # En l'absence de PDP choisie (Lot 23), on utilise le SIREN comme identifiant
+    # (schemeID 0002), pratique courante documentée en attendant une vraie adresse
+    # réseau fournie par la plateforme retenue.
+    if len(seller_siret) == 14:
+        seller_uri = ET.SubElement(seller, f'{{{ns["ram"]}}}URIUniversalCommunication')
+        seller_uri_id = ET.SubElement(seller_uri, f'{{{ns["ram"]}}}URIID')
+        seller_uri_id.set('schemeID', '0002')
+        seller_uri_id.text = seller_siret[:9]
     if company and company['vat_number']:
         seller_tax = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedTaxRegistration')
         seller_vat = ET.SubElement(seller_tax, f'{{{ns["ram"]}}}ID')
@@ -172,6 +181,12 @@ def generate_facturx_xml(inv, items, company):
     buyer_addr = ET.SubElement(buyer, f'{{{ns["ram"]}}}PostalTradeAddress')
     ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}LineOne').text = inv['client_address'] or ''
     ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    # BT-49 — adresse électronique acheteur, même logique que BT-34 côté vendeur.
+    if client_siren and re.fullmatch(r'\d{9}', client_siren):
+        buyer_uri = ET.SubElement(buyer, f'{{{ns["ram"]}}}URIUniversalCommunication')
+        buyer_uri_id = ET.SubElement(buyer_uri, f'{{{ns["ram"]}}}URIID')
+        buyer_uri_id.set('schemeID', '0002')
+        buyer_uri_id.text = client_siren
 
     # --- Livraison (uniquement si une adresse de livraison est renseignée) ---
     delivery_address = inv['delivery_address'] if 'delivery_address' in inv.keys() else None
@@ -184,15 +199,11 @@ def generate_facturx_xml(inv, items, company):
     else:
         ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeDelivery')
 
-    # --- Règlement : devise, échéance, TVA par taux, totaux ---
+    # --- Règlement : devise, TVA par taux, échéance, totaux ---
+    # Ordre imposé par le schéma CII (xs:sequence) : ApplicableTradeTax doit précéder
+    # SpecifiedTradePaymentTerms, qui doit lui-même précéder MonetarySummation.
     settlement_hdr = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeSettlement')
     ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}InvoiceCurrencyCode').text = 'EUR'
-    if inv['due_date']:
-        terms = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradePaymentTerms')
-        due = ET.SubElement(terms, f'{{{ns["ram"]}}}DueDateDateTime')
-        due_str = ET.SubElement(due, f'{{{ns["udt"]}}}DateTimeString')
-        due_str.set('format', '102')
-        due_str.text = _cii_date(inv['due_date']) or ''
 
     # Regroupe les lignes par taux de TVA (une ram:ApplicableTradeTax par taux distinct).
     by_rate = {}
@@ -209,6 +220,13 @@ def generate_facturx_xml(inv, items, company):
         ET.SubElement(tax_el, f'{{{ns["ram"]}}}CategoryCode').text = 'S'
         ET.SubElement(tax_el, f'{{{ns["ram"]}}}RateApplicablePercent').text = f'{rate:g}'
 
+    if inv['due_date']:
+        terms = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradePaymentTerms')
+        due = ET.SubElement(terms, f'{{{ns["ram"]}}}DueDateDateTime')
+        due_str = ET.SubElement(due, f'{{{ns["udt"]}}}DateTimeString')
+        due_str.set('format', '102')
+        due_str.text = _cii_date(inv['due_date']) or ''
+
     summation = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradeSettlementHeaderMonetarySummation')
     subtotal = float(inv['subtotal'] or 0)
     vat_amount = float(inv['vat_amount'] or 0)
@@ -221,6 +239,61 @@ def generate_facturx_xml(inv, items, company):
 
     xml_bytes = b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
     return xml_bytes
+
+
+# Sous-ensemble des règles métier EN16931 (BR-*) les plus fréquemment citées comme
+# cause de rejet en pratique — la couche Schematron, distincte de la simple validité
+# XSD. Ce n'est PAS l'intégralité des ~140 règles officielles du CEN/TC 434 : c'est
+# une vérification raisonnable, pas une garantie de conformité complète.
+def validate_facturx_business_rules(inv, items, company):
+    """Vérifie un sous-ensemble de règles métier EN16931 directement sur les données
+    de la facture (avant génération XML). Retourne une liste de dicts
+    {code, label, ok}. Écrite et testée entièrement en Python pur — sans dépendance
+    à fpdf2 ni à un validateur externe, donc vérifiable dans n'importe quel
+    environnement, contrairement à l'encapsulation PDF/A-3."""
+    rules = []
+
+    def check(code, label, ok):
+        rules.append({'code': code, 'label': label, 'ok': bool(ok)})
+
+    check('BR-01', "Identifiant de spécification présent (profil EN16931)", True)  # toujours injecté par generate_facturx_xml
+    check('BR-02', 'Numéro de facture renseigné (BT-1)', bool(inv['invoice_number']))
+    check('BR-03', "Date d'émission renseignée (BT-2)", bool(inv['issue_date']))
+    check('BR-05', 'Code devise renseigné (BT-5 = EUR)', True)
+    check('BR-06', 'Nom du vendeur renseigné (BT-27)', bool(company and company['name']))
+    check('BR-07', 'Nom de l\'acheteur renseigné (BT-44)', bool(inv['client_name']))
+    check('BR-08', "Code pays vendeur renseigné (adresse postale)", bool(company and company['address']))
+    check('BR-09', "Code pays acheteur renseigné (adresse postale)", bool(inv['client_address']))
+    check('BR-16', 'Au moins une ligne de facture (BG-25)', bool(items))
+
+    # BR-CO-10 : la somme des montants nets de ligne doit correspondre au sous-total HT.
+    line_sum = round(sum(it.get('line_total', 0) for it in items), 2)
+    subtotal = round(float(inv['subtotal'] or 0), 2)
+    check('BR-CO-10', f'Somme des lignes HT ({line_sum:.2f} €) = sous-total facture ({subtotal:.2f} €)',
+          abs(line_sum - subtotal) < 0.01)
+
+    # BR-CO-14 : la TVA totale doit correspondre à la somme des TVA par taux.
+    vat_sum = round(sum(it.get('line_total', 0) * it.get('vat_rate', 0) / 100 for it in items), 2)
+    vat_amount = round(float(inv['vat_amount'] or 0), 2)
+    check('BR-CO-14', f'TVA calculée depuis les lignes ({vat_sum:.2f} €) = TVA facture ({vat_amount:.2f} €)',
+          abs(vat_sum - vat_amount) < 0.01)
+
+    # BR-CO-15 : total TTC = total HT + TVA.
+    total = round(float(inv['total'] or 0), 2)
+    check('BR-CO-15', f'Total TTC ({total:.2f} €) = HT + TVA ({subtotal + vat_amount:.2f} €)',
+          abs(total - round(subtotal + vat_amount, 2)) < 0.01)
+
+    # BR-CO-16 : montant dû = total TTC (aucun acompte/arrondi géré dans cette version).
+    check('BR-CO-16', 'Montant dû cohérent avec le total TTC (aucun acompte)', True)
+
+    # BR-S-* : si une ligne applique un taux de TVA standard (catégorie S), le taux
+    # doit être strictement positif — un taux à 0% doit utiliser une autre catégorie
+    # (exonération, autoliquidation...), non gérée par cette version simplifiée.
+    zero_rate_as_standard = any(it.get('vat_rate', 0) == 0 for it in items)
+    check('BR-S-08', "Aucune ligne à 0% de TVA classée par erreur en taux standard", not zero_rate_as_standard)
+
+    missing = [r for r in rules if not r['ok']]
+    return rules, missing
 
 
 
@@ -1586,7 +1659,8 @@ def register(app):
     @require_area('invoicing')
     def invoicing_facturx(invoice_id):
         """Lot 22 — génère le PDF/A-3 Factur-X (profil EN16931). Refuse si les
-        mentions obligatoires (Lot 21) ne sont pas toutes réunies."""
+        mentions obligatoires (Lot 21) ou les règles métier EN16931 (BR-*)
+        ne sont pas toutes réunies."""
         c=cx()
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
@@ -1595,6 +1669,12 @@ def register(app):
         _,missing=_check_mandatory_mentions(inv,company_row)
         if missing:
             flash("Facture non conforme — complète d'abord les mentions manquantes avant de générer le Factur-X.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        items=json.loads(inv['line_items'] or '[]')
+        _,rule_failures=validate_facturx_business_rules(inv,items,company_row)
+        if rule_failures:
+            labels=', '.join(r['label'] for r in rule_failures)
+            flash(f"Règle(s) métier EN16931 non respectée(s) : {labels}")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         pdf_bytes=render_facturx_pdf(inv,company_row)
         if pdf_bytes is None:
