@@ -1,5 +1,6 @@
 from datetime import timedelta
 import uuid
+import statistics
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -229,6 +230,87 @@ PURCHASE_CATEGORIES = [
     ('autre', 'Autre'),
 ]
 PURCHASE_CATEGORY_LABELS = dict(PURCHASE_CATEGORIES)
+
+# (borne basse jours, borne haute jours, libellé, nombre de jours canonique)
+_FREQUENCY_BUCKETS = [
+    (25, 35, 'Mensuel', 30),
+    (55, 70, 'Bimestriel', 60),
+    (80, 100, 'Trimestriel', 91),
+    (170, 195, 'Semestriel', 182),
+    (340, 390, 'Annuel', 365),
+]
+
+
+def _detect_recurring_suppliers(rows):
+    """Analyse purement statistique sur l'historique réel de purchase_invoices —
+    aucune donnée inventée, aucune dépendance à Cash Intelligence / Financial Brain /
+    AI CFO. Retourne une liste de fournisseurs dont le rythme de facturation est
+    suffisamment régulier pour être qualifié d'abonnement/charge récurrente."""
+    by_supplier = {}
+    for r in rows:
+        if not r['issue_date']: continue
+        by_supplier.setdefault(r['supplier_name'] or 'Fournisseur inconnu', []).append(r)
+
+    results = []
+    for supplier, invoices in by_supplier.items():
+        if len(invoices) < 2:
+            continue
+        parsed = []
+        for inv in invoices:
+            try:
+                d = datetime.strptime(inv['issue_date'], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                continue
+            parsed.append((d, inv))
+        parsed.sort(key=lambda x: x[0])
+        if len(parsed) < 2:
+            continue
+
+        gaps = [(parsed[i+1][0] - parsed[i][0]).days for i in range(len(parsed)-1)]
+        gaps = [g for g in gaps if g > 0]
+        if not gaps:
+            continue
+        avg_gap = statistics.mean(gaps)
+
+        # Régularité : si on a plusieurs intervalles, ils doivent rester cohérents
+        # entre eux (coefficient de variation modéré), sinon ce n'est pas un vrai
+        # rythme récurrent mais des achats ponctuels qui se recoupent par hasard.
+        if len(gaps) >= 2:
+            cv = statistics.pstdev(gaps) / avg_gap if avg_gap else 999
+            if cv > 0.5:
+                continue
+
+        label, canonical_days = None, None
+        for lo, hi, lbl, canon in _FREQUENCY_BUCKETS:
+            if lo <= avg_gap <= hi:
+                label, canonical_days = lbl, canon
+                break
+        if not label:
+            continue
+
+        amounts = [inv['total'] or 0 for _, inv in parsed]
+        last_date, last_invoice = parsed[-1]
+        last_amount = last_invoice['total'] or 0
+        baseline_amounts = amounts[:-1] if len(amounts) > 1 else amounts
+        usual_amount = statistics.median(baseline_amounts)
+        anomaly = usual_amount > 0 and last_amount > usual_amount * 1.15
+
+        results.append({
+            'supplier': supplier,
+            'category': PURCHASE_CATEGORY_LABELS.get(last_invoice['category'] or 'autre', 'Autre'),
+            'usual_amount': usual_amount,
+            'frequency': label,
+            'occurrences': len(parsed),
+            'last_date': last_date.isoformat(),
+            'last_amount': last_amount,
+            'next_due_estimate': (last_date + timedelta(days=canonical_days)).isoformat(),
+            'annual_cost_estimate': round(usual_amount * (365 / canonical_days), 2),
+            'anomaly': anomaly,
+        })
+
+    results.sort(key=lambda x: x['annual_cost_estimate'], reverse=True)
+    return results
+
 
 
 def register(app):
@@ -730,6 +812,25 @@ def register(app):
 
         return render_template('purchase_budgets.html',overview=overview,month=month,
                                budgets=budgets,any_overrun=any_overrun,categories=PURCHASE_CATEGORIES)
+
+    @app.route('/facturation/achats/recurrents')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_recurring():
+        """Détection des dépenses récurrentes / abonnements — analyse purement
+        statistique de l'historique réel dans purchase_invoices. Module informatif
+        et isolé : aucune écriture, aucune interaction avec Cash Intelligence,
+        Financial Brain ou AI CFO Planner."""
+        c=cx()
+        rows=c.execute("SELECT * FROM purchase_invoices WHERE issue_date IS NOT NULL").fetchall()
+        c.close()
+        recurring=_detect_recurring_suppliers(rows)
+        total_annual_estimate=sum(r['annual_cost_estimate'] for r in recurring)
+        anomaly_count=sum(1 for r in recurring if r['anomaly'])
+        return render_template('purchase_recurring.html',recurring=recurring,
+                               total_annual_estimate=total_annual_estimate,anomaly_count=anomaly_count)
 
     @app.route('/facturation/achats/export')
     @login_required

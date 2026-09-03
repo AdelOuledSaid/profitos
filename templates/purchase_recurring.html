@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Retour aux achats</a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_analytics') }}">Pilotage des dépenses</a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_budgets') }}">Budgets</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Charges récurrentes détectées</h1>
+  <p class="purchase-subtitle">Basé sur le rythme réel de tes factures d'achat — aucune donnée inventée. Les fournisseurs sans rythme régulier n'apparaissent pas ici.</p>
+
+  {% if anomaly_count > 0 %}
+  <div class="purchase-panel" style="margin:20px 0;border-color:rgba(255,94,94,.4);background:rgba(255,60,60,.06);">
+    <strong style="color:#ff8b8b;">⚠ {{ anomaly_count }} abonnement{{ 's' if anomaly_count > 1 else '' }} en hausse anormale par rapport au montant habituel.</strong>
+  </div>
+  {% endif %}
+
+  <div class="purchase-stats">
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Charges récurrentes identifiées</div><div class="purchase-stat-value">{{ recurring|length }}</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Coût annuel estimé cumulé</div><div class="purchase-stat-value">{{ '{:,.0f}'.format(total_annual_estimate) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Hausses anormales</div><div class="purchase-stat-value">{{ anomaly_count }}</div></div>
+    </div>
+  </div>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Détail par fournisseur</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead>
+          <tr>
+            <th>Fournisseur</th>
+            <th>Catégorie</th>
+            <th>Montant habituel</th>
+            <th>Fréquence</th>
+            <th>Dernière facture</th>
+            <th>Prochaine échéance estimée</th>
+            <th>Coût annuel estimé</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in recurring %}
+          <tr>
+            <td><span class="purchase-link">{{ r.supplier }}</span></td>
+            <td>{{ r.category }}</td>
+            <td>{{ '%.2f'|format(r.usual_amount) }} €</td>
+            <td>{{ r.frequency }}</td>
+            <td>{{ r.last_date }}<div class="purchase-muted">{{ '%.2f'|format(r.last_amount) }} €</div></td>
+            <td>{{ r.next_due_estimate }}</td>
+            <td><strong>{{ '{:,.0f}'.format(r.annual_cost_estimate) }} €</strong></td>
+            <td>
+              {% if r.anomaly %}
+                <span class="purchase-status overdue">Hausse anormale</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" class="purchase-empty">Pas encore assez de factures régulières pour détecter des charges récurrentes. Il faut au moins 2 factures du même fournisseur, à un rythme cohérent.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="purchase-muted" style="margin-top:16px;font-size:12px;">Méthode : un fournisseur est considéré comme récurrent si l'écart moyen entre ses factures correspond à un rythme mensuel, bimestriel, trimestriel, semestriel ou annuel, avec une régularité suffisante. Une hausse anormale est signalée quand la dernière facture dépasse de plus de 15% le montant habituel des précédentes.</p>
+</div>
+{% endblock %}
