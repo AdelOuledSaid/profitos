@@ -1,409 +1,122 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-.purchase-page{
-  max-width:1480px;
-  margin:0 auto;
-  padding:34px 28px 50px;
-}
-.purchase-toolbar{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:24px;
-  margin-bottom:24px;
-}
-.purchase-nav-actions,
-.purchase-primary-actions{
-  display:flex;
-  gap:12px;
-  flex-wrap:wrap;
-}
-.purchase-nav-btn,
-.purchase-primary-btn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  min-height:46px;
-  padding:0 18px;
-  border-radius:999px;
-  text-decoration:none !important;
-  font-weight:800;
-  border:1px solid rgba(255,255,255,.12);
-  transition:.18s ease;
-}
-.purchase-nav-btn{
-  color:#45e993 !important;
-  background:rgba(57,229,140,.055);
-  border-color:rgba(57,229,140,.38);
-}
-.purchase-nav-btn:hover{
-  background:rgba(57,229,140,.12);
-  border-color:#39e58c;
-  transform:translateY(-1px);
-}
-.purchase-primary-btn.secondary{
-  color:#fff !important;
-  background:#151515;
-}
-.purchase-primary-btn.primary{
-  color:#06110b !important;
-  background:#39e58c;
-  border-color:#39e58c;
-}
-.purchase-primary-btn:hover{
-  transform:translateY(-1px);
-  filter:brightness(1.05);
-}
-.purchase-icon{
-  width:20px;
-  height:20px;
-  display:inline-flex;
-}
-.purchase-icon svg{
-  width:20px;
-  height:20px;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-
-.purchase-eyebrow{
-  margin-top:12px;
-  color:#39e58c;
-  font-size:13px;
-  font-weight:900;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-}
-.purchase-title{
-  margin:8px 0 4px;
-  font-size:48px;
-  line-height:1.05;
-  color:#fff;
-  letter-spacing:-.03em;
-}
-.purchase-subtitle{
-  margin:0;
-  color:#83c6ff;
-  font-size:18px;
-}
-
-.purchase-stats{
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:16px;
-  margin:28px 0 24px;
-}
-.purchase-stat{
-  min-height:118px;
-  padding:22px;
-  border-radius:20px;
-  border:1px solid rgba(255,255,255,.11);
-  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.018));
-  display:flex;
-  align-items:center;
-  gap:16px;
-}
-.purchase-stat-icon{
-  width:42px;
-  height:42px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex:0 0 42px;
-  color:#39e58c;
-}
-.purchase-stat-icon svg{
-  width:34px;
-  height:34px;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.purchase-stat-label{
-  color:#aaa;
-  font-size:15px;
-}
-.purchase-stat-value{
-  color:#fff;
-  margin-top:4px;
-  font-size:24px;
-  font-weight:900;
-}
-
-.purchase-panel{
-  margin-top:20px;
-  padding:26px 28px 18px;
-  border:1px solid rgba(255,255,255,.1);
-  border-radius:22px;
-  background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.012));
-}
-.purchase-panel-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  margin-bottom:20px;
-}
-.purchase-panel h2{
-  margin:0;
-  color:#fff;
-  font-size:24px;
-}
-.purchase-table-wrap{
-  overflow-x:auto;
-}
-.purchase-table{
-  width:100%;
-  border-collapse:collapse;
-}
-.purchase-table th{
-  padding:14px 12px;
-  border-top:1px solid rgba(255,255,255,.08);
-  border-bottom:1px solid rgba(255,255,255,.08);
-  color:#aaa;
-  font-size:12px;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-  text-align:left;
-  white-space:nowrap;
-}
-.purchase-table td{
-  padding:18px 12px;
-  border-bottom:1px solid rgba(255,255,255,.07);
-  color:#eee;
-  vertical-align:middle;
-}
-.purchase-supplier{
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-.purchase-avatar{
-  width:38px;
-  height:38px;
-  border-radius:50%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#f59a23;
-  color:#fff;
-  font-size:12px;
-  font-weight:900;
-}
-.purchase-link{
-  color:#fff !important;
-  font-weight:800;
-  text-decoration:none !important;
-}
-.purchase-link:hover{
-  color:#39e58c !important;
-}
-.purchase-muted{
-  color:#8f8f8f;
-  font-size:13px;
-  margin-top:3px;
-}
-.purchase-status{
-  display:inline-flex;
-  align-items:center;
-  padding:6px 10px;
-  border-radius:999px;
-  background:#202020;
-  color:#fff;
-  font-size:12px;
-  font-weight:800;
-}
-.purchase-status.paid{
-  background:rgba(57,229,140,.12);
-  color:#67f0aa;
-}
-.purchase-status.overdue{
-  background:rgba(255,94,94,.12);
-  color:#ff8b8b;
-}
-.purchase-empty{
-  padding:34px 10px;
-  text-align:center;
-  color:#888;
-}
-.purchase-pagination{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  gap:8px;
-  padding-top:18px;
-}
-.purchase-page-btn{
-  min-width:38px;
-  height:38px;
-  border-radius:10px;
-  border:1px solid rgba(255,255,255,.1);
-  background:#171717;
-  color:#ddd;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  text-decoration:none !important;
-}
-.purchase-page-btn.current{
-  background:#39e58c;
-  color:#07110c;
-  font-weight:900;
-}
-
-@media (max-width:1150px){
-  .purchase-stats{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .purchase-toolbar{flex-direction:column;}
-}
-@media (max-width:680px){
-  .purchase-page{padding:22px 16px 40px;}
-  .purchase-title{font-size:36px;}
-  .purchase-stats{grid-template-columns:1fr;}
-  .purchase-primary-actions,
-  .purchase-nav-actions{width:100%;}
-  .purchase-primary-btn,
-  .purchase-nav-btn{flex:1 1 auto;}
-}
+  .po-purchases{max-width:1480px;margin:0 auto;padding:28px 30px 48px}
+  .po-topbar{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:28px}
+  .po-nav,.po-actions{display:flex;gap:12px;flex-wrap:wrap}
+  .po-nav a,.po-actions a{
+    display:inline-flex;align-items:center;gap:9px;min-height:48px;padding:0 18px;
+    border-radius:14px;text-decoration:none!important;font-weight:800
+  }
+  .po-nav a{border:1px solid rgba(57,229,140,.45);background:rgba(57,229,140,.055);color:#39e58c!important}
+  .po-nav a:hover{border-color:#39e58c;background:rgba(57,229,140,.12)}
+  .po-actions .secondary{border:1px solid rgba(255,255,255,.13);background:#151515;color:#fff!important}
+  .po-actions .primary{border:1px solid #39e58c;background:#39e58c;color:#06110b!important}
+  .po-icon{font-size:19px;line-height:1}
+  .po-eyebrow{color:#39e58c;font-size:13px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+  .po-title{font-size:46px;line-height:1.08;margin:8px 0;color:#fff;letter-spacing:-.03em}
+  .po-subtitle{font-size:17px;color:#83c6ff;margin:0}
+  .po-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin:30px 0 24px}
+  .po-kpi{min-height:116px;border:1px solid rgba(255,255,255,.1);border-radius:19px;
+    background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));
+    padding:21px;display:flex;align-items:center;gap:15px}
+  .po-kpi-symbol{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#39e58c;
+    border:1px solid rgba(57,229,140,.22);background:rgba(57,229,140,.05);font-size:20px}
+  .po-kpi-label{color:#aaa;font-size:14px}.po-kpi-value{color:#fff;font-size:24px;font-weight:900;margin-top:4px}
+  .po-panel{border:1px solid rgba(255,255,255,.1);border-radius:20px;
+    background:linear-gradient(180deg,rgba(255,255,255,.027),rgba(255,255,255,.012));padding:26px}
+  .po-panel h2{margin:0 0 18px;color:#fff;font-size:23px}
+  .po-table-wrap{overflow-x:auto}
+  .po-table{width:100%;border-collapse:collapse}
+  .po-table th{padding:13px 12px;color:#9b9b9b;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    text-align:left;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.08)}
+  .po-table td{padding:18px 12px;color:#eee;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:middle}
+  .po-supplier{display:flex;align-items:center;gap:11px}
+  .po-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#f49a1f;color:#fff;font-size:12px;font-weight:900}
+  .po-link{color:#fff!important;font-weight:800;text-decoration:none!important}.po-link:hover{color:#39e58c!important}
+  .po-muted{color:#8c8c8c;font-size:13px;margin-top:3px}
+  .po-badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:#202020;color:#eee;font-size:12px;font-weight:800}
+  .po-badge.paid{background:rgba(57,229,140,.12);color:#6af0aa}
+  .po-badge.overdue{background:rgba(255,90,90,.12);color:#ff8e8e}
+  .po-pay{display:inline-flex;margin-left:8px;padding:7px 10px;border-radius:10px;border:1px solid rgba(57,229,140,.4);
+    background:rgba(57,229,140,.08);color:#39e58c;font-weight:800;cursor:pointer}
+  .po-empty{text-align:center;padding:30px;color:#888}
+  @media(max-width:1150px){.po-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:700px){.po-purchases{padding:20px 15px 35px}.po-kpis{grid-template-columns:1fr}.po-title{font-size:36px}}
 </style>
 
-<div class="purchase-page">
-  <div class="purchase-toolbar">
-    <div class="purchase-nav-actions">
-      <a class="purchase-nav-btn" href="{{ url_for('supplier_debts') }}">
-        <span class="purchase-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M7 14h4"></path></svg>
-        </span>
-        Dettes fournisseurs
-      </a>
-      <a class="purchase-nav-btn" href="{{ url_for('supplier_payment_forecast') }}">
-        <span class="purchase-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path><circle cx="17" cy="16" r="2.5"></circle></svg>
-        </span>
-        Calendrier des paiements
-      </a>
+<div class="po-purchases">
+  <div class="po-topbar">
+    <div class="po-nav">
+      <a href="{{ url_for('supplier_debts') }}"><span class="po-icon">▣</span>Dettes fournisseurs</a>
+      <a href="{{ url_for('supplier_payment_forecast') }}"><span class="po-icon">▦</span>Calendrier des paiements</a>
     </div>
-
-    <div class="purchase-primary-actions">
-      <a class="purchase-primary-btn secondary" href="{{ url_for('supplier_new') }}">+ Fournisseur</a>
-      <a class="purchase-primary-btn primary" href="{{ url_for('purchase_new') }}">+ Facture d'achat</a>
+    <div class="po-actions">
+      <a class="secondary" href="{{ url_for('supplier_new') }}">+ Fournisseur</a>
+      <a class="primary" href="{{ url_for('purchase_new') }}">+ Facture d'achat</a>
     </div>
   </div>
 
-  <div class="purchase-eyebrow">Facturation</div>
-  <h1 class="purchase-title">Achats & fournisseurs</h1>
-  <p class="purchase-subtitle">Suivi des factures fournisseurs et de leurs échéances.</p>
+  <div class="po-eyebrow">Facturation</div>
+  <h1 class="po-title">Achats & fournisseurs</h1>
+  <p class="po-subtitle">Suivi des factures fournisseurs et de leurs échéances.</p>
 
-  {% set unpaid_amount = total_unpaid|default(0, true) %}
-  {% set overdue_amount = total_overdue|default(0, true) %}
-  {% set due_7_amount = due_7|default(0, true) %}
-  {% set due_30_amount = due_30|default(0, true) %}
-  {% set supplier_count = suppliers|default([])|length %}
-
-  <div class="purchase-stats">
-    <div class="purchase-stat">
-      <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
-      </div>
-      <div><div class="purchase-stat-label">À payer</div><div class="purchase-stat-value">{{ '%.2f'|format(unpaid_amount) }} €</div></div>
-    </div>
-    <div class="purchase-stat">
-      <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6l4 2"></path></svg>
-      </div>
-      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ '%.2f'|format(overdue_amount) }} €</div></div>
-    </div>
-    <div class="purchase-stat">
-      <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
-      </div>
-      <div><div class="purchase-stat-label">À 7 jours</div><div class="purchase-stat-value">{{ '%.2f'|format(due_7_amount) }} €</div></div>
-    </div>
-    <div class="purchase-stat">
-      <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
-      </div>
-      <div><div class="purchase-stat-label">À 30 jours</div><div class="purchase-stat-value">{{ '%.2f'|format(due_30_amount) }} €</div></div>
-    </div>
-    <div class="purchase-stat">
-      <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-      </div>
-      <div><div class="purchase-stat-label">Fournisseurs</div><div class="purchase-stat-value">{{ supplier_count }}</div></div>
-    </div>
+  <div class="po-kpis">
+    <div class="po-kpi"><div class="po-kpi-symbol">€</div><div><div class="po-kpi-label">À payer</div><div class="po-kpi-value">{{ "%.2f"|format(total_unpaid) }} €</div></div></div>
+    <div class="po-kpi"><div class="po-kpi-symbol">◷</div><div><div class="po-kpi-label">En retard</div><div class="po-kpi-value">{{ "%.2f"|format(total_overdue) }} €</div></div></div>
+    <div class="po-kpi"><div class="po-kpi-symbol">7</div><div><div class="po-kpi-label">À 7 jours</div><div class="po-kpi-value">{{ "%.2f"|format(due_7) }} €</div></div></div>
+    <div class="po-kpi"><div class="po-kpi-symbol">30</div><div><div class="po-kpi-label">À 30 jours</div><div class="po-kpi-value">{{ "%.2f"|format(due_30) }} €</div></div></div>
+    <div class="po-kpi"><div class="po-kpi-symbol">◎</div><div><div class="po-kpi-label">Fournisseurs</div><div class="po-kpi-value">{{ suppliers|length }}</div></div></div>
   </div>
 
-  <section class="purchase-panel">
-    <div class="purchase-panel-head">
-      <h2>Factures fournisseurs</h2>
-    </div>
-
-    <div class="purchase-table-wrap">
-      <table class="purchase-table">
-        <thead>
-          <tr>
-            <th>Fournisseur</th>
-            <th>Facture</th>
-            <th>Date</th>
-            <th>Échéance</th>
-            <th>Statut</th>
-            <th>Montant TTC</th>
-          </tr>
-        </thead>
+  <section class="po-panel">
+    <h2>Factures fournisseurs</h2>
+    <div class="po-table-wrap">
+      <table class="po-table">
+        <thead><tr><th>Fournisseur</th><th>Facture</th><th>Date</th><th>Échéance</th><th>Statut</th><th>Montant TTC</th><th></th></tr></thead>
         <tbody>
-        {% for item in purchases|default([]) %}
-          {% set inv = item.row %}
+        {% if purchases %}
+          {% for item in purchases %}{% set p=item.row %}
           <tr>
             <td>
-              <div class="purchase-supplier">
-                <div class="purchase-avatar">{{ (inv.supplier_name or '?')[:2]|upper }}</div>
+              <div class="po-supplier">
+                <div class="po-avatar">{{ (p.supplier_name or '?')[:2]|upper }}</div>
                 <div>
-                  {% if inv.supplier_id %}
-                    <a class="purchase-link" href="{{ url_for('supplier_detail', supplier_id=inv.supplier_id) }}">{{ inv.supplier_name }}</a>
-                  {% else %}
-                    <span class="purchase-link">{{ inv.supplier_name }}</span>
-                  {% endif %}
+                  {% if p.supplier_id %}
+                    <a class="po-link" href="{{ url_for('supplier_detail',supplier_id=p.supplier_id) }}">{{ p.supplier_name }}</a>
+                  {% else %}{{ p.supplier_name }}{% endif %}
                 </div>
               </div>
             </td>
+            <td><a class="po-link" href="{{ url_for('purchase_detail',purchase_id=p.id) }}">{{ p.invoice_number }}</a></td>
+            <td>{{ p.issue_date or '—' }}</td>
+            <td>{{ p.due_date or '—' }}</td>
             <td>
-              <a class="purchase-link" href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a>
-              <div class="purchase-muted">{{ inv.supplier_name }}</div>
+              {% if p.status=='paid' %}
+                <span class="po-badge paid">Payée</span>
+              {% elif item.overdue %}
+                <span class="po-badge overdue">En retard</span>
+              {% else %}
+                <span class="po-badge">À payer</span>
+              {% endif %}
             </td>
-            <td>{{ inv.issue_date or '—' }}</td>
-            <td>{{ inv.due_date or '—' }}</td>
+            <td><strong>{{ "%.2f"|format(p.total) }} €</strong></td>
             <td>
-              {% set st = (inv.status or 'unpaid') %}
-              <span class="purchase-status {% if st == 'paid' %}paid{% elif item.overdue %}overdue{% endif %}">
-                {% if st == 'paid' %}Payée{% elif item.overdue %}En retard{% else %}À payer{% endif %}
-              </span>
+              {% if p.status=='unpaid' %}
+              <form method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="po-pay" type="submit">Marquer payée</button>
+              </form>
+              {% endif %}
             </td>
-            <td><strong>{{ '%.2f'|format(inv.total or 0) }} €</strong></td>
           </tr>
+          {% endfor %}
         {% else %}
-          <tr><td colspan="6" class="purchase-empty">Aucune facture fournisseur enregistrée.</td></tr>
-        {% endfor %}
+          <tr><td colspan="7" class="po-empty">Aucune facture fournisseur.</td></tr>
+        {% endif %}
         </tbody>
       </table>
     </div>
-
-    {% if page is defined and pages is defined and pages > 1 %}
-    <div class="purchase-pagination">
-      {% if page > 1 %}
-        <a class="purchase-page-btn" href="?page={{ page-1 }}">‹</a>
-      {% endif %}
-      <span class="purchase-page-btn current">{{ page }}</span>
-      {% if page < pages %}
-        <a class="purchase-page-btn" href="?page={{ page+1 }}">›</a>
-      {% endif %}
-    </div>
-    {% endif %}
   </section>
 </div>
 {% endblock %}
