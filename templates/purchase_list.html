@@ -1,6 +1,37 @@
 {% extends "base.html" %}{% block content %}
-<p><a class="btn secondary" href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a>
-<a class="btn secondary" href="{{ url_for('supplier_payment_forecast') }}">Calendrier paiements</a></p>
+
+<style>
+  .purchase-nav-actions{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    margin:0 0 18px 0;
+  }
+  .purchase-nav-actions a{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:42px;
+    padding:10px 16px;
+    border-radius:12px;
+    background:#39e58c !important;
+    color:#07110c !important;
+    border:1px solid #39e58c !important;
+    font-weight:800;
+    text-decoration:none !important;
+  }
+  .purchase-nav-actions a:hover,
+  .purchase-nav-actions a:focus{
+    background:#ffffff !important;
+    color:#000000 !important;
+    border-color:#ffffff !important;
+  }
+</style>
+
+<p><div class="purchase-nav-actions">
+  <a href="{{ url_for('supplier_debts') }}">Dettes fournisseurs</a>
+  <a href="{{ url_for('supplier_payment_forecast') }}">Calendrier des paiements</a>
+</div></p>
 
 <div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>Achats & fournisseurs</h1>
 <p class="muted">Suivi des factures fournisseurs et de leurs échéances.</p></div>
