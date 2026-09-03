@@ -594,6 +594,65 @@ def register(app):
         return render_template('purchase_list.html',purchases=view,suppliers=suppliers,
                                total_unpaid=total_unpaid,total_overdue=total_overdue)
 
+    @app.route('/facturation/achats/pilotage')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_analytics():
+        """Pilotage des dépenses fournisseurs — uniquement des données réelles issues
+        de purchase_invoices, aucun chiffre inventé. Filtre par période via ?date_from
+        et ?date_to (format AAAA-MM-JJ)."""
+        date_from=request.args.get('date_from','').strip()
+        date_to=request.args.get('date_to','').strip()
+
+        c=cx()
+        query="SELECT * FROM purchase_invoices WHERE 1=1"
+        params=[]
+        if date_from:
+            query+=" AND issue_date>=?"; params.append(date_from)
+        if date_to:
+            query+=" AND issue_date<=?"; params.append(date_to)
+        rows=c.execute(query,params).fetchall()
+        c.close()
+
+        total_ht=sum(r['subtotal'] or 0 for r in rows)
+        total_vat=sum(r['vat_amount'] or 0 for r in rows)
+        total_ttc=sum(r['total'] or 0 for r in rows)
+        invoice_count=len(rows)
+
+        # Dépenses par fournisseur, triées par montant décroissant.
+        by_supplier={}
+        for r in rows:
+            name=r['supplier_name'] or 'Fournisseur inconnu'
+            by_supplier.setdefault(name,{'ht':0.0,'vat':0.0,'ttc':0.0,'count':0})
+            by_supplier[name]['ht']+=r['subtotal'] or 0
+            by_supplier[name]['vat']+=r['vat_amount'] or 0
+            by_supplier[name]['ttc']+=r['total'] or 0
+            by_supplier[name]['count']+=1
+        supplier_rows=sorted(
+            [{'name':k,**v} for k,v in by_supplier.items()],
+            key=lambda x:x['ttc'],reverse=True
+        )
+        top_suppliers=supplier_rows[:8]
+
+        # Dépenses par mois (AAAA-MM), triées chronologiquement.
+        by_month={}
+        for r in rows:
+            if not r['issue_date']: continue
+            month=r['issue_date'][:7]
+            by_month[month]=by_month.get(month,0.0)+(r['total'] or 0)
+        months_sorted=sorted(by_month.keys())
+        monthly_series=[(m,round(by_month[m])) for m in months_sorted]
+        evolution_chart=bars_svg(monthly_series[-12:]) if len(monthly_series)>=2 else None
+        top_suppliers_chart=bars_svg([(s['name'][:12],round(s['ttc'])) for s in top_suppliers[:6]]) if top_suppliers else None
+
+        return render_template('purchase_analytics.html',
+            total_ht=total_ht,total_vat=total_vat,total_ttc=total_ttc,invoice_count=invoice_count,
+            supplier_rows=supplier_rows,top_suppliers=top_suppliers,monthly_series=monthly_series,
+            evolution_chart=evolution_chart,top_suppliers_chart=top_suppliers_chart,
+            date_from=date_from,date_to=date_to)
+
     @app.route('/facturation/achats/export')
     @login_required
     @requires_active_plan

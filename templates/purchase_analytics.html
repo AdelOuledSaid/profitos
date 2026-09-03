@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Retour aux achats</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Pilotage des dépenses fournisseurs</h1>
+  <p class="purchase-subtitle">Basé uniquement sur tes factures d'achat réellement enregistrées.</p>
+
+  <form method="get" class="purchase-panel" style="display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin:24px 0;">
+    <label style="font-size:12px;color:#aaa;">Du<br><input type="date" name="date_from" value="{{ date_from }}" style="margin-top:6px;"></label>
+    <label style="font-size:12px;color:#aaa;">Au<br><input type="date" name="date_to" value="{{ date_to }}" style="margin-top:6px;"></label>
+    <button type="submit" class="purchase-primary-btn primary">Filtrer</button>
+    {% if date_from or date_to %}<a class="purchase-nav-btn" href="{{ url_for('purchase_analytics') }}">Réinitialiser</a>{% endif %}
+  </form>
+
+  <div class="purchase-stats">
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Montant HT</div><div class="purchase-stat-value">{{ '%.2f'|format(total_ht) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">TVA</div><div class="purchase-stat-value">{{ '%.2f'|format(total_vat) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Total TTC</div><div class="purchase-stat-value">{{ '%.2f'|format(total_ttc) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div><div class="purchase-stat-label">Factures</div><div class="purchase-stat-value">{{ invoice_count }}</div></div>
+    </div>
+  </div>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Évolution des achats (12 derniers mois avec activité)</h2></div>
+    {% if evolution_chart %}
+      {{ evolution_chart|safe }}
+    {% else %}
+      <p class="purchase-empty">Pas encore assez de mois distincts pour tracer une évolution.</p>
+    {% endif %}
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Principaux fournisseurs</h2></div>
+    {% if top_suppliers_chart %}
+      {{ top_suppliers_chart|safe }}
+    {% else %}
+      <p class="purchase-empty">Aucune facture fournisseur enregistrée sur cette période.</p>
+    {% endif %}
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Dépenses par fournisseur</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead>
+          <tr>
+            <th>Fournisseur</th>
+            <th>Factures</th>
+            <th>HT</th>
+            <th>TVA</th>
+            <th>TTC</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for s in supplier_rows %}
+          <tr>
+            <td><span class="purchase-link">{{ s.name }}</span></td>
+            <td>{{ s.count }}</td>
+            <td>{{ '%.2f'|format(s.ht) }} €</td>
+            <td>{{ '%.2f'|format(s.vat) }} €</td>
+            <td><strong>{{ '%.2f'|format(s.ttc) }} €</strong></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="purchase-empty">Aucune donnée sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Dépenses par mois</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Mois</th><th>Total TTC</th></tr></thead>
+        <tbody>
+        {% for month, amount in monthly_series|reverse %}
+          <tr><td>{{ month }}</td><td><strong>{{ '{:,.0f}'.format(amount) }} €</strong></td></tr>
+        {% else %}
+          <tr><td colspan="2" class="purchase-empty">Aucune donnée sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
