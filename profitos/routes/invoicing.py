@@ -1680,7 +1680,7 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         pdf_bytes=render_facturx_pdf(inv,company_row)
         if pdf_bytes is None:
-            flash("La génération Factur-X nécessite fpdf2 ≥ 2.8.7 (support PDF/A-3) — vérifie requirements.txt et ta version installée.")
+            flash("La génération Factur-X nécessite fpdf2 ≥ 2.8.7 ET les polices à embarquer dans static/fonts/ (DejaVuSans.ttf, DejaVuSans-Bold.ttf) — vérifie les deux.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         log_activity('INVOICE_FACTURX_GENERATED',f"Factur-X généré pour la facture {inv['invoice_number']}")
         return Response(pdf_bytes,mimetype='application/pdf',
@@ -2122,14 +2122,12 @@ def _render_invoice_pdf(inv,company_row):
 
 def render_facturx_pdf(inv, company_row):
     """Génère le PDF/A-3 Factur-X (facture visible + factur-x.xml embarqué), profil
-    EN16931. Retourne None si fpdf2 est absent ou trop ancien (le support PDF/A-3
-    natif nécessite fpdf2 >= 2.8.7 environ — voir requirements.txt).
+    EN16931. Retourne None si fpdf2 est absent/trop ancien, ou si les fichiers de
+    police à embarquer sont introuvables (voir static/fonts/ — nécessaires car
+    PDF/A-3B interdit les polices "de base" non incorporées comme Helvetica).
 
-    ATTENTION — partie non testée localement : je n'ai aucun accès réseau pour
-    installer fpdf2 >= 2.8.7 ni un validateur Factur-X officiel dans cet environnement.
-    Cette fonction a été écrite avec le plus grand soin à partir de la documentation
-    publique de fpdf2, mais n'a pas été exécutée ni vérifiée par un validateur externe
-    (FNFE-MPE, Chorus Pro, Mustangproject...). À valider avant mise en production.
+    ATTENTION : la conformité PDF/A-3 finale et l'intégration Factur-X n'ont pas été
+    validées contre un outil officiel (FNFE-MPE, Chorus Pro, Mustangproject...).
     """
     try:
         from fpdf import FPDF
@@ -2139,64 +2137,67 @@ def render_facturx_pdf(inv, company_row):
     if not hasattr(DocumentCompliance, 'PDFA_3B'):
         return None  # version de fpdf2 trop ancienne pour le support PDF/A-3
 
+    font_regular = BASE / 'static' / 'fonts' / 'DejaVuSans.ttf'
+    font_bold = BASE / 'static' / 'fonts' / 'DejaVuSans-Bold.ttf'
+    if not font_regular.is_file() or not font_bold.is_file():
+        return None  # polices à embarquer absentes — voir static/fonts/README.txt
+
     items = json.loads(inv['line_items'] or '[]')
     xml_bytes = generate_facturx_xml(inv, items, company_row)
 
     def safe(text):
-        if text is None: return ''
-        text = str(text)
-        repl = {'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
-        for a, b in repl.items(): text = text.replace(a, b)
-        return text.encode('latin-1', errors='replace').decode('latin-1')
+        return '' if text is None else str(text)
 
     pdf = FPDF(orientation='P', unit='mm', format='A4', enforce_compliance=DocumentCompliance.PDFA_3B)
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.set_title(f"Facture {inv['invoice_number']}")
+    pdf.add_font('DejaVu', '', str(font_regular))
+    pdf.add_font('DejaVu', 'B', str(font_bold))
     pdf.add_page()
 
-    pdf.set_font('Helvetica', 'B', 20); pdf.set_text_color(17, 24, 39)
+    pdf.set_font('DejaVu', 'B', 20); pdf.set_text_color(17, 24, 39)
     pdf.cell(0, 12, safe(f"Facture {inv['invoice_number']}"), ln=1)
-    pdf.set_font('Helvetica', '', 11); pdf.set_text_color(107, 114, 128)
+    pdf.set_font('DejaVu', '', 11); pdf.set_text_color(107, 114, 128)
     if company_row:
         pdf.cell(0, 6, safe(company_row['name'] or ''), ln=1)
         if company_row['address']: pdf.cell(0, 6, safe(company_row['address']), ln=1)
         if company_row['siret']: pdf.cell(0, 6, safe(f"SIRET : {company_row['siret']}"), ln=1)
     pdf.ln(6)
-    pdf.set_text_color(17, 24, 39); pdf.set_font('Helvetica', 'B', 12)
+    pdf.set_text_color(17, 24, 39); pdf.set_font('DejaVu', 'B', 12)
     pdf.cell(0, 7, 'Facturé à :', ln=1)
-    pdf.set_font('Helvetica', '', 11)
+    pdf.set_font('DejaVu', '', 11)
     pdf.cell(0, 6, safe(inv['client_name']), ln=1)
     if inv['client_address']: pdf.cell(0, 6, safe(inv['client_address']), ln=1)
     pdf.ln(8)
 
-    pdf.set_fill_color(243, 244, 246); pdf.set_font('Helvetica', 'B', 10)
+    pdf.set_fill_color(243, 244, 246); pdf.set_font('DejaVu', 'B', 10)
     pdf.cell(90, 8, 'Description', fill=True)
     pdf.cell(20, 8, 'Qté', fill=True, align='R')
     pdf.cell(30, 8, 'Prix unit.', fill=True, align='R')
     pdf.cell(20, 8, 'TVA', fill=True, align='R')
     pdf.cell(30, 8, 'Total HT', fill=True, align='R', ln=1)
-    pdf.set_font('Helvetica', '', 10)
+    pdf.set_font('DejaVu', '', 10)
     for it in items:
         pdf.cell(90, 7, safe(it['label']))
         pdf.cell(20, 7, safe(f"{it['qty']:g}"), align='R')
-        pdf.cell(30, 7, safe(f"{it['unit_price']:,.2f} EUR"), align='R')
+        pdf.cell(30, 7, safe(f"{it['unit_price']:,.2f} €"), align='R')
         pdf.cell(20, 7, safe(f"{it['vat_rate']:g}%"), align='R')
-        pdf.cell(30, 7, safe(f"{it['line_total']:,.2f} EUR"), align='R', ln=1)
+        pdf.cell(30, 7, safe(f"{it['line_total']:,.2f} €"), align='R', ln=1)
     pdf.ln(6)
-    pdf.set_font('Helvetica', '', 11)
+    pdf.set_font('DejaVu', '', 11)
     pdf.cell(160, 7, 'Sous-total HT', align='R')
-    pdf.cell(30, 7, safe(f"{inv['subtotal']:,.2f} EUR"), align='R', ln=1)
+    pdf.cell(30, 7, safe(f"{inv['subtotal']:,.2f} €"), align='R', ln=1)
     pdf.cell(160, 7, 'TVA', align='R')
-    pdf.cell(30, 7, safe(f"{inv['vat_amount']:,.2f} EUR"), align='R', ln=1)
-    pdf.set_font('Helvetica', 'B', 13)
+    pdf.cell(30, 7, safe(f"{inv['vat_amount']:,.2f} €"), align='R', ln=1)
+    pdf.set_font('DejaVu', 'B', 13)
     pdf.cell(160, 9, 'Total TTC', align='R')
-    pdf.cell(30, 9, safe(f"{inv['total']:,.2f} EUR"), align='R', ln=1)
+    pdf.cell(30, 9, safe(f"{inv['total']:,.2f} €"), align='R', ln=1)
 
-    pdf.ln(10); pdf.set_font('Helvetica', 'I', 8); pdf.set_text_color(150, 150, 150)
+    pdf.ln(10); pdf.set_font('DejaVu', '', 8); pdf.set_text_color(150, 150, 150)
     pdf.multi_cell(0, 4, safe(
-        "Facture electronique Factur-X (profil EN16931). Contient un fichier XML structure "
-        "factur-x.xml. Document genere via ProfitOS ; transmission via une Plateforme Agreee "
-        "DGFiP non encore realisee par cette version."))
+        "Facture électronique Factur-X (profil EN16931). Contient un fichier XML structuré "
+        "factur-x.xml. Document généré via ProfitOS ; transmission via une Plateforme Agréée "
+        "DGFiP non encore réalisée par cette version."))
 
     tmp_path = None
     try:
