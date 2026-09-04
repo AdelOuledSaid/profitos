@@ -2,7 +2,6 @@ from datetime import timedelta
 import uuid
 import statistics
 import xml.etree.ElementTree as ET
-import tempfile
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -2199,17 +2198,15 @@ def render_facturx_pdf(inv, company_row):
         "factur-x.xml. Document généré via ProfitOS ; transmission via une Plateforme Agréée "
         "DGFiP non encore réalisée par cette version."))
 
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix='.xml', delete=False) as tmp:
-            tmp.write(xml_bytes)
-            tmp_path = tmp.name
-        pdf.embed_file(tmp_path, desc='Factur-X invoice data (EN16931)', compress=True)
-        pdf_bytes = bytes(pdf.output(dest='S'))
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-    return pdf_bytes
+    pdf.embed_file(
+        bytes=xml_bytes,
+        basename='factur-x.xml',
+        mime_type='application/xml',
+        desc='Factur-X invoice data (EN16931)',
+        associated_file_relationship='Alternative',
+        compress=True,
+    )
+    return bytes(pdf.output(dest='S'))
 
 
 def _render_credit_pdf(credit,company_row):
