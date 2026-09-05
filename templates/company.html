@@ -1,1 +1,29 @@
-{% extends "base.html" %}{% block content %}<div class="eyebrow">COMPANY PROFILE</div><h1>Profil entreprise</h1><p class="muted">La V0 utilise un filtre géographique strict par département.</p><section class="panel formpanel"><form method="post" class="formgrid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Nom<input name="name" value="{{ p.name if p else '' }}"></label><label>Ville<input name="city" value="{{ p.city if p else '' }}"></label><label>Département principal<input name="department" value="{{ p.department if p else '' }}" placeholder="14"></label><label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments if p else '' }}" placeholder="14, 50, 61, 27"></label><label class="wide">Activités<textarea name="activities" rows="4">{{ p.activities if p else '' }}</textarea></label><label class="wide">Certifications<input name="certifications" value="{{ p.certifications if p else '' }}"></label><label class="wide">Adresse (pour tes factures)<input name="address" value="{{ p.address if p else '' }}" placeholder="12 rue Example, 75001 Paris"></label><label>SIRET<input name="siret" value="{{ p.siret if p else '' }}" placeholder="123 456 789 00012"></label><label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number if p else '' }}" placeholder="FR12345678900"></label><div class="wide"><button>Enregistrer et actualiser GROW</button></div></form></section>{% endblock %}
+{% extends "base.html" %}{% block content %}<div class="eyebrow">COMPANY PROFILE</div><h1>Profil entreprise</h1><p class="muted">La V0 utilise un filtre géographique strict par département.</p><section class="panel formpanel"><form method="post" class="formgrid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Nom<input name="name" value="{{ p.name if p else '' }}"></label><label>Ville<input name="city" value="{{ p.city if p else '' }}"></label><label>Département principal<input name="department" value="{{ p.department if p else '' }}" placeholder="14"></label><label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments if p else '' }}" placeholder="14, 50, 61, 27"></label><label class="wide">Activités<textarea name="activities" rows="4">{{ p.activities if p else '' }}</textarea></label><label class="wide">Certifications<input name="certifications" value="{{ p.certifications if p else '' }}"></label><label class="wide">Adresse (pour tes factures)<input name="address" value="{{ p.address if p else '' }}" placeholder="12 rue Example, 75001 Paris"></label><label>SIRET<input name="siret" value="{{ p.siret if p else '' }}" placeholder="123 456 789 00012"></label><label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number if p else '' }}" placeholder="FR12345678900"></label><div class="wide"><button>Enregistrer et actualiser GROW</button></div></form></section>
+
+<section class="panel" style="margin-top:20px;">
+  <h2 style="margin:0 0 4px;font-size:18px;">Facturation électronique</h2>
+  <p class="muted" style="font-size:13px;margin-bottom:14px;">Plateforme : WeInvoice / Weproc · Environnement : {{ weinvoice_env }}</p>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <span>Statut :</span>
+    {% if weinvoice.weinvoice_status == 'connected' %}
+      <strong style="color:#3ddc84;">🟢 Connectée</strong>
+    {% elif weinvoice.weinvoice_status == 'error' %}
+      <strong style="color:#ff8b8b;">🔴 Erreur</strong>
+    {% else %}
+      <strong class="muted">⚪ Non testée</strong>
+    {% endif %}
+    {% if weinvoice.weinvoice_last_check_at %}<span class="muted" style="font-size:12px;">(dernier test : {{ weinvoice.weinvoice_last_check_at[:16] }})</span>{% endif %}
+  </div>
+  {% if weinvoice.weinvoice_last_error %}
+  <p style="font-size:12px;color:#ff8b8b;margin-bottom:14px;">{{ weinvoice.weinvoice_last_error }}</p>
+  {% endif %}
+  {% if not weinvoice_configured %}
+  <p class="muted" style="font-size:12px;margin-bottom:14px;">Identifiants non configurés côté serveur (WEINVOICE_CLIENT_ID / WEINVOICE_CLIENT_SECRET manquants dans les variables d'environnement Render).</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('company_weinvoice_test') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="secondary" {% if not weinvoice_configured %}disabled{% endif %}>Tester la connexion sandbox</button>
+  </form>
+  <p class="muted" style="font-size:11px;margin-top:12px;">Lot 23.1 — connexion OAuth uniquement. Aucune facture n'est encore transmise via cette plateforme à ce stade.</p>
+</section>
+{% endblock %}
