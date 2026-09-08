@@ -2,7 +2,11 @@ from profitos.runtime import *
 from profitos.plan_limits import feature_enabled, PLAN_LIMITS
 from profitos.feature_access import requires_feature, requires_paid_plan, current_plan_is_paid, _deny_paid_feature
 from profitos.plan_usage import quota_state, record_usage
-from profitos.weinvoice import is_configured as weinvoice_is_configured, test_connection_and_store_status as weinvoice_test_connection
+from profitos.weinvoice import (
+    is_configured as weinvoice_is_configured,
+    test_connection_and_store_status as weinvoice_test_connection,
+    onboard_company_and_store_status as weinvoice_onboard_company,
+)
 import io
 
 
@@ -89,7 +93,7 @@ def register(app):
                 except Exception as e:flash(f'Profil enregistré, mais BOAMP est indisponible : {e}')
             return redirect(url_for('grow'))
         p=c.execute('SELECT * FROM company WHERE id=1').fetchone()
-        settings_row=c.execute('SELECT weinvoice_status,weinvoice_last_check_at,weinvoice_last_error FROM app_settings WHERE id=1').fetchone()
+        settings_row=c.execute('SELECT weinvoice_status,weinvoice_last_check_at,weinvoice_last_error,weinvoice_company_id,weinvoice_kyb_status,weinvoice_onboarded_at FROM app_settings WHERE id=1').fetchone()
         c.close()
         return render_template('company.html',p=p,weinvoice=settings_row,
                                weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV)
@@ -104,6 +108,22 @@ def register(app):
             return redirect(url_for('company'))
         org=current_org()
         ok,message=weinvoice_test_connection(org['id'])
+        flash(('✅ ' if ok else '🔴 ') + message)
+        return redirect(url_for('company'))
+
+    @app.route('/company/weinvoice/onboard',methods=['POST'])
+    @login_required
+    def company_weinvoice_onboard():
+        """Lot 23.2 — envoie les informations de l'entreprise à WeInvoice (KYB) et
+        enregistre l'identifiant externe + le statut renvoyé."""
+        if not can_access('settings'):
+            flash('Seuls le propriétaire ou un administrateur peuvent lancer cet onboarding.')
+            return redirect(url_for('company'))
+        c=cx(); company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close()
+        if not company_row or not company_row['name'] or not company_row['siret'] or not company_row['address']:
+            flash("Nom, SIRET et adresse doivent être renseignés dans le profil entreprise avant l'onboarding WeInvoice.")
+            return redirect(url_for('company'))
+        ok,message=weinvoice_onboard_company(company_row)
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 

@@ -94,3 +94,71 @@ def test_connection_and_store_status(organization_id):
         return False, str(e)
     finally:
         c.close()
+
+
+# ---------------------------------------------------------------------------
+# Lot 23.2 — onboarding entreprise (KYB) auprès de WeInvoice.
+#
+# ATTENTION — hypothèse non confirmée : contrairement à l'endpoint OAuth
+# (POST /v1/oauth/token, explicitement confirmé par la documentation), aucun
+# endpoint précis d'onboarding entreprise ne m'a été communiqué. Le chemin
+# POST /v1/companies ci-dessous suit une convention REST standard mais N'A PAS
+# été vérifié contre la vraie documentation WeInvoice. À confirmer avant le
+# premier vrai test (voir message d'erreur si le endpoint renvoie 404).
+# ---------------------------------------------------------------------------
+
+def onboard_company(company_row):
+    """Envoie les informations de l'entreprise à WeInvoice pour l'onboarding/KYB
+    et retourne le JSON de réponse (contenant a priori un identifiant externe et
+    un statut KYB). Lève WeInvoiceConfigError/WeInvoiceAPIError en cas d'échec."""
+    token = fetch_access_token()
+    url = f"{WEINVOICE_BASE_URL}/v1/companies"
+    payload = {
+        'name': company_row['name'] or '',
+        'siret': (company_row['siret'] or '').replace(' ', ''),
+        'address': company_row['address'] or '',
+        'vat_number': company_row['vat_number'] or '',
+    }
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
+
+    if resp.status_code == 404:
+        raise WeInvoiceAPIError(
+            "Endpoint /v1/companies introuvable (404) — l'URL d'onboarding réelle "
+            "diffère probablement de celle supposée. Vérifie la documentation WeInvoice "
+            "pour le bon chemin et communique-le pour correction."
+        )
+    if resp.status_code not in (200, 201):
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} lors de l'onboarding.")
+    try:
+        return resp.json()
+    except ValueError as e:
+        raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide) lors de l'onboarding.") from e
+
+
+def onboard_company_and_store_status(company_row):
+    """Tente l'onboarding et enregistre le résultat dans app_settings (identifiant
+    externe + statut KYB + horodatage). Retourne (ok: bool, message: str)."""
+    c = cx()
+    try:
+        data = onboard_company(company_row)
+        external_id = data.get('id') or data.get('company_id') or ''
+        kyb_status = data.get('kyb_status') or data.get('status') or 'pending'
+        c.execute(
+            "UPDATE app_settings SET weinvoice_company_id=?,weinvoice_kyb_status=?,weinvoice_onboarded_at=?,weinvoice_last_error=NULL WHERE id=1",
+            (external_id, kyb_status, now())
+        )
+        c.commit()
+        return True, f"Entreprise envoyée à WeInvoice — identifiant {external_id or '(non renvoyé)'}, statut KYB : {kyb_status}."
+    except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
+        c.execute(
+            "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
+            (str(e), now())
+        )
+        c.commit()
+        return False, str(e)
+    finally:
+        c.close()
