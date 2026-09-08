@@ -140,6 +140,9 @@ def create_client(company_row):
         'siren': (company_row['siret'] or '').replace(' ', '')[:9],
         'siret': (company_row['siret'] or '').replace(' ', ''),
         'addressLine1': company_row['address'] or '',
+        'postalCode': company_row['postal_code'] if 'postal_code' in company_row.keys() else '',
+        'city': company_row['city'] if 'city' in company_row.keys() else '',
+        'country': 'FR',
         'vatNumber': company_row['vat_number'] or '',
     }
     headers = {'Authorization': f'Bearer {token}'}
