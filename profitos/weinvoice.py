@@ -136,7 +136,7 @@ def create_client(company_row):
     token = fetch_access_token()
     url = f"{WEINVOICE_BASE_URL}/v1/clients"
     payload = {
-        'name': company_row['name'] or '',
+        'legalName': company_row['name'] or '',
         'siren': (company_row['siret'] or '').replace(' ', '')[:9],
         'siret': (company_row['siret'] or '').replace(' ', ''),
         'address': company_row['address'] or '',
