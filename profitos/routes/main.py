@@ -6,6 +6,10 @@ from profitos.weinvoice import (
     is_configured as weinvoice_is_configured,
     test_connection_and_store_status as weinvoice_test_connection,
     onboard_company_and_store_status as weinvoice_onboard_company,
+    refresh_onboarding_status_and_store as weinvoice_refresh_status,
+    verify_webhook_signature as weinvoice_verify_webhook,
+    handle_onboarding_webhook as weinvoice_handle_webhook,
+    WeInvoiceWebhookError,
 )
 import io
 
@@ -126,6 +130,42 @@ def register(app):
         ok,message=weinvoice_onboard_company(company_row)
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
+
+    @app.route('/company/weinvoice/refresh',methods=['POST'])
+    @login_required
+    def company_weinvoice_refresh():
+        """Rafraîchit manuellement le statut d'onboarding (GET .../client-onboarding).
+        Le webhook reste la méthode recommandée par WeInvoice pour le temps réel ;
+        ce bouton sert de filet de sécurité si un webhook a été manqué."""
+        if not can_access('settings'):
+            flash('Seuls le propriétaire ou un administrateur peuvent actualiser ce statut.')
+            return redirect(url_for('company'))
+        c=cx(); row=c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone(); c.close()
+        if not row or not row['weinvoice_company_id']:
+            flash("Aucun identifiant WeInvoice enregistré — lance d'abord l'onboarding.")
+            return redirect(url_for('company'))
+        ok,message=weinvoice_refresh_status(row['weinvoice_company_id'])
+        flash(('✅ ' if ok else '🔴 ') + message)
+        return redirect(url_for('company'))
+
+    @app.route('/webhooks/weinvoice/client-onboarding',methods=['POST'])
+    def weinvoice_onboarding_webhook():
+        """Réception de l'événement client.onboarding.status_changed. Route publique
+        (server-to-server, sans session) mais protégée par vérification de signature
+        — voir weinvoice.verify_webhook_signature() et son avertissement sur
+        l'hypothèse Svix à confirmer contre la vraie doc WeInvoice."""
+        webhook_id=request.headers.get('webhook-id','')
+        webhook_timestamp=request.headers.get('webhook-timestamp','')
+        signature=request.headers.get('webhook-signature','')
+        raw_body=request.get_data()
+        try:
+            weinvoice_verify_webhook(webhook_id,webhook_timestamp,raw_body,signature)
+        except WeInvoiceWebhookError as e:
+            log_ops_event('WEINVOICE_WEBHOOK_REJECTED','WARNING',detail=str(e))
+            abort(401)
+        payload=request.get_json(silent=True) or {}
+        weinvoice_handle_webhook(payload)
+        return jsonify(received=True)
 
     @app.route('/margin-watch',methods=['GET','POST'])
     @login_required

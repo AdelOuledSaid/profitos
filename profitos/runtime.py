@@ -523,6 +523,7 @@ STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
 WEINVOICE_ENV=os.environ.get('WEINVOICE_ENV','sandbox')
 WEINVOICE_CLIENT_ID=os.environ.get('WEINVOICE_CLIENT_ID')
 WEINVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_CLIENT_SECRET')
+WEINVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_WEBHOOK_SECRET')
 WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
 STRIPE_PLANS={
     'STARTER': {'name':'Starter','price_eur':49,'price_id':STRIPE_PRICE_STARTER_ID},
@@ -653,7 +654,7 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        if request.path=='/billing/webhook':
+        if request.path=='/billing/webhook' or request.path=='/webhooks/weinvoice/client-onboarding':
             return
         token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or not sent or not secrets.compare_digest(token,sent):

@@ -13,9 +13,13 @@ committé dans Git — il ne vit que dans les variables d'environnement Render
 (WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV).
 """
 import requests
+import hmac
+import hashlib
+import base64
 
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
+    WEINVOICE_WEBHOOK_SECRET,
     cx, now,
 )
 
@@ -97,24 +101,43 @@ def test_connection_and_store_status(organization_id):
 
 
 # ---------------------------------------------------------------------------
-# Lot 23.2 — onboarding entreprise (KYB) auprès de WeInvoice.
+# Lot 23.2 — création du client dans le portefeuille WeInvoice + suivi du statut
+# d'onboarding/KYB.
 #
-# ATTENTION — hypothèse non confirmée : contrairement à l'endpoint OAuth
-# (POST /v1/oauth/token, explicitement confirmé par la documentation), aucun
-# endpoint précis d'onboarding entreprise ne m'a été communiqué. Le chemin
-# POST /v1/companies ci-dessous suit une convention REST standard mais N'A PAS
-# été vérifié contre la vraie documentation WeInvoice. À confirmer avant le
-# premier vrai test (voir message d'erreur si le endpoint renvoie 404).
+# Endpoints confirmés par la documentation WeInvoice (pas une convention REST
+# devinée cette fois) :
+#   POST /v1/clients                       — créer le client dans le portefeuille
+#   GET  /v1/clients/{id}/client-onboarding — connaître l'état de l'onboarding
+#
+# ATTENTION — ce qui reste une hypothèse : le SCHÉMA EXACT du corps de requête
+# POST /v1/clients (noms de champs précis) et du corps de réponse (nom exact du
+# champ contenant l'identifiant client) n'a pas été communiqué avec certitude —
+# seuls les chemins des endpoints le sont. Le payload ci-dessous reprend les
+# champs qu'on sait nécessaires (nom, SIRET, adresse) avec des noms de clé
+# raisonnables, mais UNE VÉRIFICATION CONTRE LA VRAIE SPEC OPENAPI RESTE
+# NÉCESSAIRE avant de considérer ce point comme définitivement validé.
+#
+# Ce que ce Lot 23.2 NE fait PAS encore (nécessite le schéma exact avant de
+# coder, pour éviter d'empiler des suppositions sur 6 endpoints différents) :
+#   - PATCH /v1/clients/{id}/agreement        (accord formel)
+#   - POST  /v1/clients/{id}/kyc/company       (KYB entreprise)
+#   - POST  /v1/clients/{id}/legal-rep         (représentant légal)
+#   - POST  /v1/clients/{id}/kyc/identity      (vérification d'identité)
+#   - POST  /v1/clients/{id}/evidence-documents (justificatifs)
+#   - POST  /v1/clients/{id}/procuration        (mandat/signature)
+# Le webhook client.onboarding.status_changed reste la source de vérité pour le
+# statut final, quelle que soit la façon dont ces étapes sont complétées côté
+# WeInvoice (portail hébergé WeInvoice ou appels API à construire ensuite).
 # ---------------------------------------------------------------------------
 
-def onboard_company(company_row):
-    """Envoie les informations de l'entreprise à WeInvoice pour l'onboarding/KYB
-    et retourne le JSON de réponse (contenant a priori un identifiant externe et
-    un statut KYB). Lève WeInvoiceConfigError/WeInvoiceAPIError en cas d'échec."""
+def create_client(company_row):
+    """Crée l'entreprise dans le portefeuille clients WeInvoice (POST /v1/clients).
+    Retourne le JSON de réponse. Lève WeInvoiceConfigError/WeInvoiceAPIError."""
     token = fetch_access_token()
-    url = f"{WEINVOICE_BASE_URL}/v1/companies"
+    url = f"{WEINVOICE_BASE_URL}/v1/clients"
     payload = {
         'name': company_row['name'] or '',
+        'siren': (company_row['siret'] or '').replace(' ', '')[:9],
         'siret': (company_row['siret'] or '').replace(' ', ''),
         'address': company_row['address'] or '',
         'vat_number': company_row['vat_number'] or '',
@@ -127,32 +150,53 @@ def onboard_company(company_row):
 
     if resp.status_code == 404:
         raise WeInvoiceAPIError(
-            "Endpoint /v1/companies introuvable (404) — l'URL d'onboarding réelle "
-            "diffère probablement de celle supposée. Vérifie la documentation WeInvoice "
-            "pour le bon chemin et communique-le pour correction."
+            "Endpoint /v1/clients introuvable (404) — même cet endpoint confirmé par "
+            "la doc échoue, vérifie WEINVOICE_ENV et l'URL de base utilisée."
         )
     if resp.status_code not in (200, 201):
-        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} lors de l'onboarding.")
+        raise WeInvoiceAPIError(
+            f"L'API WeInvoice a répondu {resp.status_code} lors de la création du client "
+            f"— le schéma du payload envoyé est peut-être incorrect (voir docstring)."
+        )
     try:
         return resp.json()
     except ValueError as e:
-        raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide) lors de l'onboarding.") from e
+        raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
+
+
+def get_client_onboarding_status(client_id):
+    """GET /v1/clients/{id}/client-onboarding — état actuel de l'onboarding.
+    Utile pour un rafraîchissement manuel ; le webhook reste la méthode
+    recommandée par WeInvoice pour suivre les changements en continu."""
+    token = fetch_access_token()
+    url = f"{WEINVOICE_BASE_URL}/v1/clients/{client_id}/client-onboarding"
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} pour le statut d'onboarding.")
+    try:
+        return resp.json()
+    except ValueError as e:
+        raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
 
 
 def onboard_company_and_store_status(company_row):
-    """Tente l'onboarding et enregistre le résultat dans app_settings (identifiant
-    externe + statut KYB + horodatage). Retourne (ok: bool, message: str)."""
+    """Crée le client WeInvoice et enregistre son identifiant + statut initial.
+    Retourne (ok: bool, message: str)."""
     c = cx()
     try:
-        data = onboard_company(company_row)
-        external_id = data.get('id') or data.get('company_id') or ''
-        kyb_status = data.get('kyb_status') or data.get('status') or 'pending'
+        data = create_client(company_row)
+        client_id = data.get('id') or data.get('client_id') or ''
+        status = data.get('status') or data.get('onboarding_status') or 'pending'
         c.execute(
             "UPDATE app_settings SET weinvoice_company_id=?,weinvoice_kyb_status=?,weinvoice_onboarded_at=?,weinvoice_last_error=NULL WHERE id=1",
-            (external_id, kyb_status, now())
+            (client_id, status, now())
         )
         c.commit()
-        return True, f"Entreprise envoyée à WeInvoice — identifiant {external_id or '(non renvoyé)'}, statut KYB : {kyb_status}."
+        return True, f"Client créé chez WeInvoice — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
     except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
         c.execute(
             "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
@@ -162,3 +206,99 @@ def onboard_company_and_store_status(company_row):
         return False, str(e)
     finally:
         c.close()
+
+
+def refresh_onboarding_status_and_store(client_id):
+    """Interroge GET /v1/clients/{id}/client-onboarding et met à jour le statut
+    enregistré. À utiliser pour un rafraîchissement manuel (bouton "Actualiser"),
+    en complément du webhook qui reste la voie recommandée pour le temps réel."""
+    c = cx()
+    try:
+        data = get_client_onboarding_status(client_id)
+        status = data.get('status') or data.get('onboarding_status') or 'pending'
+        c.execute(
+            "UPDATE app_settings SET weinvoice_kyb_status=?,weinvoice_last_check_at=?,weinvoice_last_error=NULL WHERE id=1",
+            (status, now())
+        )
+        c.commit()
+        return True, f"Statut actualisé : {status}."
+    except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
+        c.execute(
+            "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
+            (str(e), now())
+        )
+        c.commit()
+        return False, str(e)
+    finally:
+        c.close()
+
+
+def handle_onboarding_webhook(payload):
+    """Traite un événement client.onboarding.status_changed reçu par webhook et
+    met à jour app_settings en conséquence. La vérification de signature
+    (en-têtes webhook-id/webhook-timestamp/webhook-signature) doit être faite
+    par l'appelant AVANT de passer le payload ici — voir la route Flask dédiée.
+    """
+    status = payload.get('status', 'pending')
+    reason = payload.get('reason') or ''
+    c = cx()
+    try:
+        c.execute(
+            "UPDATE app_settings SET weinvoice_kyb_status=?,weinvoice_last_check_at=?,weinvoice_last_error=? WHERE id=1",
+            (status, now(), reason or None)
+        )
+        c.commit()
+    finally:
+        c.close()
+
+
+# ---------------------------------------------------------------------------
+# Vérification de signature webhook.
+#
+# ATTENTION — déduction, pas une certitude confirmée : les en-têtes exacts
+# cités (webhook-id, webhook-timestamp, webhook-signature) correspondent au
+# format standard de la librairie Svix, largement utilisée comme infrastructure
+# de webhooks par de nombreux éditeurs. Le schéma ci-dessous suit les
+# conventions Svix (contenu signé = "{id}.{timestamp}.{corps brut}", HMAC-SHA256
+# avec le secret décodé en base64, signature encodée en base64, éventuellement
+# préfixée "v1," et avec plusieurs signatures possibles séparées par des
+# espaces pour la rotation de clé). CETTE HYPOTHÈSE DOIT ÊTRE CONFIRMÉE contre
+# la vraie documentation de vérification de signature WeInvoice avant de faire
+# confiance à cette fonction en production — une signature qui échouerait à
+# tort bloquerait des webhooks légitimes.
+# ---------------------------------------------------------------------------
+
+class WeInvoiceWebhookError(Exception):
+    """Levée quand la signature d'un webhook ne peut pas être vérifiée."""
+
+
+def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_header):
+    """Vérifie la signature d'un webhook selon les conventions Svix. raw_body doit
+    être les OCTETS BRUTS du corps HTTP (pas du JSON re-sérialisé — l'ordre des
+    clés et les espaces changeraient la signature). Lève WeInvoiceWebhookError
+    si la signature ne correspond à aucune des signatures fournies."""
+    if not WEINVOICE_WEBHOOK_SECRET:
+        raise WeInvoiceWebhookError(
+            "WEINVOICE_WEBHOOK_SECRET n'est pas configuré côté serveur — impossible "
+            "de vérifier la signature du webhook."
+        )
+    secret = WEINVOICE_WEBHOOK_SECRET
+    if secret.startswith('whsec_'):
+        secret = secret[len('whsec_'):]
+    try:
+        secret_bytes = base64.b64decode(secret)
+    except Exception:
+        secret_bytes = secret.encode('utf-8')
+
+    signed_content = f"{webhook_id}.{webhook_timestamp}.".encode('utf-8') + raw_body
+    expected = base64.b64encode(
+        hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()
+    ).decode('utf-8')
+
+    provided_signatures = [
+        sig.split(',', 1)[1] if ',' in sig else sig
+        for sig in signature_header.split()
+    ]
+    if not any(hmac.compare_digest(expected, sig) for sig in provided_signatures):
+        raise WeInvoiceWebhookError("Signature webhook invalide.")
+

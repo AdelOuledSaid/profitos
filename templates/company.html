@@ -46,6 +46,12 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="secondary" {% if weinvoice.weinvoice_status != 'connected' %}disabled{% endif %}>Envoyer les informations de l'entreprise</button>
     </form>
+    {% if weinvoice.weinvoice_company_id %}
+    <form method="post" action="{{ url_for('company_weinvoice_refresh') }}" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="secondary">Actualiser le statut</button>
+    </form>
+    {% endif %}
     {% if weinvoice.weinvoice_status != 'connected' %}<p class="muted" style="font-size:11px;margin-top:8px;">Teste d'abord la connexion sandbox ci-dessus.</p>{% endif %}
   </div>
 
