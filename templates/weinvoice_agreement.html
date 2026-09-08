@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">FACTURATION ÉLECTRONIQUE</div>
+<h1>Signer l'accord d'onboarding WeInvoice</h1>
+<p class="muted">Cette signature devient la preuve réelle transmise à WeInvoice (référence <code>proofRef</code>) — elle est conservée dans ProfitOS avec ton identité, l'horodatage et ton adresse IP.</p>
+
+<section class="panel formpanel" style="max-width:560px;">
+  <p class="muted" style="margin-top:0;">Entreprise : <strong>{{ company.name }}</strong> · SIRET {{ company.siret }}</p>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Nom du signataire<input name="signatory_name" required placeholder="Jean Dupont"></label>
+    <label class="wide">Qualité du signataire<input name="signatory_quality" required placeholder="Président, Gérant, Directeur Général..."></label>
+    <label class="wide" style="display:flex;align-items:flex-start;gap:10px;font-weight:400;">
+      <input type="checkbox" name="certify" value="1" style="width:auto;margin-top:3px;" required>
+      <span>Je certifie être habilité à engager l'entreprise <strong>{{ company.name }}</strong> et j'accepte les conditions d'onboarding de WeInvoice / Weproc en son nom.</span>
+    </label>
+    <div class="wide"><button>Signer et envoyer à WeInvoice</button> <a class="button secondary" href="{{ url_for('company') }}">Annuler</a></div>
+  </form>
+</section>
+{% endblock %}

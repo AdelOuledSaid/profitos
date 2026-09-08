@@ -16,6 +16,7 @@ import requests
 import hmac
 import hashlib
 import base64
+import secrets
 
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
@@ -130,9 +131,15 @@ def test_connection_and_store_status(organization_id):
 # WeInvoice (portail hébergé WeInvoice ou appels API à construire ensuite).
 # ---------------------------------------------------------------------------
 
-def create_client(company_row):
+def create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at):
     """Crée l'entreprise dans le portefeuille clients WeInvoice (POST /v1/clients).
-    Retourne le JSON de réponse. Lève WeInvoiceConfigError/WeInvoiceAPIError."""
+    Retourne le JSON de réponse. Lève WeInvoiceConfigError/WeInvoiceAPIError.
+
+    Structure de formalAgreement confirmée par la collection Postman officielle
+    WeInvoice (signatory/quality/proofRef/signedAt) — plus une hypothèse cette
+    fois. proof_ref doit référencer une PREUVE RÉELLE (voir record_formal_agreement
+    ci-dessous) : jamais une valeur inventée à la volée.
+    """
     token = fetch_access_token()
     url = f"{WEINVOICE_BASE_URL}/v1/clients"
     payload = {
@@ -144,65 +151,20 @@ def create_client(company_row):
         'city': company_row['city'] if 'city' in company_row.keys() else '',
         'country': 'FR',
         'vatNumber': company_row['vat_number'] or '',
+        'formalAgreement': {
+            'signatory': signatory_name,
+            'quality': signatory_quality,
+            'proofRef': proof_ref,
+            'signedAt': signed_at,
+        },
     }
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-    }
-
-    # Ne jamais journaliser les valeurs du profil entreprise : on conserve
-    # uniquement les noms de champs pour le diagnostic.
-    log_ops_event(
-        'WEINVOICE_CLIENT_PAYLOAD_DEBUG',
-        'INFO',
-        detail='fields=' + ','.join(sorted(payload.keys())),
-    )
-
+    headers = {'Authorization': f'Bearer {token}'}
+    # DIAGNOSTIC TEMPORAIRE — à retirer une fois le premier onboarding confirmé
+    # réussi. Log les clés ET valeurs réellement envoyées (aucune donnée secrète
+    # ici, juste le profil entreprise), visible dans les logs Render.
+    log_ops_event('WEINVOICE_CLIENT_PAYLOAD_DEBUG', 'INFO', detail=str(payload))
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
-
-        # Compatibilité sandbox : certaines versions du schéma de création
-        # attendent les champs postaux dans un objet "address". On ne retente
-        # QUE si WeInvoice refuse explicitement addressLine1 alors que ProfitOS
-        # vient d'envoyer une valeur non vide. Le premier appel étant en 400,
-        # aucun client n'a été créé et ce repli ne crée pas de doublon.
-        if resp.status_code == 400 and payload.get('addressLine1'):
-            try:
-                error_data = resp.json()
-            except ValueError:
-                error_data = {}
-
-            violations = error_data.get('violations') or []
-            missing_address_line1 = any(
-                isinstance(v, dict)
-                and v.get('code') == 'field_required'
-                and v.get('path') == 'addressLine1'
-                for v in violations
-            )
-
-            if missing_address_line1:
-                nested_payload = dict(payload)
-                nested_payload['address'] = {
-                    'addressLine1': payload['addressLine1'],
-                    'postalCode': payload.get('postalCode', ''),
-                    'city': payload.get('city', ''),
-                    'country': payload.get('country', 'FR'),
-                }
-                # Retirer les champs d'adresse de premier niveau pour éviter
-                # d'envoyer deux représentations concurrentes.
-                for key in ('addressLine1', 'postalCode', 'city', 'country'):
-                    nested_payload.pop(key, None)
-
-                log_ops_event(
-                    'WEINVOICE_CLIENT_ADDRESS_SCHEMA_RETRY',
-                    'INFO',
-                    detail='retry_with_nested_address',
-                )
-                resp = requests.post(
-                    url, json=nested_payload, headers=headers, timeout=15
-                )
-
     except requests.RequestException as e:
         raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
 
@@ -248,14 +210,14 @@ def get_client_onboarding_status(client_id):
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
 
 
-def onboard_company_and_store_status(company_row):
+def onboard_company_and_store_status(company_row, signatory_name, signatory_quality, proof_ref, signed_at):
     """Crée le client WeInvoice et enregistre son identifiant + statut initial.
     Retourne (ok: bool, message: str)."""
     c = cx()
     try:
-        data = create_client(company_row)
-        client_id = data.get('id') or data.get('client_id') or ''
-        status = data.get('status') or data.get('onboarding_status') or 'pending'
+        data = create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at)
+        client_id = data.get('organizationId') or data.get('id') or data.get('client_id') or ''
+        status = data.get('onboardingStatus') or data.get('status') or data.get('onboarding_status') or 'pending'
         c.execute(
             "UPDATE app_settings SET weinvoice_company_id=?,weinvoice_kyb_status=?,weinvoice_onboarded_at=?,weinvoice_last_error=NULL WHERE id=1",
             (client_id, status, now())
@@ -271,6 +233,37 @@ def onboard_company_and_store_status(company_row):
         return False, str(e)
     finally:
         c.close()
+
+
+def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_id=None):
+    """Enregistre une preuve RÉELLE d'accord formel dans ProfitOS avant tout envoi
+    à WeInvoice — signatory_name/quality saisis explicitement par un utilisateur
+    authentifié de ProfitOS, avec horodatage et adresse IP. proof_ref est un jeton
+    aléatoire non devinable (secrets.token_urlsafe) qui référence CET
+    enregistrement précis, conservé en base tenant — ce n'est jamais une valeur
+    inventée sans donnée réelle derrière.
+
+    Retourne (proof_ref: str, signed_at: str, agreement_id: int).
+    """
+    if not signatory_name or not signatory_name.strip():
+        raise ValueError("Le nom du signataire est requis.")
+    if not signatory_quality or not signatory_quality.strip():
+        raise ValueError("La qualité du signataire est requise.")
+
+    proof_ref = f"profitos-agreement-{secrets.token_urlsafe(24)}"
+    signed_at = now()
+    c = cx()
+    try:
+        c.execute(
+            "INSERT INTO weinvoice_agreements(signatory_name,signatory_quality,signed_at,ip_address,proof_ref,user_id,created_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (signatory_name.strip(), signatory_quality.strip(), signed_at, ip_address or '', proof_ref, user_id, now())
+        )
+        c.commit()
+        agreement_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+    finally:
+        c.close()
+    return proof_ref, signed_at, agreement_id
 
 
 def refresh_onboarding_status_and_store(client_id):

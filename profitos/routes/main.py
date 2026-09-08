@@ -9,6 +9,7 @@ from profitos.weinvoice import (
     refresh_onboarding_status_and_store as weinvoice_refresh_status,
     verify_webhook_signature as weinvoice_verify_webhook,
     handle_onboarding_webhook as weinvoice_handle_webhook,
+    record_formal_agreement as weinvoice_record_agreement,
     WeInvoiceWebhookError,
 )
 import io
@@ -115,11 +116,12 @@ def register(app):
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 
-    @app.route('/company/weinvoice/onboard',methods=['POST'])
+    @app.route('/company/weinvoice/onboard',methods=['GET','POST'])
     @login_required
     def company_weinvoice_onboard():
-        """Lot 23.2 — envoie les informations de l'entreprise à WeInvoice (KYB) et
-        enregistre l'identifiant externe + le statut renvoyé."""
+        """Lot 23.2 — recueille une signature réelle (nom + qualité du signataire,
+        certification explicite) avant tout envoi à WeInvoice. proofRef référence
+        cet enregistrement, jamais une valeur inventée."""
         if not can_access('settings'):
             flash('Seuls le propriétaire ou un administrateur peuvent lancer cet onboarding.')
             return redirect(url_for('company'))
@@ -127,7 +129,30 @@ def register(app):
         if not company_row or not company_row['name'] or not company_row['siret'] or not company_row['address']:
             flash("Nom, SIRET et adresse doivent être renseignés dans le profil entreprise avant l'onboarding WeInvoice.")
             return redirect(url_for('company'))
-        ok,message=weinvoice_onboard_company(company_row)
+
+        if request.method=='GET':
+            return render_template('weinvoice_agreement.html',company=company_row)
+
+        signatory_name=request.form.get('signatory_name','').strip()
+        signatory_quality=request.form.get('signatory_quality','').strip()
+        if not request.form.get('certify'):
+            flash("Tu dois certifier être habilité à engager l'entreprise pour continuer.")
+            return redirect(url_for('company_weinvoice_onboard'))
+        if not signatory_name or not signatory_quality:
+            flash('Le nom et la qualité du signataire sont requis.')
+            return redirect(url_for('company_weinvoice_onboard'))
+
+        user=current_user()
+        try:
+            proof_ref,signed_at,_agreement_id=weinvoice_record_agreement(
+                signatory_name,signatory_quality,request.remote_addr or '',
+                user_id=(user['id'] if user else None),
+            )
+        except ValueError as e:
+            flash(str(e))
+            return redirect(url_for('company_weinvoice_onboard'))
+
+        ok,message=weinvoice_onboard_company(company_row,signatory_name,signatory_quality,proof_ref,signed_at)
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 

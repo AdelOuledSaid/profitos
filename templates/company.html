@@ -42,10 +42,11 @@
     {% if weinvoice.weinvoice_company_id %}
     <p class="muted" style="font-size:12px;margin-bottom:10px;">Identifiant WeInvoice : <code>{{ weinvoice.weinvoice_company_id }}</code>{% if weinvoice.weinvoice_onboarded_at %} · envoyé le {{ weinvoice.weinvoice_onboarded_at[:16] }}{% endif %}</p>
     {% endif %}
-    <form method="post" action="{{ url_for('company_weinvoice_onboard') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="secondary" {% if weinvoice.weinvoice_status != 'connected' %}disabled{% endif %}>Envoyer les informations de l'entreprise</button>
-    </form>
+    {% if weinvoice.weinvoice_status == 'connected' %}
+    <a class="button secondary" href="{{ url_for('company_weinvoice_onboard') }}" style="display:inline-block;">Envoyer les informations de l'entreprise</a>
+    {% else %}
+    <button class="secondary" disabled>Envoyer les informations de l'entreprise</button>
+    {% endif %}
     {% if weinvoice.weinvoice_company_id %}
     <form method="post" action="{{ url_for('company_weinvoice_refresh') }}" style="margin-top:8px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

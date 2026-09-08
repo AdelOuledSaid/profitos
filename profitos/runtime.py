@@ -710,6 +710,16 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'INDICE',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS weinvoice_agreements(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signatory_name TEXT NOT NULL,
+        signatory_quality TEXT NOT NULL,
+        signed_at TEXT NOT NULL,
+        ip_address TEXT,
+        proof_ref TEXT UNIQUE NOT NULL,
+        user_id INTEGER,
+        created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS bank_connections(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         provider TEXT NOT NULL,
