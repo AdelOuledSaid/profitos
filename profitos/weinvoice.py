@@ -20,7 +20,7 @@ import base64
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
     WEINVOICE_WEBHOOK_SECRET,
-    cx, now,
+    cx, now, log_ops_event,
 )
 
 
@@ -139,10 +139,14 @@ def create_client(company_row):
         'legalName': company_row['name'] or '',
         'siren': (company_row['siret'] or '').replace(' ', '')[:9],
         'siret': (company_row['siret'] or '').replace(' ', ''),
-        'address': company_row['address'] or '',
-        'vat_number': company_row['vat_number'] or '',
+        'addressLine1': company_row['address'] or '',
+        'vatNumber': company_row['vat_number'] or '',
     }
     headers = {'Authorization': f'Bearer {token}'}
+    # DIAGNOSTIC TEMPORAIRE — à retirer une fois le vrai schéma confirmé. Log les
+    # clés ET valeurs réellement envoyées (aucune donnée secrète ici, juste le
+    # profil entreprise), visible dans les logs Render.
+    log_ops_event('WEINVOICE_CLIENT_PAYLOAD_DEBUG', 'INFO', detail=str(payload))
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
     except requests.RequestException as e:
