@@ -34,6 +34,12 @@ class WeInvoiceAPIError(Exception):
     sandbox indisponible, etc.)."""
 
 
+class SirenAlreadyExistsError(WeInvoiceAPIError):
+    """Levée sur un 409 {'error': 'siren_taken'} — le client existe déjà dans le
+    portefeuille WeInvoice. Ne jamais recréer : retrouver le client existant via
+    GET /v1/clients et récupérer son identifiant."""
+
+
 def is_configured():
     """True si les 2 identifiants nécessaires sont présents dans l'environnement."""
     return bool(WEINVOICE_CLIENT_ID and WEINVOICE_CLIENT_SECRET)
@@ -173,6 +179,17 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
             "Endpoint /v1/clients introuvable (404) — même cet endpoint confirmé par "
             "la doc échoue, vérifie WEINVOICE_ENV et l'URL de base utilisée."
         )
+    if resp.status_code == 409:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = {}
+        if detail.get('error') == 'siren_taken':
+            raise SirenAlreadyExistsError(
+                "Ce SIREN existe déjà dans le portefeuille WeInvoice — récupération du "
+                "client existant plutôt que nouvelle création."
+            )
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu 409 lors de la création du client — détail : {detail}")
     if resp.status_code not in (200, 201):
         try:
             detail = resp.json()
@@ -185,6 +202,44 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
         return resp.json()
     except ValueError as e:
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
+
+
+def find_client_by_siren(siren):
+    """GET /v1/clients — recherche le client existant portant ce SIREN dans le
+    portefeuille (utilisé après un 409 siren_taken, jamais pour recréer). Retourne
+    le dict du client trouvé, ou None si absent de la liste.
+
+    ATTENTION — hypothèse : aucune confirmation que /v1/clients accepte un filtre
+    de requête (ex. ?siren=...). Cette fonction récupère la liste et filtre côté
+    ProfitOS, en gérant à la fois une réponse en tableau brut et une réponse
+    paginée ({'data': [...]} ou {'items': [...]}), sans supposer laquelle des deux
+    formes est la bonne.
+    """
+    token = fetch_access_token()
+    url = f"{WEINVOICE_BASE_URL}/v1/clients"
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} pour la liste des clients.")
+    try:
+        body = resp.json()
+    except ValueError as e:
+        raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide) pour la liste des clients.") from e
+
+    if isinstance(body, list):
+        clients = body
+    elif isinstance(body, dict):
+        clients = body.get('data') or body.get('items') or body.get('clients') or []
+    else:
+        clients = []
+
+    for entry in clients:
+        if isinstance(entry, dict) and entry.get('siren') == siren:
+            return entry
+    return None
 
 
 def get_client_onboarding_status(client_id):
@@ -212,18 +267,34 @@ def get_client_onboarding_status(client_id):
 
 def onboard_company_and_store_status(company_row, signatory_name, signatory_quality, proof_ref, signed_at):
     """Crée le client WeInvoice et enregistre son identifiant + statut initial.
-    Retourne (ok: bool, message: str)."""
+    Sur un 409 siren_taken, récupère le client déjà existant au lieu d'échouer —
+    ne recrée jamais un client pour ce SIREN. Retourne (ok: bool, message: str)."""
+    siren = (company_row['siret'] or '').replace(' ', '')[:9]
     c = cx()
     try:
-        data = create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at)
-        client_id = data.get('organizationId') or data.get('id') or data.get('client_id') or ''
-        status = data.get('onboardingStatus') or data.get('status') or data.get('onboarding_status') or 'pending'
+        try:
+            data = create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at)
+            client_id = data.get('organizationId') or data.get('id') or data.get('client_id') or ''
+            status = data.get('onboardingStatus') or data.get('status') or data.get('onboarding_status') or 'pending'
+            message = f"Client créé chez WeInvoice — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
+        except SirenAlreadyExistsError:
+            existing = find_client_by_siren(siren)
+            if not existing:
+                raise WeInvoiceAPIError(
+                    f"WeInvoice signale ce SIREN ({siren}) comme déjà pris, mais il est "
+                    f"introuvable via GET /v1/clients — vérifie manuellement dans le "
+                    f"portefeuille WeInvoice."
+                )
+            client_id = existing.get('organizationId') or existing.get('id') or existing.get('client_id') or ''
+            status = existing.get('onboardingStatus') or existing.get('status') or existing.get('onboarding_status') or 'pending'
+            message = f"Client déjà existant chez WeInvoice retrouvé — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
+
         c.execute(
             "UPDATE app_settings SET weinvoice_company_id=?,weinvoice_kyb_status=?,weinvoice_onboarded_at=?,weinvoice_last_error=NULL WHERE id=1",
             (client_id, status, now())
         )
         c.commit()
-        return True, f"Client créé chez WeInvoice — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
+        return True, message
     except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
         c.execute(
             "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
@@ -233,6 +304,7 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
         return False, str(e)
     finally:
         c.close()
+
 
 
 def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_id=None):
