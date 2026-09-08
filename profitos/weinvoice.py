@@ -154,9 +154,12 @@ def create_client(company_row):
             "la doc échoue, vérifie WEINVOICE_ENV et l'URL de base utilisée."
         )
     if resp.status_code not in (200, 201):
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
         raise WeInvoiceAPIError(
-            f"L'API WeInvoice a répondu {resp.status_code} lors de la création du client "
-            f"— le schéma du payload envoyé est peut-être incorrect (voir docstring)."
+            f"L'API WeInvoice a répondu {resp.status_code} lors de la création du client — détail : {detail}"
         )
     try:
         return resp.json()
@@ -176,7 +179,11 @@ def get_client_onboarding_status(client_id):
     except requests.RequestException as e:
         raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
     if resp.status_code != 200:
-        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} pour le statut d'onboarding.")
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} pour le statut d'onboarding — détail : {detail}")
     try:
         return resp.json()
     except ValueError as e:
