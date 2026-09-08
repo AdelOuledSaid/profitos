@@ -145,13 +145,64 @@ def create_client(company_row):
         'country': 'FR',
         'vatNumber': company_row['vat_number'] or '',
     }
-    headers = {'Authorization': f'Bearer {token}'}
-    # DIAGNOSTIC TEMPORAIRE — à retirer une fois le vrai schéma confirmé. Log les
-    # clés ET valeurs réellement envoyées (aucune donnée secrète ici, juste le
-    # profil entreprise), visible dans les logs Render.
-    log_ops_event('WEINVOICE_CLIENT_PAYLOAD_DEBUG', 'INFO', detail=str(payload))
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    }
+
+    # Ne jamais journaliser les valeurs du profil entreprise : on conserve
+    # uniquement les noms de champs pour le diagnostic.
+    log_ops_event(
+        'WEINVOICE_CLIENT_PAYLOAD_DEBUG',
+        'INFO',
+        detail='fields=' + ','.join(sorted(payload.keys())),
+    )
+
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
+
+        # Compatibilité sandbox : certaines versions du schéma de création
+        # attendent les champs postaux dans un objet "address". On ne retente
+        # QUE si WeInvoice refuse explicitement addressLine1 alors que ProfitOS
+        # vient d'envoyer une valeur non vide. Le premier appel étant en 400,
+        # aucun client n'a été créé et ce repli ne crée pas de doublon.
+        if resp.status_code == 400 and payload.get('addressLine1'):
+            try:
+                error_data = resp.json()
+            except ValueError:
+                error_data = {}
+
+            violations = error_data.get('violations') or []
+            missing_address_line1 = any(
+                isinstance(v, dict)
+                and v.get('code') == 'field_required'
+                and v.get('path') == 'addressLine1'
+                for v in violations
+            )
+
+            if missing_address_line1:
+                nested_payload = dict(payload)
+                nested_payload['address'] = {
+                    'addressLine1': payload['addressLine1'],
+                    'postalCode': payload.get('postalCode', ''),
+                    'city': payload.get('city', ''),
+                    'country': payload.get('country', 'FR'),
+                }
+                # Retirer les champs d'adresse de premier niveau pour éviter
+                # d'envoyer deux représentations concurrentes.
+                for key in ('addressLine1', 'postalCode', 'city', 'country'):
+                    nested_payload.pop(key, None)
+
+                log_ops_event(
+                    'WEINVOICE_CLIENT_ADDRESS_SCHEMA_RETRY',
+                    'INFO',
+                    detail='retry_with_nested_address',
+                )
+                resp = requests.post(
+                    url, json=nested_payload, headers=headers, timeout=15
+                )
+
     except requests.RequestException as e:
         raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
 
