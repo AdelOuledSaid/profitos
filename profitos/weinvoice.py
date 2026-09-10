@@ -204,6 +204,37 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
 
 
+def seed_sandbox_siren(siren, result='FOUND'):
+    """POST /v1/_sandbox/annuaire/seed — rend un SIREN résoluble dans l'annuaire
+    sandbox WeInvoice, pour permettre son utilisation en test (KYB, onboarding).
+
+    GARDE-FOU STRICT : ne s'exécute JAMAIS en production, même si l'URL elle-même
+    ne devrait de toute façon pas exister hors sandbox — je ne veux pas dépendre
+    uniquement d'un 404 serveur pour cette protection. Toute tentative d'appel en
+    environnement de production lève immédiatement une erreur, sans requête réseau.
+    """
+    if WEINVOICE_ENV == 'production':
+        raise WeInvoiceConfigError(
+            "seed_sandbox_siren() ne doit jamais être appelée en production — "
+            "WEINVOICE_ENV='production' détecté, appel bloqué avant toute requête réseau."
+        )
+    token = fetch_access_token()
+    url = f"{WEINVOICE_BASE_URL}/v1/_sandbox/annuaire/seed"
+    payload = {'siren': siren, 'result': result}
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
+    if resp.status_code not in (200, 201, 204):
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise WeInvoiceAPIError(f"L'API WeInvoice a répondu {resp.status_code} lors du seed sandbox — détail : {detail}")
+    log_ops_event('WEINVOICE_SANDBOX_SEED', 'INFO', detail=f"siren={siren} result={result}")
+
+
 def find_client_by_siren(siren):
     """GET /v1/clients — recherche le client existant portant ce SIREN dans le
     portefeuille (utilisé après un 409 siren_taken, jamais pour recréer). Retourne
@@ -228,6 +259,11 @@ def find_client_by_siren(siren):
         body = resp.json()
     except ValueError as e:
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide) pour la liste des clients.") from e
+
+    # DIAGNOSTIC TEMPORAIRE — à retirer une fois la vraie structure de réponse
+    # confirmée. Montre la forme réelle renvoyée par GET /v1/clients (pagination,
+    # noms de champs) dans les logs Render.
+    log_ops_event('WEINVOICE_CLIENTS_LIST_DEBUG', 'INFO', detail=str(body)[:1500])
 
     if isinstance(body, list):
         clients = body
@@ -272,6 +308,16 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
     siren = (company_row['siret'] or '').replace(' ', '')[:9]
     c = cx()
     try:
+        # Automatise le seed sandbox (rend le SIREN résoluble dans l'annuaire de
+        # test) — jamais exécuté en production, voir garde-fou dans la fonction.
+        if WEINVOICE_ENV != 'production':
+            try:
+                seed_sandbox_siren(siren, result='FOUND')
+            except (WeInvoiceConfigError, WeInvoiceAPIError) as seed_error:
+                log_ops_event('WEINVOICE_SANDBOX_SEED_FAILED', 'WARNING', detail=str(seed_error))
+                # On n'interrompt pas l'onboarding pour autant : si le seed échoue,
+                # la création du client échouera de toute façon avec un message
+                # clair, sans qu'on ait besoin de dupliquer la gestion d'erreur ici.
         try:
             data = create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at)
             client_id = data.get('organizationId') or data.get('id') or data.get('client_id') or ''
