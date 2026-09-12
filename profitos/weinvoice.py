@@ -199,9 +199,24 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
             f"L'API WeInvoice a répondu {resp.status_code} lors de la création du client — détail : {detail}"
         )
     try:
-        return resp.json()
+        data = resp.json()
     except ValueError as e:
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
+
+    # Diagnostic temporaire : uniquement les noms des champs renvoyés.
+    if isinstance(data, dict):
+        log_ops_event(
+            'WEINVOICE_CLIENT_CREATE_RESPONSE_DEBUG',
+            'INFO',
+            detail='top_level_keys=' + ','.join(sorted(str(k) for k in data.keys())),
+        )
+    else:
+        log_ops_event(
+            'WEINVOICE_CLIENT_CREATE_RESPONSE_DEBUG',
+            'INFO',
+            detail='response_type=' + type(data).__name__,
+        )
+    return data
 
 
 def seed_sandbox_siren(siren, result='FOUND'):
