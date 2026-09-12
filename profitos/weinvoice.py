@@ -199,24 +199,9 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
             f"L'API WeInvoice a répondu {resp.status_code} lors de la création du client — détail : {detail}"
         )
     try:
-        data = resp.json()
+        return resp.json()
     except ValueError as e:
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
-
-    # Diagnostic temporaire : uniquement les noms des champs renvoyés.
-    if isinstance(data, dict):
-        log_ops_event(
-            'WEINVOICE_CLIENT_CREATE_RESPONSE_DEBUG',
-            'INFO',
-            detail='top_level_keys=' + ','.join(sorted(str(k) for k in data.keys())),
-        )
-    else:
-        log_ops_event(
-            'WEINVOICE_CLIENT_CREATE_RESPONSE_DEBUG',
-            'INFO',
-            detail='response_type=' + type(data).__name__,
-        )
-    return data
 
 
 def seed_sandbox_siren(siren, result='FOUND'):
@@ -228,10 +213,10 @@ def seed_sandbox_siren(siren, result='FOUND'):
     uniquement d'un 404 serveur pour cette protection. Toute tentative d'appel en
     environnement de production lève immédiatement une erreur, sans requête réseau.
     """
-    if WEINVOICE_ENV == 'production':
+    if WEINVOICE_ENV != 'sandbox':
         raise WeInvoiceConfigError(
-            "seed_sandbox_siren() ne doit jamais être appelée en production — "
-            "WEINVOICE_ENV='production' détecté, appel bloqué avant toute requête réseau."
+            "seed_sandbox_siren() est strictement réservée à WEINVOICE_ENV='sandbox' — "
+            "appel bloqué avant toute requête réseau."
         )
     token = fetch_access_token()
     url = f"{WEINVOICE_BASE_URL}/v1/_sandbox/annuaire/seed"
@@ -325,7 +310,7 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
     try:
         # Automatise le seed sandbox (rend le SIREN résoluble dans l'annuaire de
         # test) — jamais exécuté en production, voir garde-fou dans la fonction.
-        if WEINVOICE_ENV != 'production':
+        if WEINVOICE_ENV == 'sandbox':
             try:
                 seed_sandbox_siren(siren, result='FOUND')
             except (WeInvoiceConfigError, WeInvoiceAPIError) as seed_error:
@@ -335,8 +320,20 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
                 # clair, sans qu'on ait besoin de dupliquer la gestion d'erreur ici.
         try:
             data = create_client(company_row, signatory_name, signatory_quality, proof_ref, signed_at)
-            client_id = data.get('organizationId') or data.get('id') or data.get('client_id') or ''
-            status = data.get('onboardingStatus') or data.get('status') or data.get('onboarding_status') or 'pending'
+            client = data.get('client') if isinstance(data, dict) and isinstance(data.get('client'), dict) else data
+            client_id = (
+                client.get('organizationId')
+                or client.get('clientId')
+                or client.get('id')
+                or client.get('client_id')
+                or ''
+            )
+            status = (
+                client.get('onboardingStatus')
+                or client.get('status')
+                or client.get('onboarding_status')
+                or 'pending'
+            )
             message = f"Client créé chez WeInvoice — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
         except SirenAlreadyExistsError:
             existing = find_client_by_siren(siren)
@@ -346,7 +343,13 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
                     f"introuvable via GET /v1/clients — vérifie manuellement dans le "
                     f"portefeuille WeInvoice."
                 )
-            client_id = existing.get('organizationId') or existing.get('id') or existing.get('client_id') or ''
+            client_id = (
+                existing.get('organizationId')
+                or existing.get('clientId')
+                or existing.get('id')
+                or existing.get('client_id')
+                or ''
+            )
             status = existing.get('onboardingStatus') or existing.get('status') or existing.get('onboarding_status') or 'pending'
             message = f"Client déjà existant chez WeInvoice retrouvé — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
 
