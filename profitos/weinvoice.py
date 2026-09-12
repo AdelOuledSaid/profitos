@@ -268,7 +268,13 @@ def find_client_by_siren(siren):
     if isinstance(body, list):
         clients = body
     elif isinstance(body, dict):
-        clients = body.get('data') or body.get('items') or body.get('clients') or []
+        clients = (
+            body.get('resources')
+            or body.get('data')
+            or body.get('items')
+            or body.get('clients')
+            or []
+        )
     else:
         clients = []
 
