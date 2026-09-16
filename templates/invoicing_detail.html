@@ -54,6 +54,15 @@
   <p style="font-size:14px;font-weight:700;color:#3ddc84;margin-bottom:6px;">✅ Prête</p>
   <p class="muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
   <a class="button secondary" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
+  {% if inv.weinvoice_invoice_id %}
+  <p style="font-size:13px;color:#3ddc84;margin:0 0 10px;">✓ WeInvoice : {{ inv.weinvoice_status or 'transmise' }} · <code>{{ inv.weinvoice_invoice_id }}</code></p>
+  {% else %}
+  <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="secondary">Transmettre à WeInvoice</button>
+  </form>
+  {% endif %}
+  {% if inv.weinvoice_last_error %}<p style="font-size:12px;color:#ff8b8b;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
   {% endif %}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;">
     {% for check in mention_checks %}
@@ -62,7 +71,7 @@
     </div>
     {% endfor %}
   </div>
-  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. Cette étape prépare et vérifie les données ; rien n'est encore transmis à l'administration ou à une plateforme agréée.</p>
+  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. La transmission à WeInvoice n'a lieu qu'après action explicite sur le bouton dédié.</p>
 </section>
 
 <div class="panel" style="margin-top:18px;background:#0a1529;">

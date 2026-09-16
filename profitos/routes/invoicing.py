@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
+from profitos.weinvoice import submit_invoice_file, WeInvoiceAPIError, WeInvoiceConfigError
 
 
 def _compute_line_items(form):
@@ -1684,6 +1685,67 @@ def register(app):
         log_activity('INVOICE_FACTURX_GENERATED',f"Factur-X généré pour la facture {inv['invoice_number']}")
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}_facturx.pdf"'})
+
+    @app.route('/facturation/<int:invoice_id>/weinvoice', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_send_weinvoice(invoice_id):
+        """Lot 23.3 — transmet le Factur-X à WeInvoice avec idempotence stricte."""
+        c = cx()
+        try:
+            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
+            company_row = c.execute('SELECT * FROM company WHERE id=1').fetchone()
+            settings = c.execute('SELECT weinvoice_company_id,weinvoice_kyb_status FROM app_settings WHERE id=1').fetchone()
+            if not inv: abort(404)
+            if inv['status'] == 'cancelled':
+                flash("Une facture annulée ne peut pas être transmise à WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if 'weinvoice_invoice_id' in inv.keys() and inv['weinvoice_invoice_id']:
+                flash(f"Facture déjà transmise à WeInvoice — identifiant {inv['weinvoice_invoice_id']}.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if not settings or not settings['weinvoice_company_id']:
+                flash("WeInvoice n'est pas encore onboardé pour cette entreprise.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if (settings['weinvoice_kyb_status'] or '').upper() != 'VALIDATED':
+                flash(f"Onboarding WeInvoice non validé (statut : {settings['weinvoice_kyb_status'] or 'inconnu'}).")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            _, missing = _check_mandatory_mentions(inv, company_row)
+            if missing:
+                flash("Facture non conforme — complète les mentions obligatoires avant transmission WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            items = json.loads(inv['line_items'] or '[]')
+            _, rule_failures = validate_facturx_business_rules(inv, items, company_row)
+            if rule_failures:
+                flash("Facture EN16931 invalide — corrige les règles métier avant transmission WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            pdf_bytes = render_facturx_pdf(inv, company_row)
+            if pdf_bytes is None:
+                flash("Impossible de générer le Factur-X PDF/A-3 — transmission WeInvoice annulée.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            idem = (inv['weinvoice_idempotency_key'] if 'weinvoice_idempotency_key' in inv.keys() else None) or f"profitos-{invoice_id}-{uuid.uuid4()}"
+            c.execute('UPDATE outgoing_invoices SET weinvoice_idempotency_key=?,weinvoice_last_error=NULL WHERE id=?', (idem, invoice_id))
+            c.commit()
+            try:
+                data = submit_invoice_file(settings['weinvoice_company_id'], pdf_bytes, f"{inv['invoice_number']}_facturx.pdf", idem)
+            except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', (str(e)[:1500], invoice_id))
+                c.commit(); flash(str(e))
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            remote_id = data.get('eInvoicingId') or data.get('generationId') or data.get('id') or ''
+            remote_status = data.get('status') or ('GENERATION' if data.get('generationId') else 'SUBMITTED')
+            if not remote_id:
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', ("WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé.", invoice_id))
+                c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifie les logs avant tout nouvel envoi.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=?', (remote_id, remote_status, now(), invoice_id))
+            c.commit()
+            log_activity('INVOICE_WEINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à WeInvoice ({remote_id}, {remote_status})")
+            flash(f"Facture transmise à WeInvoice — identifiant {remote_id}, statut : {remote_status}.")
+            return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+        finally:
+            c.close()
 
     @app.route('/facturation/<int:invoice_id>/envoyer',methods=['POST'])
     @login_required

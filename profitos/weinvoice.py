@@ -453,6 +453,40 @@ def handle_onboarding_webhook(payload):
 
 
 # ---------------------------------------------------------------------------
+# Lot 23.3 — émission d'une facture électronique via WeInvoice.
+# ---------------------------------------------------------------------------
+def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_key):
+    """Dépose un Factur-X sur POST /v1/invoices avec ciblage organisation + idempotence."""
+    if not organization_id:
+        raise WeInvoiceConfigError("Identifiant d'organisation WeInvoice absent — termine d'abord l'onboarding KYB.")
+    if not invoice_bytes:
+        raise WeInvoiceAPIError("Fichier de facture vide — émission WeInvoice annulée.")
+    if not idempotency_key:
+        raise WeInvoiceConfigError("Idempotency-Key absente — émission bloquée pour éviter un doublon.")
+    token = fetch_access_token()
+    url = f"{WEINVOICE_BASE_URL}/v1/invoices"
+    headers = {'Authorization': f'Bearer {token}', 'X-Org-Id': str(organization_id),
+               'Idempotency-Key': str(idempotency_key)[:255], 'Accept': 'application/json'}
+    files = {'file': (filename, invoice_bytes, 'application/pdf')}
+    try:
+        resp = requests.post(url, headers=headers, files=files, timeout=45)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible pendant l'émission : {e}") from e
+    try:
+        data = resp.json()
+    except ValueError:
+        data = {'error': resp.text[:800] or 'Réponse non JSON'}
+    if resp.status_code not in (201, 202):
+        raise WeInvoiceAPIError(f"WeInvoice a refusé l'émission ({resp.status_code}) — détail : {data}")
+    if not isinstance(data, dict):
+        raise WeInvoiceAPIError("Réponse WeInvoice d'émission invalide (objet JSON attendu).")
+    log_ops_event('WEINVOICE_INVOICE_SUBMITTED', 'INFO', detail=(
+        f"status_code={resp.status_code} eInvoicingId={data.get('eInvoicingId','')} "
+        f"generationId={data.get('generationId','')} status={data.get('status','')}"))
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Vérification de signature webhook.
 #
 # ATTENTION — déduction, pas une certitude confirmée : les en-têtes exacts
