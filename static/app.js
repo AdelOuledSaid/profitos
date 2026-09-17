@@ -200,3 +200,23 @@ document.addEventListener('DOMContentLoaded', function () {
   if (financing) financing.addEventListener('change', sync);
   sync();
 });
+
+// Lot 21 — auto-remplissage des champs client (nom/email/adresse/SIREN) à la
+// sélection d'un client déjà enregistré, sur le formulaire de nouvelle facture.
+document.addEventListener('DOMContentLoaded', function () {
+  const select = document.getElementById('saved-client');
+  if (!select) return;
+  const nameField = document.getElementById('invoice-client-name');
+  const emailField = document.getElementById('invoice-client-email');
+  const addressField = document.getElementById('invoice-client-address');
+  const sirenField = document.getElementById('invoice-client-siren');
+  select.addEventListener('change', function () {
+    const opt = select.options[select.selectedIndex];
+    if (!opt || !opt.value) return;
+    if (nameField) nameField.value = opt.getAttribute('data-name') || '';
+    if (emailField) emailField.value = opt.getAttribute('data-email') || '';
+    if (addressField) addressField.value = opt.getAttribute('data-address') || '';
+    if (sirenField) sirenField.value = opt.getAttribute('data-siren') || '';
+  });
+});
+
