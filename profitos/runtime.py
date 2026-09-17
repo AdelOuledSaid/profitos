@@ -877,6 +877,7 @@ def init_tenant_db(org_id=None):
                        ('outgoing_invoices','weinvoice_invoice_id'),('outgoing_invoices','weinvoice_status'),
                        ('outgoing_invoices','weinvoice_sent_at'),('outgoing_invoices','weinvoice_last_error'),
                        ('outgoing_invoices','weinvoice_idempotency_key'),
+                       ('outgoing_invoices','weinvoice_regulatory_code'),('outgoing_invoices','weinvoice_last_sync_at'),
                        ('invoicing_clients','siren'),
                        ('app_settings','weinvoice_status'),('app_settings','weinvoice_last_check_at'),
                        ('app_settings','weinvoice_last_error'),

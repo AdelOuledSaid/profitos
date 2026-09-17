@@ -551,3 +551,71 @@ def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_
     if not any(hmac.compare_digest(expected, sig) for sig in provided_signatures):
         raise WeInvoiceWebhookError("Signature webhook invalide.")
 
+
+
+# ---------------------------------------------------------------------------
+# Lot 23.4 — suivi du cycle de vie des factures électroniques WeInvoice.
+# Documentation officielle : GET /v1/invoice-queries/{id}/timeline (invoice:read)
+# et webhooks invoice.status.* signés Standard Webhooks.
+# ---------------------------------------------------------------------------
+def get_invoice_timeline(organization_id, e_invoicing_id, timeout=15):
+    """Retourne l'état complet + timeline d'une facture WeInvoice."""
+    if not organization_id or not e_invoicing_id:
+        raise WeInvoiceConfigError("Organisation ou identifiant WeInvoice de facture absent.")
+    token = fetch_access_token(credential_set='invoicing')
+    url = f"{WEINVOICE_BASE_URL}/v1/invoice-queries/{e_invoicing_id}/timeline"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'X-Org-Id': str(organization_id),
+        'Accept': 'application/json',
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible pendant la synchronisation : {e}") from e
+    try:
+        data = resp.json()
+    except ValueError:
+        data = {'error': resp.text[:800] or 'Réponse non JSON'}
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(f"WeInvoice a refusé la synchronisation ({resp.status_code}) — détail : {data}")
+    if not isinstance(data, dict) or not isinstance(data.get('invoice'), dict):
+        raise WeInvoiceAPIError("Réponse timeline WeInvoice invalide : objet invoice absent.")
+    return data
+
+
+def invoice_status_from_timeline(data):
+    """Extrait le statut courant et le code réglementaire du payload timeline."""
+    invoice = data.get('invoice') if isinstance(data, dict) else None
+    invoice = invoice if isinstance(invoice, dict) else {}
+    return invoice.get('status') or 'UNKNOWN', invoice.get('regulatoryStatusCode')
+
+
+def handle_invoice_status_webhook(payload):
+    """Applique un événement invoice.status.* à la facture locale correspondante.
+    Idempotent : une livraison rejouée réécrit le même état sans double effet.
+    """
+    if not isinstance(payload, dict):
+        return False
+    event_name = str(payload.get('event_name') or '')
+    data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
+    if not event_name.startswith('invoice.status.'):
+        return False
+    remote_id = data.get('eInvoicingId')
+    status = data.get('status')
+    if not remote_id or not status:
+        return False
+    cdv = data.get('cdvCode')
+    c = cx()
+    try:
+        row = c.execute('SELECT id FROM outgoing_invoices WHERE weinvoice_invoice_id=?', (str(remote_id),)).fetchone()
+        if not row:
+            log_ops_event('WEINVOICE_INVOICE_WEBHOOK_UNKNOWN', 'WARNING', detail=f'eInvoicingId={remote_id} event={event_name}')
+            return False
+        c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',
+                  (str(status), str(cdv) if cdv is not None else None, now(), row['id']))
+        c.commit()
+        log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED', 'INFO', detail=f'eInvoicingId={remote_id} status={status} cdv={cdv}')
+        return True
+    finally:
+        c.close()

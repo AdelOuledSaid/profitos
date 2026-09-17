@@ -9,6 +9,7 @@ from profitos.weinvoice import (
     refresh_onboarding_status_and_store as weinvoice_refresh_status,
     verify_webhook_signature as weinvoice_verify_webhook,
     handle_onboarding_webhook as weinvoice_handle_webhook,
+    handle_invoice_status_webhook as weinvoice_handle_invoice_status_webhook,
     record_formal_agreement as weinvoice_record_agreement,
     WeInvoiceWebhookError,
 )
@@ -191,6 +192,23 @@ def register(app):
         payload=request.get_json(silent=True) or {}
         weinvoice_handle_webhook(payload)
         return jsonify(received=True)
+
+
+    @app.route('/webhooks/weinvoice/invoice-status',methods=['POST'])
+    def weinvoice_invoice_status_webhook():
+        """Lot 23.4 — réception signée des événements invoice.status.* WeInvoice."""
+        webhook_id=request.headers.get('webhook-id','')
+        webhook_timestamp=request.headers.get('webhook-timestamp','')
+        signature=request.headers.get('webhook-signature','')
+        raw_body=request.get_data()
+        try:
+            weinvoice_verify_webhook(webhook_id,webhook_timestamp,raw_body,signature)
+        except WeInvoiceWebhookError as e:
+            log_ops_event('WEINVOICE_INVOICE_WEBHOOK_REJECTED','WARNING',detail=str(e))
+            abort(401)
+        payload=request.get_json(silent=True) or {}
+        applied=weinvoice_handle_invoice_status_webhook(payload)
+        return jsonify(received=True,applied=bool(applied))
 
     @app.route('/margin-watch',methods=['GET','POST'])
     @login_required

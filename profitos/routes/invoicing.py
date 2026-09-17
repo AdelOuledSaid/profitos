@@ -5,7 +5,8 @@ import xml.etree.ElementTree as ET
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
-from profitos.weinvoice import submit_invoice_file, WeInvoiceAPIError, WeInvoiceConfigError
+from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
+    invoice_status_from_timeline, WeInvoiceAPIError, WeInvoiceConfigError)
 
 
 def _compute_line_items(form):
@@ -1744,6 +1745,42 @@ def register(app):
             c.commit()
             log_activity('INVOICE_WEINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à WeInvoice ({remote_id}, {remote_status})")
             flash(f"Facture transmise à WeInvoice — identifiant {remote_id}, statut : {remote_status}.")
+            return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+        finally:
+            c.close()
+
+    @app.route('/facturation/<int:invoice_id>/weinvoice/synchroniser', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_sync_weinvoice(invoice_id):
+        """Lot 23.4 — resynchronisation manuelle du statut via la timeline officielle."""
+        c = cx()
+        try:
+            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
+            settings = c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone()
+            if not inv: abort(404)
+            remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
+            if not remote_id:
+                flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente — synchronisation impossible.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            try:
+                data = get_invoice_timeline(settings['weinvoice_company_id'], remote_id)
+                status, regulatory_code = invoice_status_from_timeline(data)
+            except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', (str(e)[:1500], invoice_id))
+                c.commit(); flash(str(e))
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',
+                      (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id))
+            c.commit()
+            log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
+            code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
+            flash(f"Statut WeInvoice synchronisé : {status}{code_text}.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()

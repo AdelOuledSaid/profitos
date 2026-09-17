@@ -55,7 +55,12 @@
   <p class="muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
   <a class="button secondary" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
   {% if inv.weinvoice_invoice_id %}
-  <p style="font-size:13px;color:#3ddc84;margin:0 0 10px;">✓ WeInvoice : {{ inv.weinvoice_status or 'transmise' }} · <code>{{ inv.weinvoice_invoice_id }}</code></p>
+  <p style="font-size:13px;color:#3ddc84;margin:0 0 8px;">✓ WeInvoice : <strong>{{ inv.weinvoice_status or 'transmise' }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+  {% if inv.weinvoice_last_sync_at %}<p class="muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at }}</p>{% endif %}
+  <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="secondary">Actualiser le statut WeInvoice</button>
+  </form>
   {% else %}
   <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
