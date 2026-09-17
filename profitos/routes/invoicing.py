@@ -156,13 +156,13 @@ def generate_facturx_xml(inv, items, company):
     ET.SubElement(seller_addr, f'{{{ns["ram"]}}}LineOne').text = (company['address'] if company else '') or ''
     ET.SubElement(seller_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
     # BT-34 — adresse électronique vendeur, pour le routage via une plateforme agréée.
-    # En l'absence de PDP choisie (Lot 23), on utilise le SIREN comme identifiant
-    # (schemeID 0002), pratique courante documentée en attendant une vraie adresse
-    # réseau fournie par la plateforme retenue.
+    # Adresse "bare-SIREN" : schemeID 0225 (confirmé par WeInvoice, erreur BR-FR-21 —
+    # ne pas confondre avec le schemeID 0002 utilisé pour SpecifiedLegalOrganization,
+    # qui identifie l'entité légale, pas l'adresse de routage).
     if len(seller_siret) == 14:
         seller_uri = ET.SubElement(seller, f'{{{ns["ram"]}}}URIUniversalCommunication')
         seller_uri_id = ET.SubElement(seller_uri, f'{{{ns["ram"]}}}URIID')
-        seller_uri_id.set('schemeID', '0002')
+        seller_uri_id.set('schemeID', '0225')
         seller_uri_id.text = seller_siret[:9]
     if company and company['vat_number']:
         seller_tax = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedTaxRegistration')
@@ -181,11 +181,12 @@ def generate_facturx_xml(inv, items, company):
     buyer_addr = ET.SubElement(buyer, f'{{{ns["ram"]}}}PostalTradeAddress')
     ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}LineOne').text = inv['client_address'] or ''
     ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
-    # BT-49 — adresse électronique acheteur, même logique que BT-34 côté vendeur.
+    # BT-49 — adresse électronique acheteur, même logique que BT-34 côté vendeur
+    # (schemeID 0225, pas 0002 — voir commentaire ci-dessus).
     if client_siren and re.fullmatch(r'\d{9}', client_siren):
         buyer_uri = ET.SubElement(buyer, f'{{{ns["ram"]}}}URIUniversalCommunication')
         buyer_uri_id = ET.SubElement(buyer_uri, f'{{{ns["ram"]}}}URIID')
-        buyer_uri_id.set('schemeID', '0002')
+        buyer_uri_id.set('schemeID', '0225')
         buyer_uri_id.text = client_siren
 
     # --- Livraison (uniquement si une adresse de livraison est renseignée) ---
