@@ -521,8 +521,15 @@ STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
 # jamais en base, jamais dans le HTML, jamais dans Git.
 # ---------------------------------------------------------------------------
 WEINVOICE_ENV=os.environ.get('WEINVOICE_ENV','sandbox')
+# Clé "Management : Compte" — portefeuille clients, onboarding/KYB (Lot 23.2).
 WEINVOICE_CLIENT_ID=os.environ.get('WEINVOICE_CLIENT_ID')
 WEINVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_CLIENT_SECRET')
+# Clé "Données : Facturation" — émission/lecture de factures (Lot 23.3). Distincte
+# de la clé Management : WeInvoice sépare les deux types de clés, chacune avec ses
+# propres permissions (confirmé par le tableau de bord WeInvoice — "invoice:write"
+# n'est porté que par une clé de type "Données : Facturation").
+WEINVOICE_INVOICE_CLIENT_ID=os.environ.get('WEINVOICE_INVOICE_CLIENT_ID')
+WEINVOICE_INVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_INVOICE_CLIENT_SECRET')
 WEINVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_WEBHOOK_SECRET')
 WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
 STRIPE_PLANS={

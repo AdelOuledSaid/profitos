@@ -20,6 +20,7 @@ import secrets
 
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
+    WEINVOICE_INVOICE_CLIENT_ID, WEINVOICE_INVOICE_CLIENT_SECRET,
     WEINVOICE_WEBHOOK_SECRET,
     cx, now, log_ops_event,
 )
@@ -40,27 +41,39 @@ class SirenAlreadyExistsError(WeInvoiceAPIError):
     GET /v1/clients et récupérer son identifiant."""
 
 
-def is_configured():
-    """True si les 2 identifiants nécessaires sont présents dans l'environnement."""
+def is_configured(credential_set='management'):
+    """True si la paire d'identifiants demandée est présente dans l'environnement.
+    credential_set: 'management' (portefeuille clients/onboarding, Lot 23.2) ou
+    'invoicing' (émission de factures, Lot 23.3) — deux clés WeInvoice distinctes,
+    chacune avec ses propres permissions."""
+    if credential_set == 'invoicing':
+        return bool(WEINVOICE_INVOICE_CLIENT_ID and WEINVOICE_INVOICE_CLIENT_SECRET)
     return bool(WEINVOICE_CLIENT_ID and WEINVOICE_CLIENT_SECRET)
 
 
-def fetch_access_token(timeout=10):
+def fetch_access_token(timeout=10, credential_set='management'):
     """Authentification OAuth2 client_credentials (RFC 6749) contre le sandbox ou
-    la production WeInvoice, selon WEINVOICE_ENV. Retourne le access_token (str).
-    Lève WeInvoiceConfigError si les identifiants sont absents, WeInvoiceAPIError
-    si l'API répond une erreur ou est injoignable.
+    la production WeInvoice, selon WEINVOICE_ENV. credential_set choisit la bonne
+    paire client_id/client_secret : 'management' (par défaut, portefeuille clients
+    et onboarding) ou 'invoicing' (émission de factures — clé "Données :
+    Facturation" côté WeInvoice, seule à porter la permission invoice:write).
+    Retourne le access_token (str). Lève WeInvoiceConfigError si les identifiants
+    sont absents, WeInvoiceAPIError si l'API répond une erreur ou est injoignable.
     """
-    if not is_configured():
+    if not is_configured(credential_set):
+        var_id = 'WEINVOICE_INVOICE_CLIENT_ID' if credential_set == 'invoicing' else 'WEINVOICE_CLIENT_ID'
+        var_secret = 'WEINVOICE_INVOICE_CLIENT_SECRET' if credential_set == 'invoicing' else 'WEINVOICE_CLIENT_SECRET'
         raise WeInvoiceConfigError(
-            "WEINVOICE_CLIENT_ID et WEINVOICE_CLIENT_SECRET doivent être définis "
-            "dans les variables d'environnement du serveur."
+            f"{var_id} et {var_secret} doivent être définis dans les variables "
+            f"d'environnement du serveur."
         )
+    client_id = WEINVOICE_INVOICE_CLIENT_ID if credential_set == 'invoicing' else WEINVOICE_CLIENT_ID
+    client_secret = WEINVOICE_INVOICE_CLIENT_SECRET if credential_set == 'invoicing' else WEINVOICE_CLIENT_SECRET
     url = f"{WEINVOICE_BASE_URL}/v1/oauth/token"
     payload = {
         'grant_type': 'client_credentials',
-        'client_id': WEINVOICE_CLIENT_ID,
-        'client_secret': WEINVOICE_CLIENT_SECRET,
+        'client_id': client_id,
+        'client_secret': client_secret,
     }
     try:
         resp = requests.post(url, data=payload, timeout=timeout)
@@ -70,7 +83,7 @@ def fetch_access_token(timeout=10):
     if resp.status_code != 200:
         raise WeInvoiceAPIError(
             f"L'API WeInvoice a répondu {resp.status_code} — vérifie client_id/client_secret "
-            f"et que l'environnement ({WEINVOICE_ENV}) est le bon."
+            f"({credential_set}) et que l'environnement ({WEINVOICE_ENV}) est le bon."
         )
     try:
         data = resp.json()
@@ -456,14 +469,16 @@ def handle_onboarding_webhook(payload):
 # Lot 23.3 — émission d'une facture électronique via WeInvoice.
 # ---------------------------------------------------------------------------
 def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_key):
-    """Dépose un Factur-X sur POST /v1/invoices avec ciblage organisation + idempotence."""
+    """Dépose un Factur-X sur POST /v1/invoices avec ciblage organisation + idempotence.
+    Utilise la clé "Données : Facturation" (credential_set='invoicing') — distincte
+    de la clé Management utilisée pour l'onboarding, seule à porter invoice:write."""
     if not organization_id:
         raise WeInvoiceConfigError("Identifiant d'organisation WeInvoice absent — termine d'abord l'onboarding KYB.")
     if not invoice_bytes:
         raise WeInvoiceAPIError("Fichier de facture vide — émission WeInvoice annulée.")
     if not idempotency_key:
         raise WeInvoiceConfigError("Idempotency-Key absente — émission bloquée pour éviter un doublon.")
-    token = fetch_access_token()
+    token = fetch_access_token(credential_set='invoicing')
     url = f"{WEINVOICE_BASE_URL}/v1/invoices"
     headers = {'Authorization': f'Bearer {token}', 'X-Org-Id': str(organization_id),
                'Idempotency-Key': str(idempotency_key)[:255], 'Accept': 'application/json'}
