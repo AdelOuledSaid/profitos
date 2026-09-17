@@ -503,6 +503,33 @@ def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_ke
     return data
 
 
+
+# ---------------------------------------------------------------------------
+# Lot 23.6 — test E2E sandbox du webhook de statut.
+# ---------------------------------------------------------------------------
+def sandbox_force_invoice_status(organization_id, e_invoicing_id, status=213, timeout=20):
+    """Force une transition CDV dans le sandbox WeInvoice uniquement."""
+    if WEINVOICE_ENV != 'sandbox':
+        raise WeInvoiceConfigError("Le test force-status est strictement réservé au sandbox WeInvoice.")
+    if not organization_id or not e_invoicing_id:
+        raise WeInvoiceConfigError("Organisation ou identifiant WeInvoice de facture absent.")
+    token = fetch_access_token(credential_set='invoicing')
+    url = f"{WEINVOICE_BASE_URL}/v1/_sandbox/einvoicing/{e_invoicing_id}/force-status"
+    headers = {'Authorization': f'Bearer {token}', 'X-Org-Id': str(organization_id),
+               'Accept': 'application/json', 'Content-Type': 'application/json'}
+    try:
+        resp = requests.post(url, headers=headers, json={'status': int(status)}, timeout=timeout)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible pendant le test sandbox : {e}") from e
+    try:
+        data = resp.json()
+    except ValueError:
+        data = {'raw': resp.text[:800] or ''}
+    if resp.status_code not in (200, 201, 202, 204):
+        raise WeInvoiceAPIError(f"WeInvoice a refusé force-status ({resp.status_code}) — détail : {data}")
+    log_ops_event('WEINVOICE_SANDBOX_FORCE_STATUS','INFO',detail=f'eInvoicingId={e_invoicing_id} requested_status={status} http={resp.status_code}')
+    return data
+
 # ---------------------------------------------------------------------------
 # Vérification Standard Webhooks — WeInvoice.
 # ---------------------------------------------------------------------------

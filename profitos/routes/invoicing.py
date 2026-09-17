@@ -6,7 +6,8 @@ from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
-    invoice_status_from_timeline, WeInvoiceAPIError, WeInvoiceConfigError)
+    invoice_status_from_timeline, sandbox_force_invoice_status,
+    WeInvoiceAPIError, WeInvoiceConfigError)
 
 
 def _compute_line_items(form):
@@ -1781,6 +1782,36 @@ def register(app):
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
             flash(f"Statut WeInvoice synchronisé : {status}{code_text}.")
+            return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+        finally:
+            c.close()
+
+    @app.route('/facturation/<int:invoice_id>/weinvoice/test-webhook-sandbox', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_test_weinvoice_webhook_sandbox(invoice_id):
+        """Lot 23.6 : seul le webhook entrant doit modifier le statut local."""
+        c = cx()
+        try:
+            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
+            settings = c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone()
+            if not inv: abort(404)
+            remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
+            if not remote_id:
+                flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente — test impossible.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            try:
+                sandbox_force_invoice_status(settings['weinvoice_company_id'], remote_id, status=213)
+            except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
+                flash(str(e))
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            log_activity('INVOICE_WEINVOICE_SANDBOX_WEBHOOK_TEST', f"Test webhook sandbox demandé pour {inv['invoice_number']} ({remote_id}, CDV 213)")
+            flash("Test sandbox envoyé à WeInvoice (CDV 213). Attends quelques secondes puis recharge cette page. Ne clique pas sur « Actualiser le statut WeInvoice ».")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()

@@ -61,6 +61,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="secondary">Actualiser le statut WeInvoice</button>
   </form>
+  <form method="post" action="{{ url_for('invoicing_test_weinvoice_webhook_sandbox',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="secondary">Test webhook sandbox</button>
+  </form>
   {% else %}
   <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
