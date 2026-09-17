@@ -17,12 +17,14 @@ import hmac
 import hashlib
 import base64
 import secrets
+import time
+from pathlib import Path
 
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
     WEINVOICE_INVOICE_CLIENT_ID, WEINVOICE_INVOICE_CLIENT_SECRET,
     WEINVOICE_WEBHOOK_SECRET,
-    cx, now, log_ops_event,
+    cx, now, log_ops_event, TENANTS, tenant_db,
 )
 
 
@@ -502,55 +504,39 @@ def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_ke
 
 
 # ---------------------------------------------------------------------------
-# Vérification de signature webhook.
-#
-# ATTENTION — déduction, pas une certitude confirmée : les en-têtes exacts
-# cités (webhook-id, webhook-timestamp, webhook-signature) correspondent au
-# format standard de la librairie Svix, largement utilisée comme infrastructure
-# de webhooks par de nombreux éditeurs. Le schéma ci-dessous suit les
-# conventions Svix (contenu signé = "{id}.{timestamp}.{corps brut}", HMAC-SHA256
-# avec le secret décodé en base64, signature encodée en base64, éventuellement
-# préfixée "v1," et avec plusieurs signatures possibles séparées par des
-# espaces pour la rotation de clé). CETTE HYPOTHÈSE DOIT ÊTRE CONFIRMÉE contre
-# la vraie documentation de vérification de signature WeInvoice avant de faire
-# confiance à cette fonction en production — une signature qui échouerait à
-# tort bloquerait des webhooks légitimes.
+# Vérification Standard Webhooks — WeInvoice.
 # ---------------------------------------------------------------------------
-
 class WeInvoiceWebhookError(Exception):
-    """Levée quand la signature d'un webhook ne peut pas être vérifiée."""
+    """Levée quand un webhook WeInvoice ne peut pas être authentifié."""
 
 
-def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_header):
-    """Vérifie la signature d'un webhook selon les conventions Svix. raw_body doit
-    être les OCTETS BRUTS du corps HTTP (pas du JSON re-sérialisé — l'ordre des
-    clés et les espaces changeraient la signature). Lève WeInvoiceWebhookError
-    si la signature ne correspond à aucune des signatures fournies."""
+def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_header, tolerance_seconds=300):
     if not WEINVOICE_WEBHOOK_SECRET:
-        raise WeInvoiceWebhookError(
-            "WEINVOICE_WEBHOOK_SECRET n'est pas configuré côté serveur — impossible "
-            "de vérifier la signature du webhook."
-        )
+        raise WeInvoiceWebhookError("WEINVOICE_WEBHOOK_SECRET n'est pas configuré côté serveur.")
+    if not webhook_id or not webhook_timestamp or not signature_header:
+        raise WeInvoiceWebhookError("En-têtes Standard Webhooks manquants.")
+    try:
+        ts = int(webhook_timestamp)
+    except (TypeError, ValueError):
+        raise WeInvoiceWebhookError("Horodatage webhook invalide.")
+    if abs(int(time.time()) - ts) > int(tolerance_seconds):
+        raise WeInvoiceWebhookError("Webhook hors fenêtre temporelle autorisée.")
     secret = WEINVOICE_WEBHOOK_SECRET
     if secret.startswith('whsec_'):
         secret = secret[len('whsec_'):]
     try:
-        secret_bytes = base64.b64decode(secret)
+        secret_bytes = base64.b64decode(secret, validate=True)
     except Exception:
         secret_bytes = secret.encode('utf-8')
-
     signed_content = f"{webhook_id}.{webhook_timestamp}.".encode('utf-8') + raw_body
-    expected = base64.b64encode(
-        hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()
-    ).decode('utf-8')
-
-    provided_signatures = [
-        sig.split(',', 1)[1] if ',' in sig else sig
-        for sig in signature_header.split()
-    ]
-    if not any(hmac.compare_digest(expected, sig) for sig in provided_signatures):
+    expected = base64.b64encode(hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()).decode('utf-8')
+    provided=[]
+    for token in signature_header.split():
+        sig=token.split(',',1)[1] if token.startswith('v1,') else token
+        if sig: provided.append(sig)
+    if not provided or not any(hmac.compare_digest(expected, sig) for sig in provided):
         raise WeInvoiceWebhookError("Signature webhook invalide.")
-
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -591,31 +577,48 @@ def invoice_status_from_timeline(data):
     return invoice.get('status') or 'UNKNOWN', invoice.get('regulatoryStatusCode')
 
 
-def handle_invoice_status_webhook(payload):
-    """Applique un événement invoice.status.* à la facture locale correspondante.
-    Idempotent : une livraison rejouée réécrit le même état sans double effet.
-    """
-    if not isinstance(payload, dict):
+def _tenant_connection_for_remote_invoice(remote_id):
+    """Retrouve le tenant propriétaire d'un eInvoicingId sans session utilisateur."""
+    for db_path in Path(TENANTS).glob('org_*.db'):
+        conn=None
+        try:
+            org_id=int(db_path.stem.split('_',1)[1])
+            from profitos import db as _dbmod
+            conn=_dbmod.connect_tenant(org_id, tenant_db(org_id))
+            row=conn.execute('SELECT id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',(str(remote_id),)).fetchone()
+            if row: return conn,row
+            conn.close()
+        except Exception:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+    return None,None
+
+
+def handle_invoice_status_webhook(payload, webhook_id=None):
+    """Applique un invoice.status.* au bon tenant et déduplique event_id."""
+    if not isinstance(payload,dict): return False
+    event_name=str(payload.get('event_name') or '')
+    data=payload.get('data') if isinstance(payload.get('data'),dict) else {}
+    if not event_name.startswith('invoice.status.'): return False
+    remote_id=data.get('eInvoicingId'); status=data.get('status')
+    if not remote_id or not status: return False
+    conn,row=_tenant_connection_for_remote_invoice(remote_id)
+    if not conn or not row:
+        log_ops_event('WEINVOICE_INVOICE_WEBHOOK_UNKNOWN','WARNING',detail=f'eInvoicingId={remote_id} event={event_name}')
         return False
-    event_name = str(payload.get('event_name') or '')
-    data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
-    if not event_name.startswith('invoice.status.'):
-        return False
-    remote_id = data.get('eInvoicingId')
-    status = data.get('status')
-    if not remote_id or not status:
-        return False
-    cdv = data.get('cdvCode')
-    c = cx()
     try:
-        row = c.execute('SELECT id FROM outgoing_invoices WHERE weinvoice_invoice_id=?', (str(remote_id),)).fetchone()
-        if not row:
-            log_ops_event('WEINVOICE_INVOICE_WEBHOOK_UNKNOWN', 'WARNING', detail=f'eInvoicingId={remote_id} event={event_name}')
-            return False
-        c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',
-                  (str(status), str(cdv) if cdv is not None else None, now(), row['id']))
-        c.commit()
-        log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED', 'INFO', detail=f'eInvoicingId={remote_id} status={status} cdv={cdv}')
+        conn.execute("CREATE TABLE IF NOT EXISTS weinvoice_webhook_events(event_id TEXT PRIMARY KEY,webhook_id TEXT,event_name TEXT NOT NULL,received_at TEXT NOT NULL)")
+        event_id=str(payload.get('event_id') or webhook_id or '').strip()
+        if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
+            return True
+        cdv=data.get('cdvCode')
+        conn.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',(str(status),str(cdv) if cdv is not None else None,now(),row['id']))
+        if event_id:
+            conn.execute('INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',(event_id,str(webhook_id or ''),event_name,now()))
+        conn.commit()
+        log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED','INFO',detail=f'eInvoicingId={remote_id} status={status} cdv={cdv}')
         return True
     finally:
-        c.close()
+        conn.close()
+

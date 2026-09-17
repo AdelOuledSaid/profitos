@@ -207,7 +207,7 @@ def register(app):
             log_ops_event('WEINVOICE_INVOICE_WEBHOOK_REJECTED','WARNING',detail=str(e))
             abort(401)
         payload=request.get_json(silent=True) or {}
-        applied=weinvoice_handle_invoice_status_webhook(payload)
+        applied=weinvoice_handle_invoice_status_webhook(payload,webhook_id=webhook_id)
         return jsonify(received=True,applied=bool(applied))
 
     @app.route('/margin-watch',methods=['GET','POST'])
