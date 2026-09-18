@@ -531,6 +531,19 @@ WEINVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_CLIENT_SECRET')
 WEINVOICE_INVOICE_CLIENT_ID=os.environ.get('WEINVOICE_INVOICE_CLIENT_ID')
 WEINVOICE_INVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_INVOICE_CLIENT_SECRET')
 WEINVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_WEBHOOK_SECRET')
+# Secret distinct pour le webhook invoice.status.* — WeInvoice délivre un secret de
+# signature séparé par point de terminaison (même logique que les 2 clés API
+# Management/Facturation). Si un seul secret existe côté WeInvoice, cette
+# variable peut rester vide : le code retombe alors sur WEINVOICE_WEBHOOK_SECRET.
+WEINVOICE_INVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_INVOICE_WEBHOOK_SECRET')
+
+# ---------------------------------------------------------------------------
+# Lot 24 — extraction IA des factures d'achat (PDF scannés / photos, en repli de
+# l'extraction texte gratuite existante). Clé API Anthropic distincte de tout ce
+# qui précède — jamais en base, jamais dans le HTML, jamais dans Git.
+# ---------------------------------------------------------------------------
+ANTHROPIC_API_KEY=os.environ.get('ANTHROPIC_API_KEY')
+ANTHROPIC_MODEL=os.environ.get('ANTHROPIC_MODEL','claude-sonnet-5')
 WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
 STRIPE_PLANS={
     'STARTER': {'name':'Starter','price_eur':49,'price_id':STRIPE_PRICE_STARTER_ID},

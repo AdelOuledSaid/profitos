@@ -2,6 +2,8 @@ from datetime import timedelta
 import uuid
 import statistics
 import xml.etree.ElementTree as ET
+import base64
+from pypdf.errors import PyPdfError
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -463,6 +465,102 @@ def _purchase_pdf_extract(path):
             'subtotal':subtotal,'vat_amount':vat,'total':total}
 
 
+_PURCHASE_AI_PROMPT = (
+    "Tu analyses une facture d'achat (fournisseur) fournie en pièce jointe. "
+    "Réponds UNIQUEMENT avec un objet JSON, sans aucun texte avant ou après, "
+    "exactement sous cette forme :\n"
+    '{"supplier_name": "...", "invoice_number": "...", "issue_date": "AAAA-MM-JJ", '
+    '"due_date": "AAAA-MM-JJ ou chaîne vide si absente", "subtotal": nombre_HT, '
+    '"vat_amount": nombre_TVA, "total": nombre_TTC}\n'
+    "Si un champ est illisible ou absent du document, mets une chaîne vide (ou null "
+    "pour les nombres). N'invente jamais une valeur que tu ne peux pas lire "
+    "réellement sur le document — une extraction incomplète mais honnête vaut "
+    "mieux qu'une valeur inventée."
+)
+
+
+def _purchase_ai_extract(file_bytes, mime_type):
+    """Extraction par l'API Claude (vision) — repli pour les PDF scannés et les
+    photos, sans couche de texte exploitable. Ne remplace pas _purchase_pdf_extract
+    (gratuite, appelée en premier) : n'est utilisée qu'en complément, jamais à la
+    place. Retourne la même structure que _purchase_pdf_extract pour s'intégrer
+    sans changement au reste du flux d'import."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError(
+            "Ce document n'a pas de texte exploitable et l'extraction par IA n'est "
+            "pas configurée (ANTHROPIC_API_KEY absente côté serveur). Saisis la "
+            "facture manuellement, ou configure la clé pour activer l'extraction "
+            "automatique des PDF scannés et des photos."
+        )
+    content_type = 'document' if mime_type == 'application/pdf' else 'image'
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    headers = {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+    payload = {
+        'model': ANTHROPIC_MODEL,
+        'max_tokens': 1024,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': content_type, 'source': {'type': 'base64', 'media_type': mime_type, 'data': b64}},
+                {'type': 'text', 'text': _PURCHASE_AI_PROMPT},
+            ],
+        }],
+    }
+    try:
+        resp = requests.post('https://api.anthropic.com/v1/messages', json=payload, headers=headers, timeout=45)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API d'extraction impossible : {e}") from e
+    if resp.status_code != 200:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise ValueError(f"L'extraction par IA a échoué ({resp.status_code}) — détail : {detail}")
+
+    try:
+        data = resp.json()
+        text_out = ''.join(block.get('text', '') for block in data.get('content', []) if block.get('type') == 'text').strip()
+        text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
+        parsed = json.loads(text_out)
+    except (ValueError, KeyError, AttributeError) as e:
+        raise ValueError("Réponse d'extraction IA illisible — réessaie ou saisis la facture manuellement.") from e
+
+    supplier_name = (parsed.get('supplier_name') or '').strip()
+    invoice_number = (parsed.get('invoice_number') or '').strip()
+    issue_raw = (parsed.get('issue_date') or '').strip()
+    due_raw = (parsed.get('due_date') or '').strip()
+    subtotal, vat_amount, total = parsed.get('subtotal'), parsed.get('vat_amount'), parsed.get('total')
+
+    missing = []
+    if not supplier_name: missing.append("fournisseur")
+    if not invoice_number: missing.append("numéro")
+    if subtotal is None: missing.append("HT")
+    if vat_amount is None: missing.append("TVA")
+    if total is None: missing.append("TTC")
+    if missing:
+        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ". Saisis la facture manuellement.")
+    try:
+        subtotal, vat_amount, total = round(float(subtotal), 2), round(float(vat_amount), 2), round(float(total), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Montants détectés par l'IA illisibles. Saisis la facture manuellement.")
+    if abs(round(subtotal + vat_amount - total, 2)) > 0.02:
+        raise ValueError("Les montants HT + TVA ne correspondent pas au TTC (extraction IA). Import refusé par sécurité.")
+    try:
+        issue = date.fromisoformat(issue_raw) if issue_raw else None
+        due = date.fromisoformat(due_raw) if due_raw else None
+    except ValueError:
+        raise ValueError("Date détectée par l'IA dans un format inattendu. Vérifie-la manuellement.")
+
+    return {'supplier_name': supplier_name, 'invoice_number': invoice_number,
+            'issue_date': issue.isoformat() if issue else '',
+            'due_date': due.isoformat() if due else '',
+            'subtotal': subtotal, 'vat_amount': vat_amount, 'total': total}
+
+
 def _purchase_pdf_dir():
     org_id = session.get('org_id')
     if not org_id:
@@ -471,7 +569,33 @@ def _purchase_pdf_dir():
     root.mkdir(parents=True, exist_ok=True)
     return root
 
+def _save_purchase_document(uploaded):
+    """Enregistre un justificatif d'achat — PDF ou photo (JPEG/PNG/WEBP). Retourne
+    (nom_fichier_stocké, mime_type) ou (None, None) si aucun fichier envoyé."""
+    if not uploaded or not uploaded.filename:
+        return None, None
+    data = uploaded.read(_PURCHASE_PDF_MAX_BYTES + 1)
+    if len(data) > _PURCHASE_PDF_MAX_BYTES:
+        raise ValueError("Le justificatif dépasse la taille maximale de 5 Mo.")
+
+    if data.startswith(b"%PDF-"):
+        mime, ext = 'application/pdf', '.pdf'
+    elif data.startswith(b"\xff\xd8\xff"):
+        mime, ext = 'image/jpeg', '.jpg'
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime, ext = 'image/png', '.png'
+    elif len(data) > 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
+        mime, ext = 'image/webp', '.webp'
+    else:
+        raise ValueError("Format non reconnu — envoie un PDF, une photo JPEG, PNG ou WEBP.")
+
+    stored = uuid.uuid4().hex + ext
+    (_purchase_pdf_dir() / stored).write_bytes(data)
+    return stored, mime
+
+
 def _save_purchase_pdf(uploaded):
+    """Conservé pour compatibilité : PDF uniquement. Préférer _save_purchase_document."""
     if not uploaded or not uploaded.filename:
         return None
     if not uploaded.filename.lower().endswith(".pdf"):
@@ -1164,12 +1288,27 @@ def register(app):
     @require_area('invoicing')
     def purchase_import_pdf():
         uploaded=request.files.get('document')
+        used_ai=False
         try:
-            stored=_save_purchase_pdf(uploaded)
+            stored,mime=_save_purchase_document(uploaded)
             if not stored:
-                raise ValueError("Sélectionnez un fichier PDF.")
+                raise ValueError("Sélectionne un fichier PDF ou une photo.")
             path=_purchase_pdf_dir()/stored
-            detected=_purchase_pdf_extract(path)
+            if mime=='application/pdf':
+                try:
+                    detected=_purchase_pdf_extract(path)
+                except (ValueError,PyPdfError) as text_err:
+                    if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+                        raise
+                    # PDF scanné sans texte, ou structurellement illisible par pypdf
+                    # (fichier corrompu/tronqué) -> repli sur l'extraction IA, qui
+                    # lit le rendu visuel du document sans dépendre de sa structure
+                    # interne.
+                    detected=_purchase_ai_extract(path.read_bytes(),mime)
+                    used_ai=True
+            else:
+                detected=_purchase_ai_extract(path.read_bytes(),mime)
+                used_ai=True
         except ValueError as e:
             if 'stored' in locals() and stored:
                 try: (_purchase_pdf_dir()/stored).unlink(missing_ok=True)
@@ -1180,7 +1319,8 @@ def register(app):
         c=cx()
         suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
         c.close()
-        flash("PDF analysé. Vérifiez les informations avant d'enregistrer.")
+        flash("Document analysé par IA. Vérifiez les informations avant d'enregistrer." if used_ai
+              else "PDF analysé. Vérifiez les informations avant d'enregistrer.")
         return render_template('purchase_new.html',suppliers=suppliers,
                                detected=detected,pending_document=stored)
 
@@ -1213,10 +1353,10 @@ def register(app):
                 flash("Fournisseur, numéro et montants valides sont obligatoires.")
                 return redirect(url_for('purchase_new'))
             pending_document=(request.form.get('pending_document') or '').strip()
-            if pending_document and not re.fullmatch(r'[0-9a-f]{32}\.pdf',pending_document):
+            if pending_document and not re.fullmatch(r'[0-9a-f]{32}\.(pdf|jpg|png|webp)',pending_document):
                 c.close(); abort(400)
             if pending_document and not (_purchase_pdf_dir()/pending_document).is_file():
-                c.close(); flash("Le PDF temporaire n'est plus disponible. Réimportez-le.")
+                c.close(); flash("Le justificatif temporaire n'est plus disponible. Réimporte-le.")
                 return redirect(url_for('purchase_new'))
             category=request.form.get('category','autre')
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
@@ -1515,9 +1655,11 @@ def register(app):
         if not path.is_file():
             abort(404)
         data=path.read_bytes()
-        response=Response(data,mimetype='application/pdf')
+        ext=path.suffix.lower()
+        mime={'.pdf':'application/pdf','.jpg':'image/jpeg','.png':'image/png','.webp':'image/webp'}.get(ext,'application/pdf')
+        response=Response(data,mimetype=mime)
         safe_number=re.sub(r'[^A-Za-z0-9._-]+','-',p['invoice_number'] or 'facture')
-        response.headers['Content-Disposition']=f'inline; filename="justificatif-{safe_number}.pdf"'
+        response.headers['Content-Disposition']=f'inline; filename="justificatif-{safe_number}{ext or ".pdf"}"'
         response.headers['X-Content-Type-Options']='nosniff'
         return response
 
