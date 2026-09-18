@@ -1,37 +1,110 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">FACTURATION</div><h1>Nouvelle facture fournisseur</h1>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Retour aux achats</a>
+    </div>
+  </div>
 
-<section class="panel" style="margin-bottom:18px;">
-<h3>Importer une facture (PDF ou photo)</h3>
-<p class="muted">ProfitOS lit le document puis te demande de vérifier les informations avant l'enregistrement. Un PDF avec texte est analysé gratuitement ; un PDF scanné ou une photo passe par une extraction IA.</p>
-<form method="post" enctype="multipart/form-data" action="{{ url_for('purchase_import_pdf') }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="file" name="document" accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp" required>
-<button type="submit">Analyser le document</button>
-</form>
-<p class="muted">PDF ou photo (JPEG/PNG/WEBP) · 5 Mo maximum · aucune création automatique.</p>
-</section>
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Nouvelle facture fournisseur</h1>
+  <p class="purchase-subtitle">Importe un document ou saisis les informations à la main — les deux mènent au même formulaire de vérification.</p>
 
-{% if detected %}
-<section class="panel" style="margin-bottom:18px;">
-<strong>Informations détectées</strong>
-<p class="muted">Vérifiez et corrigez si nécessaire, puis cliquez sur « Enregistrer la facture ».</p>
-</section>
-{% endif %}
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Importer un document</h2></div>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('purchase_import_pdf') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="purchase-dropzone">
+        <span class="purchase-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 16V4M12 4l-4 4M12 4l4 4"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+        </span>
+        <div>
+          <strong style="color:#fff;font-size:16px;">Dépose un PDF ou une photo</strong>
+          <p class="muted" style="margin:6px 0 0;font-size:13px;">Un PDF avec texte est lu gratuitement ; un PDF scanné ou une photo passe par une extraction IA.</p>
+        </div>
+        <input type="file" name="document" accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp" required>
+        <button type="submit" class="purchase-primary-btn primary">Analyser le document</button>
+        <p class="muted" style="font-size:12px;margin:0;">PDF ou photo (JPEG/PNG/WEBP) · 5 Mo maximum · aucune création automatique</p>
+      </div>
+    </form>
+  </section>
 
-<form method="post" class="panel">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-{% if pending_document %}<input type="hidden" name="pending_document" value="{{ pending_document }}">{% endif %}
-<label>Fournisseur enregistré<select name="supplier_id"><option value="">— Saisie manuelle —</option>
-{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
-<label>Nom du fournisseur<input name="supplier_name" value="{{ detected.supplier_name if detected else '' }}"></label>
-<label>N° facture fournisseur<input name="invoice_number" required value="{{ detected.invoice_number if detected else '' }}"></label>
-<label>Date de facture<input name="issue_date" type="date" value="{{ detected.issue_date if detected else '' }}"></label>
-<label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
-<label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected else '' }}"></label>
-<label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected else '0' }}"></label>
-<label>Catégorie<select name="category">{% for key, label in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></label>
-{% if detected %}<p><strong>Total TTC détecté : {{ '%.2f'|format(detected.total) }} €</strong></p>{% endif %}
-<label>Notes<textarea name="notes"></textarea></label>
-<button>Enregistrer la facture</button>
-</form>{% endblock %}
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>{{ "Vérifier les informations" if detected else "Ou saisir à la main" }}</h2></div>
+
+    {% if detected %}
+    <div class="purchase-detected-banner">
+      <span class="purchase-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>
+      </span>
+      <div>
+        <strong style="color:#fff;">Document analysé</strong>
+        <p class="muted" style="margin:4px 0 0;font-size:13px;">Vérifie et corrige si besoin, puis enregistre la facture.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if pending_document %}<input type="hidden" name="pending_document" value="{{ pending_document }}">{% endif %}
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Fournisseur
+        </h4>
+        <div class="formgrid">
+          <label class="wide">Fournisseur enregistré
+            <select name="supplier_id">
+              <option value="">— Saisie manuelle —</option>
+              {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="wide">Nom du fournisseur<input name="supplier_name" value="{{ detected.supplier_name if detected else '' }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg></span>
+          Facture
+        </h4>
+        <div class="formgrid">
+          <label>N° facture fournisseur<input name="invoice_number" required value="{{ detected.invoice_number if detected else '' }}"></label>
+          <label>Catégorie
+            <select name="category">{% for key, label in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Date de facture<input name="issue_date" type="date" value="{{ detected.issue_date if detected else '' }}"></label>
+          <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></span>
+          Montants
+        </h4>
+        <div class="formgrid">
+          <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected else '' }}"></label>
+          <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected else '0' }}"></label>
+        </div>
+        {% if detected %}
+        <div class="purchase-total-line">
+          <span class="muted">Total TTC détecté</span>
+          <strong>{{ '%.2f'|format(detected.total) }} €</strong>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="purchase-field-group">
+        <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+      </div>
+
+      <div style="margin-top:24px;">
+        <button type="submit" class="purchase-primary-btn primary">Enregistrer la facture</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
