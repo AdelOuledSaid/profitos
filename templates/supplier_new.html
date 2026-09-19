@@ -1,11 +1,52 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">FACTURATION</div><h1>Nouveau fournisseur</h1>
-<form method="post" class="panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<label>Nom du fournisseur<input name="name" required></label>
-<label>Email<input name="email" type="email"></label>
-<label>Téléphone<input name="phone"></label>
-<label>Adresse<input name="address"></label>
-<label>SIRET<input name="siret"></label>
-<label>N° TVA<input name="vat_number"></label>
-<label>Notes<textarea name="notes"></textarea></label>
-<button>Enregistrer le fournisseur</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Retour aux achats</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Nouveau fournisseur</h1>
+  <p class="purchase-subtitle">Ces coordonnées apparaîtront sur ses fiches et ses factures d'achat.</p>
+
+  <section class="purchase-panel">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Identité
+        </h4>
+        <div class="formgrid">
+          <label class="wide">Nom du fournisseur<input name="name" required></label>
+          <label>Email<input name="email" type="email"></label>
+          <label>Téléphone<input name="phone"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg></span>
+          Adresse et identifiants
+        </h4>
+        <div class="formgrid">
+          <label class="wide">Adresse<input name="address"></label>
+          <label>SIRET<input name="siret"></label>
+          <label>N° TVA<input name="vat_number"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+      </div>
+
+      <div style="margin-top:24px;">
+        <button type="submit" class="purchase-primary-btn primary">Enregistrer le fournisseur</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

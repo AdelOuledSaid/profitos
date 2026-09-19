@@ -1,63 +1,88 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <div class="eyebrow">FACTURATION</div>
-    <h1>Créances clients</h1>
-    <p class="muted">Suivi des factures envoyées restant à encaisser.</p>
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Retour aux factures</a>
+    </div>
   </div>
-  <a class="button secondary" href="{{ url_for('invoicing_list') }}">Retour aux factures</a>
-</div>
 
-<div class="kpi-grid">
-  <section class="panel">
-    <div class="muted">À encaisser</div>
-    <h2>{{ "%.2f"|format(total_due) }} €</h2>
-  </section>
-  <section class="panel">
-    <div class="muted">En retard</div>
-    <h2>{{ "%.2f"|format(overdue_due) }} €</h2>
-  </section>
-  <section class="panel">
-    <div class="muted">Factures impayées</div>
-    <h2>{{ unpaid_count }}</h2>
-  </section>
-  <section class="panel">
-    <div class="muted">Factures en retard</div>
-    <h2>{{ overdue_count }}</h2>
-  </section>
-</div>
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Créances clients</h1>
+  <p class="purchase-subtitle">Suivi des factures envoyées restant à encaisser.</p>
 
-<section class="panel" style="margin-top:18px;">
-  <h3>Par client</h3>
-  {% if clients %}
-    {% for c in clients %}
-      <div class="simpleline">
-        <span><strong>{{ c.client_name }}</strong> · {{ c.count }} facture{% if c.count > 1 %}s{% endif %}</span>
-        <span>{{ "%.2f"|format(c.total) }} €{% if c.overdue > 0 %} · <strong>{{ "%.2f"|format(c.overdue) }} € en retard</strong>{% endif %}</span>
+  <div class="purchase-stats">
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
       </div>
-    {% endfor %}
-  {% else %}
-    <p class="muted">Aucune créance client.</p>
-  {% endif %}
-</section>
-
-<section class="panel" style="margin-top:18px;">
-  <h3>Factures à encaisser</h3>
-  {% if invoices %}
-    {% for inv in invoices %}
-      <div class="simpleline">
-        <span>
-          <a href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a>
-          · {{ inv.client_name }}
-          · échéance {{ inv.due_date or "—" }}
-          {% if inv.overdue %}· <strong>En retard de {{ inv.days_overdue }} jour{% if inv.days_overdue > 1 %}s{% endif %}</strong>{% endif %}
-        </span>
-        <span><strong>{{ "%.2f"|format(inv.remaining) }} €</strong></span>
+      <div><div class="purchase-stat-label">À encaisser</div><div class="purchase-stat-value">{{ "%.2f"|format(total_due) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
-    {% endfor %}
-  {% else %}
-    <p class="muted">Toutes les factures envoyées sont réglées.</p>
-  {% endif %}
-</section>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ "%.2f"|format(overdue_due) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 3v5a2 2 0 0 0 2 2h5"></path><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Factures impayées</div><div class="purchase-stat-value">{{ unpaid_count }}</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Factures en retard</div><div class="purchase-stat-value">{{ overdue_count }}</div></div>
+    </div>
+  </div>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Par client</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Client</th><th>Factures</th><th>Montant</th></tr></thead>
+        <tbody>
+        {% for c in clients %}
+          <tr>
+            <td><strong>{{ c.client_name }}</strong></td>
+            <td>{{ c.count }}</td>
+            <td>
+              <strong>{{ "%.2f"|format(c.total) }} €</strong>
+              {% if c.overdue > 0 %}<span class="purchase-alert-text" style="font-size:12px;"> · {{ "%.2f"|format(c.overdue) }} € en retard</span>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="purchase-empty">Aucune créance client.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Factures à encaisser</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th>Montant</th></tr></thead>
+        <tbody>
+        {% for inv in invoices %}
+          <tr>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a></td>
+            <td>{{ inv.client_name }}</td>
+            <td>
+              {{ inv.due_date or "—" }}
+              {% if inv.overdue %}<br><span class="purchase-alert-text" style="font-size:12px;">En retard de {{ inv.days_overdue }} jour{% if inv.days_overdue > 1 %}s{% endif %}</span>{% endif %}
+            </td>
+            <td><strong>{{ "%.2f"|format(inv.remaining) }} €</strong></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="purchase-empty">Toutes les factures envoyées sont réglées.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
 {% endblock %}

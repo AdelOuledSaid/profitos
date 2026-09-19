@@ -1,30 +1,66 @@
-{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Retour aux achats</a>
+    </div>
+  </div>
 
-<div class="page-head"><div><div class="eyebrow">FACTURATION</div><h1>{{ p.invoice_number }}</h1><p class="muted">{{ p.supplier_name }} · facture fournisseur</p></div>
-<a class="button secondary" href="{{ url_for('purchase_list') }}">Retour aux achats</a></div>
-<section class="panel">
-<div class="simpleline"><span>Fournisseur</span><strong>{% if supplier %}<a href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}</strong></div>
-<div class="simpleline"><span>Date de facture</span><strong>{{ p.issue_date or "—" }}</strong></div>
-<div class="simpleline"><span>Échéance</span><strong>{{ p.due_date or "—" }}</strong></div>
-<div class="simpleline"><span>HT</span><strong>{{ "%.2f"|format(p.subtotal) }} €</strong></div>
-<div class="simpleline"><span>TVA</span><strong>{{ "%.2f"|format(p.vat_amount) }} €</strong></div>
-<div class="simpleline"><span>Total TTC</span><strong>{{ "%.2f"|format(p.total) }} €</strong></div>
-<div class="simpleline"><span>Statut</span><strong>{% if p.status=='paid' %}Payée{% else %}À payer{% endif %}</strong></div>
-{% if p.notes %}<div class="simpleline"><span>Notes</span><span>{{ p.notes }}</span></div>{% endif %}
-<div class="simpleline"><span>Justificatif PDF</span><span>
-{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for('purchase_document_view', purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>
-{% else %}Aucun justificatif{% endif %}</span></div>
-</section>
-<section class="panel" style="margin-top:18px;">
-<h3>Document fournisseur</h3>
-<form method="post" enctype="multipart/form-data" action="{{ url_for('purchase_document_upload',purchase_id=p.id) }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="file" name="document" accept="application/pdf,.pdf" required>
-<button type="submit">{% if p.document_path %}Remplacer le PDF{% else %}Ajouter le PDF{% endif %}</button>
-</form>
-<p class="muted">PDF uniquement · 5 Mo maximum.</p>
-</section>
-<div style="margin-top:18px;">
-{% if p.status=='unpaid' %}<a class="button secondary" href="{{ url_for('purchase_edit',purchase_id=p.id) }}">Modifier</a>
-<form style="display:inline" method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Marquer payée</button></form>
-{% else %}<span class="muted">Facture payée — contenu verrouillé.</span>{% endif %}</div>{% endblock %}
+  <div class="purchase-eyebrow">FACTURATION · ACHAT</div>
+  <h1 class="purchase-title">{{ p.invoice_number }}</h1>
+  <p class="purchase-subtitle">
+    {% if supplier %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}
+    · {{ "%.2f"|format(p.total) }} € · {% if p.status=='paid' %}Payée{% else %}À payer{% endif %}
+  </p>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Détails de la facture</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <tbody>
+          <tr><td>Fournisseur</td><td>{% if supplier %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}</td></tr>
+          <tr><td>Date de facture</td><td>{{ p.issue_date or "—" }}</td></tr>
+          <tr><td>Échéance</td><td>{{ p.due_date or "—" }}</td></tr>
+          <tr><td>Montant HT</td><td>{{ "%.2f"|format(p.subtotal) }} €</td></tr>
+          <tr><td>TVA</td><td>{{ "%.2f"|format(p.vat_amount) }} €</td></tr>
+          <tr><td>Total TTC</td><td><strong>{{ "%.2f"|format(p.total) }} €</strong></td></tr>
+          <tr><td>Statut</td><td><span class="purchase-status {{ 'paid' if p.status=='paid' else '' }}">{{ 'Payée' if p.status=='paid' else 'À payer' }}</span></td></tr>
+          {% if p.notes %}<tr><td>Notes</td><td>{{ p.notes }}</td></tr>{% endif %}
+          <tr>
+            <td>Justificatif</td>
+            <td>{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for('purchase_document_view', purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>{% else %}<span class="muted">Aucun justificatif</span>{% endif %}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Document fournisseur</h2></div>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('purchase_document_upload',purchase_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="purchase-dropzone">
+        <span class="purchase-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 16V4M12 4l-4 4M12 4l4 4"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+        </span>
+        <input type="file" name="document" accept="application/pdf,.pdf" required>
+        <button type="submit" class="purchase-primary-btn secondary">{{ "Remplacer le PDF" if p.document_path else "Ajouter le PDF" }}</button>
+        <p class="muted" style="font-size:12px;margin:0;">PDF uniquement · 5 Mo maximum</p>
+      </div>
+    </form>
+  </section>
+
+  <div style="margin-top:24px;display:flex;gap:12px;align-items:center;">
+    {% if p.status=='unpaid' %}
+    <a class="purchase-nav-btn" href="{{ url_for('purchase_edit',purchase_id=p.id) }}">Modifier</a>
+    <form method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn primary">Marquer payée</button>
+    </form>
+    {% else %}
+    <span class="muted">Facture payée — contenu verrouillé.</span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

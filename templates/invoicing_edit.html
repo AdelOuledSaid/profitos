@@ -1,20 +1,65 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION</div><h1>Modifier {{ inv.invoice_number }}</h1>
-<p class="muted">Modification autorisée uniquement tant que la facture reste en brouillon.</p>
-<section class="panel formpanel"><form method="post" class="formgrid">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<label>Nom du client<input name="client_name" required value="{{ inv.client_name or '' }}"></label>
-<label>Email du client<input type="email" name="client_email" value="{{ inv.client_email or '' }}"></label>
-<label class="wide">Adresse du client<input name="client_address" value="{{ inv.client_address or '' }}"></label>
-<label>Date d'échéance<input type="date" name="due_date" value="{{ inv.due_date or '' }}"></label><div></div>
-<div class="wide"><h2 style="font-size:16px;margin:10px 0;">Lignes de facture</h2>
-<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;font-size:11px;color:#8fa9d3;margin-bottom:6px;"><span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span></div>
-{% for i in range(1,9) %}{% set it = items[i-1] if i <= items|length else none %}
-<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
-<input name="label_{{ i }}" value="{{ it.label if it else '' }}" placeholder="ex: Prestation de conseil">
-<input type="number" name="qty_{{ i }}" value="{{ it.qty if it else 1 }}" step="0.01" min="0">
-<input type="number" name="price_{{ i }}" value="{{ it.unit_price if it else '' }}" step="0.01" min="0">
-<input type="number" name="vat_{{ i }}" value="{{ it.vat_rate if it else 20 }}" step="0.1" min="0"></div>{% endfor %}</div>
-<label class="wide">Notes (optionnel)<textarea name="notes" rows="3">{{ inv.notes or '' }}</textarea></label>
-<div class="wide"><button>Enregistrer les modifications</button> <a class="button secondary" href="{{ url_for('invoicing_detail',invoice_id=inv.id) }}">Retour</a></div>
-</form></section>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_detail',invoice_id=inv.id) }}">← Retour à la facture</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Modifier {{ inv.invoice_number }}</h1>
+  <p class="purchase-subtitle">Modification autorisée uniquement tant que la facture reste en brouillon.</p>
+
+  <section class="purchase-panel">
+    <form method="post" class="formgrid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Client
+        </h4>
+        <div class="formgrid">
+          <label>Nom du client<input name="client_name" required value="{{ inv.client_name or '' }}"></label>
+          <label>Email du client<input type="email" name="client_email" value="{{ inv.client_email or '' }}"></label>
+          <label class="wide">Adresse du client<input name="client_address" value="{{ inv.client_address or '' }}"></label>
+          <label>Date d'échéance<input type="date" name="due_date" value="{{ inv.due_date or '' }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></span>
+          Lignes de facture
+        </h4>
+        <div class="purchase-table-wrap">
+          <table class="purchase-table">
+            <thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (€)</th><th>TVA (%)</th></tr></thead>
+            <tbody>
+            {% for i in range(1,9) %}
+              {% set it = items[i-1] if i <= items|length else none %}
+              <tr>
+                <td><input name="label_{{ i }}" value="{{ it.label if it else '' }}" placeholder="ex: Prestation de conseil"></td>
+                <td><input type="number" name="qty_{{ i }}" value="{{ it.qty if it else 1 }}" step="0.01" min="0"></td>
+                <td><input type="number" name="price_{{ i }}" value="{{ it.unit_price if it else '' }}" step="0.01" min="0"></td>
+                <td><input type="number" name="vat_{{ i }}" value="{{ it.vat_rate if it else 20 }}" step="0.1" min="0"></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <label class="wide">Notes (optionnel)<textarea name="notes" rows="3">{{ inv.notes or '' }}</textarea></label>
+      </div>
+
+      <div class="wide" style="margin-top:12px;grid-column:1/-1;display:flex;gap:12px;">
+        <button type="submit" class="purchase-primary-btn primary">Enregistrer les modifications</button>
+        <a class="purchase-nav-btn" href="{{ url_for('invoicing_detail',invoice_id=inv.id) }}">Annuler</a>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -12,8 +12,8 @@
   <p class="purchase-subtitle">Basé uniquement sur tes factures d'achat réellement enregistrées.</p>
 
   <form method="get" class="purchase-panel" style="display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin:24px 0;">
-    <label style="font-size:12px;color:#aaa;">Du<br><input type="date" name="date_from" value="{{ date_from }}" style="margin-top:6px;"></label>
-    <label style="font-size:12px;color:#aaa;">Au<br><input type="date" name="date_to" value="{{ date_to }}" style="margin-top:6px;"></label>
+    <label class="purchase-label-muted">Du<br><input type="date" name="date_from" value="{{ date_from }}" style="margin-top:6px;"></label>
+    <label class="purchase-label-muted">Au<br><input type="date" name="date_to" value="{{ date_to }}" style="margin-top:6px;"></label>
     <button type="submit" class="purchase-primary-btn primary">Filtrer</button>
     {% if date_from or date_to %}<a class="purchase-nav-btn" href="{{ url_for('purchase_analytics') }}">Réinitialiser</a>{% endif %}
   </form>

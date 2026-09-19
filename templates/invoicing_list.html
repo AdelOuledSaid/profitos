@@ -1,28 +1,74 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION</div>
-<h1>Factures émises</h1>
-<p class="muted">Crée, envoie et suis tes factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_quotes') }}">Devis</a>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_clients') }}">Clients</a>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_receivables') }}">Créances clients</a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
+    </div>
+    <div class="purchase-primary-actions">
+      <a class="purchase-primary-btn primary" href="{{ url_for('invoicing_new') }}">+ Nouvelle facture</a>
+    </div>
+  </div>
 
-<div class="cards" style="grid-template-columns:repeat(4,1fr);">
-  <div class="card"><div class="label">Brouillons</div><div class="big">{{ "{:,.0f}".format(totals.draft) }} €</div></div>
-  <div class="card"><div class="label amber">Envoyées</div><div class="big">{{ "{:,.0f}".format(totals.sent) }} €</div></div>
-  <div class="card"><div class="label amber">En retard</div><div class="big">{{ "{:,.0f}".format(totals.overdue) }} €</div></div>
-  <div class="card"><div class="label green">Payées</div><div class="big">{{ "{:,.0f}".format(totals.paid) }} €</div></div>
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Factures émises</h1>
+  <p class="purchase-subtitle">Crée, envoie et suis tes factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
+
+  <div class="purchase-stats">
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 3v5a2 2 0 0 0 2 2h5"></path><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Brouillons</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.draft) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Envoyées</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.sent) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6l4 2"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.overdue) }} €</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Payées</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.paid) }} €</div></div>
+    </div>
+  </div>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Factures</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Facture</th><th>Client</th><th>Date</th><th>Montant</th><th>Statut</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          {% set st = display_statuses[r.id] %}
+          <tr>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}"><strong>{{ r.invoice_number }}</strong></a></td>
+            <td>{{ r.client_name }}</td>
+            <td>{{ r.issue_date }}</td>
+            <td><strong>{{ "{:,.0f}".format(r.total) }} €</strong></td>
+            <td>
+              <span class="purchase-status {{ 'paid' if st=='paid' else ('overdue' if st=='overdue' else '') }}">
+                {{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(st, st) }}
+              </span>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="purchase-empty">Aucune facture pour l'instant.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
-
-<a class="button" href="{{ url_for('invoicing_new') }}" style="display:inline-block;margin:20px 0;">+ Nouvelle facture</a> <a class="button secondary" href="{{ url_for('invoicing_quotes') }}">Devis</a> <a class="button secondary" href="{{ url_for('invoicing_clients') }}">Clients</a>
-<a class="button secondary" href="{{ url_for('invoicing_receivables') }}">Créances clients</a>
-<a class="button secondary" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
-
-<section class="panel">
-  {% for r in rows %}
-  <a class="row clickable" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}">
-    <div><strong>{{ r.invoice_number }}</strong><small>{{ r.client_name }} · émise le {{ r.issue_date }}</small></div>
-    <div class="money">{{ "{:,.0f}".format(r.total) }} €</div>
-    <div class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_statuses[r.id], display_statuses[r.id]) }}</div>
-  </a>
-  {% else %}
-  <p class="muted">Aucune facture pour l'instant.</p>
-  {% endfor %}
-</section>
 {% endblock %}

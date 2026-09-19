@@ -1,4 +1,37 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION</div><h1>Devis</h1>
-<p><a class="button" href="{{ url_for('invoicing_quote_new') }}">+ Nouveau devis</a> <a class="button secondary" href="{{ url_for('invoicing_list') }}">Factures</a></p>
-<section class="panel">{% for q in rows %}<div class="simpleline"><div><a href="{{ url_for('invoicing_quote_detail',quote_id=q.id) }}"><strong>{{ q.quote_number }}</strong></a><div class="muted">{{ q.client_name }} · {{ q.issue_date }}</div></div><div>{{ "{:,.2f}".format(q.total or 0) }} € · {{ quote_status_label(q.status) }}</div></div>{% else %}<p class="muted">Aucun devis.</p>{% endfor %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Factures</a>
+    </div>
+    <div class="purchase-primary-actions">
+      <a class="purchase-primary-btn primary" href="{{ url_for('invoicing_quote_new') }}">+ Nouveau devis</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Devis</h1>
+
+  <section class="purchase-panel">
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Devis</th><th>Client</th><th>Date</th><th>Montant</th><th>Statut</th></tr></thead>
+        <tbody>
+        {% for q in rows %}
+          <tr>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_quote_detail',quote_id=q.id) }}"><strong>{{ q.quote_number }}</strong></a></td>
+            <td>{{ q.client_name }}</td>
+            <td>{{ q.issue_date }}</td>
+            <td><strong>{{ "{:,.2f}".format(q.total or 0) }} €</strong></td>
+            <td>{{ quote_status_label(q.status) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="purchase-empty">Aucun devis.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

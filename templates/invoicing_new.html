@@ -1,51 +1,93 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION</div>
-<h1>Nouvelle facture</h1>
-<p class="muted">Jusqu'à 8 lignes — laisse vides celles dont tu n'as pas besoin.</p>
-
-<section class="panel formpanel">
-  <form method="post" class="formgrid">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<div class="wide"><label>Client enregistré
-<select id="saved-client"><option value="">— Saisie manuelle —</option>
-{% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}" data-siren="{{ (c.siren or '')|e }}">{{ c.name }}</option>{% endfor %}
-</select></label><a class="button secondary" href="{{ url_for('invoicing_client_new') }}" style="display:inline-block;margin-top:10px;">+ Ajouter un nouveau client</a></div>
-    <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
-    <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
-    <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
-    <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>
-    <label>Date d'échéance<input type="date" name="due_date"></label>
-    <label>Nature de l'opération<select name="operation_nature">
-      <option value="services">Prestation de services</option>
-      <option value="biens">Livraison de biens</option>
-      <option value="mixte">Mixte (biens + services)</option>
-    </select></label>
-    <label class="wide">Adresse de livraison <span style="font-weight:400;">(si différente, requise pour une vente de biens)</span><input name="delivery_address"></label>
-    <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="vat_on_debits" style="width:auto;"> TVA sur les débits (plutôt que sur les encaissements)</label>
-    <div></div>
-
-    <div class="wide">
-      <h2 style="font-size:16px;margin:10px 0;">Lignes de facture</h2>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;font-size:11px;color:#8fa9d3;margin-bottom:6px;">
-        <span>Description</span><span>Quantité</span><span>Prix unitaire (€)</span><span>TVA (%)</span>
-      </div>
-      {% for i in range(1,9) %}
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
-        <input name="label_{{ i }}" placeholder="ex: Prestation de conseil">
-        <input type="number" name="qty_{{ i }}" value="1" step="0.01" min="0">
-        <input type="number" name="price_{{ i }}" step="0.01" min="0" placeholder="0.00">
-        <input type="number" name="vat_{{ i }}" value="20" step="0.1" min="0">
-      </div>
-      {% endfor %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Retour aux factures</a>
     </div>
+  </div>
 
-    <label class="wide">Notes (optionnel)<textarea name="notes" rows="3"></textarea></label>
-    <div class="wide"><button>Créer la facture (brouillon)</button></div>
-  </form>
-</section>
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Nouvelle facture</h1>
+  <p class="purchase-subtitle">Jusqu'à 8 lignes — laisse vides celles dont tu n'as pas besoin.</p>
 
-<p class="muted" style="margin-top:16px;font-size:12px;">Émetteur : {{ company.name }}{% if company.siret %} · SIRET {{ company.siret }}{% endif %} — <a class="link" href="{{ url_for('company') }}">modifier</a></p>
+  <section class="purchase-panel">
+    <form method="post" class="formgrid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-<script src="{{ url_for('static',filename='invoicing_clients.js') }}" defer></script>
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Client
+        </h4>
+        <div class="formgrid">
+          <div class="wide">
+            <label>Client enregistré
+              <select id="saved-client">
+                <option value="">— Saisie manuelle —</option>
+                {% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}" data-siren="{{ (c.siren or '')|e }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <a class="purchase-nav-btn" href="{{ url_for('invoicing_client_new') }}" style="display:inline-block;margin-top:10px;">+ Ajouter un nouveau client</a>
+          </div>
+          <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
+          <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
+          <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
+          <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg></span>
+          Détails de l'opération
+        </h4>
+        <div class="formgrid">
+          <label>Date d'échéance<input type="date" name="due_date"></label>
+          <label>Nature de l'opération
+            <select name="operation_nature">
+              <option value="services">Prestation de services</option>
+              <option value="biens">Livraison de biens</option>
+              <option value="mixte">Mixte (biens + services)</option>
+            </select>
+          </label>
+          <label class="wide">Adresse de livraison <span style="font-weight:400;">(si différente, requise pour une vente de biens)</span><input name="delivery_address"></label>
+          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="vat_on_debits" style="width:auto;"> TVA sur les débits (plutôt que sur les encaissements)</label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></span>
+          Lignes de facture
+        </h4>
+        <div class="purchase-table-wrap">
+          <table class="purchase-table">
+            <thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (€)</th><th>TVA (%)</th></tr></thead>
+            <tbody>
+            {% for i in range(1,9) %}
+              <tr>
+                <td><input name="label_{{ i }}" placeholder="ex: Prestation de conseil"></td>
+                <td><input type="number" name="qty_{{ i }}" value="1" step="0.01" min="0"></td>
+                <td><input type="number" name="price_{{ i }}" step="0.01" min="0" placeholder="0.00"></td>
+                <td><input type="number" name="vat_{{ i }}" value="20" step="0.1" min="0"></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <label class="wide">Notes (optionnel)<textarea name="notes" rows="3"></textarea></label>
+      </div>
+
+      <div class="wide" style="margin-top:12px;grid-column:1/-1;">
+        <button type="submit" class="purchase-primary-btn primary">Créer la facture (brouillon)</button>
+      </div>
+    </form>
+  </section>
+
+  <p class="purchase-muted" style="margin-top:16px;font-size:12px;">Émetteur : {{ company.name }}{% if company.siret %} · SIRET {{ company.siret }}{% endif %} — <a class="purchase-detail-link" href="{{ url_for('company') }}">modifier</a></p>
+</div>
 {% endblock %}
-

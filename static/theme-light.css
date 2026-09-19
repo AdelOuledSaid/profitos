@@ -32,3 +32,62 @@
 [data-theme="light"] .accountbox span{color:#5b6c8f}
 [data-theme="light"] .authpage{background:radial-gradient(circle at top,#eef2fa,#f4f6fb 55%)}
 [data-theme="light"] .authcard{background:#ffffff;border:1px solid #dde5f2;box-shadow:0 20px 60px rgba(20,30,60,.08)}
+
+/* Module Achats/Facturation (static/purchase.css) — jamais eu de contrepartie
+   thème clair jusqu'ici, sur aucune des pages qui l'utilisent. Réutilise le
+   vert #0f7a4d déjà établi ailleurs (.goodtext) plutôt que le vert néon
+   #39e58c/#45e993 du thème sombre, illisible sur fond blanc. */
+[data-theme="light"] .purchase-eyebrow{color:#0f7a4d}
+[data-theme="light"] .purchase-title{color:#1a2436}
+[data-theme="light"] .purchase-subtitle{color:#5b6c8f}
+
+[data-theme="light"] .purchase-nav-btn{color:#0f7a4d !important;background:#eaf6f0;border-color:#bfe3cf}
+[data-theme="light"] .purchase-nav-btn:hover{background:#dcf0e4;border-color:#0f7a4d}
+[data-theme="light"] .purchase-primary-btn.secondary{color:#1a2436 !important;background:#eaf0fb;border-color:#c7d4ea}
+[data-theme="light"] .purchase-primary-btn.primary{color:#ffffff !important;background:#0f7a4d;border-color:#0f7a4d}
+[data-theme="light"] .purchase-primary-btn:hover{filter:brightness(.96)}
+[data-theme="light"] .purchase-icon{color:#0f7a4d}
+
+[data-theme="light"] .purchase-stat{background:#ffffff;border:1px solid #dde5f2;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+[data-theme="light"] .purchase-stat-icon{color:#0f7a4d}
+[data-theme="light"] .purchase-stat-label{color:#5b6c8f}
+[data-theme="light"] .purchase-stat-value{color:#1a2436}
+
+[data-theme="light"] .purchase-panel{background:#ffffff;border:1px solid #dde5f2;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+[data-theme="light"] .purchase-panel h2{color:#1a2436}
+[data-theme="light"] .purchase-table th{color:#5b6c8f;border-bottom:1px solid #e4eaf4}
+[data-theme="light"] .purchase-table td{color:#1a2436;border-bottom:1px solid #eef2fa}
+[data-theme="light"] .purchase-link{color:#1a2436 !important}
+[data-theme="light"] .purchase-link:hover{color:#0f7a4d !important}
+[data-theme="light"] .purchase-muted{color:#7b8bab}
+
+[data-theme="light"] .purchase-status{background:#eaf0fb;color:#1a2436}
+[data-theme="light"] .purchase-status.paid{background:#eaf6f0;color:#0f7a4d}
+[data-theme="light"] .purchase-status.overdue{background:#fdeceb;color:#b3261e}
+[data-theme="light"] .purchase-empty{color:#7b8bab}
+
+[data-theme="light"] .purchase-page-btn{background:#eaf0fb;color:#1a2436}
+[data-theme="light"] .purchase-page-btn.current{background:#0f7a4d;color:#ffffff}
+[data-theme="light"] .purchase-detail-link{color:#0f7a4d !important}
+[data-theme="light"] .purchase-detail-link:hover,
+[data-theme="light"] .purchase-detail-link:focus{color:#1a2436 !important}
+
+[data-theme="light"] .purchase-dropzone{background:#f3faf6;border-color:#bfe3cf}
+[data-theme="light"] .purchase-dropzone:has(input:focus-visible){background:#eaf6f0;border-color:#0f7a4d}
+[data-theme="light"] .purchase-dropzone .purchase-icon{color:#0f7a4d}
+[data-theme="light"] .purchase-dropzone input[type="file"]{color:#1a2436}
+[data-theme="light"] .purchase-dropzone input[type="file"]::file-selector-button{background:#eaf6f0;color:#0f7a4d;border-color:#bfe3cf}
+[data-theme="light"] .purchase-dropzone input[type="file"]::file-selector-button:hover{background:#dcf0e4;border-color:#0f7a4d}
+[data-theme="light"] .purchase-detected-banner{background:#eaf6f0;border-color:#bfe3cf}
+[data-theme="light"] .purchase-detected-banner .purchase-icon{color:#0f7a4d}
+
+[data-theme="light"] .purchase-field-group h4{color:#5b6c8f}
+[data-theme="light"] .purchase-field-group h4 .purchase-icon{color:#0f7a4d}
+[data-theme="light"] .purchase-field-group + .purchase-field-group{border-top:1px solid #e4eaf4}
+[data-theme="light"] .purchase-total-line{background:#f4f6fb;border:1px solid #dde5f2}
+[data-theme="light"] .purchase-total-line strong{color:#1a2436}
+[data-theme="light"] .purchase-strong-heading{color:#1a2436}
+[data-theme="light"] .purchase-status-warn{background:#fdf3e2;color:#a15c00}
+[data-theme="light"] .purchase-alert-text{color:#b3261e}
+[data-theme="light"] .purchase-label-muted{color:#5b6c8f}
+[data-theme="light"] .purchase-ok-text{color:#0f7a4d}

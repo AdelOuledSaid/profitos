@@ -1,13 +1,70 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">FACTURATION</div><h1>Modifier la facture fournisseur</h1>
-<form method="post" class="panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<label>Fournisseur enregistré<select name="supplier_id"><option value="">— Saisie manuelle —</option>{% for s in suppliers %}<option value="{{ s.id }}" {% if p.supplier_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></label>
-<label>Nom du fournisseur<input name="supplier_name" value="{{ p.supplier_name }}"></label>
-<label>N° facture fournisseur<input name="invoice_number" value="{{ p.invoice_number }}" required></label>
-<label>Date de facture<input name="issue_date" type="date" value="{{ p.issue_date or '' }}"></label>
-<label>Date d'échéance<input name="due_date" type="date" value="{{ p.due_date or '' }}"></label>
-<label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" value="{{ p.subtotal }}" required></label>
-<label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ p.vat_amount }}"></label>
-<label>Catégorie<select name="category">{% for key, label in categories %}<option value="{{ key }}" {% if (p.category or 'autre')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-<label>Notes<textarea name="notes">{{ p.notes or '' }}</textarea></label>
-<button>Enregistrer les modifications</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_detail',purchase_id=p.id) }}">← Retour à la facture</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION · ACHAT</div>
+  <h1 class="purchase-title">Modifier {{ p.invoice_number }}</h1>
+  <p class="purchase-subtitle">Corrige les informations puis enregistre.</p>
+
+  <section class="purchase-panel">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Fournisseur
+        </h4>
+        <div class="formgrid">
+          <label class="wide">Fournisseur enregistré
+            <select name="supplier_id">
+              <option value="">— Saisie manuelle —</option>
+              {% for s in suppliers %}<option value="{{ s.id }}" {% if p.supplier_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="wide">Nom du fournisseur<input name="supplier_name" value="{{ p.supplier_name }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path></svg></span>
+          Facture
+        </h4>
+        <div class="formgrid">
+          <label>N° facture fournisseur<input name="invoice_number" value="{{ p.invoice_number }}" required></label>
+          <label>Catégorie
+            <select name="category">{% for key, label in categories %}<option value="{{ key }}" {% if (p.category or 'autre')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </label>
+          <label>Date de facture<input name="issue_date" type="date" value="{{ p.issue_date or '' }}"></label>
+          <label>Date d'échéance<input name="due_date" type="date" value="{{ p.due_date or '' }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></span>
+          Montants
+        </h4>
+        <div class="formgrid">
+          <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" value="{{ p.subtotal }}" required></label>
+          <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ p.vat_amount }}"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group">
+        <label class="wide">Notes<textarea name="notes" rows="3">{{ p.notes or '' }}</textarea></label>
+      </div>
+
+      <div style="margin-top:24px;">
+        <button type="submit" class="purchase-primary-btn primary">Enregistrer les modifications</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

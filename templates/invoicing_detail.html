@@ -1,92 +1,126 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION</div>
-<div class="detailhead">
-  <div><h1>{{ inv.invoice_number }}</h1><p class="muted">{{ inv.client_name }} · émise le {{ inv.issue_date }}{% if inv.due_date %} · échéance {{ inv.due_date }}{% endif %}</p></div>
-  <div class="heroScore">{{ "{:,.0f}".format(inv.total) }} €<span>TTC</span></div>
-</div>
-
-<div class="actionbuttons" style="margin:16px 0;">
-  <a class="button secondary" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
-  {% if inv.status=='draft' %}<a class="button secondary" href="{{ url_for('invoicing_edit',invoice_id=inv.id) }}">Modifier le brouillon</a>{% endif %}
-  {% if inv.status=='draft' %}
-  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Émettre et envoyer</button></form>
-  <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Annuler le brouillon</button></form>
-  {% elif inv.status=='sent' %}
-  <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Renvoyer par email</button></form>
-  {% if display_status=='overdue' %}
-  <form method="post" action="{{ url_for('invoicing_remind',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Relancer le client</button></form>
-  {% endif %}
-  <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Marquer comme payée</button></form>
-  {% endif %}
-  <span class="status">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
-  {% if inv.status in ('sent','paid') %}<span class="muted">Facture émise — contenu verrouillé.</span>{% endif %}
-</div>
-
-{% if reminders %}
-<section class="panel" style="margin-bottom:18px;">
-  <h3>Historique des relances</h3>
-  {% for r in reminders %}
-  <div class="simpleline"><span>Relance n°{{ r.reminder_number }} · {{ r.recipient_email }}</span><span>{{ r.sent_at[:10] }}</span></div>
-  {% endfor %}
-</section>
-{% endif %}
-
-<section class="panel">
-  {% for it in items %}
-  <div class="simpleline"><span>{{ it.label }} <small>({{ it.qty }} × {{ "{:,.2f}".format(it.unit_price) }} € · TVA {{ it.vat_rate }}%)</small></span><span class="money">{{ "{:,.2f}".format(it.line_total) }} €</span></div>
-  {% endfor %}
-  <div class="simpleline"><span>Sous-total HT</span><span class="money">{{ "{:,.2f}".format(inv.subtotal) }} €</span></div>
-  <div class="simpleline"><span>TVA</span><span class="money">{{ "{:,.2f}".format(inv.vat_amount) }} €</span></div>
-  <div class="simpleline"><strong>Total TTC</strong><strong class="money">{{ "{:,.2f}".format(inv.total) }} €</strong></div>
-</section>
-
-{% if inv.notes %}<p class="muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
-
-<section class="panel" style="margin-top:18px;">
-  <h3 style="margin:0 0 10px;font-size:15px;">Facturation électronique</h3>
-  {% if missing_mentions %}
-  <p style="font-size:14px;font-weight:700;color:#ffc149;margin-bottom:6px;">⚠️ Informations manquantes</p>
-  <p class="muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} élément{{ 's' if missing_mentions|length > 1 else '' }} à compléter :</p>
-  {% if emitter_missing_count %}
-  <a class="button secondary" href="{{ url_for('company') }}" style="display:inline-block;margin-bottom:14px;">Compléter le profil entreprise ({{ emitter_missing_count }} élément{{ 's' if emitter_missing_count > 1 else '' }})</a>
-  {% endif %}
-  {% else %}
-  <p style="font-size:14px;font-weight:700;color:#3ddc84;margin-bottom:6px;">✅ Prête</p>
-  <p class="muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
-  <a class="button secondary" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
-  {% if inv.weinvoice_invoice_id %}
-  <p style="font-size:13px;color:#3ddc84;margin:0 0 8px;">✓ WeInvoice : <strong>{{ inv.weinvoice_status or 'transmise' }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
-  {% if inv.weinvoice_last_sync_at %}<p class="muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at }}</p>{% endif %}
-  <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="secondary">Actualiser le statut WeInvoice</button>
-  </form>
-  <form method="post" action="{{ url_for('invoicing_test_weinvoice_webhook_sandbox',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="secondary">Test webhook sandbox</button>
-  </form>
-  {% else %}
-  <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="secondary">Transmettre à WeInvoice</button>
-  </form>
-  {% endif %}
-  {% if inv.weinvoice_last_error %}<p style="font-size:12px;color:#ff8b8b;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
-  {% endif %}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;">
-    {% for check in mention_checks %}
-    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:{{ '#3ddc84' if check.ok else '#ff8b8b' }};">
-      <span>{{ '✓' if check.ok else '✗' }}</span><span>{{ check.label }}</span>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Retour aux factures</a>
     </div>
-    {% endfor %}
   </div>
-  <p class="muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. La transmission à WeInvoice n'a lieu qu'après action explicite sur le bouton dédié.</p>
-</section>
 
-<div class="panel" style="margin-top:18px;background:#0a1529;">
-  <h3 style="margin:0 0 6px;font-size:14px;">Lien de consultation client</h3>
-  <code style="display:block;padding:8px;background:#000;border-radius:6px;word-break:break-all;font-size:12px;">{{ request.host_url }}facture/{{ inv.public_token }}</code>
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+    <div>
+      <h1 class="purchase-title" style="margin-bottom:6px;">{{ inv.invoice_number }}</h1>
+      <p class="purchase-subtitle" style="margin:0;">{{ inv.client_name }} · émise le {{ inv.issue_date }}{% if inv.due_date %} · échéance {{ inv.due_date }}{% endif %}</p>
+    </div>
+    <div class="heroScore">{{ "{:,.0f}".format(inv.total) }} €<span>TTC</span></div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
+    <a class="purchase-nav-btn" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
+    {% if inv.status=='draft' %}<a class="purchase-nav-btn" href="{{ url_for('invoicing_edit',invoice_id=inv.id) }}">Modifier le brouillon</a>{% endif %}
+    {% if inv.status=='draft' %}
+    <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Émettre et envoyer</button></form>
+    <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Annuler le brouillon</button></form>
+    {% elif inv.status=='sent' %}
+    <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Renvoyer par email</button></form>
+    {% if display_status=='overdue' %}
+    <form method="post" action="{{ url_for('invoicing_remind',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Relancer le client</button></form>
+    {% endif %}
+    <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Marquer comme payée</button></form>
+    {% endif %}
+    <span class="purchase-status {{ 'paid' if display_status=='paid' else ('overdue' if display_status=='overdue' else '') }}">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
+    {% if inv.status in ('sent','paid') %}<span class="purchase-muted">Facture émise — contenu verrouillé.</span>{% endif %}
+  </div>
+
+  {% if reminders %}
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Historique des relances</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <tbody>
+        {% for r in reminders %}
+          <tr><td>Relance n°{{ r.reminder_number }} · {{ r.recipient_email }}</td><td>{{ r.sent_at[:10] }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Détail de la facture</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Description</th><th>Qté</th><th>PU HT</th><th>TVA</th><th>Total</th></tr></thead>
+        <tbody>
+        {% for it in items %}
+          <tr>
+            <td>{{ it.label }}</td>
+            <td>{{ it.qty }}</td>
+            <td>{{ "{:,.2f}".format(it.unit_price) }} €</td>
+            <td>{{ it.vat_rate }}%</td>
+            <td><strong>{{ "{:,.2f}".format(it.line_total) }} €</strong></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="purchase-total-line" style="margin-top:16px;">
+      <span class="purchase-muted">Sous-total HT : {{ "{:,.2f}".format(inv.subtotal) }} € · TVA : {{ "{:,.2f}".format(inv.vat_amount) }} €</span>
+      <strong>{{ "{:,.2f}".format(inv.total) }} € TTC</strong>
+    </div>
+    {% if inv.notes %}<p class="purchase-muted" style="margin-top:14px;">{{ inv.notes }}</p>{% endif %}
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
+    {% if missing_mentions %}
+    <p style="font-size:14px;font-weight:700;" class="purchase-status-warn" >⚠️ Informations manquantes</p>
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} élément{{ 's' if missing_mentions|length > 1 else '' }} à compléter :</p>
+    {% if emitter_missing_count %}
+    <a class="purchase-nav-btn" href="{{ url_for('company') }}" style="display:inline-block;margin-bottom:14px;">Compléter le profil entreprise ({{ emitter_missing_count }} élément{{ 's' if emitter_missing_count > 1 else '' }})</a>
+    {% endif %}
+    {% else %}
+    <p style="font-size:14px;font-weight:700;" class="purchase-ok-text">✅ Prête</p>
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
+    <a class="purchase-nav-btn" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
+    {% if inv.weinvoice_invoice_id %}
+    <p class="purchase-ok-text" style="font-size:13px;margin:0 0 8px;">✓ WeInvoice : <strong>{{ inv.weinvoice_status or 'transmise' }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+    {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at }}</p>{% endif %}
+    <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut WeInvoice</button>
+    </form>
+    <form method="post" action="{{ url_for('invoicing_test_weinvoice_webhook_sandbox',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn secondary">Test webhook sandbox</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn secondary">Transmettre à WeInvoice</button>
+    </form>
+    {% endif %}
+    {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
+    {% endif %}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;margin-top:10px;">
+      {% for check in mention_checks %}
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;" class="{{ 'purchase-ok-text' if check.ok else 'purchase-alert-text' }}">
+        <span>{{ '✓' if check.ok else '✗' }}</span><span>{{ check.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="purchase-muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. La transmission à WeInvoice n'a lieu qu'après action explicite sur le bouton dédié.</p>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Lien de consultation client</h2></div>
+    <div class="purchase-table-wrap">
+      <code style="display:block;padding:10px;background:rgba(0,0,0,.3);border-radius:8px;word-break:break-all;font-size:12px;">{{ request.host_url }}facture/{{ inv.public_token }}</code>
+    </div>
+  </section>
+
+  <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. Ce document n'est pas émis via une Plateforme Agréée DGFiP au sens de la réforme de facturation électronique (obligatoire à partir du 1er septembre 2026).</p>
 </div>
-
-<p class="muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. Ce document n'est pas émis via une Plateforme Agréée DGFiP au sens de la réforme de facturation électronique (obligatoire à partir du 1er septembre 2026).</p>
 {% endblock %}

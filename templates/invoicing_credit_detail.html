@@ -1,15 +1,42 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow green">FACTURATION · AVOIR</div>
-<div class="detailhead"><div><h1>{{ credit.credit_number }}</h1>
-<p class="muted">Avoir lié à {{ credit.original_invoice_number }} · {{ credit.client_name }} · {{ credit.issue_date }}</p></div>
-<div class="heroScore">-{{ "{:,.2f}".format(credit.total) }} €<span>TTC</span></div></div>
-<div class="actionbuttons"><a class="button secondary" href="{{ url_for('invoicing_credit_pdf',credit_id=credit.id) }}">Télécharger le PDF</a>
-<a class="button secondary" href="{{ url_for('invoicing_detail',invoice_id=credit.original_invoice_id) }}">Voir la facture d'origine</a>
-<span class="status">Émis</span></div>
-<section class="panel" style="margin-top:16px;">
-<p><strong>Motif :</strong> {{ credit.reason }}</p>
-{% for it in items %}<div class="simpleline"><span>{{ it.label }}</span><span class="money">-{{ "{:,.2f}".format(it.line_total) }} €</span></div>{% endfor %}
-<div class="simpleline"><span>Sous-total HT</span><span class="money">-{{ "{:,.2f}".format(credit.subtotal) }} €</span></div>
-<div class="simpleline"><span>TVA</span><span class="money">-{{ "{:,.2f}".format(credit.vat_amount) }} €</span></div>
-<div class="simpleline"><strong>Total TTC</strong><strong class="money">-{{ "{:,.2f}".format(credit.total) }} €</strong></div>
-</section>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_detail',invoice_id=credit.original_invoice_id) }}">← Voir la facture d'origine</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION · AVOIR</div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+    <div>
+      <h1 class="purchase-title" style="margin-bottom:6px;">{{ credit.credit_number }}</h1>
+      <p class="purchase-subtitle" style="margin:0;">Avoir lié à {{ credit.original_invoice_number }} · {{ credit.client_name }} · {{ credit.issue_date }}</p>
+    </div>
+    <div class="heroScore">-{{ "{:,.2f}".format(credit.total) }} €<span>TTC</span></div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
+    <a class="purchase-nav-btn" href="{{ url_for('invoicing_credit_pdf',credit_id=credit.id) }}">Télécharger le PDF</a>
+    <span class="purchase-status">Émis</span>
+  </div>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Détail de l'avoir</h2></div>
+    <p class="purchase-muted" style="margin-top:-8px;"><strong style="color:inherit;">Motif :</strong> {{ credit.reason }}</p>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <tbody>
+        {% for it in items %}
+          <tr><td>{{ it.label }}</td><td style="text-align:right;"><strong>-{{ "{:,.2f}".format(it.line_total) }} €</strong></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="purchase-total-line" style="margin-top:16px;">
+      <span class="purchase-muted">Sous-total HT : -{{ "{:,.2f}".format(credit.subtotal) }} € · TVA : -{{ "{:,.2f}".format(credit.vat_amount) }} €</span>
+      <strong>-{{ "{:,.2f}".format(credit.total) }} € TTC</strong>
+    </div>
+  </section>
+</div>
+{% endblock %}

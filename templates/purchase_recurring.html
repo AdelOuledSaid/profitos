@@ -15,7 +15,7 @@
 
   {% if anomaly_count > 0 %}
   <div class="purchase-panel" style="margin:20px 0;border-color:rgba(255,94,94,.4);background:rgba(255,60,60,.06);">
-    <strong style="color:#ff8b8b;">⚠ {{ anomaly_count }} abonnement{{ 's' if anomaly_count > 1 else '' }} en hausse anormale par rapport au montant habituel.</strong>
+    <strong class="purchase-alert-text">⚠ {{ anomaly_count }} abonnement{{ 's' if anomaly_count > 1 else '' }} en hausse anormale par rapport au montant habituel.</strong>
   </div>
   {% endif %}
 

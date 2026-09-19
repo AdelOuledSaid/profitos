@@ -384,3 +384,20 @@
   font-size:24px;
   color:#fff;
 }
+.purchase-strong-heading{
+  color:#fff;
+}
+.purchase-status-warn{
+  background:rgba(255,193,73,.15);
+  color:#ffc149;
+}
+.purchase-alert-text{
+  color:#ff8b8b;
+}
+.purchase-label-muted{
+  font-size:12px;
+  color:#aaa;
+}
+.purchase-ok-text{
+  color:#3ddc84;
+}
