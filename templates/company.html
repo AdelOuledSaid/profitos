@@ -29,11 +29,12 @@
     <h3 style="margin:0 0 8px;font-size:15px;">Onboarding entreprise (KYB)</h3>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
       <span>Statut :</span>
-      {% if weinvoice.weinvoice_kyb_status == 'verified' %}
+      {% set kyb = (weinvoice.weinvoice_kyb_status or '')|upper %}
+      {% if kyb in ('VERIFIED','VALIDATED','ACCEPTED') %}
         <strong style="color:#3ddc84;">✅ Vérifiée</strong>
-      {% elif weinvoice.weinvoice_kyb_status in ('pending','in_review') %}
+      {% elif kyb in ('PENDING','IN_REVIEW') %}
         <strong style="color:#ffc149;">🟡 En cours</strong>
-      {% elif weinvoice.weinvoice_kyb_status == 'rejected' %}
+      {% elif kyb == 'REJECTED' %}
         <strong style="color:#ff8b8b;">🔴 Rejetée</strong>
       {% else %}
         <strong class="muted">⚪ Non démarrée</strong>
