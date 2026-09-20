@@ -1,6 +1,8 @@
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
+import base64
+from pypdf.errors import PyPdfError
 
 # Formats de données acceptés par les imports financiers.
 # Déclarés localement pour éviter qu'une ancienne constante runtime bloque les PDF.
@@ -53,6 +55,58 @@ def _pdf_text(path, max_pages=20):
     return text
 
 
+def _ai_extract_pdf_fields(path, prompt, required_fields):
+    """Repli IA (API Claude, vision) pour un PDF scanné sans texte exploitable —
+    utilisé par les imports factures/dépenses quand _pdf_text échoue. Retourne un
+    dict correspondant au schéma demandé dans le prompt. Lève ValueError si la clé
+    API n'est pas configurée, si l'appel échoue, ou si des champs requis manquent
+    dans la réponse — jamais de valeur inventée."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError(
+            "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
+            "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
+        )
+    file_bytes = path.read_bytes()
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    headers = {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+    payload = {
+        'model': ANTHROPIC_MODEL,
+        'max_tokens': 1024,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
+                {'type': 'text', 'text': prompt},
+            ],
+        }],
+    }
+    try:
+        resp = requests.post('https://api.anthropic.com/v1/messages', json=payload, headers=headers, timeout=45)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API d'extraction impossible : {e}") from e
+    if resp.status_code != 200:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise ValueError(f"L'extraction par IA a échoué ({resp.status_code}) — détail : {detail}")
+    try:
+        data = resp.json()
+        text_out = ''.join(b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text').strip()
+        text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
+        parsed = json.loads(text_out)
+    except (ValueError, KeyError, AttributeError) as e:
+        raise ValueError("Réponse d'extraction IA illisible — réessayez ou utilisez un PDF texte.") from e
+    missing = [f for f in required_fields if not parsed.get(f)]
+    if missing:
+        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ".")
+    return parsed
+
+
 def _classify_expense_document(text, vendor=''):
     """Classe un document de dépense à partir de marqueurs explicites, sans IA externe."""
     hay=norm((vendor or '')+' '+text)
@@ -75,8 +129,36 @@ def _classify_expense_document(text, vendor=''):
 
 
 def _extract_expense_pdf(path):
-    """Extrait une dépense depuis un PDF texte : fournisseur, URSSAF, TVA, impôts, paie, etc."""
-    text=_pdf_text(path, max_pages=20)
+    """Extrait une dépense depuis un PDF : texte natif en priorité (gratuit), repli
+    IA (API Claude, vision) pour les PDF scannés sans texte exploitable."""
+    try:
+        text=_pdf_text(path, max_pages=20)
+    except (ValueError,PyPdfError) as text_err:
+        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+            raise
+        prompt=(
+            "Tu analyses un document de dépense (facture fournisseur, avis URSSAF, "
+            "TVA, impôts, paie...) fourni en pièce jointe. Réponds UNIQUEMENT avec "
+            "un objet JSON, sans texte avant ou après, exactement sous cette forme :\n"
+            '{"vendor": "nom du fournisseur ou organisme", "amount": nombre_TTC, '
+            '"date": "AAAA-MM-JJ (échéance si présente, sinon émission)", '
+            '"description": "description courte"}\n'
+            "Si un champ est illisible ou absent, mets une chaîne vide. N'invente "
+            "jamais une valeur que tu ne peux pas lire réellement sur le document."
+        )
+        parsed=_ai_extract_pdf_fields(path,prompt,['vendor','amount','date'])
+        try:
+            amount=float(parsed.get('amount'))
+        except (TypeError,ValueError):
+            raise ValueError("Montant détecté par l'IA illisible. Vérifiez le document.")
+        try:
+            expense_date=date.fromisoformat(parsed.get('date'))
+        except (TypeError,ValueError):
+            raise ValueError("Date détectée par l'IA dans un format inattendu.")
+        vendor=parsed.get('vendor')
+        desc=parsed.get('description') or f'Dépense importée ({vendor})'
+        category=_classify_expense_document(vendor+' '+desc,vendor)
+        return {'vendor':vendor,'description':desc,'amount':amount,'date':expense_date.isoformat(),'category':category}
 
     amount_raw=_pdf_first([
         r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|montant\s*du|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
@@ -131,13 +213,100 @@ def _extract_expense_pdf(path):
     return {'vendor':vendor,'description':desc,'amount':amount,'date':expense_date.isoformat(),'category':category}
 
 
-def _extract_bank_statement_pdf(path):
-    """Extrait des lignes de relevé depuis un PDF texte.
+def _ai_extract_bank_statement_rows(path):
+    """Repli IA (API Claude, vision) pour un relevé bancaire scanné sans texte
+    exploitable — retourne une liste de {date, description, amount}, filtrée aux
+    lignes réellement lisibles plutôt que d'inventer des transactions manquantes."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError(
+            "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
+            "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
+        )
+    file_bytes = path.read_bytes()
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    prompt = (
+        "Tu analyses un relevé bancaire fourni en pièce jointe. Réponds UNIQUEMENT "
+        "avec un tableau JSON, sans texte avant ou après, où chaque élément "
+        "correspond à une ligne d'opération réellement lisible :\n"
+        '[{"date": "AAAA-MM-JJ", "description": "libellé de l\'opération", '
+        '"amount": nombre}, ...]\n'
+        "N'inclus que les opérations créditrices (encaissements) avec un montant "
+        "positif. Ignore les lignes illisibles ou ambiguës plutôt que d'inventer "
+        "une valeur. Si aucune ligne n'est exploitable, réponds []."
+    )
+    headers = {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+    payload = {
+        'model': ANTHROPIC_MODEL,
+        'max_tokens': 4096,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
+                {'type': 'text', 'text': prompt},
+            ],
+        }],
+    }
+    try:
+        resp = requests.post('https://api.anthropic.com/v1/messages', json=payload, headers=headers, timeout=60)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API d'extraction impossible : {e}") from e
+    if resp.status_code != 200:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise ValueError(f"L'extraction par IA a échoué ({resp.status_code}) — détail : {detail}")
+    try:
+        data = resp.json()
+        text_out = ''.join(b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text').strip()
+        text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
+        parsed = json.loads(text_out)
+    except (ValueError, KeyError, AttributeError) as e:
+        raise ValueError("Réponse d'extraction IA illisible — réessayez ou utilisez un PDF texte.") from e
+    if not isinstance(parsed, list):
+        raise ValueError("Réponse d'extraction IA dans un format inattendu.")
+    rows = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        try:
+            d = date.fromisoformat(item.get('date'))
+            amount = float(item.get('amount'))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        desc = (item.get('description') or 'Opération bancaire')[:240]
+        rows.append({'date': d.isoformat(), 'description': desc, 'amount': amount})
+    if not rows:
+        raise ValueError("Aucune ligne bancaire exploitable détectée par l'IA dans ce document.")
+    return rows
 
-    Le parseur reste volontairement conservateur : une ligne doit contenir une date et
-    un montant. Les PDF scannés ne sont pas pris en charge sans OCR.
+
+def _extract_bank_statement_pdf(path):
+    """Extrait des lignes de relevé : texte natif en priorité (gratuit), repli IA
+    (API Claude, vision) pour les PDF scannés sans texte exploitable.
+
+    Le parseur texte reste volontairement conservateur : une ligne doit contenir une
+    date et un montant.
     """
-    text=_pdf_text(path, max_pages=40)
+    try:
+        text=_pdf_text(path, max_pages=40)
+    except (ValueError,PyPdfError) as text_err:
+        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+            raise
+        rows=_ai_extract_bank_statement_rows(path)
+        unique=[]; seen=set()
+        for row in rows:
+            key=(row['date'],row['description'],round(float(row['amount']),2))
+            if key in seen: continue
+            seen.add(key); unique.append(row)
+        return pd.DataFrame(unique)
+
     rows=[]
     date_pat=re.compile(r'(?<!\d)([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2}|(?:20)\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)(?!\d)')
     amount_pat=re.compile(r'(?<!\d)([-+]?\s*\d{1,3}(?:[ .]\d{3})*(?:,\d{2}|\.\d{2})|[-+]?\s*\d+(?:,\d{2}|\.\d{2}))(?:\s*€)?(?!\d)')
@@ -176,12 +345,50 @@ def _extract_bank_statement_pdf(path):
 
 
 def _extract_invoice_pdf(path):
-    """Extraction prudente d'une facture PDF texte.
-
-    Cette première version ne fait pas d'OCR. Elle accepte les PDF dont le texte est
-    réellement extractible et refuse les documents ambigus au lieu d'inventer des champs.
-    """
-    text=_pdf_text(path, max_pages=12)
+    """Extraction d'une facture PDF : texte natif en priorité (gratuit), repli IA
+    (API Claude, vision) pour les PDF scannés sans texte exploitable."""
+    try:
+        text=_pdf_text(path, max_pages=12)
+    except (ValueError,PyPdfError) as text_err:
+        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+            raise
+        prompt=(
+            "Tu analyses une facture client fournie en pièce jointe. Réponds "
+            "UNIQUEMENT avec un objet JSON, sans texte avant ou après, exactement "
+            "sous cette forme :\n"
+            '{"invoice_number": "...", "customer": "...", "amount": nombre_TTC, '
+            '"issue_date": "AAAA-MM-JJ ou vide", "due_date": "AAAA-MM-JJ", '
+            '"customer_email": "... ou vide", "customer_phone": "... ou vide"}\n'
+            "Si un champ est illisible ou absent, mets une chaîne vide. N'invente "
+            "jamais une valeur que tu ne peux pas lire réellement sur le document."
+        )
+        parsed=_ai_extract_pdf_fields(path,prompt,['invoice_number','customer','amount','due_date'])
+        try:
+            amount=float(parsed.get('amount'))
+        except (TypeError,ValueError):
+            raise ValueError("Montant détecté par l'IA illisible. Vérifiez le document.")
+        try:
+            due=date.fromisoformat(parsed.get('due_date'))
+        except (TypeError,ValueError):
+            raise ValueError("Date d'échéance détectée par l'IA dans un format inattendu.")
+        issue_raw=(parsed.get('issue_date') or '').strip()
+        try:
+            issue=date.fromisoformat(issue_raw) if issue_raw else None
+        except ValueError:
+            issue=None
+        return {
+            'invoice_number':parsed.get('invoice_number'),
+            'customer':parsed.get('customer'),
+            'amount':amount,
+            'paid_amount':0.0,
+            'issue_date':issue.isoformat() if issue else '',
+            'due_date':due.isoformat(),
+            'status':'unpaid',
+            'type':'STANDARD',
+            'retention_release_date':'',
+            'customer_email':parsed.get('customer_email') or '',
+            'customer_phone':parsed.get('customer_phone') or '',
+        }
 
     # Numéro : les formats usuels FACTURE N°, Invoice #, ou le numéro juste sous le titre FACTURE.
     num=_pdf_first([

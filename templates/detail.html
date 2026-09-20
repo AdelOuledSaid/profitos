@@ -59,7 +59,7 @@
  </div>
 
  {% if advanced_plan %}
- <p class="muted">Dépose un règlement de consultation, CCTP, CCAP ou autre pièce. ProfitOS extrait les exigences et produit un score GO / NO-GO. Cette V0 analyse le texte localement et ne remplace pas une lecture juridique.</p>
+ <p class="muted">Dépose un règlement de consultation, CCTP, CCAP ou autre pièce. ProfitOS extrait les exigences et produit un score GO / NO-GO. Cette analyse se fait localement et ne remplace pas une lecture juridique.</p>
  <form method="post" enctype="multipart/form-data" action="{{ url_for('dce_upload',opportunity_id=o.id) }}" class="dceupload">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="file" name="file" accept=".pdf,.docx,.txt" required>

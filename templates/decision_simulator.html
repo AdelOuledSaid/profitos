@@ -240,7 +240,7 @@
       <button type="submit">Demander à ProfitOS</button>
     </form>
     {% if simulation.cfo_answer %}<div class="cfo-answer"><small>RÉPONSE BASÉE SUR LES DONNÉES CONNUES</small><strong>{{ simulation.cfo_answer }}</strong></div>{% endif %}
-    <p class="muted">Cette première version n’invente ni transactions ni revenus : elle explique le scénario calculé par ProfitOS.</p>
+    <p class="muted">ProfitOS n'invente ni transactions ni revenus : ce scénario reflète uniquement des données calculées.</p>
   </section>
   <details class="optimizer-details"><summary>Voir les meilleures alternatives testées</summary>
     {% for alt in simulation.optimizer.alternatives %}

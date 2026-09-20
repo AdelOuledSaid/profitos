@@ -1,25 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow green">CASH INTELLIGENCE · V1.6.5</div>
-<h1>Anticiper votre trésorerie avant qu'elle devienne urgente.</h1>
-<p class="muted">Prévision 30 / 60 / 90 jours, scénarios prudent / probable / optimiste et simulation d'encaissement.</p>
+<div class="purchase-page">
+<div class="purchase-eyebrow">CASH INTELLIGENCE</div>
+<h1 class="purchase-title">Anticiper votre trésorerie avant qu'elle devienne urgente.</h1>
+<p class="purchase-subtitle">Prévision 30 / 60 / 90 jours, scénarios prudent / probable / optimiste et simulation d'encaissement.</p>
 
-<section class="panel cash-balance-card">
-  <div><div class="eyebrow">SOLDE DE DÉPART</div><h2>{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.cash_balance) }} €{% else %}Solde bancaire requis{% endif %}</h2><p class="muted">{% if cash.cash_as_of %}Solde déclaré au {{ cash.cash_as_of }}.{% else %}Saisissez votre trésorerie actuelle pour activer les scénarios.{% endif %}</p></div>
-  <form method="post" class="cash-balance-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Trésorerie disponible (€)<input type="number" step="0.01" name="cash_balance" value="{{ cash.cash_balance if cash.cash_balance is not none else '' }}" required></label><button>Mettre à jour</button></form>
+<section class="purchase-panel cash-balance-card">
+  <div><div class="purchase-eyebrow" style="margin-bottom:6px;">SOLDE DE DÉPART</div><h2 style="color:#fff;">{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.cash_balance) }} €{% else %}Solde bancaire requis{% endif %}</h2><p class="purchase-muted">{% if cash.cash_as_of %}Solde déclaré au {{ cash.cash_as_of }}.{% else %}Saisissez votre trésorerie actuelle pour activer les scénarios.{% endif %}</p></div>
+  <form method="post" class="cash-balance-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Trésorerie disponible (€)<input type="number" step="0.01" name="cash_balance" value="{{ cash.cash_balance if cash.cash_balance is not none else '' }}" required></label><button type="submit" class="purchase-primary-btn primary">Mettre à jour</button></form>
 </section>
 
 <div class="cash-alert {{ cash.alert_level|lower }}"><strong>{{ cash.alert_level }}</strong><span>{{ cash.alert }}</span></div>
 
-<div class="brain-kpis cash-kpis">
-  {% for days in (30,60,90) %}<section class="panel"><small>TRÉSORERIE PROJETÉE · {{ days }} J</small><div class="big">{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.horizons[days]) }} €{% else %}—{% endif %}</div><p class="muted">Solde + encaissements attendus − rythme de dépenses observé.</p></section>{% endfor %}
-  <section class="panel"><small>DÉPENSE MENSUELLE OBSERVÉE</small><div class="big">{{ "{:,.0f}".format(cash.monthly_burn) }} €</div><p class="muted">Calculée sur {{ cash.expense_rows }} dépense(s) des 90 derniers jours.</p></section>
+<div class="purchase-stats cash-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
+  {% for days in (30,60,90) %}
+  <div class="purchase-stat">
+    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></div>
+    <div><div class="purchase-stat-label">TRÉSORERIE PROJETÉE · {{ days }} J</div><div class="purchase-stat-value">{% if cash.cash_balance is not none %}{{ "{:,.0f}".format(cash.horizons[days]) }} €{% else %}—{% endif %}</div></div>
+  </div>
+  {% endfor %}
+  <div class="purchase-stat">
+    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg></div>
+    <div><div class="purchase-stat-label">DÉPENSE MENSUELLE OBSERVÉE</div><div class="purchase-stat-value">{{ "{:,.0f}".format(cash.monthly_burn) }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Sur {{ cash.expense_rows }} dépense(s) des 90 derniers jours</div></div>
+  </div>
 </div>
 
 {% if cash.cash_balance is not none %}
-<section class="panel cash-chart-panel">
-  <div class="eyebrow green">CASH SCENARIOS · 90 JOURS</div><h2>Trois trajectoires pour décider avant la tension</h2>
-  <p class="muted">Les scénarios modifient uniquement le timing et la prudence des encaissements connus. Les dépenses futures inconnues ne sont pas ajoutées.</p>
+<section class="purchase-panel cash-chart-panel">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">CASH SCENARIOS · 90 JOURS</div><h2 style="color:#fff;">Trois trajectoires pour décider avant la tension</h2>
+  <p class="purchase-muted">Les scénarios modifient uniquement le timing et la prudence des encaissements connus. Les dépenses futures inconnues ne sont pas ajoutées.</p>
   <div class="cash-legend"><span class="legend prudent">Prudent</span><span class="legend probable">Probable</span><span class="legend optimiste">Optimiste</span></div>
   <div class="cash-chart-wrap">
     <svg class="cash-chart" viewBox="0 0 920 220" role="img" aria-label="Courbes de trésorerie projetée sur 90 jours">
@@ -33,14 +42,15 @@
 {% endif %}
 
 {% if cash.cash_balance is not none and cash.top_receivable %}
-<section class="panel scenario-panel">
-  <div class="eyebrow green">WHAT-IF · RECOVER</div><h2>Quand {{ cash.top_receivable.customer }} paiera-t-il ?</h2>
-  <p class="muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ "{:,.0f}".format(cash.top_receivable.amount) }} € exposés. Testez le timing sans modifier la facture.</p>
-  <form method="get" class="whatif-form"><label>Date d'encaissement simulée<select name="payment_delay"><option value="today" {% if custom and custom.choice=='today' %}selected{% endif %}>Aujourd'hui</option><option value="7" {% if custom and custom.choice=='7' %}selected{% endif %}>Sous 7 jours</option><option value="30" {% if custom and custom.choice=='30' %}selected{% endif %}>Sous 30 jours</option><option value="60" {% if custom and custom.choice=='60' %}selected{% endif %}>Sous 60 jours</option><option value="never" {% if custom and custom.choice=='never' %}selected{% endif %}>Pas d'encaissement sur 90 jours</option></select></label><button type="submit">Simuler</button></form>
+<section class="purchase-panel scenario-panel" style="margin-top:20px;">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">WHAT-IF · RECOVER</div><h2 style="color:#fff;">Quand {{ cash.top_receivable.customer }} paiera-t-il ?</h2>
+  <p class="purchase-muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ "{:,.0f}".format(cash.top_receivable.amount) }} € exposés. Testez le timing sans modifier la facture.</p>
+  <form method="get" class="whatif-form"><label>Date d'encaissement simulée<select name="payment_delay"><option value="today" {% if custom and custom.choice=='today' %}selected{% endif %}>Aujourd'hui</option><option value="7" {% if custom and custom.choice=='7' %}selected{% endif %}>Sous 7 jours</option><option value="30" {% if custom and custom.choice=='30' %}selected{% endif %}>Sous 30 jours</option><option value="60" {% if custom and custom.choice=='60' %}selected{% endif %}>Sous 60 jours</option><option value="never" {% if custom and custom.choice=='never' %}selected{% endif %}>Pas d'encaissement sur 90 jours</option></select></label><button type="submit" class="purchase-primary-btn primary">Simuler</button></form>
   {% if custom %}<div class="whatif-result"><div><small>SCÉNARIO TESTÉ</small><strong>{{ custom.label }}</strong></div><div><small>POINT BAS</small><strong>{{ "{:,.0f}".format(custom.minimum) }} €</strong><span>à J+{{ custom.min_day }}</span></div><div><small>TRÉSORERIE À 90 J</small><strong>{{ "{:,.0f}".format(custom.end_90) }} €</strong></div></div>{% else %}<div class="scenario-grid">{% for s in cash.scenarios %}<div><small>PAIEMENT SOUS {{ s.delay }} J</small><strong>{{ "{:,.0f}".format(s.minimum) }} €</strong><span>point bas de trésorerie sur 90 j</span></div>{% endfor %}</div>{% endif %}
 </section>
 {% endif %}
 
-<section class="panel" style="margin-top:20px"><div class="eyebrow">ENCAISSEMENTS MODÉLISÉS</div><h2>Ce qui alimente la prévision</h2>{% for r in cash.receivables[:8] %}<div class="brain-row"><div><strong>{{ r.customer }} · #{{ r.invoice_number }}</strong><small>{{ r.days_overdue }} jours de retard · confiance {{ r.confidence }}% · horizon prudent {{ r.expected_date }}</small></div><div><strong>{{ "{:,.0f}".format(r.expected_amount) }} €</strong><small>sur {{ "{:,.0f}".format(r.amount) }} € exposés</small></div></div>{% else %}<p class="muted">Aucune créance ouverte.</p>{% endfor %}</section>
-<section class="panel brain-gaps" style="margin-top:20px"><div class="eyebrow amber">MÉTHODE & LIMITES</div><h2>Une prévision explicable</h2><p>{{ cash.method_note }}</p><div class="bullet warntext">⚠ Les dépenses futures non encore enregistrées (salaires, TVA, échéances fournisseurs, emprunts) ne sont pas inventées.</div><div class="bullet warntext">⚠ Le solde bancaire est saisi manuellement dans cette version ; une connexion bancaire pourra le remplacer ensuite.</div></section>
+<section class="purchase-panel" style="margin-top:20px"><div class="purchase-eyebrow" style="margin-bottom:6px;">ENCAISSEMENTS MODÉLISÉS</div><h2 style="color:#fff;">Ce qui alimente la prévision</h2>{% for r in cash.receivables[:8] %}<div class="brain-row"><div><strong>{{ r.customer }} · #{{ r.invoice_number }}</strong><small>{{ r.days_overdue }} jours de retard · confiance {{ r.confidence }}% · horizon prudent {{ r.expected_date }}</small></div><div><strong>{{ "{:,.0f}".format(r.expected_amount) }} €</strong><small>sur {{ "{:,.0f}".format(r.amount) }} € exposés</small></div></div>{% else %}<p class="purchase-empty">Aucune créance ouverte.</p>{% endfor %}</section>
+<section class="purchase-panel brain-gaps" style="margin-top:20px"><div class="purchase-eyebrow" style="margin-bottom:6px;color:#ffc149;">MÉTHODE & LIMITES</div><h2 style="color:#fff;">Une prévision explicable</h2><p>{{ cash.method_note }}</p><div class="bullet warntext">⚠ Les dépenses futures non encore enregistrées (salaires, TVA, échéances fournisseurs, emprunts) ne sont pas inventées.</div><div class="bullet warntext">⚠ Le solde bancaire est saisi manuellement, sauf si un compte est connecté via Open Banking.</div></section>
+</div>
 {% endblock %}
