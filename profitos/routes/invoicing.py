@@ -880,7 +880,7 @@ def register(app):
         html=render_template(
             'email_transactional.html',
             title=f"Devis {q['quote_number']} — {org['name']}",
-            intro=f"Voici votre devis {q['quote_number']} de {org['name']}, d'un montant de {q['total']:,.2f} € TTC.",
+            intro=f"Voici votre devis {q['quote_number']} de {org['name']}, d'un montant de {fr_number(q['total'],2)} € TTC.",
             cta_label='Consulter et répondre au devis',
             cta_url=link,
             footer="Vous pouvez accepter ou refuser ce devis depuis la page sécurisée."
@@ -1750,7 +1750,7 @@ def register(app):
             ac=auth_cx()
             ac.execute('INSERT INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
                 (token,session['org_id'],new_id,now())); ac.commit(); ac.close()
-            log_activity('INVOICE_CREATED',f'Facture {invoice_number} créée ({total:,.0f} € TTC)')
+            log_activity('INVOICE_CREATED',f'Facture {invoice_number} créée ({fr_number(total)} € TTC)')
             flash(f'Facture {invoice_number} créée en brouillon.')
             return redirect(url_for('invoicing_detail',invoice_id=new_id))
 
@@ -1981,7 +1981,7 @@ def register(app):
         base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
         link=f"{base}{url_for('public_invoice_view',token=inv['public_token'])}"
         html=render_template('email_transactional.html',title=f"Facture {inv['invoice_number']} — {org['name']}",
-            intro=f"Voici votre facture {inv['invoice_number']} de {org['name']}, d'un montant de {inv['total']:,.2f} € TTC.",
+            intro=f"Voici votre facture {inv['invoice_number']} de {org['name']}, d'un montant de {fr_number(inv['total'],2)} € TTC.",
             cta_label='Consulter la facture',cta_url=link,footer='')
         result=send_email(inv['client_email'],f"Facture {inv['invoice_number']} — {org['name']}",html)
 
@@ -2031,7 +2031,7 @@ def register(app):
             'email_transactional.html',
             title=f"Relance facture {inv['invoice_number']} — {org['name']}",
             intro=(f"Sauf erreur de notre part, la facture {inv['invoice_number']} "
-                   f"d'un montant de {inv['total']:,.2f} € TTC, échue le {inv['due_date']}, "
+                   f"d'un montant de {fr_number(inv['total'],2)} € TTC, échue le {inv['due_date']}, "
                    f"reste impayée. Si votre règlement a déjà été effectué, merci de ne pas tenir compte de cette relance."),
             cta_label='Consulter la facture',cta_url=link,footer=''
         )
@@ -2368,19 +2368,19 @@ def _render_invoice_pdf(inv,company_row):
     for it in items:
         pdf.cell(80,7,safe(it['label']))
         pdf.cell(20,7,safe(f"{it['qty']:g}"),align='R')
-        pdf.cell(30,7,safe(f"{it['unit_price']:,.2f} EUR"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['unit_price'],2)} EUR"),align='R')
         pdf.cell(20,7,safe(f"{it['vat_rate']:g}%"),align='R')
-        pdf.cell(30,7,safe(f"{it['line_total']:,.2f} EUR"),align='R',ln=1)
+        pdf.cell(30,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
     pdf.ln(6)
 
     pdf.set_font('Helvetica','',11)
     pdf.cell(150,7,'Sous-total HT',align='R')
-    pdf.cell(30,7,safe(f"{inv['subtotal']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(30,7,safe(f"{fr_number(inv['subtotal'],2)} EUR"),align='R',ln=1)
     pdf.cell(150,7,'TVA',align='R')
-    pdf.cell(30,7,safe(f"{inv['vat_amount']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(30,7,safe(f"{fr_number(inv['vat_amount'],2)} EUR"),align='R',ln=1)
     pdf.set_font('Helvetica','B',13)
     pdf.cell(150,9,'Total TTC',align='R')
-    pdf.cell(30,9,safe(f"{inv['total']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(30,9,safe(f"{fr_number(inv['total'],2)} EUR"),align='R',ln=1)
 
     if inv['notes']:
         pdf.ln(8); pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
@@ -2452,18 +2452,18 @@ def render_facturx_pdf(inv, company_row):
     for it in items:
         pdf.cell(90, 7, safe(it['label']))
         pdf.cell(20, 7, safe(f"{it['qty']:g}"), align='R')
-        pdf.cell(30, 7, safe(f"{it['unit_price']:,.2f} €"), align='R')
+        pdf.cell(30, 7, safe(f"{fr_number(it['unit_price'],2)} €"), align='R')
         pdf.cell(20, 7, safe(f"{it['vat_rate']:g}%"), align='R')
-        pdf.cell(30, 7, safe(f"{it['line_total']:,.2f} €"), align='R', ln=1)
+        pdf.cell(30, 7, safe(f"{fr_number(it['line_total'],2)} €"), align='R', ln=1)
     pdf.ln(6)
     pdf.set_font('DejaVu', '', 11)
     pdf.cell(160, 7, 'Sous-total HT', align='R')
-    pdf.cell(30, 7, safe(f"{inv['subtotal']:,.2f} €"), align='R', ln=1)
+    pdf.cell(30, 7, safe(f"{fr_number(inv['subtotal'],2)} €"), align='R', ln=1)
     pdf.cell(160, 7, 'TVA', align='R')
-    pdf.cell(30, 7, safe(f"{inv['vat_amount']:,.2f} €"), align='R', ln=1)
+    pdf.cell(30, 7, safe(f"{fr_number(inv['vat_amount'],2)} €"), align='R', ln=1)
     pdf.set_font('DejaVu', 'B', 13)
     pdf.cell(160, 9, 'Total TTC', align='R')
-    pdf.cell(30, 9, safe(f"{inv['total']:,.2f} €"), align='R', ln=1)
+    pdf.cell(30, 9, safe(f"{fr_number(inv['total'],2)} €"), align='R', ln=1)
 
     pdf.ln(10); pdf.set_font('DejaVu', '', 8); pdf.set_text_color(150, 150, 150)
     pdf.multi_cell(0, 4, safe(
@@ -2511,12 +2511,12 @@ def _render_credit_pdf(credit,company_row):
     pdf.ln(5)
     for it in items:
         pdf.cell(130,7,safe(it['label']))
-        pdf.cell(50,7,safe(f"-{it['line_total']:,.2f} EUR"),align='R',ln=1)
+        pdf.cell(50,7,safe(f"-{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
     pdf.ln(5); pdf.set_font('Helvetica','',11)
-    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"-{credit['subtotal']:,.2f} EUR"),align='R',ln=1)
-    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"-{credit['vat_amount']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"-{fr_number(credit['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"-{fr_number(credit['vat_amount'],2)} EUR"),align='R',ln=1)
     pdf.set_font('Helvetica','B',13)
-    pdf.cell(140,9,'Total TTC avoir',align='R'); pdf.cell(40,9,safe(f"-{credit['total']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,9,'Total TTC avoir',align='R'); pdf.cell(40,9,safe(f"-{fr_number(credit['total'],2)} EUR"),align='R',ln=1)
     return bytes(pdf.output(dest='S'))
 
 
@@ -2544,12 +2544,12 @@ def _render_quote_pdf(q,company_row):
     pdf.ln(5)
     for it in items:
         pdf.cell(130,7,safe(f"{it['label']} ({it['qty']} x {it['unit_price']:.2f} EUR, TVA {it['vat_rate']:.1f}%)"))
-        pdf.cell(50,7,safe(f"{it['line_total']:,.2f} EUR"),align='R',ln=1)
+        pdf.cell(50,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
     pdf.ln(5)
-    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"{q['subtotal']:,.2f} EUR"),align='R',ln=1)
-    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"{q['vat_amount']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"{fr_number(q['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"{fr_number(q['vat_amount'],2)} EUR"),align='R',ln=1)
     pdf.set_font('Helvetica','B',13)
-    pdf.cell(140,9,'Total TTC',align='R'); pdf.cell(40,9,safe(f"{q['total']:,.2f} EUR"),align='R',ln=1)
+    pdf.cell(140,9,'Total TTC',align='R'); pdf.cell(40,9,safe(f"{fr_number(q['total'],2)} EUR"),align='R',ln=1)
     if q['notes']:
         pdf.ln(5); pdf.set_font('Helvetica','',10); pdf.multi_cell(0,6,safe(q['notes']))
     return bytes(pdf.output(dest='S'))

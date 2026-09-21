@@ -514,6 +514,37 @@ STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
 STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID')
 STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or os.environ.get('STRIPE_PRICE_ID')
 STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
+
+# ---------------------------------------------------------------------------
+# Lot 23 — connexion à la Plateforme Agréée WeInvoice/Weproc (facturation
+# électronique réglementaire). Le client_secret ne quitte jamais le serveur :
+# jamais en base, jamais dans le HTML, jamais dans Git.
+# ---------------------------------------------------------------------------
+WEINVOICE_ENV=os.environ.get('WEINVOICE_ENV','sandbox')
+# Clé "Management : Compte" — portefeuille clients, onboarding/KYB (Lot 23.2).
+WEINVOICE_CLIENT_ID=os.environ.get('WEINVOICE_CLIENT_ID')
+WEINVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_CLIENT_SECRET')
+# Clé "Données : Facturation" — émission/lecture de factures (Lot 23.3). Distincte
+# de la clé Management : WeInvoice sépare les deux types de clés, chacune avec ses
+# propres permissions (confirmé par le tableau de bord WeInvoice — "invoice:write"
+# n'est porté que par une clé de type "Données : Facturation").
+WEINVOICE_INVOICE_CLIENT_ID=os.environ.get('WEINVOICE_INVOICE_CLIENT_ID')
+WEINVOICE_INVOICE_CLIENT_SECRET=os.environ.get('WEINVOICE_INVOICE_CLIENT_SECRET')
+WEINVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_WEBHOOK_SECRET')
+# Secret distinct pour le webhook invoice.status.* — WeInvoice délivre un secret de
+# signature séparé par point de terminaison (même logique que les 2 clés API
+# Management/Facturation). Si un seul secret existe côté WeInvoice, cette
+# variable peut rester vide : le code retombe alors sur WEINVOICE_WEBHOOK_SECRET.
+WEINVOICE_INVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_INVOICE_WEBHOOK_SECRET')
+
+# ---------------------------------------------------------------------------
+# Lot 24 — extraction IA des factures d'achat (PDF scannés / photos, en repli de
+# l'extraction texte gratuite existante). Clé API Anthropic distincte de tout ce
+# qui précède — jamais en base, jamais dans le HTML, jamais dans Git.
+# ---------------------------------------------------------------------------
+ANTHROPIC_API_KEY=os.environ.get('ANTHROPIC_API_KEY')
+ANTHROPIC_MODEL=os.environ.get('ANTHROPIC_MODEL','claude-sonnet-5')
+WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
 STRIPE_PLANS={
     'STARTER': {'name':'Starter','price_eur':49,'price_id':STRIPE_PRICE_STARTER_ID},
     'PRO': {'name':'Pro','price_eur':99,'price_id':STRIPE_PRICE_PRO_ID},
@@ -643,7 +674,7 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        if request.path=='/billing/webhook':
+        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status'):
             return
         token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or not sent or not secrets.compare_digest(token,sent):
@@ -683,9 +714,9 @@ def init_tenant_db(org_id=None):
     if not org_id:
         raise RuntimeError('Organisation requise pour initialiser le schéma tenant')
     c=dbmod.connect_tenant(org_id, tenant_db(org_id)); c.executescript('''
-    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,price_index_name TEXT DEFAULT 'INDICE',created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,price_index_name TEXT DEFAULT 'INDICE',weinvoice_status TEXT DEFAULT 'disconnected',weinvoice_last_check_at TEXT,weinvoice_last_error TEXT,weinvoice_company_id TEXT,weinvoice_kyb_status TEXT DEFAULT 'not_started',weinvoice_onboarded_at TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
-    CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,siret TEXT,address TEXT,vat_number TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,siret TEXT,address TEXT,vat_number TEXT,postal_code TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT);
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);
     CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT);
@@ -699,6 +730,16 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'INDICE',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS weinvoice_agreements(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signatory_name TEXT NOT NULL,
+        signatory_quality TEXT NOT NULL,
+        signed_at TEXT NOT NULL,
+        ip_address TEXT,
+        proof_ref TEXT UNIQUE NOT NULL,
+        user_id INTEGER,
+        created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS bank_connections(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         provider TEXT NOT NULL,
@@ -789,7 +830,7 @@ def init_tenant_db(org_id=None):
         monthly_amount REAL NOT NULL DEFAULT 0,
         updated_at TEXT
     );
-    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT);
+    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT);
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         quote_number TEXT UNIQUE,
@@ -813,7 +854,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS invoicing_clients(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL, email TEXT, address TEXT, siret TEXT, vat_number TEXT,
-        phone TEXT, notes TEXT, created_at TEXT, updated_at TEXT
+        phone TEXT, notes TEXT, created_at TEXT, updated_at TEXT, siren TEXT
     );
     CREATE TABLE IF NOT EXISTS outgoing_credit_notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -842,8 +883,19 @@ def init_tenant_db(org_id=None):
                        ('app_settings','accountant_email'),('app_settings','weekly_export_enabled'),
                        ('app_settings','logo_url'),('app_settings','accent_color'),
                        ('app_settings','price_index_name'),
-                       ('company','siret'),('company','address'),('company','vat_number'),
-                       ('purchase_invoices','document_path'),('purchase_invoices','category')):
+                       ('company','siret'),('company','address'),('company','vat_number'),('company','postal_code'),
+                       ('purchase_invoices','document_path'),('purchase_invoices','category'),
+                       ('outgoing_invoices','client_siren'),('outgoing_invoices','operation_nature'),
+                       ('outgoing_invoices','vat_on_debits'),('outgoing_invoices','delivery_address'),
+                       ('outgoing_invoices','weinvoice_invoice_id'),('outgoing_invoices','weinvoice_status'),
+                       ('outgoing_invoices','weinvoice_sent_at'),('outgoing_invoices','weinvoice_last_error'),
+                       ('outgoing_invoices','weinvoice_idempotency_key'),
+                       ('outgoing_invoices','weinvoice_regulatory_code'),('outgoing_invoices','weinvoice_last_sync_at'),
+                       ('invoicing_clients','siren'),
+                       ('app_settings','weinvoice_status'),('app_settings','weinvoice_last_check_at'),
+                       ('app_settings','weinvoice_last_error'),
+                       ('app_settings','weinvoice_company_id'),('app_settings','weinvoice_kyb_status'),
+                       ('app_settings','weinvoice_onboarded_at')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
@@ -947,7 +999,7 @@ def bars_svg(labels_values,width=420,height=140,color='#5fe0ac'):
         h=(v/hi)*(height-40) if hi else 0
         y=height-30-h
         bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="4" fill="{color}"/>')
-        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{v:,.0f}</text>'.replace(',',' '))
+        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{fr_number(v)}</text>')
         labels.append(f'<text x="{x+bar_w/2:.1f}" y="{height-10:.1f}" font-size="11" fill="#8fa9d3" text-anchor="middle">{label}</text>')
     return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
             f'xmlns="http://www.w3.org/2000/svg">'+''.join(bars)+''.join(labels)+'</svg>')
@@ -1472,7 +1524,7 @@ def live_notifications():
     try:
         c=cx(); notifs=[]
         for r in c.execute("SELECT invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 LIMIT 5").fetchall():
-            notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {r['outstanding']:,.0f} €",'url':url_for('recover')})
+            notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {fr_number(r['outstanding'])} €",'url':url_for('recover')})
         soon=(date.today()+timedelta(days=7)).isoformat(); today_iso=date.today().isoformat()
         for r in c.execute("SELECT invoice_number,customer,retention_release_date FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date BETWEEN ? AND ? LIMIT 5",(today_iso,soon)).fetchall():
             notifs.append({'icon':'🟡','text':f"Retenue libérable bientôt — {r['customer']} (#{r['invoice_number']})",'url':url_for('recover',filter='retention')})
@@ -1521,6 +1573,20 @@ def asset_url(filename):
         v = 0
     return url_for('static', filename=filename, v=v)
 
+def fr_number(value, decimals=0):
+    """Formate un nombre à la française : espace insécable pour les milliers,
+    virgule pour la décimale (ex. 4800.5 -> "4 800,5"). Remplace les usages
+    historiques de "{:,.Nf}".format(x) dans les templates, qui produisaient un
+    séparateur de milliers en virgule — lisible à l'anglaise, pas au format
+    attendu en France."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return value
+    formatted = f"{value:,.{decimals}f}"
+    return formatted.replace(',', '\u00a0').replace('.', ',')
+
+
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
@@ -1530,6 +1596,7 @@ def init_runtime(app):
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.jinja_env.globals['current_role'] = current_role
     app.jinja_env.globals['asset_url'] = asset_url
+    app.jinja_env.filters['fr_number'] = fr_number
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)

@@ -33,18 +33,18 @@
   <div style="padding:24px 36px;">
     {% for it in items %}
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f2f8;font-size:14px;">
-      <span>{{ it.label }}<br><small style="color:#8894ac;">{{ it.qty }} × {{ "{:,.2f}".format(it.unit_price) }} € · TVA {{ it.vat_rate }}%</small></span>
-      <span style="font-weight:600;">{{ "{:,.2f}".format(it.line_total) }} €</span>
+      <span>{{ it.label }}<br><small style="color:#8894ac;">{{ it.qty }} × {{ it.unit_price|fr_number(2) }} € · TVA {{ it.vat_rate }}%</small></span>
+      <span style="font-weight:600;">{{ it.line_total|fr_number(2) }} €</span>
     </div>
     {% endfor %}
     <div style="display:flex;justify-content:space-between;padding:14px 0 0;font-size:14px;color:#5b6c8f;">
-      <span>Sous-total HT</span><span>{{ "{:,.2f}".format(inv.subtotal) }} €</span>
+      <span>Sous-total HT</span><span>{{ inv.subtotal|fr_number(2) }} €</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:14px;color:#5b6c8f;">
-      <span>TVA</span><span>{{ "{:,.2f}".format(inv.vat_amount) }} €</span>
+      <span>TVA</span><span>{{ inv.vat_amount|fr_number(2) }} €</span>
     </div>
     <div style="display:flex;justify-content:space-between;padding:14px 0 0;font-size:20px;font-weight:800;color:#0f1c33;border-top:1px solid #e6ebf5;margin-top:8px;">
-      <span>Total TTC</span><span>{{ "{:,.2f}".format(inv.total) }} €</span>
+      <span>Total TTC</span><span>{{ inv.total|fr_number(2) }} €</span>
     </div>
   </div>
 

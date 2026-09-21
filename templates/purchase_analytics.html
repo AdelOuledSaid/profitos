@@ -111,7 +111,7 @@
         <thead><tr><th>Mois</th><th>Total TTC</th></tr></thead>
         <tbody>
         {% for month, amount in monthly_series|reverse %}
-          <tr><td>{{ month }}</td><td><strong>{{ '{:,.0f}'.format(amount) }} €</strong></td></tr>
+          <tr><td>{{ month }}</td><td><strong>{{ amount|fr_number }} €</strong></td></tr>
         {% else %}
           <tr><td colspan="2" class="purchase-empty">Aucune donnée sur cette période.</td></tr>
         {% endfor %}

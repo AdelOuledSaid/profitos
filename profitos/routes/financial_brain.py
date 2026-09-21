@@ -59,11 +59,11 @@ def build_financial_brain():
     for r in money['recommendations']:
         if r['kind']=='RECOVER':
             impact=_safe_float(r['amount'])
-            reason=f"{impact:,.0f} € de cash exposé · {r.get('detail','')}"
+            reason=f"{fr_number(impact)} € de cash exposé · {r.get('detail','')}"
             action=r.get('next_best_action') or r.get('action')
         elif r['kind']=='SAVE':
             impact=_safe_float(r['amount'])/12.0
-            reason=f"Économie potentielle annualisée de {_safe_float(r['amount']):,.0f} €"
+            reason=f"Économie potentielle annualisée de {fr_number(_safe_float(r['amount']))} €"
             action=r.get('action')
         else:
             impact=0.0

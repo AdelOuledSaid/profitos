@@ -2,7 +2,7 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">SAVE</div>
-<h1 class="purchase-title">{{ "{:,.0f}".format(total) }} € d'économies potentielles</h1>
+<h1 class="purchase-title">{{ total|fr_number }} € d'économies potentielles</h1>
 <p class="purchase-subtitle">Signaux à vérifier, pas économies déjà réalisées.</p>
 
 <section class="purchase-panel" style="margin:20px 0;">
@@ -32,7 +32,7 @@
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('detail',kind='SAVE',item_id=r.id) }}"><strong>{{ r.title }}</strong></a></td>
           <td>{{ r.details }}</td>
-          <td><strong>{{ "{:,.0f}".format(r.value) }} €</strong></td>
+          <td><strong>{{ r.value|fr_number }} €</strong></td>
           <td>{{ r.score }}%</td>
         </tr>
       {% else %}

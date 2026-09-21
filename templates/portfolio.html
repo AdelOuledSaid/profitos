@@ -8,11 +8,11 @@
 <div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg></div>
-    <div><div class="purchase-stat-label">RECOVERABLE (total)</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.recover) }} €</div></div>
+    <div><div class="purchase-stat-label">RECOVERABLE (total)</div><div class="purchase-stat-value">{{ totals.recover|fr_number }} €</div></div>
   </div>
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></div>
-    <div><div class="purchase-stat-label">SAVE (total)</div><div class="purchase-stat-value">{{ "{:,.0f}".format(totals.save) }} €</div></div>
+    <div><div class="purchase-stat-label">SAVE (total)</div><div class="purchase-stat-value">{{ totals.save|fr_number }} €</div></div>
   </div>
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg></div>
@@ -34,7 +34,7 @@
             <strong>{{ r.org.name }}</strong><br>
             {% if r.error %}<small class="purchase-alert-text">Erreur d'accès : {{ r.error }}</small>{% else %}<small class="purchase-muted">{{ r.pending }} action(s) en attente</small>{% endif %}
           </td>
-          <td>{% if not r.error %}{{ "{:,.0f}".format(r.recover) }} € RECOVER · {{ "{:,.0f}".format(r.save) }} € SAVE · {{ r.grow }} GROW{% endif %}</td>
+          <td>{% if not r.error %}{{ r.recover|fr_number }} € RECOVER · {{ r.save|fr_number }} € SAVE · {{ r.grow }} GROW{% endif %}</td>
           <td style="text-align:right;">
             <form method="post" action="{{ url_for('org_switch',org_id=r.org.id) }}" style="margin:0;display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

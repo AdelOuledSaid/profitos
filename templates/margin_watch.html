@@ -26,9 +26,9 @@
         <tr>
           <td>
             <strong>{{ a.contract.project_name }}</strong><br>
-            <small class="purchase-muted">{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · exposition {{ "{:,.0f}".format(a.contract.materials_share_pct) }} % · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
+            <small class="purchase-muted">{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · exposition {{ a.contract.materials_share_pct|fr_number }} % · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
           </td>
-          <td style="text-align:right;"><strong class="{{ 'purchase-alert-text' if a.is_erosion else 'purchase-ok-text' }}">{{ '+' if a.at_risk>0 else '' }}{{ "{:,.0f}".format(a.at_risk) }} €</strong></td>
+          <td style="text-align:right;"><strong class="{{ 'purchase-alert-text' if a.is_erosion else 'purchase-ok-text' }}">{{ '+' if a.at_risk>0 else '' }}{{ a.at_risk|fr_number }} €</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -78,8 +78,8 @@
         <tbody>
         {% for ct in contracts %}
           <tr>
-            <td><strong>{{ ct.project_name }}</strong><br><small class="purchase-muted">Exposition à {{ index_name }} : {{ "{:,.0f}".format(ct.materials_share_pct) }} %</small></td>
-            <td style="text-align:right;"><strong>{{ "{:,.0f}".format(ct.amount) }} €</strong></td>
+            <td><strong>{{ ct.project_name }}</strong><br><small class="purchase-muted">Exposition à {{ index_name }} : {{ ct.materials_share_pct|fr_number }} %</small></td>
+            <td style="text-align:right;"><strong>{{ ct.amount|fr_number }} €</strong></td>
           </tr>
         {% endfor %}
         </tbody>

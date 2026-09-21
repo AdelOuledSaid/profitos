@@ -18,7 +18,7 @@
             </a><br>
             <small class="purchase-muted">{{ e.date }}</small>
           </td>
-          <td style="text-align:right;">{% if e.value %}<strong>{{ "{:,.0f}".format(e.value) }} €</strong>{% endif %}</td>
+          <td style="text-align:right;">{% if e.value %}<strong>{{ e.value|fr_number }} €</strong>{% endif %}</td>
         </tr>
       {% else %}
         <tr><td class="purchase-empty">Aucune échéance à venir pour l'instant.</td></tr>

@@ -1,38 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="eyebrow">OPEN BANKING</div>
-<h1>Banques</h1>
-<p class="muted">Connectez vos comptes pour synchroniser automatiquement soldes et transactions avec ProfitOS.</p>
+<div class="purchase-page">
+<div class="purchase-eyebrow">OPEN BANKING</div>
+<h1 class="purchase-title">Banques</h1>
+<p class="purchase-subtitle">Connectez vos comptes pour synchroniser automatiquement soldes et transactions avec ProfitOS.</p>
 
 {% if not powens_configured %}
-<section class="panel">
-  <h2>Connexion bancaire indisponible</h2>
-  <p>La connexion bancaire automatique n'est pas encore activée pour ton compte. Contacte le support si tu souhaites y accéder.</p>
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Connexion bancaire indisponible</h2>
+  <p class="purchase-muted">La connexion bancaire automatique n'est pas encore activée pour ton compte. Contacte le support si tu souhaites y accéder.</p>
 </section>
 {% endif %}
 
-<section class="panel">
+<section class="purchase-panel" style="margin-top:20px;">
   <div style="display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;">
     <div>
-      <h2 style="margin-bottom:6px;">Connexion bancaire</h2>
+      <h2 style="margin-bottom:6px;color:#fff;">Connexion bancaire</h2>
       {% if connection %}
-        <p class="muted">Statut : <strong>{{ connection.status }}</strong>{% if connection.last_synced_at %} · dernière synchronisation {{ connection.last_synced_at[:16]|replace('T',' ') }}{% endif %}</p>
+        <p class="purchase-muted">Statut : <strong>{{ connection.status }}</strong>{% if connection.last_synced_at %} · dernière synchronisation {{ connection.last_synced_at[:16]|replace('T',' ') }}{% endif %}</p>
       {% else %}
-        <p class="muted">Aucune banque connectée.</p>
+        <p class="purchase-muted">Aucune banque connectée.</p>
       {% endif %}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <a href="{{ url_for('banking_connect') }}"
-         style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;
-                padding:0 28px;border-radius:999px;background:#43e38f;color:#06110b;
-                text-decoration:none;font-weight:800;font-size:16px;line-height:1;
-                border:1px solid transparent;cursor:pointer;">
-        {{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}
-      </a>
+      <a href="{{ url_for('banking_connect') }}" class="purchase-primary-btn primary">{{ 'Ajouter une banque' if connection else 'Connecter ma banque' }}</a>
       {% if connection %}
       <form method="post" action="{{ url_for('banking_sync') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="secondary" type="submit">Synchroniser</button>
+        <button class="purchase-primary-btn secondary" type="submit">Synchroniser</button>
       </form>
       {% endif %}
     </div>
@@ -40,88 +35,94 @@
 </section>
 
 {% if accounts %}
-<section class="panel">
-  <h2>Comptes synchronisés</h2>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Compte</th><th>Type</th><th>Devise</th><th>Solde</th><th>État</th></tr></thead>
-    <tbody>
-    {% for a in accounts %}
-      <tr>
-        <td><strong>{{ a.name }}</strong>{% if a.iban %}<br><span class="muted">{{ a.iban }}</span>{% endif %}</td>
-        <td>{{ a.account_type or '—' }}</td>
-        <td>{{ a.currency or 'EUR' }}</td>
-        <td>{{ "{:,.2f}".format(a.balance or 0) }} €</td>
-        <td>{{ 'Désactivé' if a.disabled else 'Actif' }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Comptes synchronisés</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Compte</th><th>Type</th><th>Devise</th><th>Solde</th><th>État</th></tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr>
+          <td><strong>{{ a.name }}</strong>{% if a.iban %}<br><span class="purchase-muted">{{ a.iban }}</span>{% endif %}</td>
+          <td>{{ a.account_type or '—' }}</td>
+          <td>{{ a.currency or 'EUR' }}</td>
+          <td><strong>{{ a.balance or 0|fr_number(2) }} €</strong></td>
+          <td><span class="purchase-status {{ '' if a.disabled else 'paid' }}">{{ 'Désactivé' if a.disabled else 'Actif' }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   <form method="post" action="{{ url_for('banking_use_balance') }}" style="margin-top:16px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit">Utiliser ces soldes dans le pilotage</button>
+    <button type="submit" class="purchase-primary-btn primary">Utiliser ces soldes dans le pilotage</button>
   </form>
-  <p class="hint">Cette action met à jour le solde de départ utilisé par Cash Intelligence, Financial Brain et AI CFO. Elle n'est jamais exécutée automatiquement.</p>
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Cette action met à jour le solde de départ utilisé par Cash Intelligence, Financial Brain et AI CFO. Elle n'est jamais exécutée automatiquement.</p>
 </section>
 {% endif %}
 
 {% if reconciliation_suggestions %}
-<section class="panel">
-  <div class="eyebrow">RAPPROCHEMENT</div>
-  <h2>Paiements à rapprocher</h2>
-  <p class="muted">ProfitOS compare le montant, le numéro de facture et le nom du client quand ils sont présents dans le libellé bancaire. La validation reste toujours manuelle.</p>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th>Confiance</th><th></th></tr></thead>
-    <tbody>
-    {% for m in reconciliation_suggestions %}
-      <tr>
-        <td>{{ m.transaction.transaction_date or '—' }}<br><span class="muted">{{ m.transaction.label or '—' }}</span></td>
-        <td><strong>{{ "{:,.2f}".format(m.transaction.amount or 0) }} €</strong></td>
-        <td>{{ m.invoice.invoice_number }}</td>
-        <td>{{ m.invoice.client_name }}</td>
-        <td><strong>{{ m.confidence }}</strong><br><span class="muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
-        <td>
-          <form method="post" action="{{ url_for('banking_reconcile',transaction_id=m.transaction.id,invoice_id=m.invoice.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit">Confirmer le paiement</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
+<section class="purchase-panel" style="margin-top:20px;">
+  <div class="purchase-eyebrow">RAPPROCHEMENT</div>
+  <h2 style="color:#fff;">Paiements à rapprocher</h2>
+  <p class="purchase-muted">ProfitOS compare le montant, le numéro de facture et le nom du client quand ils sont présents dans le libellé bancaire. La validation reste toujours manuelle.</p>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th>Confiance</th><th></th></tr></thead>
+      <tbody>
+      {% for m in reconciliation_suggestions %}
+        <tr>
+          <td>{{ m.transaction.transaction_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
+          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }} €</strong></td>
+          <td>{{ m.invoice.invoice_number }}</td>
+          <td>{{ m.invoice.client_name }}</td>
+          <td><strong>{{ m.confidence }}</strong><br><span class="purchase-muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
+          <td>
+            <form method="post" action="{{ url_for('banking_reconcile',transaction_id=m.transaction.id,invoice_id=m.invoice.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Confirmer le paiement</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 
 {% if reconciliations %}
-<section class="panel">
-  <h2>Rapprochements confirmés</h2>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
-    <tbody>
-    {% for r in reconciliations %}
-      <tr>
-        <td>{{ r.transaction_date or '—' }}</td>
-        <td>{{ r.label or '—' }}</td>
-        <td>{{ r.invoice_number }}</td>
-        <td>{{ r.client_name }}</td>
-        <td>{{ "{:,.2f}".format(r.matched_amount or 0) }} €</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Rapprochements confirmés</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
+      <tbody>
+      {% for r in reconciliations %}
+        <tr>
+          <td>{{ r.transaction_date or '—' }}</td>
+          <td>{{ r.label or '—' }}</td>
+          <td>{{ r.invoice_number }}</td>
+          <td>{{ r.client_name }}</td>
+          <td><strong>{{ r.matched_amount or 0|fr_number(2) }} €</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 
-<section class="panel" style="margin-top:18px;" data-profitos-lot="14.4">
-  <h2>Paiements fournisseurs à rapprocher</h2>
-  <p class="muted">Sorties bancaires pouvant correspondre à une facture fournisseur impayée. Confirmation manuelle obligatoire.</p>
+<section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.4">
+  <h2 style="color:#fff;">Paiements fournisseurs à rapprocher</h2>
+  <p class="purchase-muted">Sorties bancaires pouvant correspondre à une facture fournisseur impayée. Confirmation manuelle obligatoire.</p>
 
   {% set ns = namespace(found=false) %}
   {% for tx in transactions %}
     {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) %}
     {% if suggestions %}
       {% set ns.found = true %}
-      <div style="padding:12px 0;border-top:1px solid var(--border,#2a2a2a);">
+      <div style="padding:12px 0;border-top:1px solid rgba(255,255,255,.08);">
         <strong>{{ tx.transaction_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }} €</strong>
         {% for s in suggestions[:3] %}
           <div style="margin-top:8px;">
@@ -131,7 +132,7 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="bank_transaction_id" value="{{ tx.id }}">
               <input type="hidden" name="purchase_invoice_id" value="{{ s.purchase.id }}">
-              <button type="submit">Confirmer le paiement fournisseur</button>
+              <button type="submit" class="purchase-primary-btn secondary">Confirmer le paiement fournisseur</button>
             </form>
           </div>
         {% endfor %}
@@ -140,26 +141,24 @@
   {% endfor %}
 
   {% if not ns.found %}
-    <p class="muted" style="margin-top:12px;">
-      Aucune correspondance fournisseur détectée pour le moment.
-    </p>
+    <p class="purchase-empty" style="margin-top:12px;">Aucune correspondance fournisseur détectée pour le moment.</p>
   {% endif %}
 </section>
 
 {% if transactions %}
-<section class="panel">
-  <h2>Dernières transactions</h2>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead>
-    <tbody>
-    {% for t in transactions %}
-      <tr><td>{{ t.transaction_date or '—' }}</td><td>{{ t.label or '—' }}</td><td>{{ "{:,.2f}".format(t.amount or 0) }} €</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Dernières transactions</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead>
+      <tbody>
+      {% for t in transactions %}
+        <tr><td>{{ t.transaction_date or '—' }}</td><td>{{ t.label or '—' }}</td><td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
-
-
-
+</div>
 {% endblock %}

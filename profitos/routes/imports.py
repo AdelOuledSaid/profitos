@@ -586,7 +586,7 @@ def register(app):
 
             matched_count=sum(1 for p in proposals if p['match'])
             if imported_balance is not None:
-                flash(f'Solde bancaire détecté dans le relevé : {imported_balance:,.2f} € au {imported_balance_date.isoformat()}.')
+                flash(f'Solde bancaire détecté dans le relevé : {fr_number(imported_balance,2)} € au {imported_balance_date.isoformat()}.')
             return render_template('bank_reconciliation.html',proposals=proposals,matched_count=matched_count,total_rows=len(proposals))
 
         return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement')
@@ -702,11 +702,11 @@ def register(app):
                 current_numbers={r['invoice_number'] for r in c.execute('SELECT invoice_number FROM invoices').fetchall()}
                 for num,old in previous_rows.items():
                     if num not in current_numbers:
-                        anomalies.append(f"Facture #{num} ({old['customer']}, {old['amount']:,.0f} €) présente à l'import précédent a disparu de ce nouvel import.")
+                        anomalies.append(f"Facture #{num} ({old['customer']}, {fr_number(old['amount'])} €) présente à l'import précédent a disparu de ce nouvel import.")
                 for r in c.execute('SELECT invoice_number,amount,customer FROM invoices').fetchall():
                     old=previous_rows.get(r['invoice_number'])
                     if old and old['amount'] and abs(r['amount']-old['amount'])/old['amount']>0.2:
-                        anomalies.append(f"Facture #{r['invoice_number']} ({r['customer']}) : montant passé de {old['amount']:,.0f} € à {r['amount']:,.0f} €.")
+                        anomalies.append(f"Facture #{r['invoice_number']} ({r['customer']}) : montant passé de {fr_number(old['amount'])} € à {fr_number(r['amount'])} €.")
             c.close()
             if anomalies:
                 ac_log=auth_cx()
@@ -726,7 +726,7 @@ def register(app):
             record_usage('imports_per_month',organization_id=org['id'])
 
             if urgent['n']:
-                notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {urgent['t']:,.0f} € à risque élevé.")
+                notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
             msg=f'Factures analysées · {signals} signaux RECOVER.'
             if retentions: msg+=f' Dont {retentions} retenue(s) de garantie détectée(s).'
             flash(msg)
@@ -763,7 +763,7 @@ def register(app):
             if len(ms)>=2 and vals[ms[-2]]>0 and vals[ms[-1]]>vals[ms[-2]]*1.2:
                 prev,curr=vals[ms[-2]],vals[ms[-1]]
                 out.append(dict(title=f'Hausse fournisseur — {v}',value=(curr-prev)*12,score=75,
-                    details=f'{prev:,.0f} € → {curr:,.0f} € entre les deux derniers mois.',
+                    details=f'{fr_number(prev)} € → {fr_number(curr)} € entre les deux derniers mois.',
                     reasons=['hausse mensuelle supérieure à 20 %'],warnings=['annualisation indicative']))
         return out
 

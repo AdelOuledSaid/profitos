@@ -24,7 +24,7 @@
       <div><div class="purchase-stat-label">Charges récurrentes identifiées</div><div class="purchase-stat-value">{{ recurring|length }}</div></div>
     </div>
     <div class="purchase-stat">
-      <div><div class="purchase-stat-label">Coût annuel estimé cumulé</div><div class="purchase-stat-value">{{ '{:,.0f}'.format(total_annual_estimate) }} €</div></div>
+      <div><div class="purchase-stat-label">Coût annuel estimé cumulé</div><div class="purchase-stat-value">{{ total_annual_estimate|fr_number }} €</div></div>
     </div>
     <div class="purchase-stat">
       <div><div class="purchase-stat-label">Hausses anormales</div><div class="purchase-stat-value">{{ anomaly_count }}</div></div>
@@ -56,7 +56,7 @@
             <td>{{ r.frequency }}</td>
             <td>{{ r.last_date }}<div class="purchase-muted">{{ '%.2f'|format(r.last_amount) }} €</div></td>
             <td>{{ r.next_due_estimate }}</td>
-            <td><strong>{{ '{:,.0f}'.format(r.annual_cost_estimate) }} €</strong></td>
+            <td><strong>{{ r.annual_cost_estimate|fr_number }} €</strong></td>
             <td>
               {% if r.anomaly %}
                 <span class="purchase-status overdue">Hausse anormale</span>

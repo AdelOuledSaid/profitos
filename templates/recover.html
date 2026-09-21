@@ -2,7 +2,7 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">RECOVER</div>
-<h1 class="purchase-title">{{ "{:,.0f}".format(total) }} € récupérables</h1>
+<h1 class="purchase-title">{{ total|fr_number }} € récupérables</h1>
 <p class="purchase-subtitle">Montants restant dus sur les factures échues et retenues contractuelles libérables.</p>
 
 <div class="purchase-nav-actions" style="margin:16px 0;">
@@ -51,7 +51,7 @@
               #{{ r.invoice_number }} · {{ r.days_overdue }} jours de retard
             {% endif %}
           </td>
-          <td><strong>{{ "{:,.0f}".format(r.outstanding) }} €</strong></td>
+          <td><strong>{{ r.outstanding|fr_number }} €</strong></td>
           <td>{{ r.score }}</td>
         </tr>
       {% else %}

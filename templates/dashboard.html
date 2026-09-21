@@ -22,13 +22,13 @@
   {% if recover is not none %}
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg></div>
-    <div><div class="purchase-stat-label">RECOVERABLE</div><div class="purchase-stat-value">{{ "{:,.0f}".format(recover) }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Créances échues</div></div>
+    <div><div class="purchase-stat-label">RECOVERABLE</div><div class="purchase-stat-value">{{ recover|fr_number }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Créances échues</div></div>
   </div>
   {% endif %}
   {% if save is not none %}
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></div>
-    <div><div class="purchase-stat-label">POTENTIAL SAVINGS</div><div class="purchase-stat-value">{{ "{:,.0f}".format(save) }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Économies estimées</div></div>
+    <div><div class="purchase-stat-label">POTENTIAL SAVINGS</div><div class="purchase-stat-value">{{ save|fr_number }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Économies estimées</div></div>
   </div>
   {% endif %}
   {% if grow is not none %}
@@ -39,7 +39,7 @@
   {% endif %}
   <div class="purchase-stat">
     <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></div>
-    <div><div class="purchase-stat-label">VERIFIED IMPACT</div><div class="purchase-stat-value">{{ "{:,.0f}".format(verified) }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Résultats validés</div></div>
+    <div><div class="purchase-stat-label">VERIFIED IMPACT</div><div class="purchase-stat-value">{{ verified|fr_number }} €</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Résultats validés</div></div>
   </div>
 </div>
 
@@ -69,7 +69,7 @@
       {% for r in top %}
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('detail',kind=r.type,item_id=r.id) }}"><span class="purchase-status">{{ r.type }}</span> <strong>{{ r.title }}</strong></a><br><small class="purchase-muted">{{ r.subtitle }}</small></td>
-          <td style="text-align:right;">{% if r.value %}<strong>{{ "{:,.0f}".format(r.value) }} €</strong>{% else %}—{% endif %}</td>
+          <td style="text-align:right;">{% if r.value %}<strong>{{ r.value|fr_number }} €</strong>{% else %}—{% endif %}</td>
           <td style="text-align:right;">{{ r.score }}/100</td>
         </tr>
       {% else %}

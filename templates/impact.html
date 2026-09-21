@@ -2,7 +2,7 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">VERIFIED IMPACT</div>
-<h1 class="purchase-title">{{ "{:,.0f}".format(verified) }} € vérifiés</h1>
+<h1 class="purchase-title">{{ verified|fr_number }} € vérifiés</h1>
 <p class="purchase-subtitle">Le chiffre de preuve de valeur de ProfitOS.</p>
 <a class="purchase-nav-btn" href="{{ url_for('monthly_report_pdf') }}" style="display:inline-block;margin-bottom:20px;">Télécharger le rapport PDF du mois</a>
 
@@ -27,7 +27,7 @@
         {% for o in rows %}
           <tr>
             <td><strong>{{ o.outcome_type }}</strong><br><small class="purchase-muted">{{ o.action_title }}</small></td>
-            <td style="text-align:right;"><strong>{{ "{:,.0f}".format(o.amount) }} €</strong> {% if o.verified %}✓{% endif %}</td>
+            <td style="text-align:right;"><strong>{{ o.amount|fr_number }} €</strong> {% if o.verified %}✓{% endif %}</td>
           </tr>
         {% else %}
           <tr><td class="purchase-empty">Aucun résultat.</td></tr>

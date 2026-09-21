@@ -40,14 +40,14 @@
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=i.id) }}"><strong>{{ i.invoice_number }}</strong></a></td>
             <td>{{ i.status }}</td>
-            <td><strong>{{ "{:,.2f}".format(i.total or 0) }} €</strong></td>
+            <td><strong>{{ i.total or 0|fr_number(2) }} €</strong></td>
           </tr>
         {% endfor %}
         {% for a in credits %}
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_credit_detail',credit_id=a.id) }}"><strong>{{ a.credit_number }}</strong></a></td>
             <td>Avoir</td>
-            <td><strong>-{{ "{:,.2f}".format(a.total or 0) }} €</strong></td>
+            <td><strong>-{{ a.total or 0|fr_number(2) }} €</strong></td>
           </tr>
         {% endfor %}
         {% if not invoices and not credits %}

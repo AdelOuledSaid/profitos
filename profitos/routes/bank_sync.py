@@ -541,7 +541,7 @@ def register(app):
             c.commit()
             log_activity(
                 'INVOICE_BANK_RECONCILED',
-                f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {amount:,.2f} €"
+                f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {fr_number(amount,2)} €"
             )
             flash(f"Facture {inv['invoice_number']} rapprochée et marquée payée.")
         finally:
@@ -588,7 +588,7 @@ def register(app):
                 (total, now[:10], now),
             )
             c.commit()
-            flash(f"Solde bancaire de {total:,.2f} € appliqué au pilotage financier.")
+            flash(f"Solde bancaire de {fr_number(total,2)} € appliqué au pilotage financier.")
         finally:
             c.close()
         return redirect(url_for("banking"))

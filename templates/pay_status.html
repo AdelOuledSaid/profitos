@@ -6,7 +6,7 @@
 
   <div style="background:#081020;border-radius:10px;padding:18px;margin-bottom:16px;">
     <div style="font-size:12px;color:#8fa9d3;">MONTANT RESTANT DÛ</div>
-    <div style="font-size:28px;font-weight:800;">{{ "{:,.0f}".format(inv.outstanding) }} €</div>
+    <div style="font-size:28px;font-weight:800;">{{ inv.outstanding|fr_number }} €</div>
   </div>
 
   <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #1a2a47;">

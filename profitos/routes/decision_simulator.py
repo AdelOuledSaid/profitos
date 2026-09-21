@@ -81,7 +81,7 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     if minimum < 0:
         level='RISQUÉ'; tone='danger'
         recommendation=(f"Décision non soutenable avec les données actuelles : il manque au moins "
-                        f"{financing_gap:,.0f} € pour éviter une trésorerie négative.")
+                        f"{fr_number(financing_gap)} € pour éviter une trésorerie négative.")
     elif minimum < max(cash['monthly_burn']*0.5, 1000):
         level='VIGILANCE'; tone='warning'
         recommendation="Décision possible mais avec une marge de sécurité faible. Sécurisez un encaissement ou un financement avant engagement."
@@ -185,7 +185,7 @@ def _strategy_label(best, financing=0.0, kind='investment'):
         if installments>1:
             parts.append(f"payer en {installments} fois")
     if financing > 0:
-        parts.append(f"sécuriser {financing:,.0f} € de financement")
+        parts.append(f"sécuriser {fr_number(financing)} € de financement")
     return ", ".join(parts[:-1]) + (" et " + parts[-1] if len(parts)>1 else parts[0])
 
 
@@ -194,20 +194,20 @@ def _plan_reason(plan, reserve, max_financing, deadline, kind='investment', cons
     if plan['financing']==0:
         reasons.append("aucun financement supplémentaire")
     else:
-        reasons.append(f"{plan['financing']:,.0f} € de financement")
-    reasons.append(f"un point bas de {plan['minimum_after_financing']:,.0f} € après financement")
+        reasons.append(f"{fr_number(plan['financing'])} € de financement")
+    reasons.append(f"un point bas de {fr_number(plan['minimum_after_financing'])} € après financement")
     reasons.append(f"une décision à J+{plan['decision_day']}")
     if kind!='hire' and plan['installments']>1:
         reasons.append(f"un paiement en {plan['installments']} fois")
     text="Ce plan combine " + ", ".join(reasons[:-1]) + " et " + reasons[-1] + "."
     if max_financing is not None:
         if plan['financing'] <= max_financing + 0.01:
-            text += f" Il respecte le plafond de financement de {max_financing:,.0f} €."
+            text += f" Il respecte le plafond de financement de {fr_number(max_financing)} €."
         else:
-            text += f" Il dépasse le plafond de financement de {max_financing:,.0f} € de {plan['financing']-max_financing:,.0f} €."
+            text += f" Il dépasse le plafond de financement de {fr_number(max_financing)} € de {fr_number(plan['financing']-max_financing)} €."
     if deadline is not None:
         text += f" Il respecte aussi l'échéance maximale J+{deadline}."
-    text += f" Réserve cible : {reserve:,.0f} €."
+    text += f" Réserve cible : {fr_number(reserve)} €."
     if constraints:
         uses_delay = plan['decision_day'] > constraints['original_day']
         uses_installments = plan['installments'] > 1
@@ -333,16 +333,16 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         if len(eq_dates)>1:
             explanation += (f" Plusieurs dates testées donnent le même résultat financier ; "
                             f"J+{best['decision_day']} est retenu car c'est la date la plus proche.")
-        explanation += (f" Point bas avant financement : {best['minimum_before_financing']:,.0f} €. "
-                        f"Après apport du financement de {best['financing']:,.0f} €, "
-                        f"le point bas financé est {best['minimum_after_financing']:,.0f} €, "
-                        f"donc la réserve cible de {reserve:,.0f} € est respectée.")
+        explanation += (f" Point bas avant financement : {fr_number(best['minimum_before_financing'])} €. "
+                        f"Après apport du financement de {fr_number(best['financing'])} €, "
+                        f"le point bas financé est {fr_number(best['minimum_after_financing'])} €, "
+                        f"donc la réserve cible de {fr_number(reserve)} € est respectée.")
     else:
         accepted_cap=max_financing if max_financing is not None else (0.0 if not allow_financing else best['financing'])
         gap=round(max(0.0,best['financing']-accepted_cap),2)
         explanation=(f"Aucun plan compatible avec vos contraintes. Le meilleur besoin de financement trouvé est "
-                     f"{best['financing']:,.0f} €, pour un plafond accepté de {accepted_cap:,.0f} €. "
-                     f"Écart : {gap:,.0f} €. Aucune solution soutenable trouvée sans modifier une contrainte réelle. "
+                     f"{fr_number(best['financing'])} €, pour un plafond accepté de {fr_number(accepted_cap)} €. "
+                     f"Écart : {fr_number(gap)} €. Aucune solution soutenable trouvée sans modifier une contrainte réelle. "
                      f"Vous pouvez réduire le montant de la décision ou réexaminer explicitement les leviers de report, "
                      f"fractionnement ou financement.")
 
@@ -350,12 +350,12 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     if debt_free:
         nf=min(debt_free,key=lambda x:(x['decision_day'],x['installments'],-x['minimum']))
         no_financing={**nf,'available':True,'label':_strategy_label(nf,0,kind),
-            'explanation':f"Cette option ne nécessite aucun financement et conserve au moins {nf['minimum']:,.0f} € de trésorerie."}
+            'explanation':f"Cette option ne nécessite aucun financement et conserve au moins {fr_number(nf['minimum'])} € de trésorerie."}
     else:
         closest=max(candidates,key=lambda x:x['minimum'])
         no_financing={'available':False,'label':f"Aucune solution sans financement avant J+{deadline}",
-            'explanation':(f"Avec les encaissements connus et les contraintes autorisées, la trajectoire la plus favorable atteint {closest['minimum']:,.0f} €. "
-                           f"Il manque {max(0.0,reserve-closest['minimum']):,.0f} € pour préserver {reserve:,.0f} € de réserve."),
+            'explanation':(f"Avec les encaissements connus et les contraintes autorisées, la trajectoire la plus favorable atteint {fr_number(closest['minimum'])} €. "
+                           f"Il manque {fr_number(max(0.0,reserve-closest['minimum']))} € pour préserver {fr_number(reserve)} € de réserve."),
             'decision_day':closest['decision_day'],'installments':closest['installments'],
             'minimum':closest['minimum'],'financing':closest['financing']}
 
@@ -417,10 +417,10 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
         target_cap=round(hi+0.01,2); checked=verify(amount,target_cap) or verified
         extra=round(max(0.0,target_cap-cap),2)
         resolutions.append({'rank':1,'kind':'financing','title':'Augmenter le financement disponible',
-            'headline':f"Porter le plafond de financement à {target_cap:,.0f} €",
+            'headline':f"Porter le plafond de financement à {fr_number(target_cap)} €",
             'effort':extra,'target_amount':amount,'target_max_financing':target_cap,
             'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
-            'explanation':f"Solution vérifiée par le simulateur : plafond augmenté de {extra:,.0f} € ; la réserve cible de {reserve:,.0f} € est respectée après financement."})
+            'explanation':f"Solution vérifiée par le simulateur : plafond augmenté de {fr_number(extra)} € ; la réserve cible de {fr_number(reserve)} € est respectée après financement."})
 
     if kind in ('investment','expense','market') and amount > 0:
         # 2) Reduce amount while keeping the existing financing ceiling.
@@ -433,10 +433,10 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
             target_amount=max(0.0,round(lo-0.01,2)); checked=verify(target_amount,cap) or verify(lo,cap)
             reduction=round(max(0.0,amount-target_amount),2)
             resolutions.append({'rank':len(resolutions)+1,'kind':'amount','title':'Réduire le montant de la décision',
-                'headline':f"Ramener le décaissement initial à environ {target_amount:,.0f} €",
+                'headline':f"Ramener le décaissement initial à environ {fr_number(target_amount)} €",
                 'effort':reduction,'target_amount':target_amount,'target_max_financing':cap,
                 'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
-                'explanation':f"Solution vérifiée : réduire la décision d’environ {reduction:,.0f} € permet de respecter le plafond de {cap:,.0f} € et la réserve cible de {reserve:,.0f} €."})
+                'explanation':f"Solution vérifiée : réduire la décision d’environ {fr_number(reduction)} € permet de respecter le plafond de {fr_number(cap)} € et la réserve cible de {fr_number(reserve)} €."})
 
         # 3) Search a genuinely feasible mixed compromise instead of splitting the old gap 50/50.
         best_mix=None
@@ -462,10 +462,10 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
         if best_mix:
             _,target_amount,target_cap,reduction,extra,checked=best_mix
             resolutions.append({'rank':len(resolutions)+1,'kind':'mixed','title':'Partager l’effort',
-                'headline':f"Augmenter le plafond de financement de {extra:,.0f} € et réduire la décision de {reduction:,.0f} €",
+                'headline':f"Augmenter le plafond de financement de {fr_number(extra)} € et réduire la décision de {fr_number(reduction)} €",
                 'effort':round(extra+reduction,2),'target_amount':round(target_amount,2),'target_max_financing':round(target_cap,2),
                 'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
-                'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {target_cap:,.0f} €, décision environ {target_amount:,.0f} €. La réserve cible de {reserve:,.0f} € est respectée après financement."})
+                'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {fr_number(target_cap)} €, décision environ {fr_number(target_amount)} €. La réserve cible de {fr_number(reserve)} € est respectée après financement."})
     return resolutions[:3]
 
 def _cfo_answer(question, simulation):
@@ -478,10 +478,10 @@ def _cfo_answer(question, simulation):
         nf=o['no_financing']
         return nf['explanation'] if not nf['available'] else f"Oui. Plan sans financement : {nf['label']}. {nf['explanation']}"
     if any(w in low for w in ('pourquoi','why','j+','date')):
-        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({b['financing']:,.0f} €), puis le délai et la complexité. Point bas avant financement : {b['minimum_before_financing']:,.0f} € ; après financement : {b['minimum_after_financing']:,.0f} €."
+        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({fr_number(b['financing'])} €), puis le délai et la complexité. Point bas avant financement : {fr_number(b['minimum_before_financing'])} € ; après financement : {fr_number(b['minimum_after_financing'])} €."
     if any(w in low for w in ('financement','emprunt','dette')):
-        return f"Le plan recommandé nécessite {b['financing']:,.0f} € de financement pour préserver {o['reserve']:,.0f} € de réserve."
-    return f"Plan recommandé : {o['label']}. Point bas après financement {b['minimum_after_financing']:,.0f} €, trésorerie J+90 après financement {b['end_90_after_financing']:,.0f} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
+        return f"Le plan recommandé nécessite {fr_number(b['financing'])} € de financement pour préserver {fr_number(o['reserve'])} € de réserve."
+    return f"Plan recommandé : {o['label']}. Point bas après financement {fr_number(b['minimum_after_financing'])} €, trésorerie J+90 après financement {fr_number(b['end_90_after_financing'])} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
 
 def register(app):
     @app.route('/decision-simulator')

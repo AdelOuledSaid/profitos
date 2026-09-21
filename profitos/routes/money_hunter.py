@@ -37,7 +37,7 @@ def _intelligence(kind, amount, confidence, days_overdue=0, deadline=None):
             level, action = 'MOYENNE', 'Planifier une relance'
         else:
             level, action = 'FAIBLE', 'Surveiller la créance'
-        why = f"{int(days_overdue or 0)} jours de retard · {amount:,.0f} € exposés · confiance {confidence}/100"
+        why = f"{int(days_overdue or 0)} jours de retard · {fr_number(amount)} € exposés · confiance {confidence}/100"
         return priority, level, action, why
 
     if kind == 'SAVE':
@@ -47,7 +47,7 @@ def _intelligence(kind, amount, confidence, days_overdue=0, deadline=None):
         priority = _clamp(0.65 * confidence + 0.35 * impact)
         level = 'ÉLEVÉE' if priority >= 70 else ('MOYENNE' if priority >= 45 else 'FAIBLE')
         action = 'Vérifier la dépense et décider' if priority >= 45 else 'Garder sous surveillance'
-        why = f"{amount:,.0f} € / an potentiels · confiance {confidence}/100"
+        why = f"{fr_number(amount)} € / an potentiels · confiance {confidence}/100"
         return priority, level, action, why
 
     # GROW : sans montant fiable, aucune valeur financière n'est fabriquée.

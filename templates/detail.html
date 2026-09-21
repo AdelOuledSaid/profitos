@@ -1,7 +1,7 @@
-{% extends "base.html" %}{% block content %}{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}<div class="eyebrow {{ o.kind|lower }}">{{ o.kind }}</div><div class="detailhead"><div><h1>{{ o.title }}</h1>{% if o.kind=='RECOVER' %}<p class="muted">{{ o.customer }} · {{ o.days_overdue }} jours de retard</p>{% elif o.kind=='GROW' %}<p class="muted">{{ o.buyer }} · {{ o.departments|join(', ') or 'zone non précisée' }}</p>{% else %}<p class="muted">{{ o.details }}</p>{% endif %}</div><div class="heroScore">{{ o.score }}/100<span>Score</span></div></div><div class="twocol"><section class="panel"><h2>Pourquoi ProfitOS l'a signalé</h2>{% for x in o.reasons %}<div class="bullet goodtext">✓ {{ x }}</div>{% endfor %}{% for x in o.warnings %}<div class="bullet warntext">⚠ {{ x }}</div>{% endfor %}{% if o.kind=='GROW' and o.source_url %}<p><a class="link" href="{{ o.source_url }}" target="_blank">Ouvrir l'avis BOAMP officiel →</a></p>{% endif %}</section><section class="panel"><h2>Recommended action</h2>{% if o.kind=='RECOVER' and o.days_overdue|int > 0 %}<p>Préparer une relance de paiement.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% elif o.kind=='RECOVER' %}<p>Aucune relance nécessaire pour le moment. Cette facture n'est pas encore en retard.</p>{% elif o.kind=='SAVE' %}<p>Vérifier les factures/contrats sources.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% else %}<p>Lancer une analyse GO / NO-GO.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% endif %}
+{% extends "base.html" %}{% block content %}{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}<div class="purchase-page"><div class="eyebrow {{ o.kind|lower }}">{{ o.kind }}</div><div class="detailhead"><div><h1 class="purchase-title">{{ o.title }}</h1>{% if o.kind=='RECOVER' %}<p class="purchase-subtitle">{{ o.customer }} · {{ o.days_overdue }} jours de retard</p>{% elif o.kind=='GROW' %}<p class="purchase-subtitle">{{ o.buyer }} · {{ o.departments|join(', ') or 'zone non précisée' }}</p>{% else %}<p class="purchase-subtitle">{{ o.details }}</p>{% endif %}</div><div class="heroScore">{{ o.score }}/100<span>Score</span></div></div><div class="twocol"><section class="purchase-panel"><h2>Pourquoi ProfitOS l'a signalé</h2>{% for x in o.reasons %}<div class="bullet goodtext">✓ {{ x }}</div>{% endfor %}{% for x in o.warnings %}<div class="bullet warntext">⚠ {{ x }}</div>{% endfor %}{% if o.kind=='GROW' and o.source_url %}<p><a class="link" href="{{ o.source_url }}" target="_blank">Ouvrir l'avis BOAMP officiel →</a></p>{% endif %}</section><section class="purchase-panel"><h2>Recommended action</h2>{% if o.kind=='RECOVER' and o.days_overdue|int > 0 %}<p>Préparer une relance de paiement.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% elif o.kind=='RECOVER' %}<p>Aucune relance nécessaire pour le moment. Cette facture n'est pas encore en retard.</p>{% elif o.kind=='SAVE' %}<p>Vérifier les factures/contrats sources.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% else %}<p>Lancer une analyse GO / NO-GO.</p><form method="post" action="{{ url_for('create_action',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Préparer l'action</button></form>{% endif %}
 {% if o.kind=='RECOVER' and o.status|lower!='paid' %}<form method="post" action="{{ url_for('opportunity_status',kind=o.kind,item_id=o.id) }}" style="margin-top:10px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="secondary">Marquer comme recouvré</button></form>{% endif %}
 {% if o.kind=='RECOVER' %}
-<div class="panel" style="margin-top:14px;background:#0a1529;">
+<div class="purchase-panel" style="margin-top:14px;">
   <h3 style="margin:0 0 8px;font-size:14px;">Étiqueter ce client</h3>
   <form method="post" action="{{ url_for('customer_tag_set') }}" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -20,28 +20,28 @@
 </div>
 {% endif %}
 {% if o.buyer_risk %}
-<div class="panel" style="margin-top:14px;background:#1a0f0f;border:1px solid #ff6e78;">
+<div class="purchase-panel" style="margin-top:14px;background:#1a0f0f;border:1px solid #ff6e78;">
   <h3 style="margin:0 0 6px;font-size:14px;color:#ff6e78;">⚠ Risque acheteur partagé</h3>
   <p style="margin:0;font-size:13px;">Ce client a aussi été signalé en retard de paiement par <strong>{{ o.buyer_risk.org_count }} autre(s) organisation(s)</strong> ProfitOS ({{ o.buyer_risk.total_invoices }} facture(s) au total, retard moyen {{ o.buyer_risk.avg_days }} jours). Signal anonymisé — aucune identité d'organisation n'est partagée.</p>
 </div>
 {% endif %}
 {% if o.public_token %}
-<div class="panel" style="margin-top:14px;background:#0a1529;">
+<div class="purchase-panel" style="margin-top:14px;">
   <h3 style="margin:0 0 6px;font-size:14px;">Portail client</h3>
   <p class="muted" style="font-size:13px;margin:0 0 8px;">Lien à partager avec ton client pour qu'il consulte le statut de sa facture, sans compte.</p>
   <code style="display:block;padding:8px;background:#000;border-radius:6px;word-break:break-all;font-size:12px;">{{ request.host_url }}pay-status/{{ o.public_token }}</code>
 </div>
 {% endif %}
 {% if o.bond_cost is defined and o.bond_cost is not none %}
-<div class="panel" style="margin-top:14px;background:#0a1529;">
+<div class="purchase-panel" style="margin-top:14px;">
   <h3 style="margin:0 0 8px;font-size:14px;">Simuler une caution de remplacement</h3>
-  <p class="muted" style="margin:0 0 10px;font-size:13px;">Remplacer cette retenue par une caution bancaire libère <strong>{{ "{:,.0f}".format(o.value) }} €</strong> de trésorerie immédiatement, contre un coût jusqu'à la libération prévue.</p>
+  <p class="muted" style="margin:0 0 10px;font-size:13px;">Remplacer cette retenue par une caution bancaire libère <strong>{{ o.value|fr_number }} €</strong> de trésorerie immédiatement, contre un coût jusqu'à la libération prévue.</p>
   <form method="get" style="display:flex;gap:8px;align-items:end;margin-bottom:10px;">
     <label style="font-size:11px;color:#8fa9d3;">Taux annuel de la caution (%)<input type="number" name="bond_rate" value="{{ o.bond_rate }}" step="0.1" min="0.1" max="10" style="width:90px;"></label>
     <button type="submit" class="secondary">Recalculer</button>
   </form>
-  <div class="simpleline"><span>Trésorerie libérée immédiatement</span><span class="money">{{ "{:,.0f}".format(o.value) }} €</span></div>
-  <div class="simpleline"><span>Coût estimé jusqu'à libération ({{ o.days_to_release }} j)</span><span class="money">{{ "{:,.0f}".format(o.bond_cost) }} €</span></div>
+  <div class="simpleline"><span>Trésorerie libérée immédiatement</span><span class="money">{{ o.value|fr_number }} €</span></div>
+  <div class="simpleline"><span>Coût estimé jusqu'à libération ({{ o.days_to_release }} j)</span><span class="money">{{ o.bond_cost|fr_number }} €</span></div>
   <p class="muted" style="margin-top:8px;font-size:11px;">Estimation indicative — le taux réel dépend de ta banque et de ta surface financière. Ne remplace pas un conseil bancaire.</p>
 </div>
 {% endif %}
@@ -49,10 +49,10 @@
 {% if o.kind=='GROW' and o.status=='OPEN' %}<div style="display:flex;gap:8px;margin-top:10px;"><form method="post" action="{{ url_for('opportunity_status',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="WON"><button type="submit" class="secondary">Marché gagné</button></form><form method="post" action="{{ url_for('opportunity_status',kind=o.kind,item_id=o.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="LOST"><button type="submit" class="secondary">Marché perdu</button></form></div>{% endif %}
 </section></div>
 {% if o.kind=='GROW' and phase2_enabled %}
-<section class="panel dcepanel">
+<section class="purchase-panel dcepanel">
  <div class="actionhead">
   <div>
-   <div class="eyebrow green">TENDER INTELLIGENCE</div>
+   <div class="purchase-eyebrow">TENDER INTELLIGENCE</div>
    <h2>Analyser le DCE</h2>
   </div>
   <span class="status">PDF · DOCX · TXT</span>
@@ -73,10 +73,10 @@
 
 {% if advanced_plan %}
 {% for d in dce_items %}
-<section class="panel analysiscard">
+<section class="purchase-panel analysiscard">
  <div class="actionhead">
   <div>
-   <div class="eyebrow">DCE ANALYSIS</div>
+   <div class="purchase-eyebrow">DCE ANALYSIS</div>
    <h2>{{ d.filename }}</h2>
   </div>
   <div class="go {{ d.recommendation|lower }}">
@@ -145,5 +145,5 @@
 {% endif %}
 {% endif %}
 
-{% if actions %}<section class="panel"><h2>Actions liées</h2>{% for a in actions %}<div class="simpleline"><span>{{ a.title }}</span><span class="status">{{ a.status }}</span></div>{% endfor %}</section>{% endif %}
-{% if history %}<section class="panel"><h2>Historique</h2>{% for h in history %}<div class="simpleline"><div><strong>{{ h.old_status or '—' }} → {{ h.new_status }}</strong><small>{% if h.note %}{{ h.note }} · {% endif %}par {{ h.changed_by }}</small></div><div>{{ h.created_at[:16].replace('T',' ') if h.created_at else '' }}</div></div>{% endfor %}</section>{% endif %}{% endblock %}
+{% if actions %}<section class="purchase-panel"><h2>Actions liées</h2>{% for a in actions %}<div class="simpleline"><span>{{ a.title }}</span><span class="status">{{ a.status }}</span></div>{% endfor %}</section>{% endif %}
+{% if history %}<section class="purchase-panel"><h2>Historique</h2>{% for h in history %}<div class="simpleline"><div><strong>{{ h.old_status or '—' }} → {{ h.new_status }}</strong><small>{% if h.note %}{{ h.note }} · {% endif %}par {{ h.changed_by }}</small></div><div>{{ h.created_at[:16].replace('T',' ') if h.created_at else '' }}</div></div>{% endfor %}</section>{% endif %}</div>{% endblock %}

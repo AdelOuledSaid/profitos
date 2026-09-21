@@ -1,4 +1,12 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">SECURE ERROR</div><h1>{{ code }} — {{ title }}</h1>
-<section class="panel narrow"><p>{{ message }}</p>{% if request_id %}<p class="muted">Request ID : <code>{{ request_id }}</code></p>{% endif %}<p><a class="button" href="{{ url_for('home') if session.get('user_id') else url_for('login') }}">Retour</a></p></section>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">SECURE ERROR</div>
+<h1 class="purchase-title">{{ code }} — {{ title }}</h1>
+<section class="purchase-panel" style="max-width:520px;">
+  <p>{{ message }}</p>
+  {% if request_id %}<p class="purchase-muted">Request ID : <code>{{ request_id }}</code></p>{% endif %}
+  <a class="purchase-primary-btn primary" href="{{ url_for('home') if session.get('user_id') else url_for('login') }}" style="display:inline-block;margin-top:12px;">Retour</a>
+</section>
+</div>
 {% endblock %}

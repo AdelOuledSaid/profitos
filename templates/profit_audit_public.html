@@ -13,8 +13,8 @@
 {% if result %}
 <section class="panel" style="margin-top:24px;background:#0a1529;">
   <h2>Estimation indicative</h2>
-  <div class="simpleline"><span>Créances potentiellement récupérables</span><span class="money">{{ "{:,.0f}".format(result.recoverable_low) }} — {{ "{:,.0f}".format(result.recoverable_high) }} €</span></div>
-  <div class="simpleline"><span>Économies potentielles estimées</span><span class="money">{{ "{:,.0f}".format(result.savings_estimate) }} €/an</span></div>
+  <div class="simpleline"><span>Créances potentiellement récupérables</span><span class="money">{{ result.recoverable_low|fr_number }} — {{ result.recoverable_high|fr_number }} €</span></div>
+  <div class="simpleline"><span>Économies potentielles estimées</span><span class="money">{{ result.savings_estimate|fr_number }} €/an</span></div>
   <p class="muted" style="margin-top:14px;font-size:12px;">Estimation indicative basée sur des moyennes sectorielles généralistes — pas un calcul sur tes vraies données. Pour un chiffre précis, uploade tes factures dans un vrai Profit Audit.</p>
   <a class="button" href="{{ url_for('signup') }}" style="display:block;text-align:center;margin-top:16px;">Lancer mon vrai Profit Audit gratuit →</a>
 </section>

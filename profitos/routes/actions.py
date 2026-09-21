@@ -85,7 +85,7 @@ def register(app):
                 draft=(
                     f"Objet : Demande de levée de la retenue contractuelle — Facture {o['invoice_number']}\n\n"
                     "Bonjour,\n\n"
-                    f"La retenue contractuelle de {o['outstanding']:,.2f} € appliquée sur la facture "
+                    f"La retenue contractuelle de {fr_number(o['outstanding'],2)} € appliquée sur la facture "
                     f"{o['invoice_number']} est libérable"
                     f"{' depuis le ' + o['retention_release_date'] if o['retention_release_date'] else ''}. "
                     "Pouvez-vous nous confirmer la date de virement ?\n\nCordialement"
@@ -95,7 +95,7 @@ def register(app):
                 draft=(
                     f"Objet : Relance facture {o['invoice_number']}\n\n"
                     "Bonjour,\n\n"
-                    f"La facture {o['invoice_number']} présente un solde de {o['outstanding']:,.2f} € "
+                    f"La facture {o['invoice_number']} présente un solde de {fr_number(o['outstanding'],2)} € "
                     f"arrivé à échéance depuis {o['days_overdue']} jours. "
                     "Pouvez-vous nous confirmer sa date de règlement ?\n\nCordialement"
                 )
@@ -109,7 +109,7 @@ def register(app):
                 title=f"Vérifier — {o['title']}"
                 draft=(
                     f"Signal SAVE : {o['title']}\n"
-                    f"Valeur potentielle : {o['value']:,.2f} €\n"
+                    f"Valeur potentielle : {fr_number(o['value'],2)} €\n"
                     f"Confiance : {o['score']} %\n\n"
                     "Vérifier les pièces sources avant toute action."
                 )

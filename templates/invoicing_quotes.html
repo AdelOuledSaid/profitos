@@ -23,7 +23,7 @@
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_quote_detail',quote_id=q.id) }}"><strong>{{ q.quote_number }}</strong></a></td>
             <td>{{ q.client_name }}</td>
             <td>{{ q.issue_date }}</td>
-            <td><strong>{{ "{:,.2f}".format(q.total or 0) }} €</strong></td>
+            <td><strong>{{ q.total or 0|fr_number(2) }} €</strong></td>
             <td>{{ quote_status_label(q.status) }}</td>
           </tr>
         {% else %}

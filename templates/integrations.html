@@ -1,22 +1,33 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">INTEGRATIONS</div>
-<h1>Connexions comptables</h1>
-<p class="muted">Ces connexions comptables arrivent prochainement. En attendant, l'import manuel (Excel/CSV) reste disponible pour toutes tes données.</p>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">INTEGRATIONS</div>
+<h1 class="purchase-title">Connexions comptables</h1>
+<p class="purchase-subtitle">Ces connexions comptables arrivent prochainement. En attendant, l'import manuel (Excel/CSV) reste disponible pour toutes tes données.</p>
 
-<section class="panel">
-  {% for provider in ['Pennylane','QuickBooks','Sage'] %}
-  <div class="simpleline">
-    <div><strong>{{ provider }}</strong><small>{% if provider in requested_providers %}Intérêt déjà enregistré — merci !{% else %}Bientôt disponible{% endif %}</small></div>
-    {% if provider not in requested_providers %}
-    <form method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="provider" value="{{ provider }}">
-      <button type="submit" class="secondary">Me prévenir</button>
-    </form>
-    {% else %}
-    <span class="status">✓</span>
-    {% endif %}
+<section class="purchase-panel" style="margin-top:20px;">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+      {% for provider in ['Pennylane','QuickBooks','Sage'] %}
+        <tr>
+          <td><strong>{{ provider }}</strong><br><small class="purchase-muted">{% if provider in requested_providers %}Intérêt déjà enregistré — merci !{% else %}Bientôt disponible{% endif %}</small></td>
+          <td style="text-align:right;">
+            {% if provider not in requested_providers %}
+            <form method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="provider" value="{{ provider }}">
+              <button type="submit" class="purchase-primary-btn secondary">Me prévenir</button>
+            </form>
+            {% else %}
+            <span class="purchase-status paid">✓</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
-  {% endfor %}
 </section>
+</div>
 {% endblock %}

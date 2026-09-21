@@ -999,7 +999,7 @@ def bars_svg(labels_values,width=420,height=140,color='#5fe0ac'):
         h=(v/hi)*(height-40) if hi else 0
         y=height-30-h
         bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="4" fill="{color}"/>')
-        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{v:,.0f}</text>'.replace(',',' '))
+        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{fr_number(v)}</text>')
         labels.append(f'<text x="{x+bar_w/2:.1f}" y="{height-10:.1f}" font-size="11" fill="#8fa9d3" text-anchor="middle">{label}</text>')
     return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
             f'xmlns="http://www.w3.org/2000/svg">'+''.join(bars)+''.join(labels)+'</svg>')
@@ -1524,7 +1524,7 @@ def live_notifications():
     try:
         c=cx(); notifs=[]
         for r in c.execute("SELECT invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 LIMIT 5").fetchall():
-            notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {r['outstanding']:,.0f} €",'url':url_for('recover')})
+            notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {fr_number(r['outstanding'])} €",'url':url_for('recover')})
         soon=(date.today()+timedelta(days=7)).isoformat(); today_iso=date.today().isoformat()
         for r in c.execute("SELECT invoice_number,customer,retention_release_date FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date BETWEEN ? AND ? LIMIT 5",(today_iso,soon)).fetchall():
             notifs.append({'icon':'🟡','text':f"Retenue libérable bientôt — {r['customer']} (#{r['invoice_number']})",'url':url_for('recover',filter='retention')})
@@ -1573,6 +1573,42 @@ def asset_url(filename):
         v = 0
     return url_for('static', filename=filename, v=v)
 
+def fr_number(value, decimals=0):
+    """Formate un nombre à la française : espace insécable pour les milliers,
+    virgule pour la décimale (ex. 4800.5 -> "4 800,5"). Remplace les usages
+    historiques de "{:,.Nf}".format(x) dans les templates, qui produisaient un
+    séparateur de milliers en virgule — lisible à l'anglaise, pas au format
+    attendu en France."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return value
+    formatted = f"{value:,.{decimals}f}"
+    return formatted.replace(',', '\u00a0').replace('.', ',')
+
+
+def fr_date(value, with_time=False):
+    """Formate une date ISO (AAAA-MM-JJ ou AAAA-MM-JJTHH:MM:SS) au format français
+    JJ/MM/AAAA — ou JJ/MM/AAAA HH:MM si with_time. Retourne la valeur telle quelle
+    si elle ne correspond pas au format attendu, plutôt que de planter.
+
+    ATTENTION : ne jamais appliquer ce filtre à la valeur d'un <input type="date">
+    ou type="datetime-local"> — ces champs exigent le format ISO brut pour que le
+    sélecteur de date du navigateur fonctionne. Réservé à l'affichage seul."""
+    if not value:
+        return value
+    s = str(value)
+    if len(s) < 10:
+        return value
+    year, month, day = s[0:4], s[5:7], s[8:10]
+    if not (year.isdigit() and month.isdigit() and day.isdigit()):
+        return value
+    result = f"{day}/{month}/{year}"
+    if with_time and len(s) >= 16 and s[10] in ('T', ' ') and s[13] == ':':
+        result += f" {s[11:16]}"
+    return result
+
+
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
@@ -1582,6 +1618,8 @@ def init_runtime(app):
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.jinja_env.globals['current_role'] = current_role
     app.jinja_env.globals['asset_url'] = asset_url
+    app.jinja_env.filters['fr_number'] = fr_number
+    app.jinja_env.filters['fr_date'] = fr_date
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)

@@ -134,12 +134,12 @@ def register(app):
 
         pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
         pdf.cell(63,6,'RECOVERABLE'); pdf.cell(63,6,'POTENTIAL SAVINGS'); pdf.cell(63,6,'GROW'); pdf.ln(6)
-        kpi('recover',f"{recover['t']:,.0f} EUR",(220,38,38))
-        kpi('save',f"{save['t']:,.0f} EUR/an",(217,119,6))
+        kpi('recover',pdf_safe(f"{fr_number(recover['t'])} EUR"),(220,38,38))
+        kpi('save',pdf_safe(f"{fr_number(save['t'])} EUR/an"),(217,119,6))
         kpi('grow',f"{grow['n']} opportunites",(22,163,74))
         pdf.ln(14)
         pdf.set_font('Helvetica','',10); pdf.set_text_color(75,85,99)
-        pdf.cell(0,6,f"Impact verifie a date : {verified['t']:,.0f} EUR",ln=1)
+        pdf.cell(0,6,pdf_safe(f"Impact verifie a date : {fr_number(verified['t'])} EUR"),ln=1)
         pdf.ln(6)
 
         def section(title):
@@ -150,7 +150,7 @@ def register(app):
         if top_recover:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for r in top_recover:
-                pdf.cell(0,7,pdf_safe(f"- {r['customer']} (#{r['invoice_number']}) - {r['outstanding']:,.0f} EUR - {r['days_overdue']} j de retard"),ln=1)
+                pdf.cell(0,7,pdf_safe(f"- {r['customer']} (#{r['invoice_number']}) - {fr_number(r['outstanding'])} EUR - {r['days_overdue']} j de retard"),ln=1)
         else:
             pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune creance en retard.',ln=1)
         pdf.ln(4)
@@ -159,7 +159,7 @@ def register(app):
         if top_save:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for s in top_save:
-                pdf.cell(0,7,pdf_safe(f"- {s['title']} - {s['value']:,.0f} EUR/an"),ln=1)
+                pdf.cell(0,7,pdf_safe(f"- {s['title']} - {fr_number(s['value'])} EUR/an"),ln=1)
         else:
             pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun signal SAVE ouvert.',ln=1)
         pdf.ln(4)
@@ -220,7 +220,7 @@ def register(app):
             a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
             c.execute("UPDATE actions SET status='DONE' WHERE id=?",(aid,))
             c.commit()
-            if a:log_status_change('ACTION',a['opportunity_id'],a['kind'],a['status'],'DONE',note=f'{typ} — {amount:,.0f} €')
+            if a:log_status_change('ACTION',a['opportunity_id'],a['kind'],a['status'],'DONE',note=f'{typ} — {fr_number(amount)} €')
             flash('Résultat enregistré.')
         rows=c.execute('SELECT outcomes.*,actions.title action_title FROM outcomes LEFT JOIN actions ON actions.id=outcomes.action_id ORDER BY outcomes.id DESC').fetchall()
         eligible=c.execute("SELECT * FROM actions WHERE status IN ('APPROVED','DONE') ORDER BY id DESC").fetchall()

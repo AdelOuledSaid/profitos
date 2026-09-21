@@ -13,7 +13,7 @@
     </div>
     <div>
       <div class="purchase-stat-label">RECOVER</div>
-      <div class="purchase-stat-value">{{ "{:,.0f}".format(brief.recover_total) }} €</div>
+      <div class="purchase-stat-value">{{ brief.recover_total|fr_number }} €</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.urgent_recover }} priorité(s) élevée(s)</div>
     </div>
   </div>
@@ -23,7 +23,7 @@
     </div>
     <div>
       <div class="purchase-stat-label">SAVE</div>
-      <div class="purchase-stat-value">{{ "{:,.0f}".format(brief.save_total) }} € / an</div>
+      <div class="purchase-stat-value">{{ brief.save_total|fr_number }} € / an</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.high_save }} signal(aux) fort(s)</div>
     </div>
   </div>
@@ -34,7 +34,7 @@
     <div>
       <div class="purchase-stat-label">GROW</div>
       {% if brief.grow_pipeline > 0 %}
-      <div class="purchase-stat-value">{{ "{:,.0f}".format(brief.grow_pipeline) }} €</div>
+      <div class="purchase-stat-value">{{ brief.grow_pipeline|fr_number }} €</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Pipeline dont la valeur est connue · {{ brief.strong_grow }} match(es) fort(s)</div>
       {% else %}
       <div class="purchase-stat-value">{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</div>
@@ -46,10 +46,10 @@
 
 <section class="purchase-panel" style="margin-bottom:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">MONEY BRIEF</div>
-  <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ "{:,.0f}".format(brief.money_identified) }} € identifiés</h2>
+  <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ brief.money_identified|fr_number }} € identifiés</h2>
   <p class="purchase-muted">Créances RECOVER + économies SAVE potentielles. SAVE est généralement annualisé : ce total n'est pas une prévision de trésorerie.</p>
   <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
-    <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ "{:,.0f}".format(brief.expected_value) }} €</div></div>
+    <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.expected_value|fr_number }} €</div></div>
     <div><small class="purchase-muted">SIGNAUX ANALYSÉS</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.recommendation_count }}</div></div>
   </div>
 </section>
@@ -101,7 +101,7 @@
       </div>
       <aside class="money-decision-value">
         {% if r.amount > 0 %}
-          <div class="money-amount">{{ "{:,.0f}".format(r.amount) }} €</div>
+          <div class="money-amount">{{ r.amount|fr_number }} €</div>
           <small>{% if r.kind == 'RECOVER' %}à récupérer{% elif r.kind == 'SAVE' %}potentiels{% else %}valeur connue{% endif %}</small>
         {% endif %}
         <a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a>

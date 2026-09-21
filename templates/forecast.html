@@ -2,8 +2,8 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">CASH FORECAST</div>
-<h1 class="purchase-title">{{ "{:,.0f}".format(total_90j) }} € nets projetés sur 90 jours</h1>
-<p class="purchase-subtitle">Estimation indicative — pas une garantie de trésorerie. Ressources pondérées : {{ "{:,.0f}".format(gross_expected) }} €. Sorties futures importées : {{ "{:,.0f}".format(planned_outflows) }} € ({{ future_expense_count }} échéance(s)).</p>
+<h1 class="purchase-title">{{ total_90j|fr_number }} € nets projetés sur 90 jours</h1>
+<p class="purchase-subtitle">Estimation indicative — pas une garantie de trésorerie. Ressources pondérées : {{ gross_expected|fr_number }} €. Sorties futures importées : {{ planned_outflows|fr_number }} € ({{ future_expense_count }} échéance(s)).</p>
 
 {% if chart %}
 <section class="purchase-panel" style="margin:20px 0;">
@@ -18,7 +18,7 @@
     <table class="purchase-table">
       <tbody>
       {% for label, cum in cumulative %}
-        <tr><td>D'ici {{ label }}</td><td style="text-align:right;"><strong>{{ "{:,.0f}".format(cum) }} € cumulés</strong></td></tr>
+        <tr><td>D'ici {{ label }}</td><td style="text-align:right;"><strong>{{ cum|fr_number }} € cumulés</strong></td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -30,9 +30,9 @@
   <div class="purchase-table-wrap">
     <table class="purchase-table">
       <tbody>
-        <tr><td>0–30 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ "{:,.0f}".format(obligation_buckets['0-30j']) }} €</strong></td></tr>
-        <tr><td>31–60 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ "{:,.0f}".format(obligation_buckets['31-60j']) }} €</strong></td></tr>
-        <tr><td>61–90 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ "{:,.0f}".format(obligation_buckets['61-90j']) }} €</strong></td></tr>
+        <tr><td>0–30 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['0-30j']|fr_number }} €</strong></td></tr>
+        <tr><td>31–60 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['31-60j']|fr_number }} €</strong></td></tr>
+        <tr><td>61–90 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['61-90j']|fr_number }} €</strong></td></tr>
       </tbody>
     </table>
   </div>

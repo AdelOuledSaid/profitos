@@ -13,7 +13,7 @@
       <h1 class="purchase-title" style="margin-bottom:6px;">{{ credit.credit_number }}</h1>
       <p class="purchase-subtitle" style="margin:0;">Avoir lié à {{ credit.original_invoice_number }} · {{ credit.client_name }} · {{ credit.issue_date }}</p>
     </div>
-    <div class="heroScore">-{{ "{:,.2f}".format(credit.total) }} €<span>TTC</span></div>
+    <div class="heroScore">-{{ credit.total|fr_number(2) }} €<span>TTC</span></div>
   </div>
 
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
@@ -28,14 +28,14 @@
       <table class="purchase-table">
         <tbody>
         {% for it in items %}
-          <tr><td>{{ it.label }}</td><td style="text-align:right;"><strong>-{{ "{:,.2f}".format(it.line_total) }} €</strong></td></tr>
+          <tr><td>{{ it.label }}</td><td style="text-align:right;"><strong>-{{ it.line_total|fr_number(2) }} €</strong></td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
     <div class="purchase-total-line" style="margin-top:16px;">
-      <span class="purchase-muted">Sous-total HT : -{{ "{:,.2f}".format(credit.subtotal) }} € · TVA : -{{ "{:,.2f}".format(credit.vat_amount) }} €</span>
-      <strong>-{{ "{:,.2f}".format(credit.total) }} € TTC</strong>
+      <span class="purchase-muted">Sous-total HT : -{{ credit.subtotal|fr_number(2) }} € · TVA : -{{ credit.vat_amount|fr_number(2) }} €</span>
+      <strong>-{{ credit.total|fr_number(2) }} € TTC</strong>
     </div>
   </section>
 </div>
