@@ -1,1 +1,50 @@
-{% extends "base.html" %}{% block content %}<div class="eyebrow">TEAM</div><h1>Utilisateurs</h1><section class="panel">{% for m in members %}<div class="simpleline"><div><strong>{{ m.full_name or m.email }}</strong><small>{{ m.email }}</small></div>{% if session.role=='OWNER' %}<form method="post" action="{{ url_for('team_set_role',uid=m.user_id) }}" style="display:flex;gap:6px;align-items:center;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="role" data-auto-submit>{% for r in ROLES %}<option value="{{ r }}" {% if r==m.role %}selected{% endif %}>{{ ROLE_LABELS[r] }}</option>{% endfor %}</select></form>{% if m.user_id!=session.user_id %}<form method="post" action="{{ url_for('team_remove',uid=m.user_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="secondary">Retirer</button></form>{% endif %}{% else %}<div class="status">{{ ROLE_LABELS.get(m.role,m.role) }}</div>{% endif %}</div>{% endfor %}</section>{% if session.role=='OWNER' %}<section class="panel" style="margin-top:20px;"><h2>Inviter un membre</h2><form method="post" action="{{ url_for('team_invite') }}" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Email<input type="email" name="email" required></label><label>Rôle<select name="role">{% for r in ROLES %}{% if r!='OWNER' %}<option value="{{ r }}">{{ ROLE_LABELS[r] }}</option>{% endif %}{% endfor %}</select></label><button>Envoyer l'invitation</button></form><p class="muted" style="margin-top:10px;">Si la personne n'a pas encore de compte, elle recevra un email pour définir son mot de passe.</p></section>{% endif %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">TEAM</div>
+<h1 class="purchase-title">Utilisateurs</h1>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+      {% for m in members %}
+        <tr>
+          <td><strong>{{ m.full_name or m.email }}</strong><br><small class="purchase-muted">{{ m.email }}</small></td>
+          <td style="text-align:right;">
+            {% if session.role=='OWNER' %}
+              <form method="post" action="{{ url_for('team_set_role',uid=m.user_id) }}" style="display:inline-flex;gap:6px;align-items:center;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="role" data-auto-submit>{% for r in ROLES %}<option value="{{ r }}" {% if r==m.role %}selected{% endif %}>{{ ROLE_LABELS[r] }}</option>{% endfor %}</select>
+              </form>
+              {% if m.user_id!=session.user_id %}
+              <form method="post" action="{{ url_for('team_remove',uid=m.user_id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="purchase-primary-btn secondary">Retirer</button>
+              </form>
+              {% endif %}
+            {% else %}
+              <span class="purchase-status">{{ ROLE_LABELS.get(m.role,m.role) }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if session.role=='OWNER' %}
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Inviter un membre</h2>
+  <form method="post" action="{{ url_for('team_invite') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Email<input type="email" name="email" required></label>
+    <label>Rôle<select name="role">{% for r in ROLES %}{% if r!='OWNER' %}<option value="{{ r }}">{{ ROLE_LABELS[r] }}</option>{% endif %}{% endfor %}</select></label>
+    <button class="purchase-primary-btn primary">Envoyer l'invitation</button>
+  </form>
+  <p class="purchase-muted" style="margin-top:10px;">Si la personne n'a pas encore de compte, elle recevra un email pour définir son mot de passe.</p>
+</section>
+{% endif %}
+</div>
+{% endblock %}

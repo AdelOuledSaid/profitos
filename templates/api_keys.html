@@ -1,34 +1,54 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">API</div>
-<h1>Clés API</h1>
-<p class="muted">Lecture seule pour l'instant (RECOVER/SAVE/GROW/résumé). Utile pour connecter un outil externe (ERP, logiciel de devis) qui doit lire tes données ProfitOS.</p>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">API</div>
+<h1 class="purchase-title">Clés API</h1>
+<p class="purchase-subtitle">Lecture seule pour l'instant (RECOVER/SAVE/GROW/résumé). Utile pour connecter un outil externe (ERP, logiciel de devis) qui doit lire tes données ProfitOS.</p>
 
 {% if new_key %}
-<div class="panel" style="margin:18px 0;background:#0a1529;border:1px solid #5fe0ac;">
-  <p><strong>Copie cette clé maintenant</strong> — elle ne sera plus jamais affichée en clair.</p>
-  <code style="display:block;padding:12px;background:#000;border-radius:8px;word-break:break-all;font-size:13px;">{{ new_key }}</code>
-</div>
+<section class="purchase-panel" style="margin:20px 0;border-color:rgba(61,220,132,.4);">
+  <p><strong style="color:#fff;">Copie cette clé maintenant</strong> — elle ne sera plus jamais affichée en clair.</p>
+  <code style="display:block;padding:12px;background:rgba(0,0,0,.3);border-radius:8px;word-break:break-all;font-size:13px;">{{ new_key }}</code>
+</section>
 {% endif %}
 
-<section class="panel" style="margin:18px 0;">
-  <h2>Utilisation</h2>
-  <pre style="background:#000;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">curl -H "Authorization: Bearer TA_CLE_API" {{ request.host_url }}api/v1/summary</pre>
-  <p class="muted" style="font-size:12px;">Endpoints disponibles : <code>/api/v1/recover</code>, <code>/api/v1/save</code>, <code>/api/v1/grow</code>, <code>/api/v1/summary</code>.</p>
+<section class="purchase-panel" style="margin:20px 0;">
+  <h2 style="color:#fff;">Utilisation</h2>
+  <pre style="background:rgba(0,0,0,.3);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">curl -H "Authorization: Bearer TA_CLE_API" {{ request.host_url }}api/v1/summary</pre>
+  <p class="purchase-muted" style="font-size:12px;">Endpoints disponibles : <code>/api/v1/recover</code>, <code>/api/v1/save</code>, <code>/api/v1/grow</code>, <code>/api/v1/summary</code>.</p>
 </section>
 
-<section class="panel">
-  <h2>Clés existantes</h2>
-  {% for k in keys %}
-  <div class="simpleline">
-    <div><strong>{{ k.key_prefix }}...</strong><small>Créée le {{ k.created_at[:10] }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at[:10] }}{% endif %}</small></div>
-    {% if k.revoked_at %}<span class="status">Révoquée</span>{% else %}
-    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ k.id }}"><button type="submit" class="secondary">Révoquer</button></form>
-    {% endif %}
+<section class="purchase-panel">
+  <h2 style="color:#fff;">Clés existantes</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+      {% for k in keys %}
+        <tr>
+          <td>
+            <strong>{{ k.key_prefix }}...</strong><br>
+            <small class="purchase-muted">Créée le {{ k.created_at[:10] }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at[:10] }}{% endif %}</small>
+          </td>
+          <td style="text-align:right;">
+            {% if k.revoked_at %}<span class="purchase-status">Révoquée</span>{% else %}
+            <form method="post" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ k.id }}">
+              <button type="submit" class="purchase-primary-btn secondary">Révoquer</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="2" class="purchase-empty">Aucune clé créée.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
-  {% else %}
-  <p class="muted">Aucune clé créée.</p>
-  {% endfor %}
 </section>
 
-<form method="post" style="margin-top:18px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create"><button>Générer une nouvelle clé</button></form>
+<form method="post" style="margin-top:20px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
+  <button class="purchase-primary-btn primary">Générer une nouvelle clé</button>
+</form>
+</div>
 {% endblock %}

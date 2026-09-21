@@ -1,16 +1,25 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">TEAM PERFORMANCE</div>
-<h1>Performance de l'équipe</h1>
-<p class="muted">Nombre de changements de statut effectués par chaque membre (approbations, envois, factures marquées recouvrées...).</p>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">TEAM PERFORMANCE</div>
+<h1 class="purchase-title">Performance de l'équipe</h1>
+<p class="purchase-subtitle">Nombre de changements de statut effectués par chaque membre (approbations, envois, factures marquées recouvrées...).</p>
 
-<section class="panel">
-  {% for s in stats %}
-  <div class="simpleline">
-    <div><strong>{{ s.name }}</strong><small>{{ s.total_changes }} action(s) au total</small></div>
-    <div class="money">{{ s.invoices_recovered }} facture(s) recouvrée(s)</div>
+<section class="purchase-panel" style="margin-top:20px;">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+      {% for s in stats %}
+        <tr>
+          <td><strong>{{ s.name }}</strong><br><small class="purchase-muted">{{ s.total_changes }} action(s) au total</small></td>
+          <td style="text-align:right;"><strong>{{ s.invoices_recovered }}</strong> facture(s) recouvrée(s)</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="2" class="purchase-empty">Aucune activité enregistrée pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
-  {% else %}
-  <p class="muted">Aucune activité enregistrée pour l'instant.</p>
-  {% endfor %}
 </section>
+</div>
 {% endblock %}

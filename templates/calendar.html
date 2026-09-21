@@ -1,20 +1,31 @@
-{% extends "base.html" %}{% block content %}
-<div class="eyebrow">CALENDAR</div>
-<h1>Échéances à venir</h1>
-<p class="muted">Factures en retard, retenues contractuelles libérables et deadlines de marchés publics, en un seul endroit.{% if past_count %} {{ past_count }} échéance(s) déjà passée(s) non affichée(s).{% endif %}</p>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">CALENDAR</div>
+<h1 class="purchase-title">Échéances à venir</h1>
+<p class="purchase-subtitle">Factures en retard, retenues contractuelles libérables et deadlines de marchés publics, en un seul endroit.{% if past_count %} {{ past_count }} échéance(s) déjà passée(s) non affichée(s).{% endif %}</p>
 
-<section class="panel">
-  {% for e in upcoming %}
-  <a class="simpleline clickable calendar-event" href="{{ url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
-    <div>
-      <span class="type {{ e.type|lower }}">{{ e.type }}</span>
-      <strong>{{ e.label }}</strong>
-      <small>{{ e.date }}</small>
-    </div>
-    {% if e.value %}<div class="money">{{ "{:,.0f}".format(e.value) }} €</div>{% endif %}
-  </a>
-  {% else %}
-  <p class="muted">Aucune échéance à venir pour l'instant.</p>
-  {% endfor %}
+<section class="purchase-panel" style="margin-top:20px;">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+      {% for e in upcoming %}
+        <tr>
+          <td>
+            <a class="purchase-detail-link" href="{{ url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
+              <span class="purchase-status">{{ e.type }}</span>
+              <strong style="margin-left:8px;">{{ e.label }}</strong>
+            </a><br>
+            <small class="purchase-muted">{{ e.date }}</small>
+          </td>
+          <td style="text-align:right;">{% if e.value %}<strong>{{ "{:,.0f}".format(e.value) }} €</strong>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td class="purchase-empty">Aucune échéance à venir pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
+</div>
 {% endblock %}

@@ -1,33 +1,28 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="page-head">
+<div class="purchase-page">
+<div class="purchase-toolbar">
   <div>
-    <div class="eyebrow">SECURITY AUDIT</div>
-    <h1>Événements de sécurité</h1>
-    <p>200 derniers événements de l'organisation active. Les mots de passe, tokens, secrets et adresses IP brutes ne sont jamais affichés.</p>
+    <div class="purchase-eyebrow">SECURITY AUDIT</div>
+    <h1 class="purchase-title">Événements de sécurité</h1>
+    <p class="purchase-subtitle">200 derniers événements de l'organisation active. Les mots de passe, tokens, secrets et adresses IP brutes ne sont jamais affichés.</p>
   </div>
-  <a class="button-link secondary" href="{{ url_for('settings') }}">← Paramètres</a>
-</section>
+  <a class="purchase-nav-btn" href="{{ url_for('settings') }}">← Paramètres</a>
+</div>
 
-<div class="card security-events-card">
+<section class="purchase-panel">
   {% if events %}
-  <div class="table-wrap">
-    <table class="security-table">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
       <thead>
-        <tr>
-          <th>Date UTC</th>
-          <th>Événement</th>
-          <th>Résultat</th>
-          <th>Utilisateur</th>
-          <th>Cible</th>
-        </tr>
+        <tr><th>Date UTC</th><th>Événement</th><th>Résultat</th><th>Utilisateur</th><th>Cible</th></tr>
       </thead>
       <tbody>
       {% for e in events %}
         <tr>
           <td>{{ e.created_at }}</td>
           <td><code>{{ e.event_type }}</code></td>
-          <td><span class="audit-status audit-{{ (e.outcome or 'unknown')|lower }}">{{ e.outcome }}</span></td>
+          <td><span class="purchase-status {{ 'paid' if (e.outcome or '')|lower=='success' else ('overdue' if (e.outcome or '')|lower=='failure' else '') }}">{{ e.outcome }}</span></td>
           <td>{{ e.user_id or '—' }}</td>
           <td>{{ e.target or '—' }}</td>
         </tr>
@@ -36,10 +31,8 @@
     </table>
   </div>
   {% else %}
-    <div class="empty-state">
-      <strong>Aucun événement enregistré pour cette organisation.</strong>
-      <p>Effectuez une connexion incorrecte puis une connexion correcte et actualisez cette page.</p>
-    </div>
+    <p class="purchase-empty">Aucun événement enregistré pour cette organisation. Effectuez une connexion incorrecte puis une connexion correcte et actualisez cette page.</p>
   {% endif %}
+</section>
 </div>
 {% endblock %}

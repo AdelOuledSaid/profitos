@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 {% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+<div class="purchase-page">
 
-<div class="eyebrow">ACTION CENTER</div>
-<h1>Décider avant d'agir.</h1>
-<p class="muted">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
+<div class="purchase-eyebrow">ACTION CENTER</div>
+<h1 class="purchase-title">Décider avant d'agir.</h1>
+<p class="purchase-subtitle">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
 
 <h2 style="margin-top:24px;">Actions actives</h2>
 
 {% for a in rows %}
-<section class="panel actioncard">
+<section class="purchase-panel actioncard">
   <div class="actionhead">
     <div>
       <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
@@ -70,7 +71,7 @@
   </div>
 </section>
 {% else %}
-<section class="panel"><p class="muted">Aucune action active.</p></section>
+<section class="purchase-panel"><p class="muted">Aucune action active.</p></section>
 {% endfor %}
 
 {% if history_rows %}
@@ -79,7 +80,7 @@
 
   <div style="margin-top:14px;">
     {% for a in history_rows %}
-    <section class="panel actioncard">
+    <section class="purchase-panel actioncard">
       <div class="actionhead">
         <div>
           <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
@@ -126,4 +127,6 @@
   </div>
 </details>
 {% endif %}
+
+</div>
 {% endblock %}
