@@ -1,71 +1,85 @@
 {% extends "base.html" %}
 {% block content %}
 {% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+<div class="purchase-page">
 
-<div class="headerflex">
+<div class="purchase-toolbar">
   <div>
-    <div class="eyebrow green">GROW · LIVE BOAMP</div>
-    <h1>Opportunités de marchés publics</h1>
-    <p class="muted">Filtrées selon tes métiers et départements.</p>
+    <div class="purchase-eyebrow">GROW · LIVE BOAMP</div>
+    <h1 class="purchase-title">Opportunités de marchés publics</h1>
+    <p class="purchase-subtitle">Filtrées selon tes métiers et départements.</p>
   </div>
-
   {% if not needs_profile %}
     {% if advanced_plan %}
     <form method="post" action="{{ url_for('grow_refresh') }}" style="margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="button secondary">Actualiser BOAMP</button>
+      <button type="submit" class="purchase-primary-btn secondary">Actualiser BOAMP</button>
     </form>
     {% else %}
-    <a class="button secondary" href="{{ url_for('billing') }}">Actualisation BOAMP · Pro</a>
+    <a class="purchase-nav-btn" href="{{ url_for('billing') }}">Actualisation BOAMP · Pro</a>
     {% endif %}
   {% endif %}
 </div>
 
 {% if not needs_profile %}
-<form method="get" class="panel" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px;padding:16px;">
-  <label style="font-size:11px;color:#8fa9d3;">Recherche<input type="text" name="q" value="{{ q }}" placeholder="ex: rénovation, acheteur..."></label>
-  <label style="font-size:11px;color:#8fa9d3;">Score min<input type="number" name="min_value" value="{{ min_value }}" step="1" placeholder="0-100"></label>
-  <label style="font-size:11px;color:#8fa9d3;">Score max<input type="number" name="max_value" value="{{ max_value }}" step="1" placeholder="0-100"></label>
-  <button type="submit" style="height:44px;">Filtrer</button>
-</form>
+<section class="purchase-panel" style="margin:20px 0;">
+  <form method="get" class="formgrid">
+    <label>Recherche<input type="text" name="q" value="{{ q }}" placeholder="ex: rénovation, acheteur..."></label>
+    <label>Score min<input type="number" name="min_value" value="{{ min_value }}" step="1" placeholder="0-100"></label>
+    <label>Score max<input type="number" name="max_value" value="{{ max_value }}" step="1" placeholder="0-100"></label>
+    <div style="align-self:end;"><button type="submit" class="purchase-primary-btn primary">Filtrer</button></div>
+  </form>
+</section>
   {% if advanced_plan %}
-  <div style="margin:0 0 18px;display:flex;gap:8px;"><a class="button secondary" href="{{ url_for('grow_export',format='xlsx') }}">Exporter (Excel)</a><a class="button secondary" href="{{ url_for('grow_export',format='csv') }}">Exporter (CSV)</a></div>
+  <div style="margin:-8px 0 18px;display:flex;gap:8px;">
+    <a class="purchase-nav-btn" href="{{ url_for('grow_export',format='xlsx') }}">Exporter (Excel)</a>
+    <a class="purchase-nav-btn" href="{{ url_for('grow_export',format='csv') }}">Exporter (CSV)</a>
+  </div>
   {% else %}
-  <p class="muted" style="margin:0 0 18px;"><a class="link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>
+  <p class="purchase-muted" style="margin:-8px 0 18px;"><a class="purchase-detail-link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>
   {% endif %}
 {% endif %}
 
 {% if needs_profile %}
-<section class="panel narrow">
-  <h2>Configure ton entreprise</h2>
-  <a class="button" href="{{ url_for('company') }}">Créer le profil</a>
+<section class="purchase-panel">
+  <h2 style="color:#fff;">Configure ton entreprise</h2>
+  <a class="purchase-primary-btn primary" href="{{ url_for('company') }}">Créer le profil</a>
 </section>
 {% else %}
   {% if last %}
-  <div class="sourcebar">Source : BOAMP · {{ last.rows_processed }} annonces inspectées · {{ last.signals_found }} retenues</div>
+  <p class="purchase-muted" style="margin-bottom:16px;">Source : BOAMP · {{ last.rows_processed }} annonces inspectées · {{ last.signals_found }} retenues</p>
   {% endif %}
-  <section class="panel">
-    {% for r in rows %}
-    <a class="opportunity clickable" href="{{ url_for('detail',kind='GROW',item_id=r.id) }}">
-      <div>
-        <div class="match">{{ r.score }}/100 MATCH</div>
-        <h3>{{ r.title }}</h3>
-        <p class="muted">{{ r.buyer }} · Départements : {{ jlist(r.departments)|join(', ') or 'non précisés' }}</p>
-        <div class="chips">
-          {% for x in jlist(r.reasons) %}<span class="chip good">✓ {{ x }}</span>{% endfor %}
-          {% for x in jlist(r.warnings) %}<span class="chip warn">⚠ {{ x }}</span>{% endfor %}
-        </div>
-      </div>
-      <div class="deadline">
-        {% if r.deadline %}
-          <strong>{{ fmt_deadline(r.deadline) }}</strong>
-          <small>{% set d=days_left(r.deadline) %}{% if d is not none %}{{ d }} jours{% endif %}</small>
-        {% endif %}
-      </div>
-    </a>
-    {% else %}
-      <p class="muted">Aucun marché suffisamment pertinent.</p>
-    {% endfor %}
+  <section class="purchase-panel">
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>
+              <a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=r.id) }}">
+                <span class="purchase-status paid">{{ r.score }}/100 MATCH</span>
+                <strong style="display:block;margin-top:6px;">{{ r.title }}</strong>
+              </a>
+              <small class="purchase-muted">{{ r.buyer }} · Départements : {{ jlist(r.departments)|join(', ') or 'non précisés' }}</small>
+              <div class="chips" style="margin-top:8px;">
+                {% for x in jlist(r.reasons) %}<span class="chip good">✓ {{ x }}</span>{% endfor %}
+                {% for x in jlist(r.warnings) %}<span class="chip warn">⚠ {{ x }}</span>{% endfor %}
+              </div>
+            </td>
+            <td style="text-align:right;white-space:nowrap;">
+              {% if r.deadline %}
+                <strong>{{ fmt_deadline(r.deadline) }}</strong><br>
+                <small class="purchase-muted">{% set d=days_left(r.deadline) %}{% if d is not none %}{{ d }} jours{% endif %}</small>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td class="purchase-empty">Aucun marché suffisamment pertinent.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 {% endif %}
+</div>
 {% endblock %}

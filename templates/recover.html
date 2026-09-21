@@ -1,24 +1,65 @@
-{% extends "base.html" %}{% block content %}<div class="eyebrow red">RECOVER</div><h1>{{ "{:,.0f}".format(total) }} € récupérables</h1><p class="muted">Montants restant dus sur les factures échues et retenues contractuelles libérables.</p>
-<div class="filterbar" style="display:flex;gap:8px;margin:12px 0 18px;">
-  <a href="{{ url_for('recover',filter='all') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='all' else 'background:#f3f4f6;color:#374151;' }}">Tout</a>
-  <a href="{{ url_for('recover',filter='overdue') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='overdue' else 'background:#f3f4f6;color:#374151;' }}">Factures en retard</a>
-  <a href="{{ url_for('recover',filter='retention') }}" style="padding:6px 14px;border-radius:20px;font-size:13px;text-decoration:none;{{ 'background:#111827;color:#fff;' if filt=='retention' else 'background:#f3f4f6;color:#374151;' }}">Retenues contractuelles</a>
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">RECOVER</div>
+<h1 class="purchase-title">{{ "{:,.0f}".format(total) }} € récupérables</h1>
+<p class="purchase-subtitle">Montants restant dus sur les factures échues et retenues contractuelles libérables.</p>
+
+<div class="purchase-nav-actions" style="margin:16px 0;">
+  <a class="purchase-nav-btn {{ 'primary' if filt=='all' }}" href="{{ url_for('recover',filter='all') }}">Tout</a>
+  <a class="purchase-nav-btn {{ 'primary' if filt=='overdue' }}" href="{{ url_for('recover',filter='overdue') }}">Factures en retard</a>
+  <a class="purchase-nav-btn {{ 'primary' if filt=='retention' }}" href="{{ url_for('recover',filter='retention') }}">Retenues contractuelles</a>
 </div>
-<form method="get" class="panel" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:18px;padding:16px;">
-  <input type="hidden" name="filter" value="{{ filt }}">
-  <label style="font-size:11px;color:#8fa9d3;">Client / n° facture<input type="text" name="q" value="{{ q }}" placeholder="ex: Client ABC"></label>
-  <label style="font-size:11px;color:#8fa9d3;">Montant min<input type="number" name="min_amount" value="{{ min_amount }}" step="1"></label>
-  <label style="font-size:11px;color:#8fa9d3;">Montant max<input type="number" name="max_amount" value="{{ max_amount }}" step="1"></label>
-  <label style="font-size:11px;color:#8fa9d3;">Échéance après<input type="date" name="date_from" value="{{ date_from }}"></label>
-  <label style="font-size:11px;color:#8fa9d3;">Échéance avant<input type="date" name="date_to" value="{{ date_to }}"></label>
-  <button type="submit" style="height:44px;">Filtrer</button>
-</form>
-{% if auth_org and auth_org.plan in ('PRO','BUSINESS') %}<div style="margin:-8px 0 18px;display:flex;gap:8px;"><a class="button secondary" href="{{ url_for('recover_export',format='xlsx',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (Excel)</a><a class="button secondary" href="{{ url_for('recover_export',format='csv',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (CSV)</a></div>{% else %}<p class="muted" style="margin:-8px 0 18px;"><a class="link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>{% endif %}
-<section class="panel">{% for r in rows %}<a class="row clickable" href="{{ url_for('detail',kind='RECOVER',item_id=r.id) }}"><div><strong>{{ r.customer }}</strong>{% if r.customer_tag %} <span class="status" style="background:{{ '#3d1f1f' if r.customer_tag=='RISQUE' else ('#1f2f1f' if r.customer_tag=='FIABLE' else '#2a2010') }};">{{ r.customer_tag }}</span>{% endif %}
-{% if r.kind=='RETENTION' %}
-  {% set release=r.retention_release_date %}
-  <small>#{{ r.invoice_number }} · Retenue contractuelle{% if release %} · {% if release>today %}libérable le {{ release }}{% else %}libérable depuis le {{ release }}{% endif %}{% endif %}</small>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <form method="get" class="formgrid">
+    <input type="hidden" name="filter" value="{{ filt }}">
+    <label>Client / n° facture<input type="text" name="q" value="{{ q }}" placeholder="ex: Client ABC"></label>
+    <label>Montant min<input type="number" name="min_amount" value="{{ min_amount }}" step="1"></label>
+    <label>Montant max<input type="number" name="max_amount" value="{{ max_amount }}" step="1"></label>
+    <label>Échéance après<input type="date" name="date_from" value="{{ date_from }}"></label>
+    <label>Échéance avant<input type="date" name="date_to" value="{{ date_to }}"></label>
+    <div style="align-self:end;"><button type="submit" class="purchase-primary-btn primary">Filtrer</button></div>
+  </form>
+</section>
+
+{% if auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+<div style="margin:-8px 0 18px;display:flex;gap:8px;">
+  <a class="purchase-nav-btn" href="{{ url_for('recover_export',format='xlsx',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (Excel)</a>
+  <a class="purchase-nav-btn" href="{{ url_for('recover_export',format='csv',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (CSV)</a>
+</div>
 {% else %}
-  <small>#{{ r.invoice_number }} · {{ r.days_overdue }} jours de retard</small>
+<p class="purchase-muted" style="margin:-8px 0 18px;"><a class="purchase-detail-link" href="{{ url_for('billing') }}">Export Excel/CSV · formule Pro</a></p>
 {% endif %}
-</div><div class="money">{{ "{:,.0f}".format(r.outstanding) }} €</div><div class="score">{{ r.score }}</div></a>{% else %}<p class="muted">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue contractuelle détectée. Ajoute une colonne "type" (valeur "retenue de garantie" ou "retenue contractuelle") et "retention_release_date" dans ton fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</p>{% endfor %}</section>{% endblock %}
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Client</th><th>Détail</th><th>Montant</th><th>Score</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>
+            <a class="purchase-detail-link" href="{{ url_for('detail',kind='RECOVER',item_id=r.id) }}"><strong>{{ r.customer }}</strong></a>
+            {% if r.customer_tag %}<span class="purchase-status {{ 'overdue' if r.customer_tag=='RISQUE' else ('paid' if r.customer_tag=='FIABLE' else '') }}">{{ r.customer_tag }}</span>{% endif %}
+          </td>
+          <td>
+            {% if r.kind=='RETENTION' %}
+              {% set release=r.retention_release_date %}
+              #{{ r.invoice_number }} · Retenue contractuelle{% if release %} · {% if release>today %}libérable le {{ release }}{% else %}libérable depuis le {{ release }}{% endif %}{% endif %}
+            {% else %}
+              #{{ r.invoice_number }} · {{ r.days_overdue }} jours de retard
+            {% endif %}
+          </td>
+          <td><strong>{{ "{:,.0f}".format(r.outstanding) }} €</strong></td>
+          <td>{{ r.score }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue contractuelle détectée. Ajoute une colonne "type" (valeur "retenue de garantie" ou "retenue contractuelle") et "retention_release_date" dans ton fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

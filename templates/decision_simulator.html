@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="purchase-page">
 {# TOP 3 · PLANS EXPLIQUÉS #}
 {# Échéancier détaillé affiché uniquement pour le plan recommandé. #}
 {% macro render_payment_schedule(plan, total_amount=none, compact=false) -%}
@@ -29,16 +30,16 @@
   {% endif %}
 {%- endmacro %}
 
-<div class="eyebrow green">AI CFO · EXPLAINABLE PLANNER · V1.7.7</div>
+<div class="purchase-eyebrow">AI CFO · EXPLAINABLE PLANNER · V1.7.7</div>
 {# compatibility: AI CFO · EXPLAINABLE PLANNER · V1.7.6 #}
-<h1>Testez une décision avant d'engager votre trésorerie.</h1>
-<p class="muted">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
+<h1 class="purchase-title">Testez une décision avant d'engager votre trésorerie.</h1>
+<p class="purchase-subtitle">ProfitOS compare votre trajectoire probable actuelle à la même trajectoire après investissement, embauche, dépense exceptionnelle ou nouveau marché.</p>
 
 {% if cash.cash_balance is none %}
-<section class="panel decision-empty"><h2>Trésorerie de départ requise</h2><p class="muted">Renseignez d'abord votre solde dans Cash Intelligence.</p><a class="button" href="{{ url_for('cash_intelligence') }}">Ouvrir Cash Intelligence</a></section>
+<section class="purchase-panel decision-empty"><h2>Trésorerie de départ requise</h2><p class="muted">Renseignez d'abord votre solde dans Cash Intelligence.</p><a class="button" href="{{ url_for('cash_intelligence') }}">Ouvrir Cash Intelligence</a></section>
 {% else %}
-<section class="panel decision-form-panel">
-  <div class="eyebrow">NOUVELLE SIMULATION</div><h2>Quelle décision voulez-vous tester ?</h2>
+<section class="purchase-panel decision-form-panel">
+  <div class="purchase-eyebrow">NOUVELLE SIMULATION</div><h2>Quelle décision voulez-vous tester ?</h2>
   <form method="get" class="decision-form">
     <input type="hidden" name="simulate" value="1">
     <label>Type de décision<select name="kind"><option value="investment" {% if inputs.kind=='investment' %}selected{% endif %}>Investissement / machine</option><option value="hire" {% if inputs.kind=='hire' %}selected{% endif %}>Embauche</option><option value="expense" {% if inputs.kind=='expense' %}selected{% endif %}>Dépense exceptionnelle</option><option value="market" {% if inputs.kind=='market' %}selected{% endif %}>Nouveau marché / projet</option></select></label>
@@ -52,7 +53,7 @@
     <label>Décision au plus tard à J+<input type="number" min="0" max="90" name="deadline" value="{{ inputs.deadline }}"></label>
 
     <div class="decision-constraint-group">
-      <div class="eyebrow green">CONTRAINTES RÉELLES</div>
+      <div class="purchase-eyebrow">CONTRAINTES RÉELLES</div>
       <p class="muted">ProfitOS n'utilise que les leviers que vous autorisez. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
       <input type="hidden" name="allow_delay" value="0"><label class="decision-check"><input type="checkbox" name="allow_delay" value="1" {% if inputs.allow_delay %}checked{% endif %}> Report négociable</label>
       <label>Report maximum autorisé (jours)<input type="number" min="0" max="90" name="max_delay" value="{{ inputs.max_delay }}"></label>
@@ -66,9 +67,9 @@
 </section>
 
 {% if simulation %}
-<section class="panel decision-verdict {{ simulation.tone }} decision-initial-state">
+<section class="purchase-panel decision-verdict {{ simulation.tone }} decision-initial-state">
   <div>
-    <div class="eyebrow">SCÉNARIO INITIAL · SANS OPTIMISATION</div>
+    <div class="purchase-eyebrow">SCÉNARIO INITIAL · SANS OPTIMISATION</div>
     <h2>{{ simulation.level }}</h2>
     <p>{{ simulation.recommendation }}</p>
     <p class="muted decision-clarifier">Ce premier verdict mesure la décision telle que saisie, avant report, fractionnement ou financement proposé par ProfitOS.</p>
@@ -77,16 +78,16 @@
 </section>
 
 <div class="decision-kpis">
-  <section class="panel"><small>POINT BAS · AVANT</small><strong>{{ "{:,.0f}".format(simulation.baseline_min) }} €</strong></section>
-  <section class="panel"><small>POINT BAS · APRÈS</small><strong>{{ "{:,.0f}".format(simulation.minimum) }} €</strong><span>J+{{ simulation.min_day }}</span></section>
-  <section class="panel"><small>TRÉSORERIE J+90 · AVANT</small><strong>{{ "{:,.0f}".format(simulation.baseline_end_90) }} €</strong></section>
-  <section class="panel"><small>TRÉSORERIE J+90 · APRÈS</small><strong>{{ "{:,.0f}".format(simulation.end_90) }} €</strong></section>
+  <section class="purchase-panel"><small>POINT BAS · AVANT</small><strong>{{ "{:,.0f}".format(simulation.baseline_min) }} €</strong></section>
+  <section class="purchase-panel"><small>POINT BAS · APRÈS</small><strong>{{ "{:,.0f}".format(simulation.minimum) }} €</strong><span>J+{{ simulation.min_day }}</span></section>
+  <section class="purchase-panel"><small>TRÉSORERIE J+90 · AVANT</small><strong>{{ "{:,.0f}".format(simulation.baseline_end_90) }} €</strong></section>
+  <section class="purchase-panel"><small>TRÉSORERIE J+90 · APRÈS</small><strong>{{ "{:,.0f}".format(simulation.end_90) }} €</strong></section>
 </div>
 
 {% if simulation.optimizer %}
 {% set optimization_gain = simulation.financing_gap - simulation.optimizer.best.financing %}
-<section class="panel decision-optimizer">
-  <div class="eyebrow green">PLAN OPTIMISÉ · REAL CONSTRAINTS · V1.7.7</div>
+<section class="purchase-panel decision-optimizer">
+  <div class="purchase-eyebrow">PLAN OPTIMISÉ · REAL CONSTRAINTS · V1.7.7</div>
   {# PLAN OPTIMISÉ · BEFORE / AFTER INTELLIGENCE · V1.7.6 #}
   {% if simulation.optimizer.constraints_met %}
     {% if simulation.optimizer.requires_negotiation %}
@@ -167,7 +168,7 @@
   {{ render_payment_schedule(simulation.optimizer.best, simulation.amount) }}
   {% if simulation.resolutions %}
   <section class="constraint-resolution">
-    <div class="eyebrow green">FINANCIAL CONSISTENCY GUARD · V1.7.7</div>
+    <div class="purchase-eyebrow">FINANCIAL CONSISTENCY GUARD · V1.7.7</div>
     {# compatibility: FINANCIAL CONSISTENCY GUARD · V1.7.6 #}
     {# compatibility: 3 stratégies pour rendre la décision possible #}
     <h3>{{ simulation.resolutions|length }} stratégie{% if simulation.resolutions|length != 1 %}s{% endif %} pour rendre la décision possible</h3>
@@ -186,7 +187,7 @@
   </section>
   {% endif %}
   <section class="planner-debt-free">
-    <div class="eyebrow green">PLAN SANS FINANCEMENT · RÉSUMÉ</div>
+    <div class="purchase-eyebrow">PLAN SANS FINANCEMENT · RÉSUMÉ</div>
     {% if simulation.optimizer.no_financing.available %}
       <h3>{{ simulation.optimizer.no_financing.label }}</h3>
       <p>{{ simulation.optimizer.no_financing.explanation }}</p>
@@ -205,10 +206,10 @@
   {% if optimizer and optimizer.top3 and optimizer.top3|length > 1 %}
 <section class="planner-top3">
     {% if simulation.optimizer.constraints_met %}
-      <div class="eyebrow green">TOP 3 · COMPARAISON RAPIDE</div>
+      <div class="purchase-eyebrow">TOP 3 · COMPARAISON RAPIDE</div>
       <h3>Pourquoi ce plan plutôt qu’un autre ?</h3>
     {% else %}
-      <div class="eyebrow green">3 ALTERNATIVES LES PLUS PROCHES DE VOS CONTRAINTES</div>
+      <div class="purchase-eyebrow">3 ALTERNATIVES LES PLUS PROCHES DE VOS CONTRAINTES</div>
       <h3>Aucune de ces alternatives n’est actuellement autorisée.</h3>
       <p class="muted">Elles sont affichées uniquement pour montrer les scénarios les plus proches. Une contrainte réelle doit être modifiée avant de pouvoir les retenir.</p>
     {% endif %}
@@ -232,7 +233,7 @@
   </section>
 {% endif %}
   <section class="planner-cfo">
-    <div class="eyebrow green">AI CFO · QUESTION SUR CE SCÉNARIO</div>
+    <div class="purchase-eyebrow">AI CFO · QUESTION SUR CE SCÉNARIO</div>
     <h3>Interrogez votre plan financier.</h3>
     <form method="get" class="cfo-form">
       <input type="hidden" name="simulate" value="1"><input type="hidden" name="kind" value="{{ inputs.kind }}"><input type="hidden" name="amount" value="{{ inputs.amount }}"><input type="hidden" name="decision_day" value="{{ inputs.decision_day }}"><input type="hidden" name="monthly_cost" value="{{ inputs.monthly_cost }}"><input type="hidden" name="expected_inflow" value="{{ inputs.expected_inflow }}"><input type="hidden" name="inflow_day" value="{{ inputs.inflow_day }}"><input type="hidden" name="reserve" value="{{ inputs.reserve }}"><input type="hidden" name="max_financing" value="{{ inputs.max_financing if inputs.max_financing is not none else '' }}"><input type="hidden" name="deadline" value="{{ inputs.deadline }}"><input type="hidden" name="allow_delay" value="{{ 1 if inputs.allow_delay else 0 }}"><input type="hidden" name="max_delay" value="{{ inputs.max_delay }}"><input type="hidden" name="allow_installments" value="{{ 1 if inputs.allow_installments else 0 }}"><input type="hidden" name="max_installments" value="{{ inputs.max_installments }}"><input type="hidden" name="allow_financing" value="{{ 1 if inputs.allow_financing else 0 }}">
@@ -257,8 +258,9 @@
 </section>
 {% endif %}
 
-<section class="panel decision-explain"><div class="eyebrow green">IMPACT DE LA DÉCISION</div><h2>Ce que ProfitOS a réellement modélisé</h2><div class="brain-row"><div><strong>Décaissement initial</strong><small>Appliqué à J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.amount) }} €</strong></div>{% if simulation.monthly_cost %}<div class="brain-row"><div><strong>Coût récurrent</strong><small>Proratisé à partir de J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.monthly_cost) }} €/mois</strong></div>{% endif %}{% if simulation.expected_inflow %}<div class="brain-row"><div><strong>Encaissement simulé</strong><small>Prévu à J+{{ simulation.inflow_day }} · disponible à partir de J+{{ simulation.inflow_day + 1 }}</small></div><strong>+ {{ "{:,.0f}".format(simulation.expected_inflow) }} €</strong></div>{% endif %}<p class="muted">La trajectoire de référence reste le scénario probable de Cash Intelligence. Hypothèse prudente : un encaissement prévu à J+n est considéré disponible à partir de J+(n+1). Les coûts, taxes ou revenus non renseignés ne sont pas inventés.</p></section>
+<section class="purchase-panel decision-explain"><div class="purchase-eyebrow">IMPACT DE LA DÉCISION</div><h2>Ce que ProfitOS a réellement modélisé</h2><div class="brain-row"><div><strong>Décaissement initial</strong><small>Appliqué à J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.amount) }} €</strong></div>{% if simulation.monthly_cost %}<div class="brain-row"><div><strong>Coût récurrent</strong><small>Proratisé à partir de J+{{ simulation.decision_day }}</small></div><strong>− {{ "{:,.0f}".format(simulation.monthly_cost) }} €/mois</strong></div>{% endif %}{% if simulation.expected_inflow %}<div class="brain-row"><div><strong>Encaissement simulé</strong><small>Prévu à J+{{ simulation.inflow_day }} · disponible à partir de J+{{ simulation.inflow_day + 1 }}</small></div><strong>+ {{ "{:,.0f}".format(simulation.expected_inflow) }} €</strong></div>{% endif %}<p class="muted">La trajectoire de référence reste le scénario probable de Cash Intelligence. Hypothèse prudente : un encaissement prévu à J+n est considéré disponible à partir de J+(n+1). Les coûts, taxes ou revenus non renseignés ne sont pas inventés.</p></section>
 {% endif %}
 {% endif %}
 
+</div>
 {% endblock %}
