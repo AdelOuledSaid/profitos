@@ -11,7 +11,7 @@
       </a>
       <a class="purchase-nav-btn" href="{{ url_for('supplier_payment_forecast') }}">
         <span class="purchase-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path><circle cx="17" cy="16" r="2.5"></circle></svg>
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path><circle cx="17" cy="16" r="2.5" fill="none"></circle></svg>
         </span>
         Calendrier des paiements
       </a>
@@ -23,7 +23,7 @@
       </a>
       <a class="purchase-nav-btn" href="{{ url_for('purchase_budgets') }}">
         <span class="purchase-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v5l3 3"></path></svg>
         </span>
         Budgets
       </a>
@@ -60,7 +60,7 @@
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6l4 2"></path></svg>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
       <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ '%.2f'|format(overdue_amount) }} €</div></div>
     </div>
@@ -78,7 +78,7 @@
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
-        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4" fill="none"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
       </div>
       <div><div class="purchase-stat-label">Fournisseurs</div><div class="purchase-stat-value">{{ supplier_count }}</div></div>
     </div>
