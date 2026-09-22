@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Journaux</h1>
+    <p class="purchase-subtitle">Chaque écriture comptable est rattachée à un journal. Les journaux par défaut suivent la convention habituelle (Achats, Ventes, Banque, Caisse, Opérations diverses, À-nouveaux).</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Ajouter un journal</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Code<input name="code" placeholder="ex: IM" maxlength="4" style="text-transform:uppercase;" required></label>
+    <label class="wide">Libellé<input name="label" placeholder="ex: Immobilisations" required></label>
+    <label>Type
+      <select name="journal_type">
+        <option value="ACHATS">Achats</option>
+        <option value="VENTES">Ventes</option>
+        <option value="BANQUE">Banque</option>
+        <option value="CAISSE">Caisse</option>
+        <option value="OD">Opérations diverses</option>
+        <option value="AN">À-nouveaux</option>
+      </select>
+    </label>
+    <div><button type="submit" class="purchase-primary-btn primary">Créer</button></div>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Code</th><th>Libellé</th><th>Type</th><th>Écritures</th></tr></thead>
+      <tbody>
+      {% for j in journals %}
+        <tr>
+          <td><code>{{ j.code }}</code></td>
+          <td><a class="purchase-detail-link" href="{{ url_for('accounting_journal_detail',code=j.code) }}">{{ j.label }}</a>{% if j.is_default %} <span class="purchase-muted" style="font-size:12px;">(par défaut)</span>{% endif %}</td>
+          <td>{{ j.journal_type }}</td>
+          <td>{{ counts.get(j.code, 0) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

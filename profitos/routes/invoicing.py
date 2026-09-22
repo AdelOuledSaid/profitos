@@ -7,6 +7,7 @@ from pypdf.errors import PyPdfError
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
+from profitos.accounting import generate_sale_entry, generate_sale_payment_entry, generate_purchase_entry, generate_purchase_payment_entry, AccountingError
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
     WeInvoiceAPIError, WeInvoiceConfigError)
@@ -1369,7 +1370,14 @@ def register(app):
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
                        (request.form.get('notes') or '').strip(),now(),pending_document or None,category))
-            c.commit(); c.close()
+            c.commit()
+            new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            try:
+                purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(new_purchase_id,)).fetchone()
+                generate_purchase_entry(c,purchase_row)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"achat {new_purchase_id}: {e}")
+            c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
         c.close()
@@ -1677,6 +1685,11 @@ def register(app):
         if p['status']=='unpaid':
             c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?",(now(),purchase_id))
             c.commit()
+            try:
+                p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(purchase_id,)).fetchone()
+                generate_purchase_payment_entry(c,p_updated)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
             flash("Facture fournisseur marquée comme payée.")
         c.close()
         return redirect(url_for('purchase_list'))
@@ -1992,6 +2005,11 @@ def register(app):
             c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=?,issue_date=? WHERE id=?",
                       (now(),issue_date,invoice_id))
             c.commit()
+            try:
+                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+                generate_sale_entry(c,inv_updated)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Facture envoyée à {inv['client_email']}.")
         else:
@@ -2064,7 +2082,13 @@ def register(app):
             flash("Une facture annulée ne peut pas être marquée comme payée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=?",(now(),invoice_id))
-        c.commit(); c.close()
+        c.commit()
+        try:
+            inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+            generate_sale_payment_entry(c,inv_updated)
+        except AccountingError as e:
+            log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
+        c.close()
         log_activity('INVOICE_PAID',f"Facture {inv['invoice_number']} marquée payée")
         flash(f"Facture {inv['invoice_number']} marquée comme payée.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))

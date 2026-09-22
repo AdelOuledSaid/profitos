@@ -10,6 +10,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 
 from profitos.feature_access import requires_paid_plan
 from profitos.runtime import *
+from profitos.accounting import generate_purchase_payment_entry, generate_sale_payment_entry, AccountingError
 
 
 POWENS_TIMEOUT = 20
@@ -539,6 +540,11 @@ def register(app):
                 (matched_at,invoice_id)
             )
             c.commit()
+            try:
+                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+                generate_sale_payment_entry(c,inv_updated)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
             log_activity(
                 'INVOICE_BANK_RECONCILED',
                 f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {fr_number(amount,2)} €"
@@ -628,7 +634,13 @@ def register(app):
                      (bank_transaction_id,purchase_invoice_id,matched_amount,matched_at)
                      VALUES(?,?,?,?)""",(tx_id,purchase_id,amount,now()))
         c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE id=?",(now(),purchase_id))
-        c.commit(); c.close()
+        c.commit()
+        try:
+            p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(purchase_id,)).fetchone()
+            generate_purchase_payment_entry(c,p_updated)
+        except AccountingError as e:
+            log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
+        c.close()
         flash("Rapprochement fournisseur confirmé. La facture a été marquée payée.")
         return redirect(url_for('banking'))
 

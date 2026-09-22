@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Plan comptable</h1>
+    <p class="purchase-subtitle">Comptes du Plan Comptable Général (PCG) utilisés par ProfitOS. Les comptes par défaut ne peuvent pas être supprimés ; tu peux en ajouter d'autres.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">Journaux →</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Ajouter un compte</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Numéro de compte<input name="code" placeholder="ex: 616100" maxlength="8" required></label>
+    <label class="wide">Libellé<input name="label" placeholder="ex: Assurance responsabilité civile" required></label>
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;"><input type="checkbox" name="is_collective" style="width:auto;"> Compte collectif (utilisé avec un tiers — client/fournisseur)</label>
+    <div><button type="submit" class="purchase-primary-btn primary">Ajouter</button></div>
+  </form>
+</section>
+
+{% for klass, accounts in by_class.items() %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">{{ class_labels.get(klass, 'Classe ' ~ klass) }}</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Compte</th><th>Libellé</th><th></th><th></th></tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr>
+          <td><code>{{ a.code }}</code></td>
+          <td>{{ a.label }}{% if a.is_collective %} <span class="purchase-status">collectif</span>{% endif %}</td>
+          <td>{% if a.is_default %}<span class="purchase-muted" style="font-size:12px;">Par défaut</span>{% endif %}</td>
+          <td style="text-align:right;">
+            {% if not a.is_default %}
+            <form method="post" action="{{ url_for('accounting_chart_deactivate',code=a.code) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Désactiver</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+</div>
+{% endblock %}

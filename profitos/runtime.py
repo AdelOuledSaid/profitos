@@ -871,6 +871,53 @@ def init_tenant_db(org_id=None):
         status TEXT DEFAULT 'issued',
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS accounting_chart_of_accounts(
+        code TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        account_class INTEGER NOT NULL,
+        is_collective INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS accounting_journals(
+        code TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        journal_type TEXT NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS accounting_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        journal_code TEXT NOT NULL,
+        piece_number TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        label TEXT NOT NULL,
+        source_type TEXT,
+        source_id INTEGER,
+        is_locked INTEGER DEFAULT 0,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS accounting_entry_lines(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id INTEGER NOT NULL,
+        account_code TEXT NOT NULL,
+        auxiliary_name TEXT,
+        label TEXT,
+        debit REAL NOT NULL DEFAULT 0,
+        credit REAL NOT NULL DEFAULT 0,
+        lettrage_code TEXT,
+        line_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS accounting_category_mapping(
+        category TEXT PRIMARY KEY,
+        account_code TEXT NOT NULL,
+        updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
+    CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_account ON accounting_entry_lines(account_code);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
@@ -902,6 +949,8 @@ def init_tenant_db(org_id=None):
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+    from profitos.accounting import seed_accounting_defaults
+    seed_accounting_defaults(c)
     c.close()
 
 def norm(x):
