@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Export FEC</h1>
+    <p class="purchase-subtitle">Fichier des Écritures Comptables — format réglementaire pour un contrôle fiscal, exigible sur demande de l'administration.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="max-width:560px;">
+  <p class="purchase-muted" style="margin-top:0;">{{ n_entries }} écriture(s) au total dans ProfitOS.</p>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Du<input type="date" name="date_from" required></label>
+    <label>Au<input type="date" name="date_to" required></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Télécharger le FEC</button></div>
+  </form>
+  <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Le nom du fichier généré suit le format réglementaire : SIREN + FEC + date de fin (AAAAMMJJ) + .txt. Le SIRET doit être renseigné dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a>.</p>
+</section>
+</div>
+{% endblock %}

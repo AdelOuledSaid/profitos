@@ -1,5 +1,6 @@
 from profitos.runtime import *
-from profitos.accounting import AccountingError
+from profitos.accounting import AccountingError, generate_fec, fec_filename
+import io
 
 
 def register(app):
@@ -179,3 +180,35 @@ def register(app):
             by_tiers.setdefault(l['auxiliary_name'] or '—', []).append(l)
         return render_template('accounting_lettrage.html', account=account,
                                 by_tiers=by_tiers, error=error)
+
+    @app.route('/comptabilite/export-fec', methods=['GET', 'POST'])
+    @login_required
+    def accounting_fec_export():
+        c = cx()
+        error = None
+        if request.method == 'POST':
+            date_from = (request.form.get('date_from') or '').strip()
+            date_to = (request.form.get('date_to') or '').strip()
+            if not date_from or not date_to:
+                error = "Les deux dates (début et fin) sont obligatoires."
+            elif date_from > date_to:
+                error = "La date de début doit précéder la date de fin."
+            else:
+                company = c.execute('SELECT siret FROM company WHERE id=1').fetchone()
+                try:
+                    filename = fec_filename(company['siret'] if company else None, date_to)
+                except ValueError as e:
+                    error = str(e)
+                if not error:
+                    rows = generate_fec(c, date_from, date_to)
+                    c.close()
+                    content = '\r\n'.join('|'.join(str(cell) for cell in row) for row in rows)
+                    body = content.encode('utf-8')
+                    log_activity('FEC_EXPORT', f"Export FEC {date_from} → {date_to} ({len(rows) - 1} ligne(s))")
+                    return Response(
+                        body, mimetype='text/plain',
+                        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+                    )
+        n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries').fetchone()['n']
+        c.close()
+        return render_template('accounting_fec_export.html', error=error, n_entries=n_entries)

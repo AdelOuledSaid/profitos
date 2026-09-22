@@ -415,3 +415,102 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         )
     conn.commit()
     return entry_id
+
+
+# --- Export FEC (Fichier des Écritures Comptables) -------------------------
+# Format réglementaire français (arrêté du 29 juillet 2013, art. L47 A du LPF) :
+# 18 colonnes obligatoires, séparateur "|", encodage UTF-8, montants au format
+# décimal avec point (jamais de séparateur de milliers, jamais de virgule —
+# c'est un format de données réglementaire, pas un affichage humain : ne
+# jamais y appliquer fr_number). Nom de fichier imposé : SIREN + FEC +
+# date de clôture (AAAAMMJJ) + .txt.
+#
+# AVERTISSEMENT : cet export est construit du mieux possible à partir de la
+# spécification connue, mais n'a pas pu être vérifié contre un validateur FEC
+# officiel (pas d'accès réseau dans cet environnement). À faire valider par
+# un expert-comptable ou un validateur FEC avant tout usage réel en cas de
+# contrôle fiscal.
+FEC_COLUMNS = [
+    'JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate',
+    'CompteNum', 'CompteLib', 'CompAuxNum', 'CompAuxLib',
+    'PieceRef', 'PieceDate', 'EcritureLib', 'Debit', 'Credit',
+    'EcritureLet', 'DateLet', 'ValidDate', 'Montantdevise', 'Idevise',
+]
+
+
+def _fec_date(value):
+    """Convertit une date ISO (AAAA-MM-JJ) au format FEC (AAAAMMJJ), sans
+    séparateur. Chaîne vide si la date est absente — jamais inventée."""
+    if not value:
+        return ''
+    s = str(value)
+    return s[0:4] + s[5:7] + s[8:10] if len(s) >= 10 else ''
+
+
+def _fec_amount(value):
+    """Formate un montant au format FEC : point décimal, deux décimales,
+    aucun séparateur de milliers. Ne jamais utiliser fr_number ici — le FEC
+    est un format de données, pas un affichage destiné à un humain."""
+    return f"{float(value or 0):.2f}"
+
+
+def generate_fec(conn, date_from, date_to):
+    """Génère le contenu FEC (liste de lignes, la première étant l'en-tête)
+    pour toutes les écritures dont la date est comprise entre date_from et
+    date_to (inclus). Retourne une liste de listes de chaînes — une ligne par
+    écriture comptable, dans l'ordre chronologique puis par numéro de pièce."""
+    entries = conn.execute(
+        """SELECT e.*, j.label AS journal_label FROM accounting_entries e
+           JOIN accounting_journals j ON j.code = e.journal_code
+           WHERE e.entry_date BETWEEN ? AND ?
+           ORDER BY e.entry_date, e.journal_code, e.piece_number""",
+        (str(date_from), str(date_to)),
+    ).fetchall()
+
+    rows = [FEC_COLUMNS]
+    for e in entries:
+        lines = conn.execute(
+            """SELECT l.*, a.label AS account_label FROM accounting_entry_lines l
+               JOIN accounting_chart_of_accounts a ON a.code = l.account_code
+               WHERE l.entry_id=? ORDER BY l.line_order""",
+            (e['id'],),
+        ).fetchall()
+        validation_date = _fec_date(e['created_at'][:10]) if e['created_at'] else _fec_date(e['entry_date'])
+        for l in lines:
+            rows.append([
+                e['journal_code'],
+                e['journal_label'],
+                e['piece_number'],
+                _fec_date(e['entry_date']),
+                l['account_code'],
+                l['account_label'],
+                l['account_code'] if l['auxiliary_name'] else '',
+                l['auxiliary_name'] or '',
+                e['piece_number'],
+                _fec_date(e['entry_date']),
+                l['label'] or e['label'],
+                _fec_amount(l['debit']),
+                _fec_amount(l['credit']),
+                l['lettrage_code'] or '',
+                '',
+                validation_date,
+                '',
+                '',
+            ])
+    return rows
+
+
+def fec_filename(siret, date_to):
+    """Nom de fichier réglementaire : SIREN (9 premiers chiffres du SIRET) +
+    FEC + date de clôture au format AAAAMMJJ + .txt. Lève ValueError si le
+    SIRET est absent ou trop court — un export FEC sans SIREN valide n'a
+    aucune valeur légale, mieux vaut échouer clairement que produire un nom
+    de fichier invalide."""
+    digits = ''.join(ch for ch in str(siret or '') if ch.isdigit())
+    if len(digits) < 9:
+        raise ValueError(
+            "SIRET manquant ou incomplet dans le profil entreprise — "
+            "impossible de nommer le fichier FEC réglementairement."
+        )
+    siren = digits[:9]
+    return f"{siren}FEC{_fec_date(date_to)}.txt"
