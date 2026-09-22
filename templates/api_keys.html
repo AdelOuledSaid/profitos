@@ -27,7 +27,7 @@
         <tr>
           <td>
             <strong>{{ k.key_prefix }}...</strong><br>
-            <small class="purchase-muted">Créée le {{ k.created_at[:10] }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at[:10] }}{% endif %}</small>
+            <small class="purchase-muted">Créée le {{ k.created_at|fr_date }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at|fr_date }}{% endif %}</small>
           </td>
           <td style="text-align:right;">
             {% if k.revoked_at %}<span class="purchase-status">Révoquée</span>{% else %}

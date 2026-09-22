@@ -48,7 +48,7 @@
           <tr>
             <td>{{ inv.supplier_name }}</td>
             <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail', purchase_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a></td>
-            <td>{{ inv.due_date }}</td>
+            <td>{{ inv.due_date|fr_date }}</td>
             <td><strong>{{ '%.2f'|format(inv.amount) }} €</strong></td>
             <td><span class="purchase-status overdue">En retard</span></td>
           </tr>
@@ -74,7 +74,7 @@
               <tbody>
               {% for inv in week.invoices %}
                 <tr>
-                  <td>{{ inv.due_date }}</td>
+                  <td>{{ inv.due_date|fr_date }}</td>
                   <td>{{ inv.supplier_name }}</td>
                   <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
                   <td><strong>{{ '%.2f'|format(inv.amount) }} €</strong></td>

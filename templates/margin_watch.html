@@ -26,7 +26,7 @@
         <tr>
           <td>
             <strong>{{ a.contract.project_name }}</strong><br>
-            <small class="purchase-muted">{{ a.contract.customer }} · signé le {{ a.contract.signed_date }} · exposition {{ a.contract.materials_share_pct|fr_number }} % · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
+            <small class="purchase-muted">{{ a.contract.customer }} · signé le {{ a.contract.signed_date|fr_date }} · exposition {{ a.contract.materials_share_pct|fr_number }} % · indice {{ a.baseline.value }} → {{ a.latest.value }} ({{ '+' if a.change_pct>0 else '' }}{{ a.change_pct }}%)</small>
           </td>
           <td style="text-align:right;"><strong class="{{ 'purchase-alert-text' if a.is_erosion else 'purchase-ok-text' }}">{{ '+' if a.at_risk>0 else '' }}{{ a.at_risk|fr_number }} €</strong></td>
         </tr>
@@ -54,7 +54,7 @@
       <table class="purchase-table">
         <tbody>
         {% for r in readings|reverse %}
-          <tr><td>{{ r.reading_date }}</td><td style="text-align:right;">{{ r.value }}</td></tr>
+          <tr><td>{{ r.reading_date|fr_date }}</td><td style="text-align:right;">{{ r.value }}</td></tr>
         {% endfor %}
         </tbody>
       </table>

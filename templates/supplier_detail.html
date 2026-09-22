@@ -58,7 +58,7 @@
         {% for p in purchases %}
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail',purchase_id=p.id) }}"><strong>{{ p.invoice_number }}</strong></a></td>
-            <td>{{ p.issue_date or "—" }}</td>
+            <td>{{ p.issue_date|fr_date or "—" }}</td>
             <td><span class="purchase-status {{ 'paid' if p.status=='paid' else '' }}">{{ 'Payée' if p.status=='paid' else 'À payer' }}</span></td>
             <td><strong>{{ "%.2f"|format(p.total) }} €</strong></td>
           </tr>

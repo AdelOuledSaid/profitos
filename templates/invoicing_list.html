@@ -55,7 +55,7 @@
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}"><strong>{{ r.invoice_number }}</strong></a></td>
             <td>{{ r.client_name }}</td>
-            <td>{{ r.issue_date }}</td>
+            <td>{{ r.issue_date|fr_date }}</td>
             <td><strong>{{ r.total|fr_number }} €</strong></td>
             <td>
               <span class="purchase-status {{ 'paid' if st=='paid' else ('overdue' if st=='overdue' else '') }}">

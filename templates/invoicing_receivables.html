@@ -72,7 +72,7 @@
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a></td>
             <td>{{ inv.client_name }}</td>
             <td>
-              {{ inv.due_date or "—" }}
+              {{ inv.due_date|fr_date or "—" }}
               {% if inv.overdue %}<br><span class="purchase-alert-text" style="font-size:12px;">En retard de {{ inv.days_overdue }} jour{% if inv.days_overdue > 1 %}s{% endif %}</span>{% endif %}
             </td>
             <td><strong>{{ "%.2f"|format(inv.remaining) }} €</strong></td>

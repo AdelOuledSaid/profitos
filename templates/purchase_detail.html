@@ -20,8 +20,8 @@
       <table class="purchase-table">
         <tbody>
           <tr><td>Fournisseur</td><td>{% if supplier %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}</td></tr>
-          <tr><td>Date de facture</td><td>{{ p.issue_date or "—" }}</td></tr>
-          <tr><td>Échéance</td><td>{{ p.due_date or "—" }}</td></tr>
+          <tr><td>Date de facture</td><td>{{ p.issue_date|fr_date or "—" }}</td></tr>
+          <tr><td>Échéance</td><td>{{ p.due_date|fr_date or "—" }}</td></tr>
           <tr><td>Montant HT</td><td>{{ "%.2f"|format(p.subtotal) }} €</td></tr>
           <tr><td>TVA</td><td>{{ "%.2f"|format(p.vat_amount) }} €</td></tr>
           <tr><td>Total TTC</td><td><strong>{{ "%.2f"|format(p.total) }} €</strong></td></tr>

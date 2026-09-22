@@ -11,7 +11,7 @@
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
     <div>
       <h1 class="purchase-title" style="margin-bottom:6px;">{{ q.quote_number }}</h1>
-      <p class="purchase-subtitle" style="margin:0;">{{ q.client_name }} · {{ q.issue_date }}{% if q.valid_until %} · valable jusqu'au {{ q.valid_until }}{% endif %}</p>
+      <p class="purchase-subtitle" style="margin:0;">{{ q.client_name }} · {{ q.issue_date|fr_date }}{% if q.valid_until %} · valable jusqu'au {{ q.valid_until|fr_date }}{% endif %}</p>
     </div>
     <div class="heroScore">{{ q.total|fr_number(2) }} €<span>TTC</span></div>
   </div>

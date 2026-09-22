@@ -72,7 +72,7 @@
       <tbody>
       {% for m in reconciliation_suggestions %}
         <tr>
-          <td>{{ m.transaction.transaction_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
+          <td>{{ m.transaction.transaction_date|fr_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
           <td><strong>{{ m.transaction.amount or 0|fr_number(2) }} €</strong></td>
           <td>{{ m.invoice.invoice_number }}</td>
           <td>{{ m.invoice.client_name }}</td>
@@ -100,7 +100,7 @@
       <tbody>
       {% for r in reconciliations %}
         <tr>
-          <td>{{ r.transaction_date or '—' }}</td>
+          <td>{{ r.transaction_date|fr_date or '—' }}</td>
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number }}</td>
           <td>{{ r.client_name }}</td>
@@ -123,7 +123,7 @@
     {% if suggestions %}
       {% set ns.found = true %}
       <div style="padding:12px 0;border-top:1px solid rgba(255,255,255,.08);">
-        <strong>{{ tx.transaction_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }} €</strong>
+        <strong>{{ tx.transaction_date|fr_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }} €</strong>
         {% for s in suggestions[:3] %}
           <div style="margin-top:8px;">
             {{ s.purchase.invoice_number }} · {{ s.purchase.supplier_name }} · {{ '%.2f'|format(s.purchase.total) }} €
@@ -153,7 +153,7 @@
       <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead>
       <tbody>
       {% for t in transactions %}
-        <tr><td>{{ t.transaction_date or '—' }}</td><td>{{ t.label or '—' }}</td><td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td></tr>
+        <tr><td>{{ t.transaction_date|fr_date or '—' }}</td><td>{{ t.label or '—' }}</td><td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td></tr>
       {% endfor %}
       </tbody>
     </table>

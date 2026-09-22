@@ -14,7 +14,7 @@
     <strong>{{ 'Payée' if inv.status|lower=='paid' else ('En retard' if inv.days_overdue and inv.days_overdue>0 else 'En cours') }}</strong>
   </div>
   {% if inv.due_date %}<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #1a2a47;">
-    <span style="color:#8fa9d3;">Échéance</span><strong>{{ inv.due_date }}</strong>
+    <span style="color:#8fa9d3;">Échéance</span><strong>{{ inv.due_date|fr_date }}</strong>
   </div>{% endif %}
   {% if inv.kind=='RETENTION' and inv.retention_release_date %}<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;">
     <span style="color:#8fa9d3;">Retenue libérable le</span><strong>{{ inv.retention_release_date }}</strong>

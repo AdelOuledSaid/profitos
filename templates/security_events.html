@@ -20,7 +20,7 @@
       <tbody>
       {% for e in events %}
         <tr>
-          <td>{{ e.created_at }}</td>
+          <td>{{ e.created_at|fr_date }}</td>
           <td><code>{{ e.event_type }}</code></td>
           <td><span class="purchase-status {{ 'paid' if (e.outcome or '')|lower=='success' else ('overdue' if (e.outcome or '')|lower=='failure' else '') }}">{{ e.outcome }}</span></td>
           <td>{{ e.user_id or '—' }}</td>

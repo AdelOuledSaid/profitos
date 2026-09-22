@@ -11,7 +11,7 @@
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
     <div>
       <h1 class="purchase-title" style="margin-bottom:6px;">{{ inv.invoice_number }}</h1>
-      <p class="purchase-subtitle" style="margin:0;">{{ inv.client_name }} · émise le {{ inv.issue_date }}{% if inv.due_date %} · échéance {{ inv.due_date }}{% endif %}</p>
+      <p class="purchase-subtitle" style="margin:0;">{{ inv.client_name }} · émise le {{ inv.issue_date|fr_date }}{% if inv.due_date %} · échéance {{ inv.due_date|fr_date }}{% endif %}</p>
     </div>
     <div class="heroScore">{{ inv.total|fr_number }} €<span>TTC</span></div>
   </div>
@@ -87,7 +87,7 @@
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
     {% if inv.weinvoice_invoice_id %}
     <p class="purchase-ok-text" style="font-size:13px;margin:0 0 8px;">✓ WeInvoice : <strong>{{ inv.weinvoice_status or 'transmise' }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
-    {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at }}</p>{% endif %}
+    {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut WeInvoice</button>

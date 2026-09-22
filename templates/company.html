@@ -34,7 +34,7 @@
     {% else %}
       <strong class="purchase-muted">⚪ Non testée</strong>
     {% endif %}
-    {% if weinvoice.weinvoice_last_check_at %}<span class="purchase-muted" style="font-size:12px;">(dernier test : {{ weinvoice.weinvoice_last_check_at[:16] }})</span>{% endif %}
+    {% if weinvoice.weinvoice_last_check_at %}<span class="purchase-muted" style="font-size:12px;">(dernier test : {{ weinvoice.weinvoice_last_check_at|fr_date(true) }})</span>{% endif %}
   </div>
   {% if weinvoice.weinvoice_last_error %}
   <p class="purchase-alert-text" style="font-size:12px;margin-bottom:14px;">{{ weinvoice.weinvoice_last_error }}</p>
@@ -63,7 +63,7 @@
       {% endif %}
     </div>
     {% if weinvoice.weinvoice_company_id %}
-    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Identifiant WeInvoice : <code>{{ weinvoice.weinvoice_company_id }}</code>{% if weinvoice.weinvoice_onboarded_at %} · envoyé le {{ weinvoice.weinvoice_onboarded_at[:16] }}{% endif %}</p>
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Identifiant WeInvoice : <code>{{ weinvoice.weinvoice_company_id }}</code>{% if weinvoice.weinvoice_onboarded_at %} · envoyé le {{ weinvoice.weinvoice_onboarded_at|fr_date(true) }}{% endif %}</p>
     {% endif %}
     {% if weinvoice.weinvoice_status == 'connected' %}
     <a class="purchase-nav-btn" href="{{ url_for('company_weinvoice_onboard') }}" style="display:inline-block;">Envoyer les informations de l'entreprise</a>

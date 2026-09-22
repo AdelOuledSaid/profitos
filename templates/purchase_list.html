@@ -125,8 +125,8 @@
               <a class="purchase-link" href="{{ url_for('purchase_detail', purchase_id=inv.id) }}">{{ inv.invoice_number }}</a>
               <div class="purchase-muted">{{ inv.supplier_name }}</div>
             </td>
-            <td>{{ inv.issue_date or '—' }}</td>
-            <td>{{ inv.due_date or '—' }}</td>
+            <td>{{ inv.issue_date|fr_date or '—' }}</td>
+            <td>{{ inv.due_date|fr_date or '—' }}</td>
             <td>
               {% set st = (inv.status or 'unpaid') %}
               <span class="purchase-status {% if st == 'paid' %}paid{% elif item.overdue %}overdue{% endif %}">

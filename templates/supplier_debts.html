@@ -52,7 +52,7 @@
           <tr>
             <td>{{ inv.supplier_name }}</td>
             <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail', purchase_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a></td>
-            <td>{{ inv.due_date or '—' }}</td>
+            <td>{{ inv.due_date|fr_date or '—' }}</td>
             <td><strong>{{ '%.2f'|format(inv.total or 0) }} €</strong></td>
             <td>
               {% if inv.is_overdue %}<span class="purchase-status overdue">En retard</span>
