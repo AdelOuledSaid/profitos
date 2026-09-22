@@ -156,14 +156,66 @@ def generate_sale_entry(conn, invoice):
     )
 
 
+def _next_lettrage_code(conn):
+    """Prochain code de lettrage disponible : A, B, ... Z, AA, AB, ... (comme
+    la numérotation des colonnes d'un tableur)."""
+    row = conn.execute(
+        "SELECT lettrage_code FROM accounting_entry_lines WHERE lettrage_code IS NOT NULL "
+        "ORDER BY LENGTH(lettrage_code) DESC, lettrage_code DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return 'A'
+    chars = list(row['lettrage_code'])
+    i = len(chars) - 1
+    while i >= 0:
+        if chars[i] != 'Z':
+            chars[i] = chr(ord(chars[i]) + 1)
+            return ''.join(chars)
+        chars[i] = 'A'
+        i -= 1
+    return 'A' + ''.join(chars)
+
+
+def _letter_pair(conn, account_code, original_source_type, original_source_id, new_entry_id):
+    """Lettre automatiquement la ligne d'origine (facture) et la ligne de
+    règlement qui vient d'être créée, sur le même compte collectif (411 ou
+    401), si les deux existent, ne sont pas déjà lettrées et que leurs
+    montants se compensent exactement. Ne lève jamais d'erreur : le lettrage
+    automatique est une aide, pas une contrainte — s'il ne peut pas
+    s'appliquer proprement, l'écriture reste valide, simplement non lettrée."""
+    original_line = conn.execute(
+        """SELECT l.id, l.debit, l.credit FROM accounting_entry_lines l
+           JOIN accounting_entries e ON e.id = l.entry_id
+           WHERE e.source_type=? AND e.source_id=? AND l.account_code=? AND l.lettrage_code IS NULL
+           LIMIT 1""",
+        (original_source_type, original_source_id, account_code),
+    ).fetchone()
+    new_line = conn.execute(
+        """SELECT id, debit, credit FROM accounting_entry_lines
+           WHERE entry_id=? AND account_code=? AND lettrage_code IS NULL LIMIT 1""",
+        (new_entry_id, account_code),
+    ).fetchone()
+    if not original_line or not new_line:
+        return
+    original_amount = original_line['debit'] or original_line['credit']
+    new_amount = new_line['debit'] or new_line['credit']
+    if abs(original_amount - new_amount) > 0.01:
+        return
+    code = _next_lettrage_code(conn)
+    conn.execute('UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?', (code, original_line['id']))
+    conn.execute('UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?', (code, new_line['id']))
+    conn.commit()
+
+
 def generate_sale_payment_entry(conn, invoice):
     """Génère l'écriture de règlement (journal BQ) quand une facture client
     est marquée payée : Banque (512) au débit, Clients (411) au crédit.
-    Idempotent."""
+    Lettre automatiquement cette écriture avec la facture d'origine sur le
+    compte 411. Idempotent."""
     source_type = 'outgoing_invoice_payment'
     if _entry_already_exists(conn, source_type, invoice['id']):
         return None
-    return create_entry(
+    entry_id = create_entry(
         conn, 'BQ', date.today(),
         f"Règlement facture {invoice['invoice_number']} — {invoice['client_name']}",
         [
@@ -172,6 +224,8 @@ def generate_sale_payment_entry(conn, invoice):
         ],
         source_type=source_type, source_id=invoice['id'],
     )
+    _letter_pair(conn, '411000', 'outgoing_invoice', invoice['id'], entry_id)
+    return entry_id
 
 
 def generate_purchase_entry(conn, purchase):
@@ -199,11 +253,12 @@ def generate_purchase_entry(conn, purchase):
 def generate_purchase_payment_entry(conn, purchase):
     """Génère l'écriture de règlement (journal BQ) quand une facture
     fournisseur est marquée payée : Fournisseurs (401) au débit, Banque (512)
-    au crédit. Idempotent."""
+    au crédit. Lettre automatiquement cette écriture avec la facture
+    d'origine sur le compte 401. Idempotent."""
     source_type = 'purchase_invoice_payment'
     if _entry_already_exists(conn, source_type, purchase['id']):
         return None
-    return create_entry(
+    entry_id = create_entry(
         conn, 'BQ', date.today(),
         f"Règlement facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         [
@@ -212,6 +267,8 @@ def generate_purchase_payment_entry(conn, purchase):
         ],
         source_type=source_type, source_id=purchase['id'],
     )
+    _letter_pair(conn, '401000', 'purchase_invoice', purchase['id'], entry_id)
+    return entry_id
 
 
 def seed_accounting_defaults(conn):

@@ -121,3 +121,61 @@ def register(app):
             ).fetchall()
         return render_template('accounting_journal_detail.html', journal=journal,
                                 entries=entries, entry_lines=entry_lines)
+
+    @app.route('/comptabilite/lettrage/<account_code>', methods=['GET', 'POST'])
+    @login_required
+    def accounting_lettrage(account_code):
+        c = cx()
+        account = c.execute(
+            'SELECT * FROM accounting_chart_of_accounts WHERE code=?', (account_code,)
+        ).fetchone()
+        if not account or not account['is_collective']:
+            c.close()
+            flash("Le lettrage n'est disponible que pour un compte collectif (411, 401...).")
+            return redirect(url_for('accounting_chart'))
+
+        error = None
+        if request.method == 'POST':
+            selected_ids = [int(x) for x in request.form.getlist('line_id')]
+            if len(selected_ids) < 2:
+                error = "Sélectionne au moins deux lignes à lettrer ensemble."
+            else:
+                placeholders = ','.join('?' * len(selected_ids))
+                rows = c.execute(
+                    f'SELECT id,debit,credit,lettrage_code,auxiliary_name FROM accounting_entry_lines '
+                    f'WHERE id IN ({placeholders}) AND account_code=?',
+                    (*selected_ids, account_code),
+                ).fetchall()
+                if len(rows) != len(selected_ids):
+                    error = "Sélection invalide."
+                elif any(r['lettrage_code'] for r in rows):
+                    error = "Une des lignes sélectionnées est déjà lettrée."
+                elif len({r['auxiliary_name'] for r in rows}) > 1:
+                    error = "Toutes les lignes sélectionnées doivent appartenir au même tiers (client ou fournisseur)."
+                else:
+                    total = sum(r['debit'] - r['credit'] for r in rows)
+                    if abs(total) > 0.01:
+                        error = f"Le débit et le crédit ne s'équilibrent pas (écart de {fr_number(abs(total),2)} €)."
+                    else:
+                        from profitos.accounting import _next_lettrage_code
+                        code_letter = _next_lettrage_code(c)
+                        for r in rows:
+                            c.execute(
+                                'UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?',
+                                (code_letter, r['id']),
+                            )
+                        c.commit()
+                        flash(f"{len(rows)} lignes lettrées ({code_letter}).")
+                        return redirect(url_for('accounting_lettrage', account_code=account_code))
+
+        lines = c.execute(
+            """SELECT l.*, e.entry_date, e.piece_number, e.label AS entry_label
+               FROM accounting_entry_lines l JOIN accounting_entries e ON e.id = l.entry_id
+               WHERE l.account_code=? ORDER BY COALESCE(l.auxiliary_name,''), e.entry_date""",
+            (account_code,),
+        ).fetchall()
+        by_tiers = {}
+        for l in lines:
+            by_tiers.setdefault(l['auxiliary_name'] or '—', []).append(l)
+        return render_template('accounting_lettrage.html', account=account,
+                                by_tiers=by_tiers, error=error)

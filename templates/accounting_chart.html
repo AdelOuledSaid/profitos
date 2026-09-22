@@ -33,7 +33,7 @@
       {% for a in accounts %}
         <tr>
           <td><code>{{ a.code }}</code></td>
-          <td>{{ a.label }}{% if a.is_collective %} <span class="purchase-status">collectif</span>{% endif %}</td>
+          <td>{{ a.label }}{% if a.is_collective %} <a class="purchase-status" href="{{ url_for('accounting_lettrage',account_code=a.code) }}" style="text-decoration:none;">lettrage →</a>{% endif %}</td>
           <td>{% if a.is_default %}<span class="purchase-muted" style="font-size:12px;">Par défaut</span>{% endif %}</td>
           <td style="text-align:right;">
             {% if not a.is_default %}
