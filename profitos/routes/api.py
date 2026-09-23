@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
+from profitos.webhooks_outbound import validate_outbound_webhook_url, new_webhook_secret, deliver_webhook, WEBHOOK_EVENTS
 
 
 def register(app):
@@ -80,6 +81,76 @@ def register(app):
         c.close()
         keys=_load_api_keys(org['id'])
         return render_template('api_keys.html',keys=keys,new_key=None)
+
+    # ------------------------------------------------------------------
+    # Webhooks sortants : ProfitOS notifie une URL choisie par le client
+    # quand un événement métier se produit (facture envoyée/payée, achat
+    # créé/payé). Voir profitos/webhooks_outbound.py pour le moteur de
+    # livraison, la signature HMAC et la protection SSRF.
+    # ------------------------------------------------------------------
+
+    @app.route('/settings/webhooks', methods=['GET', 'POST'])
+    @login_required
+    @require_area('settings')
+    def outbound_webhooks():
+        c = cx()
+        error = None
+        if request.method == 'POST':
+            url = (request.form.get('url') or '').strip()
+            events = request.form.getlist('events')
+            ok, reason = validate_outbound_webhook_url(url)
+            if not ok:
+                error = reason
+            elif not events:
+                error = "Sélectionne au moins un événement."
+            else:
+                secret = new_webhook_secret()
+                c.execute(
+                    'INSERT INTO webhook_subscriptions(url,secret,events,is_active,created_at,created_by) VALUES(?,?,?,1,?,?)',
+                    (url, secret, ','.join(events), now(), current_user()['email']),
+                )
+                c.commit()
+                log_activity('WEBHOOK_CREATED', f"Webhook sortant créé vers {url}")
+                flash(f"Webhook créé. Secret de signature (copie-le maintenant, affiché une seule fois) : {secret}")
+                return redirect(url_for('outbound_webhooks'))
+
+        subs = c.execute('SELECT * FROM webhook_subscriptions ORDER BY id DESC').fetchall()
+        recent_deliveries = {}
+        for s in subs:
+            recent_deliveries[s['id']] = c.execute(
+                'SELECT * FROM webhook_deliveries WHERE subscription_id=? ORDER BY id DESC LIMIT 5',
+                (s['id'],),
+            ).fetchall()
+        c.close()
+        return render_template('webhooks_outbound.html', subs=subs, error=error,
+                                events=WEBHOOK_EVENTS, recent_deliveries=recent_deliveries)
+
+    @app.route('/settings/webhooks/<int:sub_id>/supprimer', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def outbound_webhook_delete(sub_id):
+        c = cx()
+        c.execute('DELETE FROM webhook_subscriptions WHERE id=?', (sub_id,))
+        c.execute('DELETE FROM webhook_deliveries WHERE subscription_id=?', (sub_id,))
+        c.commit(); c.close()
+        flash("Webhook supprimé.")
+        return redirect(url_for('outbound_webhooks'))
+
+    @app.route('/settings/webhooks/<int:sub_id>/tester', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def outbound_webhook_test(sub_id):
+        c = cx()
+        sub = c.execute('SELECT * FROM webhook_subscriptions WHERE id=?', (sub_id,)).fetchone()
+        if not sub:
+            c.close(); abort(404)
+        events = (sub['events'] or '').split(',')
+        test_event = events[0] if events else 'invoice.sent'
+        deliver_webhook(c, test_event, {'test': True, 'message': 'Ceci est un envoi de test depuis ProfitOS.'},
+                         only_subscription_id=sub_id)
+        c.close()
+        flash(f"Test envoyé ({test_event}) — regarde le journal des livraisons ci-dessous pour le résultat.")
+        return redirect(url_for('outbound_webhooks'))
 
 
 def _load_api_keys(org_id):

@@ -944,6 +944,26 @@ def init_tenant_db(org_id=None):
     CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_account ON accounting_entry_lines(account_code);
+    CREATE TABLE IF NOT EXISTS webhook_subscriptions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        events TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS webhook_deliveries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subscription_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        payload TEXT,
+        status_code INTEGER,
+        success INTEGER,
+        attempted_at TEXT,
+        response_snippet TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_sub ON webhook_deliveries(subscription_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.

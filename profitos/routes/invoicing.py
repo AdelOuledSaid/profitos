@@ -8,6 +8,7 @@ from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 from profitos.accounting import generate_sale_entry, generate_sale_payment_entry, generate_purchase_entry, generate_purchase_payment_entry, AccountingError
+from profitos.webhooks_outbound import deliver_webhook
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
     WeInvoiceAPIError, WeInvoiceConfigError)
@@ -1519,6 +1520,8 @@ def register(app):
                 generate_purchase_entry(c,purchase_row)
             except AccountingError as e:
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"achat {new_purchase_id}: {e}")
+            deliver_webhook(c,'purchase.created',{'id':new_purchase_id,'invoice_number':number,
+                'supplier_name':supplier_name,'total':total})
             c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
@@ -1840,6 +1843,8 @@ def register(app):
                 generate_purchase_payment_entry(c,p_updated)
             except AccountingError as e:
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
+            deliver_webhook(c,'purchase.paid',{'id':purchase_id,'invoice_number':p['invoice_number'],
+                'supplier_name':p['supplier_name'],'total':p['total']})
             flash("Facture fournisseur marquée comme payée.")
         c.close()
         return redirect(url_for('purchase_list'))
@@ -2215,6 +2220,8 @@ def register(app):
                 generate_sale_entry(c,inv_updated)
             except AccountingError as e:
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
+            deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
+                'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']})
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Facture envoyée à {inv['client_email']}.")
         else:
@@ -2293,6 +2300,8 @@ def register(app):
             generate_sale_payment_entry(c,inv_updated)
         except AccountingError as e:
             log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
+        deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],
+            'client_name':inv['client_name'],'total':inv['total']})
         c.close()
         log_activity('INVOICE_PAID',f"Facture {inv['invoice_number']} marquée payée")
         flash(f"Facture {inv['invoice_number']} marquée comme payée.")

@@ -3,6 +3,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">API</div>
 <h1 class="purchase-title">Clés API</h1>
+<a class="purchase-nav-btn" href="{{ url_for('outbound_webhooks') }}" style="display:inline-block;margin-bottom:16px;">Webhooks sortants →</a>
 <p class="purchase-subtitle">Lecture seule pour l'instant (RECOVER/SAVE/GROW/résumé). Utile pour connecter un outil externe (ERP, logiciel de devis) qui doit lire tes données ProfitOS.</p>
 
 {% if new_key %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">API · WEBHOOKS SORTANTS</div>
+    <h1 class="purchase-title">Webhooks sortants</h1>
+    <p class="purchase-subtitle">ProfitOS notifie l'URL de ton choix quand un événement se produit — utile pour connecter ton propre ERP, une automatisation Zapier/Make, ou tout système qui doit réagir en temps réel.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('api_keys') }}">← Clés API</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Créer un webhook</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">URL de destination (https uniquement)<input type="url" name="url" placeholder="https://ton-systeme.example.com/hooks/profitos" required></label>
+    <div class="wide">
+      <label style="font-weight:600;margin-bottom:6px;display:block;">Événements</label>
+      {% for ev in events %}
+      <label style="display:flex;align-items:center;gap:8px;flex-direction:row;font-weight:400;margin-bottom:4px;"><input type="checkbox" name="events" value="{{ ev }}" style="width:auto;"> <code>{{ ev }}</code></label>
+      {% endfor %}
+    </div>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer</button></div>
+  </form>
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Chaque envoi est signé (en-tête <code>X-ProfitOS-Signature</code>, HMAC-SHA256) avec un secret propre à ce webhook, affiché une seule fois à la création.</p>
+</section>
+
+{% for s in subs %}
+<section class="purchase-panel" style="margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+    <div>
+      <code style="word-break:break-all;">{{ s.url }}</code><br>
+      <span class="purchase-muted" style="font-size:12px;">{{ s.events.replace(',', ', ') }}</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <form method="post" action="{{ url_for('outbound_webhook_test',sub_id=s.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn secondary">Tester</button>
+      </form>
+      <form method="post" action="{{ url_for('outbound_webhook_delete',sub_id=s.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
+      </form>
+    </div>
+  </div>
+  {% set deliveries = recent_deliveries.get(s.id, []) %}
+  {% if deliveries %}
+  <div class="purchase-table-wrap" style="margin-top:14px;">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Événement</th><th>Résultat</th></tr></thead>
+      <tbody>
+      {% for d in deliveries %}
+        <tr>
+          <td>{{ d.attempted_at|fr_date(true) }}</td>
+          <td><code>{{ d.event_type }}</code></td>
+          <td>{% if d.success %}<span class="purchase-ok-text">✓ {{ d.status_code }}</span>{% else %}<span class="purchase-alert-text">✗ {{ d.status_code or 'échec réseau' }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% else %}
+<section class="purchase-panel"><p class="purchase-empty">Aucun webhook configuré.</p></section>
+{% endfor %}
+</div>
+{% endblock %}
