@@ -34,3 +34,5 @@ Flask-Limiter[redis]==4.1.1
 
 # Relances par SMS (optionnel — mode simulation sans ces identifiants).
 twilio==9.3.7
+
+svix==2.5.0
