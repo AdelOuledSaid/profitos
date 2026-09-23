@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">BANQUE</div>
+    <h1 class="purchase-title">Règles de catégorisation</h1>
+    <p class="purchase-subtitle">Chaque nouvelle transaction synchronisée est comparée à ces règles (la plus prioritaire d'abord) ; la première dont le motif apparaît dans le libellé lui attribue sa catégorie. Une catégorie déjà assignée n'est jamais écrasée par une resynchronisation.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('banking') }}">← Banque</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Nouvelle règle</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Motif à rechercher dans le libellé<input name="pattern" placeholder="ex: URSSAF" required></label>
+    <label>Catégorie<input name="category" list="category-suggestions" placeholder="ex: Cotisations sociales - URSSAF" required></label>
+    <label>Priorité<input type="number" name="priority" value="0"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Ajouter la règle</button></div>
+  </form>
+  <datalist id="category-suggestions">
+    {% for cat in categories %}<option value="{{ cat }}">{% endfor %}
+  </datalist>
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Comparaison insensible à la casse et aux accents. En cas de priorités égales, la règle ajoutée en premier l'emporte.</p>
+</section>
+
+{% if uncategorized_count %}
+<section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
+  <p style="margin:0;">{{ uncategorized_count }} transaction(s) sans catégorie actuellement.</p>
+  <form method="post" action="{{ url_for('banking_rules_apply') }}" style="margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn secondary">Appliquer les règles aux transactions existantes</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Priorité</th><th>Motif</th><th>Catégorie</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rules %}
+        <tr>
+          <td>{{ r.priority }}</td>
+          <td><code>{{ r.pattern }}</code></td>
+          <td>{{ r.category }}</td>
+          <td style="text-align:right;">
+            <form method="post" action="{{ url_for('banking_rule_delete',rule_id=r.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucune règle définie.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

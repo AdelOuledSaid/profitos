@@ -10,10 +10,27 @@ from flask import flash, redirect, render_template, request, session, url_for
 
 from profitos.feature_access import requires_paid_plan
 from profitos.runtime import *
-from profitos.accounting import generate_purchase_payment_entry, generate_sale_payment_entry, AccountingError
+from profitos.accounting import generate_purchase_payment_entry, generate_sale_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
 
 
 POWENS_TIMEOUT = 20
+
+
+def apply_categorization_rule(conn, label):
+    """Retourne la catégorie de la première règle (par priorité décroissante)
+    dont le motif apparaît dans le libellé de la transaction (comparaison
+    insensible à la casse et aux accents), ou None si aucune règle ne
+    correspond. N'écrit rien — c'est à l'appelant de décider quoi en faire."""
+    if not label:
+        return None
+    label_norm = norm(label)
+    rules = conn.execute(
+        'SELECT pattern,category FROM bank_categorization_rules ORDER BY priority DESC, id ASC'
+    ).fetchall()
+    for r in rules:
+        if norm(r['pattern']) in label_norm:
+            return r['category']
+    return None
 
 
 def _cfg():
@@ -144,15 +161,16 @@ def _sync_powens(c, row):
         account_id = str(t.get("id_account") or t.get("account_id") or "")
         label = t.get("simplified_wording") or t.get("wording") or t.get("original_wording") or ""
         tx_date = str(t.get("date") or t.get("application_date") or "")[:10]
+        auto_category = apply_categorization_rule(c, label)
         c.execute(
-            """INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at)
-               VALUES(?,?,?,?,?,?,?,?)
+            """INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at,category)
+               VALUES(?,?,?,?,?,?,?,?,?)
                ON CONFLICT(provider,provider_transaction_id) DO UPDATE SET
                  provider_account_id=excluded.provider_account_id,transaction_date=excluded.transaction_date,
                  label=excluded.label,amount=excluded.amount,raw_status=excluded.raw_status,
                  last_synced_at=excluded.last_synced_at""",
             ("powens", tid, account_id, tx_date, label, amount,
-             str(t.get("state") or t.get("coming") or ""), now),
+             str(t.get("state") or t.get("coming") or ""), now, auto_category),
         )
 
     c.execute(
@@ -339,6 +357,7 @@ def register(app):
                    JOIN outgoing_invoices i ON i.id=r.invoice_id
                    ORDER BY r.id DESC LIMIT 20'''
             ).fetchall()
+            categories = sorted(DEFAULT_CATEGORY_MAPPING.keys())
         finally:
             c.close()
         return render_template(
@@ -350,6 +369,7 @@ def register(app):
             purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
             powens_configured=_configured(),
+            categories=categories,
         )
 
     @app.get("/banking/connect")
@@ -642,5 +662,79 @@ def register(app):
             log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
         c.close()
         flash("Rapprochement fournisseur confirmé. La facture a été marquée payée.")
+        return redirect(url_for('banking'))
+
+    @app.route('/banking/regles', methods=['GET', 'POST'])
+    @login_required
+    @requires_paid_plan
+    def banking_rules():
+        c = cx()
+        error = None
+        if request.method == 'POST':
+            pattern = (request.form.get('pattern') or '').strip()
+            category = (request.form.get('category') or '').strip()
+            try:
+                priority = int(request.form.get('priority') or 0)
+            except ValueError:
+                priority = 0
+            if not pattern or not category:
+                error = "Le motif et la catégorie sont obligatoires."
+            else:
+                c.execute(
+                    'INSERT INTO bank_categorization_rules(pattern,category,priority,created_at) VALUES(?,?,?,?)',
+                    (pattern, category, priority, now()),
+                )
+                c.commit()
+                flash(f"Règle ajoutée : « {pattern} » → {category}.")
+                return redirect(url_for('banking_rules'))
+
+        rules = c.execute(
+            'SELECT * FROM bank_categorization_rules ORDER BY priority DESC, id ASC'
+        ).fetchall()
+        uncategorized_count = c.execute(
+            'SELECT COUNT(*) n FROM bank_transactions WHERE category IS NULL'
+        ).fetchone()['n']
+        c.close()
+        return render_template('banking_rules.html', rules=rules, error=error,
+                                uncategorized_count=uncategorized_count,
+                                categories=sorted(DEFAULT_CATEGORY_MAPPING.keys()))
+
+    @app.route('/banking/regles/<int:rule_id>/supprimer', methods=['POST'])
+    @login_required
+    @requires_paid_plan
+    def banking_rule_delete(rule_id):
+        c = cx()
+        c.execute('DELETE FROM bank_categorization_rules WHERE id=?', (rule_id,))
+        c.commit(); c.close()
+        flash("Règle supprimée.")
+        return redirect(url_for('banking_rules'))
+
+    @app.route('/banking/regles/appliquer', methods=['POST'])
+    @login_required
+    @requires_paid_plan
+    def banking_rules_apply():
+        c = cx()
+        rows = c.execute(
+            'SELECT id,label FROM bank_transactions WHERE category IS NULL'
+        ).fetchall()
+        applied = 0
+        for r in rows:
+            category = apply_categorization_rule(c, r['label'])
+            if category:
+                c.execute('UPDATE bank_transactions SET category=? WHERE id=?', (category, r['id']))
+                applied += 1
+        c.commit(); c.close()
+        flash(f"{applied} transaction(s) catégorisée(s) sur {len(rows)} sans catégorie.")
+        return redirect(url_for('banking_rules'))
+
+    @app.route('/banking/transactions/<int:tx_id>/categoriser', methods=['POST'])
+    @login_required
+    @requires_paid_plan
+    def banking_transaction_categorize(tx_id):
+        category = (request.form.get('category') or '').strip() or None
+        c = cx()
+        c.execute('UPDATE bank_transactions SET category=? WHERE id=?', (category, tx_id))
+        c.commit(); c.close()
+        flash("Catégorie mise à jour." if category else "Catégorie retirée.")
         return redirect(url_for('banking'))
 

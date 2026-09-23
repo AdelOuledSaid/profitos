@@ -570,6 +570,34 @@ def _purchase_pdf_dir():
     root.mkdir(parents=True, exist_ok=True)
     return root
 
+def _purchase_pdf_dir_for_org(org_id):
+    """Variante de _purchase_pdf_dir() utilisable hors contexte de session —
+    pour le webhook de la boîte mail fournisseurs, qui reçoit des documents
+    sans utilisateur connecté."""
+    root = UP / "purchase_documents" / str(int(org_id))
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+def get_or_create_supplier_inbox_token(org_id):
+    """Retourne le jeton d'adresse email dédiée de l'organisation pour la boîte
+    mail fournisseurs, le créant s'il n'existe pas encore. Stocké dans la base
+    auth (partagée) pour pouvoir être résolu par le webhook sans connaître
+    l'organisation à l'avance — même principe que export_tokens."""
+    ac = auth_cx()
+    row = ac.execute(
+        'SELECT token FROM supplier_inbox_tokens WHERE organization_id=?', (org_id,)
+    ).fetchone()
+    if row:
+        ac.close()
+        return row['token']
+    token = secrets.token_urlsafe(12).lower().replace('-', '').replace('_', '')
+    ac.execute(
+        'INSERT INTO supplier_inbox_tokens(token,organization_id,created_at) VALUES(?,?,?)',
+        (token, org_id, now()),
+    )
+    ac.commit(); ac.close()
+    return token
+
 def _save_purchase_document(uploaded):
     """Enregistre un justificatif d'achat — PDF ou photo (JPEG/PNG/WEBP). Retourne
     (nom_fichier_stocké, mime_type) ou (None, None) si aucun fichier envoyé."""
@@ -1324,6 +1352,118 @@ def register(app):
               else "PDF analysé. Vérifiez les informations avant d'enregistrer.")
         return render_template('purchase_new.html',suppliers=suppliers,
                                detected=detected,pending_document=stored)
+
+    @app.route('/facturation/achats/boite-mail')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_inbox_settings():
+        token = get_or_create_supplier_inbox_token(session['org_id'])
+        domain = os.environ.get('SUPPLIER_INBOX_DOMAIN', 'achats.profitos.fr')
+        c = cx()
+        recent = c.execute(
+            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        c.close()
+        return render_template('purchase_inbox_settings.html',
+                                inbox_address=f"achats+{token}@{domain}", recent=recent)
+
+    @app.route('/webhooks/supplier-inbox', methods=['POST'])
+    def supplier_inbox_webhook():
+        """Réception d'une facture fournisseur par email. Format générique attendu
+        (à adapter précisément selon le fournisseur d'email entrant réellement
+        configuré — Resend, Mailgun, SendGrid... les noms de champs exacts varient) :
+        {"to": "achats+TOKEN@domaine", "from": "...", "subject": "...",
+         "attachments": [{"filename": "...", "content_type": "...", "content": "<base64>"}]}
+        Chaque pièce jointe PDF/image est passée par la même extraction que l'import
+        manuel (texte natif d'abord, IA en repli), puis enregistrée en facture
+        fournisseur EN ATTENTE DE VALIDATION — toujours, quel que soit le réglage de
+        l'organisation, puisqu'aucun humain n'a encore vu ce document."""
+        payload = request.get_json(silent=True) or {}
+        to_field = str(payload.get('to') or '')
+        m = re.search(r'achats\+([a-z0-9]+)@', to_field, re.I)
+        if not m:
+            return jsonify({'error': 'destinataire non reconnu'}), 400
+        token = m.group(1).lower()
+
+        ac = auth_cx()
+        mapping = ac.execute(
+            'SELECT organization_id FROM supplier_inbox_tokens WHERE token=?', (token,)
+        ).fetchone()
+        ac.close()
+        if not mapping:
+            return jsonify({'error': 'jeton inconnu'}), 404
+        org_id = mapping['organization_id']
+
+        attachments = payload.get('attachments') or []
+        created, failed = [], []
+        for att in attachments:
+            filename = att.get('filename') or 'document'
+            content_b64 = att.get('content') or ''
+            try:
+                data = base64.b64decode(content_b64)
+            except Exception:
+                failed.append(f"{filename} : pièce jointe illisible (base64 invalide)")
+                continue
+            if len(data) > _PURCHASE_PDF_MAX_BYTES:
+                failed.append(f"{filename} : dépasse 5 Mo")
+                continue
+            if data.startswith(b"%PDF-"):
+                mime, ext = 'application/pdf', '.pdf'
+            elif data.startswith(b"\xff\xd8\xff"):
+                mime, ext = 'image/jpeg', '.jpg'
+            elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+                mime, ext = 'image/png', '.png'
+            else:
+                failed.append(f"{filename} : format non reconnu (PDF/JPEG/PNG attendu)")
+                continue
+
+            pdf_dir = _purchase_pdf_dir_for_org(org_id)
+            stored = uuid.uuid4().hex + ext
+            (pdf_dir / stored).write_bytes(data)
+            path = pdf_dir / stored
+
+            try:
+                if mime == 'application/pdf':
+                    try:
+                        detected = _purchase_pdf_extract(path)
+                    except (ValueError, PyPdfError) as text_err:
+                        if isinstance(text_err, ValueError) and "PDF sans texte exploitable" not in str(text_err):
+                            raise
+                        detected = _purchase_ai_extract(path.read_bytes(), mime)
+                else:
+                    detected = _purchase_ai_extract(path.read_bytes(), mime)
+            except ValueError as e:
+                path.unlink(missing_ok=True)
+                failed.append(f"{filename} : {e}")
+                continue
+
+            sender = (payload.get('from') or '').strip()
+            tc = tenant_cx_direct(org_id)
+            tc.execute(
+                """INSERT INTO purchase_invoices(
+                     supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,
+                     status,notes,created_at,document_path,category,validation_status)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (detected['supplier_name'], detected['invoice_number'],
+                 detected['issue_date'] or None, detected['due_date'] or None,
+                 detected['subtotal'], detected['vat_amount'], detected['total'],
+                 'unpaid', f"Reçu par email de {sender}" if sender else 'Reçu par email',
+                 now(), stored, 'autre', 'pending'),
+            )
+            tc.commit()
+            new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+            try:
+                purchase_row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
+                generate_purchase_entry(tc, purchase_row)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {e}")
+            tc.close()
+            created.append(detected['invoice_number'])
+
+        log_ops_event('SUPPLIER_INBOX_RECEIVED', outcome='INFO' if created else 'WARNING',
+                       detail=f"org={org_id} créées={created} échecs={failed}")
+        return jsonify({'created': created, 'failed': failed}), 200
 
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
     @login_required

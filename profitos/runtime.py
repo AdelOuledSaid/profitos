@@ -143,6 +143,11 @@ def init_auth_db():
         date_to TEXT NOT NULL,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS supplier_inbox_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL UNIQUE,
+        created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoice_tokens(
         token TEXT PRIMARY KEY,
         organization_id INTEGER NOT NULL,
@@ -681,7 +686,7 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status'):
+        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox'):
             return
         token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or not sent or not secrets.compare_digest(token,sent):
@@ -780,7 +785,15 @@ def init_tenant_db(org_id=None):
         amount REAL,
         raw_status TEXT,
         last_synced_at TEXT,
+        category TEXT,
         UNIQUE(provider,provider_transaction_id)
+    );
+    CREATE TABLE IF NOT EXISTS bank_categorization_rules(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern TEXT NOT NULL,
+        category TEXT NOT NULL,
+        priority INTEGER DEFAULT 0,
+        created_at TEXT
     );
     CREATE TABLE IF NOT EXISTS bank_purchase_reconciliations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -958,7 +971,8 @@ def init_tenant_db(org_id=None):
                        ('app_settings','weinvoice_onboarded_at'),
                        ('app_settings','require_purchase_validation'),
                        ('purchase_invoices','validation_status'),('purchase_invoices','validated_by'),
-                       ('purchase_invoices','validated_at'),('purchase_invoices','rejection_reason')):
+                       ('purchase_invoices','validated_at'),('purchase_invoices','rejection_reason'),
+                       ('bank_transactions','category')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ACHATS · BOÎTE MAIL FOURNISSEURS</div>
+    <h1 class="purchase-title">Recevoir tes factures par email</h1>
+    <p class="purchase-subtitle">Donne cette adresse à tes fournisseurs (ou configure un renvoi automatique) : chaque facture reçue en pièce jointe est analysée et enregistrée automatiquement, en attente de validation.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a>
+</div>
+
+<section class="purchase-panel" style="max-width:560px;margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Ton adresse dédiée</h2>
+  <code style="display:block;padding:12px;background:rgba(0,0,0,.3);border-radius:8px;word-break:break-all;font-size:14px;">{{ inbox_address }}</code>
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Accepte les PDF et photos (JPEG, PNG) jusqu'à 5 Mo. Chaque facture reçue est automatiquement mise en attente de validation — quel que soit ton réglage habituel — puisqu'aucun humain ne l'a encore vérifiée.</p>
+</section>
+
+<section class="purchase-panel">
+  <h2 style="color:#fff;margin-top:0;">Dernières factures reçues par email</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Fournisseur</th><th>Facture</th><th>Montant</th><th></th></tr></thead>
+      <tbody>
+      {% for p in recent %}
+        <tr>
+          <td>{{ p.supplier_name }}</td>
+          <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail',purchase_id=p.id) }}">{{ p.invoice_number }}</a></td>
+          <td><strong>{{ p.total|fr_number(2) }} €</strong></td>
+          <td>{% if p.validation_status=='pending' %}<span class="purchase-status-warn" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;">⏳ À valider</span>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucune facture reçue par email pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}
