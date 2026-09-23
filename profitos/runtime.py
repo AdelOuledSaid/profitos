@@ -98,7 +98,8 @@ def init_auth_db():
         created_by TEXT,
         created_at TEXT,
         last_used_at TEXT,
-        revoked_at TEXT
+        revoked_at TEXT,
+        scope TEXT DEFAULT 'read'
     );
     CREATE TABLE IF NOT EXISTS buyer_signals(
         buyer_name_norm TEXT NOT NULL,
@@ -190,6 +191,14 @@ def init_auth_db():
         ('referral_code',"ALTER TABLE organizations ADD COLUMN referral_code TEXT"),
     ):
         if col not in org_cols: c.execute(ddl)
+    api_keys_cols=[r['name'] for r in c.execute('PRAGMA table_info(api_keys)').fetchall()]
+    for col,ddl in (
+        # Les clés créées avant l'ajout de ce champ restent en lecture seule
+        # (comportement d'origine préservé — jamais d'élévation silencieuse
+        # vers l'écriture pour une clé déjà distribuée à un client).
+        ('scope',"ALTER TABLE api_keys ADD COLUMN scope TEXT DEFAULT 'read'"),
+    ):
+        if col not in api_keys_cols: c.execute(ddl)
     c.commit(); c.close()
     ensure_security_events_table()
 
@@ -687,6 +696,13 @@ def csrf_token():
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
         if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox'):
+            return
+        # Les routes /api/v1/* s'authentifient par clé API (Authorization: Bearer),
+        # jamais par cookie de session — un navigateur ne rejoue jamais un en-tête
+        # Authorization sur une requête cross-site, donc le CSRF ne s'applique pas
+        # à ces routes par construction (contrairement aux formulaires web classiques
+        # ci-dessous, qui s'appuient sur le cookie de session).
+        if request.path.startswith('/api/v1/'):
             return
         token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or not sent or not secrets.compare_digest(token,sent):
@@ -1364,6 +1380,23 @@ def api_key_required(fn):
         if not row:
             return jsonify({'error':'invalid_api_key','message':'Clé API invalide ou révoquée.'}),401
         g.api_org_id=row['organization_id']
+        g.api_key_scope=row['scope'] or 'read'
+        return fn(*args,**kwargs)
+    return wrapped
+
+def api_write_required(fn):
+    """À empiler après @api_key_required sur les routes d'écriture. Exige une
+    clé explicitement créée avec la portée 'read_write' — une clé existante
+    créée avant l'introduction de ce champ reste 'read' par défaut et se
+    voit refuser l'accès, jamais élevée en silence."""
+    @functools.wraps(fn)
+    def wrapped(*args,**kwargs):
+        if getattr(g, 'api_key_scope', 'read') != 'read_write':
+            return jsonify({
+                'error':'insufficient_scope',
+                'message':"Cette clé API est en lecture seule. Crée une clé avec la portée "
+                          "'Lecture + écriture' dans Paramètres > Clés API pour utiliser cet endpoint.",
+            }),403
         return fn(*args,**kwargs)
     return wrapped
 

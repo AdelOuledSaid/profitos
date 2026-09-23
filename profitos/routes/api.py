@@ -46,6 +46,149 @@ def register(app):
         return jsonify({'recover':recover,'save':save,'grow_opportunities':grow_n})
 
     # ------------------------------------------------------------------
+    # API en écriture — nécessite une clé créée avec la portée explicite
+    # 'read_write' (voir api_write_required dans profitos/runtime.py). Une
+    # clé existante créée avant l'introduction de ce champ reste en lecture
+    # seule par défaut, jamais élevée en silence.
+    # ------------------------------------------------------------------
+
+    @app.route('/api/v1/purchase-invoices', methods=['POST'])
+    @api_key_required
+    @api_write_required
+    def api_create_purchase_invoice():
+        from profitos.routes.invoicing import PURCHASE_CATEGORY_LABELS
+        from profitos.accounting import generate_purchase_entry, AccountingError
+        payload = request.get_json(silent=True) or {}
+        supplier_name = (payload.get('supplier_name') or '').strip()
+        invoice_number = (payload.get('invoice_number') or '').strip()
+        try:
+            subtotal = float(payload.get('subtotal'))
+            vat_amount = float(payload.get('vat_amount', 0) or 0)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'invalid_amount', 'message': 'subtotal doit être un nombre.'}), 400
+        if not supplier_name or not invoice_number:
+            return jsonify({'error': 'missing_fields', 'message': 'supplier_name et invoice_number sont obligatoires.'}), 400
+        category = payload.get('category', 'autre')
+        if category not in PURCHASE_CATEGORY_LABELS:
+            category = 'autre'
+        total = round(subtotal + vat_amount, 2)
+
+        tc = tenant_cx_direct(g.api_org_id)
+        existing = tc.execute('SELECT id FROM purchase_invoices WHERE invoice_number=?', (invoice_number,)).fetchone()
+        if existing:
+            tc.close()
+            return jsonify({'error': 'duplicate_invoice_number', 'message': f"Facture {invoice_number} déjà enregistrée."}), 409
+        tc.execute(
+            """INSERT INTO purchase_invoices
+               (supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,notes,created_at,category,validation_status)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (supplier_name, invoice_number, payload.get('issue_date'), payload.get('due_date'),
+             subtotal, vat_amount, total, 'unpaid', 'Créée via API', now(), category, 'pending'),
+        )
+        tc.commit()
+        new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+        try:
+            row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
+            generate_purchase_entry(tc, row)
+        except AccountingError as e:
+            log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat API {new_id}: {e}")
+        tc.close()
+        log_activity('API_PURCHASE_CREATED', f"Facture fournisseur {invoice_number} créée via API")
+        return jsonify({'id': new_id, 'invoice_number': invoice_number, 'total': total, 'validation_status': 'pending'}), 201
+
+    @app.route('/api/v1/expense-reports', methods=['POST'])
+    @api_key_required
+    @api_write_required
+    def api_create_expense_report():
+        from profitos.expenses import EXPENSE_REPORT_CATEGORY_LABELS
+        payload = request.get_json(silent=True) or {}
+        employee_email = (payload.get('employee_email') or '').strip()
+        lines = payload.get('lines') or []
+        if not employee_email:
+            return jsonify({'error': 'missing_fields', 'message': 'employee_email est obligatoire.'}), 400
+        if not lines:
+            return jsonify({'error': 'missing_lines', 'message': 'Au moins une ligne de dépense est requise.'}), 400
+        clean_lines = []
+        for i, l in enumerate(lines):
+            category = l.get('category', 'autre')
+            if category not in EXPENSE_REPORT_CATEGORY_LABELS:
+                category = 'autre'
+            try:
+                amount = float(l.get('amount'))
+            except (TypeError, ValueError):
+                return jsonify({'error': 'invalid_amount', 'message': f"Ligne {i+1} : amount invalide."}), 400
+            if amount <= 0:
+                return jsonify({'error': 'invalid_amount', 'message': f"Ligne {i+1} : amount doit être positif."}), 400
+            clean_lines.append({
+                'category': category, 'amount': amount,
+                'expense_date': l.get('expense_date'), 'description': l.get('description', ''),
+            })
+
+        tc = tenant_cx_direct(g.api_org_id)
+        tc.execute(
+            "INSERT INTO expense_reports(employee_email,period_label,status,created_at) VALUES(?,?,'draft',?)",
+            (employee_email, payload.get('period_label'), now()),
+        )
+        tc.commit()
+        report_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+        for l in clean_lines:
+            tc.execute(
+                "INSERT INTO expense_report_lines(report_id,expense_date,category,description,amount,created_at) VALUES(?,?,?,?,?,?)",
+                (report_id, l['expense_date'], l['category'], l['description'], l['amount'], now()),
+            )
+        tc.commit(); tc.close()
+        log_activity('API_EXPENSE_REPORT_CREATED', f"Note de frais #{report_id} créée via API pour {employee_email}")
+        return jsonify({'id': report_id, 'employee_email': employee_email, 'status': 'draft',
+                         'lines_count': len(clean_lines)}), 201
+
+    @app.route('/api/v1/invoices', methods=['POST'])
+    @api_key_required
+    @api_write_required
+    def api_create_invoice():
+        payload = request.get_json(silent=True) or {}
+        client_name = (payload.get('client_name') or '').strip()
+        lines = payload.get('lines') or []
+        if not client_name:
+            return jsonify({'error': 'missing_fields', 'message': 'client_name est obligatoire.'}), 400
+        if not lines:
+            return jsonify({'error': 'missing_lines', 'message': 'Au moins une ligne de facture est requise.'}), 400
+        subtotal = 0.0
+        vat_amount = 0.0
+        clean_lines = []
+        for i, l in enumerate(lines):
+            try:
+                qty = float(l.get('qty', 1))
+                price = float(l.get('unit_price'))
+                vat_rate = float(l.get('vat_rate', 20))
+            except (TypeError, ValueError):
+                return jsonify({'error': 'invalid_line', 'message': f"Ligne {i+1} : qty/unit_price/vat_rate invalide."}), 400
+            line_ht = round(qty * price, 2)
+            subtotal += line_ht
+            vat_amount += round(line_ht * vat_rate / 100, 2)
+            clean_lines.append({'label': l.get('label', ''), 'qty': qty, 'unit_price': price, 'vat_rate': vat_rate})
+        subtotal = round(subtotal, 2)
+        vat_amount = round(vat_amount, 2)
+        total = round(subtotal + vat_amount, 2)
+
+        tc = tenant_cx_direct(g.api_org_id)
+        seq = tc.execute("SELECT COUNT(*) n FROM outgoing_invoices").fetchone()['n'] + 1
+        invoice_number = f"FA-API-{date.today().year}-{seq:04d}"
+        tc.execute(
+            """INSERT INTO outgoing_invoices
+               (invoice_number,client_name,client_address,client_email,issue_date,due_date,
+                line_items,subtotal,vat_amount,total,status,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (invoice_number, client_name, payload.get('client_address', ''), payload.get('client_email', ''),
+             date.today().isoformat(), payload.get('due_date'), json.dumps(clean_lines, ensure_ascii=False),
+             subtotal, vat_amount, total, 'draft', now()),
+        )
+        tc.commit()
+        new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+        tc.close()
+        log_activity('API_INVOICE_CREATED', f"Facture {invoice_number} créée via API (brouillon)")
+        return jsonify({'id': new_id, 'invoice_number': invoice_number, 'total': total, 'status': 'draft'}), 201
+
+    # ------------------------------------------------------------------
     # Gestion des clés API (créer / lister / révoquer) — page normale,
     # authentifiée par session comme le reste de l'app, pas par clé API.
     # ------------------------------------------------------------------
@@ -64,10 +207,11 @@ def register(app):
             action=request.form.get('action')
             if action=='create':
                 raw_key=generate_api_key()
-                c.execute('INSERT INTO api_keys(organization_id,key_hash,key_prefix,created_by,created_at) VALUES(?,?,?,?,?)',
-                    (org['id'],hash_api_key(raw_key),raw_key[:16],current_user()['email'],now()))
+                scope=request.form.get('scope') if request.form.get('scope') in ('read','read_write') else 'read'
+                c.execute('INSERT INTO api_keys(organization_id,key_hash,key_prefix,created_by,created_at,scope) VALUES(?,?,?,?,?,?)',
+                    (org['id'],hash_api_key(raw_key),raw_key[:16],current_user()['email'],now(),scope))
                 c.commit(); c.close()
-                log_activity('API_KEY_CREATED','Nouvelle clé API créée')
+                log_activity('API_KEY_CREATED',f'Nouvelle clé API créée (portée : {scope})')
                 flash('Clé créée — copie-la maintenant, elle ne sera plus jamais affichée en clair.')
                 keys=_load_api_keys(org['id'])
                 return render_template('api_keys.html',keys=keys,new_key=raw_key)

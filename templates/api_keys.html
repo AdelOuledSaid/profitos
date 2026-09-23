@@ -27,7 +27,7 @@
       {% for k in keys %}
         <tr>
           <td>
-            <strong>{{ k.key_prefix }}...</strong><br>
+            <strong>{{ k.key_prefix }}...</strong> <span class="purchase-status" style="font-size:11px;">{{ 'Lecture + écriture' if k.scope=='read_write' else 'Lecture seule' }}</span><br>
             <small class="purchase-muted">Créée le {{ k.created_at|fr_date }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at|fr_date }}{% endif %}</small>
           </td>
           <td style="text-align:right;">
@@ -47,8 +47,12 @@
   </div>
 </section>
 
-<form method="post" style="margin-top:20px;">
+<form method="post" style="margin-top:20px;display:flex;gap:10px;align-items:center;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
+  <select name="scope">
+    <option value="read">Lecture seule</option>
+    <option value="read_write">Lecture + écriture</option>
+  </select>
   <button class="purchase-primary-btn primary">Générer une nouvelle clé</button>
 </form>
 </div>
