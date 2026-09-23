@@ -11,6 +11,15 @@ document.addEventListener('change', function (event) {
   if (target && target.matches('[data-auto-submit]') && target.form) {
     target.form.requestSubmit ? target.form.requestSubmit() : target.form.submit();
   }
+  if (target && target.id === 'expense-category-select') {
+    var isKm = target.value === 'kilometrique';
+    document.querySelectorAll('[data-expense-field="kilometrique"]').forEach(function (el) {
+      el.style.display = isKm ? '' : 'none';
+    });
+    document.querySelectorAll('[data-expense-field="regular"]').forEach(function (el) {
+      el.style.display = isKm ? 'none' : '';
+    });
+  }
 });
 
 document.addEventListener('click', function (event) {

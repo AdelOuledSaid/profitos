@@ -964,6 +964,40 @@ def init_tenant_db(org_id=None):
         response_snippet TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_sub ON webhook_deliveries(subscription_id);
+    CREATE TABLE IF NOT EXISTS expense_reports(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_email TEXT NOT NULL,
+        period_label TEXT,
+        status TEXT DEFAULT 'draft',
+        submitted_at TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        rejection_reason TEXT,
+        reimbursed_at TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS expense_report_lines(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER NOT NULL,
+        expense_date TEXT,
+        category TEXT NOT NULL,
+        description TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        vat_amount REAL DEFAULT 0,
+        receipt_path TEXT,
+        vehicle_fiscal_power TEXT,
+        km_driven REAL,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS mileage_rate_table(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fiscal_power TEXT NOT NULL,
+        bracket TEXT NOT NULL,
+        rate_per_km REAL DEFAULT 0,
+        fixed_amount REAL DEFAULT 0,
+        UNIQUE(fiscal_power,bracket)
+    );
+    CREATE INDEX IF NOT EXISTS idx_expense_report_lines_report ON expense_report_lines(report_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
@@ -1001,6 +1035,8 @@ def init_tenant_db(org_id=None):
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
     from profitos.accounting import seed_accounting_defaults
     seed_accounting_defaults(c)
+    from profitos.expenses import seed_mileage_rate_table
+    seed_mileage_rate_table(c)
     c.close()
 
 def norm(x):

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">NOTES DE FRAIS</div>
+    <h1 class="purchase-title">{{ 'Toutes les notes de frais' if can_see_all else 'Mes notes de frais' }}</h1>
+    <p class="purchase-subtitle">Dépenses professionnelles et indemnités kilométriques.</p>
+  </div>
+  <div class="purchase-primary-actions">
+    <a class="purchase-nav-btn" href="{{ url_for('mileage_rate_settings') }}">Barème kilométrique</a>
+    <form method="post" action="{{ url_for('expense_report_new') }}" style="display:inline-flex;gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="period_label" placeholder="ex: Septembre 2026" style="width:180px;">
+      <button type="submit" class="purchase-primary-btn primary">+ Nouvelle note</button>
+    </form>
+  </div>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr>{% if can_see_all %}<th>Employé</th>{% endif %}<th>Période</th><th>Montant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for r in reports %}
+        <tr>
+          {% if can_see_all %}<td>{{ r.employee_email }}</td>{% endif %}
+          <td><a class="purchase-detail-link" href="{{ url_for('expense_report_detail',report_id=r.id) }}"><strong>{{ r.period_label or ('Note #' ~ r.id) }}</strong></a></td>
+          <td><strong>{{ totals.get(r.id,0)|fr_number(2) }} €</strong></td>
+          <td>
+            <span class="purchase-status {{ 'paid' if r.status in ('approved','reimbursed') else ('overdue' if r.status=='rejected' else '') }}">
+              {{ {'draft':'Brouillon','submitted':'En attente','approved':'Validée','rejected':'Rejetée','reimbursed':'Remboursée'}.get(r.status, r.status) }}
+            </span>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 4 if can_see_all else 3 }}" class="purchase-empty">Aucune note de frais pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

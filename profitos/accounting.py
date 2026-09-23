@@ -56,6 +56,7 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('623000', 'Publicité, publications, relations publiques', 6, False),
     ('625100', 'Voyages et déplacements', 6, False),
     ('625600', 'Missions', 6, False),
+    ('625700', 'Réceptions', 6, False),
     ('626000', 'Frais postaux et de télécommunications', 6, False),
     ('627000', 'Services bancaires', 6, False),
     ('628100', 'Cotisations diverses', 6, False),

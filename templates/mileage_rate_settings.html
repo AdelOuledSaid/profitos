@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">NOTES DE FRAIS</div>
+    <h1 class="purchase-title">Barème kilométrique</h1>
+    <p class="purchase-subtitle">Structure officielle à 3 tranches par puissance fiscale. Un taux resté à 0 bloque le calcul (aucun remboursement à 0 € silencieux) — vérifie les taux exacts sur le site des impôts avant de les saisir.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('expense_reports_list') }}">← Notes de frais</a>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for fp in fiscal_powers %}
+  <section class="purchase-panel" style="margin-bottom:16px;">
+    <h2 style="color:#fff;margin-top:0;">{{ fp }} CV{% if fp=='7+' %} et plus{% endif %}</h2>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Tranche</th><th>Taux par km (€)</th><th>Montant fixe (€)</th></tr></thead>
+        <tbody>
+        {% for bracket in brackets %}
+          {% set r = rates.get((fp, bracket)) %}
+          <tr>
+            <td>{{ bracket_labels[bracket] }}</td>
+            <td><input type="number" name="rate_{{ fp }}_{{ bracket }}" value="{{ r.rate_per_km if r else 0 }}" step="0.001" min="0" style="max-width:140px;"></td>
+            <td><input type="number" name="fixed_{{ fp }}_{{ bracket }}" value="{{ r.fixed_amount if r else 0 }}" step="0.01" min="0" style="max-width:140px;" {% if bracket!='5001_to_20000' %}disabled{% endif %}></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+  <button type="submit" class="purchase-primary-btn primary">Enregistrer le barème</button>
+</form>
+</div>
+{% endblock %}

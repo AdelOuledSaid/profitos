@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">NOTE DE FRAIS</div>
+    <h1 class="purchase-title">{{ report.period_label or ('Note #' ~ report.id) }}</h1>
+    <p class="purchase-subtitle">{{ report.employee_email }}</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('expense_reports_list') }}">← Retour</a>
+</div>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0 24px;">
+  <span class="purchase-status {{ 'paid' if report.status in ('approved','reimbursed') else ('overdue' if report.status=='rejected' else '') }}">
+    {{ {'draft':'Brouillon','submitted':'En attente de validation','approved':'Validée','rejected':'Rejetée','reimbursed':'Remboursée'}.get(report.status, report.status) }}
+  </span>
+  {% if report.status=='draft' %}
+  <form method="post" action="{{ url_for('expense_report_submit',report_id=report.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Soumettre pour validation</button>
+  </form>
+  {% elif report.status=='submitted' and current_role() in ('OWNER','ADMIN','COMPTABLE') %}
+  <form method="post" action="{{ url_for('expense_report_approve',report_id=report.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Valider</button>
+  </form>
+  <form method="post" action="{{ url_for('expense_report_reject',report_id=report.id) }}" style="display:flex;gap:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="rejection_reason" placeholder="Motif (optionnel)" style="width:200px;">
+    <button type="submit" class="purchase-primary-btn secondary">Rejeter</button>
+  </form>
+  {% elif report.status=='approved' and current_role() in ('OWNER','ADMIN','COMPTABLE') %}
+  <form method="post" action="{{ url_for('expense_report_reimburse',report_id=report.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Marquer remboursée</button>
+  </form>
+  {% elif report.status=='rejected' and report.rejection_reason %}
+  <span class="purchase-alert-text">Motif : {{ report.rejection_reason }}</span>
+  {% endif %}
+</div>
+
+{% if report.status=='draft' %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Ajouter une dépense</h2>
+  <form method="post" action="{{ url_for('expense_report_add_line',report_id=report.id) }}" enctype="multipart/form-data" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Catégorie
+      <select name="category" id="expense-category-select">
+        {% for key, label, _ in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Date<input type="date" name="expense_date"></label>
+
+    <label class="wide" data-expense-field="regular">Reçu (PDF/JPEG/PNG, analysé automatiquement)<input type="file" name="receipt" accept=".pdf,.jpg,.jpeg,.png"></label>
+    <label data-expense-field="regular">Montant TTC (€) — laisser vide si reçu joint<input type="number" name="amount" step="0.01" min="0"></label>
+    <label class="wide" data-expense-field="regular">Description<input type="text" name="description" placeholder="ex: Déjeuner client"></label>
+
+    <label data-expense-field="kilometrique" style="display:none;">Puissance fiscale (CV)
+      <select name="vehicle_fiscal_power">{% for fp in fiscal_powers %}<option value="{{ fp }}">{{ fp }}</option>{% endfor %}</select>
+    </label>
+    <label data-expense-field="kilometrique" style="display:none;">Distance parcourue (km)<input type="number" name="km_driven" step="0.1" min="0"></label>
+
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Ajouter la ligne</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Catégorie</th><th>Description</th><th style="text-align:right;">Montant</th>{% if report.status=='draft' %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for l in lines %}
+        <tr>
+          <td>{{ l.expense_date|fr_date or '—' }}</td>
+          <td>{{ category_labels.get(l.category, l.category) }}</td>
+          <td>{{ l.description or '—' }}{% if l.receipt_path %} <span class="purchase-muted" style="font-size:11px;">(reçu joint)</span>{% endif %}</td>
+          <td style="text-align:right;"><strong>{{ l.amount|fr_number(2) }} €</strong></td>
+          {% if report.status=='draft' %}
+          <td><form method="post" action="{{ url_for('expense_report_delete_line',report_id=report.id,line_id=l.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Retirer</button></form></td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucune ligne pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="purchase-total-line" style="margin-top:16px;">
+    <span class="purchase-muted">Total</span>
+    <strong>{{ total|fr_number(2) }} €</strong>
+  </div>
+</section>
+</div>
+{% endblock %}
