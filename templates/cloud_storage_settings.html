@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">INTÉGRATIONS</div>
+    <h1 class="purchase-title">Dropbox &amp; Google Drive</h1>
+    <p class="purchase-subtitle">Importe automatiquement les factures fournisseurs déposées dans un dossier surveillé — même moteur d'analyse que la boîte mail fournisseurs.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a>
+</div>
+
+{% for key, cfg in providers.items() %}
+{% set conn = connections.get(key) %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div>
+      <h2 style="color:#fff;margin:0 0 6px;">{{ cfg.label }}</h2>
+      {% if not is_configured(key) %}
+        <p class="purchase-muted" style="font-size:13px;">Non configuré côté serveur (variables d'environnement manquantes).</p>
+      {% elif conn %}
+        <p class="purchase-ok-text" style="font-size:13px;">Connecté le {{ conn.connected_at|fr_date(true) }} par {{ conn.connected_by }}.</p>
+        {% if conn.last_sync_at %}<p class="purchase-muted" style="font-size:12px;">Dernière synchronisation : {{ conn.last_sync_at|fr_date(true) }}</p>{% endif %}
+        {% if conn.last_sync_error %}<p class="purchase-alert-text" style="font-size:12px;">{{ conn.last_sync_error }}</p>{% endif %}
+      {% else %}
+        <p class="purchase-muted" style="font-size:13px;">Non connecté.</p>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;">
+      {% if is_configured(key) and not conn %}
+      <a class="purchase-primary-btn primary" href="{{ url_for('cloud_storage_connect',provider=key) }}">Connecter</a>
+      {% elif conn %}
+      <form method="post" action="{{ url_for('cloud_storage_sync',provider=key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn primary">Synchroniser maintenant</button>
+      </form>
+      <form method="post" action="{{ url_for('cloud_storage_disconnect',provider=key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn secondary">Déconnecter</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if conn %}
+  <form method="post" action="{{ url_for('cloud_storage_set_folder',provider=key) }}" style="margin-top:16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="flex:1;min-width:220px;">{{ 'Chemin du dossier (ex: /Factures)' if key=='dropbox' else "Identifiant du dossier Google Drive" }}
+      <input type="text" name="folder_path" value="{{ conn.folder_path or '' }}" placeholder="{{ '/Factures' if key=='dropbox' else 'ID du dossier' }}">
+    </label>
+    <button type="submit" class="purchase-primary-btn secondary">Enregistrer le dossier</button>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

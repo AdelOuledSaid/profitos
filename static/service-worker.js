@@ -1,9 +1,10 @@
-const CACHE_NAME = 'profitos-shell-v2';
+const CACHE_NAME = 'profitos-shell-v3';
 const SHELL_ASSETS = [
   '/static/style.css',
   '/static/manifest.json',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
+  '/static/offline-retry.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -27,7 +28,9 @@ const OFFLINE_HTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8"
 <style>body{margin:0;background:#081020;color:#f6f8fc;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;text-align:center;padding:24px}
 button{margin-top:16px;background:#f5f8ff;color:#081020;border:0;border-radius:10px;padding:12px 20px;font-weight:900;cursor:pointer}</style>
 </head><body><div><h1>Vous etes hors ligne</h1><p>ProfitOS a besoin d'une connexion pour afficher vos donnees financieres a jour.</p>
-<button onclick="location.reload()">Reessayer</button></div></body></html>`;
+<button id="offline-retry">Reessayer</button></div>
+<script src="/static/offline-retry.js"></script>
+</body></html>`;
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;

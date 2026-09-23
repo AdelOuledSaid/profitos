@@ -1040,6 +1040,29 @@ def init_tenant_db(org_id=None):
         UNIQUE(asset_id,period_label)
     );
     CREATE INDEX IF NOT EXISTS idx_depreciation_runs_asset ON fixed_asset_depreciation_runs(asset_id);
+    CREATE TABLE IF NOT EXISTS cloud_storage_connections(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        token_expires_at TEXT,
+        account_email TEXT,
+        folder_path TEXT,
+        connected_at TEXT,
+        connected_by TEXT,
+        last_sync_at TEXT,
+        last_sync_error TEXT,
+        status TEXT DEFAULT 'active',
+        UNIQUE(provider)
+    );
+    CREATE TABLE IF NOT EXISTS cloud_storage_imported_files(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        connection_id INTEGER NOT NULL,
+        provider_file_id TEXT NOT NULL,
+        purchase_invoice_id INTEGER,
+        imported_at TEXT,
+        UNIQUE(connection_id,provider_file_id)
+    );
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
