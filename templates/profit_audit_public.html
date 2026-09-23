@@ -11,7 +11,7 @@
 </form>
 
 {% if result %}
-<section class="panel" style="margin-top:24px;background:#0a1529;">
+<section class="panel" style="margin-top:24px;">
   <h2>Estimation indicative</h2>
   <div class="simpleline"><span>Créances potentiellement récupérables</span><span class="money">{{ result.recoverable_low|fr_number }} — {{ result.recoverable_high|fr_number }} €</span></div>
   <div class="simpleline"><span>Économies potentielles estimées</span><span class="money">{{ result.savings_estimate|fr_number }} €/an</span></div>
