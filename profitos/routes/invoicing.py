@@ -1371,17 +1371,44 @@ def register(app):
 
     @app.route('/webhooks/supplier-inbox', methods=['POST'])
     def supplier_inbox_webhook():
-        """Réception d'une facture fournisseur par email. Format générique attendu
-        (à adapter précisément selon le fournisseur d'email entrant réellement
-        configuré — Resend, Mailgun, SendGrid... les noms de champs exacts varient) :
-        {"to": "achats+TOKEN@domaine", "from": "...", "subject": "...",
-         "attachments": [{"filename": "...", "content_type": "...", "content": "<base64>"}]}
-        Chaque pièce jointe PDF/image est passée par la même extraction que l'import
-        manuel (texte natif d'abord, IA en repli), puis enregistrée en facture
-        fournisseur EN ATTENTE DE VALIDATION — toujours, quel que soit le réglage de
-        l'organisation, puisqu'aucun humain n'a encore vu ce document."""
-        payload = request.get_json(silent=True) or {}
-        to_field = str(payload.get('to') or '')
+        """Réception Resend ``email.received`` pour la boîte mail fournisseurs.
+
+        Le webhook est authentifié avec la signature Svix/Resend sur le corps brut.
+        Le payload ne contient que les métadonnées des pièces jointes : leur contenu
+        est téléchargé via l'API Receiving de Resend, puis traité par le même moteur
+        PDF/IA que l'import manuel. Toute facture créée arrive en validation_status
+        ``pending`` afin qu'un humain la valide avant paiement.
+        """
+        webhook_secret = os.environ.get('RESEND_WEBHOOK_SECRET', '').strip()
+        resend_key = os.environ.get('RESEND_API_KEY', '').strip()
+        if not webhook_secret or not resend_key:
+            current_app.logger.error('Supplier inbox: configuration Resend incomplète')
+            return jsonify({'error': 'configuration Resend incomplète'}), 503
+
+        raw_body = request.get_data(cache=True)
+        try:
+            from svix.webhooks import Webhook
+            verified = Webhook(webhook_secret).verify(
+                raw_body,
+                {
+                    'svix-id': request.headers.get('svix-id', ''),
+                    'svix-timestamp': request.headers.get('svix-timestamp', ''),
+                    'svix-signature': request.headers.get('svix-signature', ''),
+                },
+            )
+        except Exception as exc:
+            current_app.logger.warning('Supplier inbox: signature Resend invalide: %s', exc)
+            return jsonify({'error': 'signature webhook invalide'}), 400
+
+        payload = verified if isinstance(verified, dict) else (request.get_json(silent=True) or {})
+        if payload.get('type') != 'email.received':
+            return jsonify({'received': True, 'ignored': True}), 200
+
+        event = payload.get('data') or {}
+        to_values = event.get('to') or []
+        if isinstance(to_values, str):
+            to_values = [to_values]
+        to_field = ' '.join(str(v) for v in to_values)
         m = re.search(r'achats\+([a-z0-9]+)@', to_field, re.I)
         if not m:
             return jsonify({'error': 'destinataire non reconnu'}), 400
@@ -1396,16 +1423,49 @@ def register(app):
             return jsonify({'error': 'jeton inconnu'}), 404
         org_id = mapping['organization_id']
 
-        attachments = payload.get('attachments') or []
+        email_id = str(event.get('email_id') or '').strip()
+        if not email_id:
+            return jsonify({'error': 'email_id Resend manquant'}), 400
+
+        # Idempotence : une relivraison/relecture Resend ne doit pas recréer la facture.
+        tc = tenant_cx_direct(org_id)
+        already = tc.execute(
+            "SELECT id FROM purchase_invoices WHERE notes LIKE ? LIMIT 1",
+            (f'%Resend email {email_id}%',),
+        ).fetchone()
+        tc.close()
+        if already:
+            return jsonify({'received': True, 'duplicate': True, 'created': [], 'failed': []}), 200
+
+        api_headers = {'Authorization': f'Bearer {resend_key}', 'Accept': 'application/json'}
+        try:
+            r = requests.get(
+                f'https://api.resend.com/emails/receiving/{email_id}/attachments',
+                headers=api_headers, timeout=15,
+            )
+            r.raise_for_status()
+            attachment_payload = r.json()
+            attachments = attachment_payload.get('data') or []
+        except Exception as exc:
+            current_app.logger.exception('Supplier inbox: impossible de lister les pièces jointes Resend')
+            return jsonify({'error': 'impossible de récupérer les pièces jointes'}), 502
+
         created, failed = [], []
+        sender = str(event.get('from') or '').strip()
         for att in attachments:
             filename = att.get('filename') or 'document'
-            content_b64 = att.get('content') or ''
-            try:
-                data = base64.b64decode(content_b64)
-            except Exception:
-                failed.append(f"{filename} : pièce jointe illisible (base64 invalide)")
+            download_url = str(att.get('download_url') or '').strip()
+            if not download_url.startswith('https://'):
+                failed.append(f"{filename} : URL de téléchargement absente ou invalide")
                 continue
+            try:
+                dl = requests.get(download_url, timeout=20)
+                dl.raise_for_status()
+                data = dl.content
+            except Exception:
+                failed.append(f"{filename} : téléchargement impossible")
+                continue
+
             if len(data) > _PURCHASE_PDF_MAX_BYTES:
                 failed.append(f"{filename} : dépasse 5 Mo")
                 continue
@@ -1415,14 +1475,16 @@ def register(app):
                 mime, ext = 'image/jpeg', '.jpg'
             elif data.startswith(b"\x89PNG\r\n\x1a\n"):
                 mime, ext = 'image/png', '.png'
+            elif len(data) > 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
+                mime, ext = 'image/webp', '.webp'
             else:
-                failed.append(f"{filename} : format non reconnu (PDF/JPEG/PNG attendu)")
+                failed.append(f"{filename} : format non reconnu (PDF/JPEG/PNG/WEBP attendu)")
                 continue
 
             pdf_dir = _purchase_pdf_dir_for_org(org_id)
             stored = uuid.uuid4().hex + ext
-            (pdf_dir / stored).write_bytes(data)
             path = pdf_dir / stored
+            path.write_bytes(data)
 
             try:
                 if mime == 'application/pdf':
@@ -1434,13 +1496,14 @@ def register(app):
                         detected = _purchase_ai_extract(path.read_bytes(), mime)
                 else:
                     detected = _purchase_ai_extract(path.read_bytes(), mime)
-            except ValueError as e:
+            except ValueError as exc:
                 path.unlink(missing_ok=True)
-                failed.append(f"{filename} : {e}")
+                failed.append(f"{filename} : {exc}")
                 continue
 
-            sender = (payload.get('from') or '').strip()
             tc = tenant_cx_direct(org_id)
+            note = f"Reçu par email de {sender}" if sender else 'Reçu par email'
+            note += f" · Resend email {email_id}"
             tc.execute(
                 """INSERT INTO purchase_invoices(
                      supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,
@@ -1449,22 +1512,22 @@ def register(app):
                 (detected['supplier_name'], detected['invoice_number'],
                  detected['issue_date'] or None, detected['due_date'] or None,
                  detected['subtotal'], detected['vat_amount'], detected['total'],
-                 'unpaid', f"Reçu par email de {sender}" if sender else 'Reçu par email',
-                 now(), stored, 'autre', 'pending'),
+                 'unpaid', note, now(), stored, 'autre', 'pending'),
             )
-            tc.commit()
             new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+            tc.commit()
             try:
                 purchase_row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
                 generate_purchase_entry(tc, purchase_row)
-            except AccountingError as e:
-                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {e}")
+                tc.commit()
+            except AccountingError as exc:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {exc}")
             tc.close()
             created.append(detected['invoice_number'])
 
         log_ops_event('SUPPLIER_INBOX_RECEIVED', outcome='INFO' if created else 'WARNING',
-                       detail=f"org={org_id} créées={created} échecs={failed}")
-        return jsonify({'created': created, 'failed': failed}), 200
+                       detail=f"org={org_id} resend_email={email_id} créées={created} échecs={failed}")
+        return jsonify({'received': True, 'created': created, 'failed': failed}), 200
 
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
     @login_required
