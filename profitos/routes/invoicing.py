@@ -428,6 +428,9 @@ def _purchase_pdf_extract(path):
         r'(?:sous[\-\s]?total\s*ht|total\s*ht|montant\s*ht|subtotal)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
     ]))
     vat=_purchase_money(first([
+        # Cas courant : « TVA 20 % 25,00 € ». Le premier nombre est le taux,
+        # pas le montant de TVA ; on capture donc explicitement le montant après %.
+        r'(?:montant\s*)?tva\s*\(?\s*\d+(?:[.,]\d+)?\s*%\s*\)?\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
         r'(?:montant\s*)?tva(?:\s*\([^)]*\))?\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
         r'(?:vat)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
     ]))
