@@ -48,6 +48,7 @@
     {% endif %}
 
     <a href="{{ url_for('company') }}">Profil entreprise</a>
+    <a href="{{ url_for('entities_list') }}">Entités (multi-société)</a>
     {% if can_access('invoicing') %}<a href="{{ url_for('invoicing_list') }}">Facturation</a>{% endif %}
     <a href="{{ url_for('accounting_chart') }}">Plan comptable</a>
     <a href="{{ url_for('accounting_journals_view') }}">Journaux</a>

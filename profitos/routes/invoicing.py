@@ -315,9 +315,13 @@ def _display_status(inv):
     return status
 
 
-def _next_invoice_number(c):
+def _next_invoice_number(c, entity_id=None):
     year=datetime.now(timezone.utc).year
-    prefix=f"FA-{year}-"
+    # Comportement inchangé pour la société mère (entity_id=None) — aucune
+    # facture existante ne change de format. Une filiale reçoit sa propre
+    # séquence, indépendante, avec un préfixe distinct (obligation légale :
+    # chaque entité doit avoir sa propre numérotation continue de factures).
+    prefix=f"FA-{year}-" if not entity_id else f"FA-E{entity_id}-{year}-"
     rows=c.execute("SELECT invoice_number FROM outgoing_invoices WHERE invoice_number LIKE ?",(prefix+'%',)).fetchall()
     highest=0
     for row in rows:
@@ -1377,10 +1381,12 @@ def register(app):
         c=cx()
         suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
         open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
+        from profitos.entities import list_all_entities
+        entities=list_all_entities(c)
         c.close()
         flash("Document analysé par IA. Vérifiez les informations avant d'enregistrer." if used_ai
               else "PDF analysé. Vérifiez les informations avant d'enregistrer.")
-        return render_template('purchase_new.html',suppliers=suppliers,open_orders=open_orders,
+        return render_template('purchase_new.html',suppliers=suppliers,open_orders=open_orders,entities=entities,
                                detected=detected,pending_document=stored)
 
     @app.route('/facturation/achats/boite-mail')
@@ -1533,17 +1539,19 @@ def register(app):
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             po_id_raw = request.form.get('purchase_order_id')
             purchase_order_id = int(po_id_raw) if po_id_raw and po_id_raw.isdigit() else None
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
             settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
             validation_status='pending' if (settings_row and settings_row['require_purchase_validation']) else 'approved'
             c.execute("""INSERT INTO purchase_invoices(
                          supplier_id,supplier_name,invoice_number,issue_date,due_date,
-                         subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status,purchase_order_id)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status,purchase_order_id,entity_id)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
                        request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
-                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status,purchase_order_id))
+                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status,purchase_order_id,entity_id))
             c.commit()
             new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             try:
@@ -1557,8 +1565,10 @@ def register(app):
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
         open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
+        from profitos.entities import list_all_entities
+        entities=list_all_entities(c)
         c.close()
-        return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES,open_orders=open_orders)
+        return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES,open_orders=open_orders,entities=entities)
 
     @app.get('/facturation/fournisseurs/<int:supplier_id>')
     @login_required
@@ -1888,33 +1898,46 @@ def register(app):
     @require_area('invoicing')
     def purchase_sepa_batch():
         from profitos.sepa import generate_sepa_xml, validate_iban
+        from profitos.entities import resolve_entity, list_all_entities
         c = cx()
-        company = c.execute('SELECT * FROM company WHERE id=1').fetchone()
+
+        entity_id_raw = request.values.get('entity_id')
+        entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        try:
+            debtor_identity = resolve_entity(c, entity_id)
+        except ValueError:
+            c.close()
+            flash("Entité sélectionnée introuvable.")
+            return redirect(url_for('purchase_sepa_batch'))
 
         if request.method == 'POST':
             selected_ids = [int(x) for x in request.form.getlist('purchase_id')]
             if len(selected_ids) == 0:
                 c.close()
                 flash("Sélectionne au moins une facture à inclure dans le virement groupé.")
-                return redirect(url_for('purchase_sepa_batch'))
+                return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
             placeholders = ','.join('?' * len(selected_ids))
+            # Filtre aussi sur l'entité choisie — une remise SEPA n'a qu'un seul débiteur (compte
+            # bancaire), on ne peut donc jamais y mélanger des factures d'une autre entité, même si
+            # un client mal formé essayait de le forcer.
+            entity_filter = 'p.entity_id=?' if entity_id else 'p.entity_id IS NULL'
             rows = c.execute(
                 f"""SELECT p.*, s.iban AS supplier_iban, s.bic AS supplier_bic
                     FROM purchase_invoices p LEFT JOIN suppliers s ON s.id = p.supplier_id
-                    WHERE p.id IN ({placeholders}) AND p.status='unpaid'
+                    WHERE p.id IN ({placeholders}) AND p.status='unpaid' AND {entity_filter}
                       AND (p.validation_status IS NULL OR p.validation_status='approved')""",
-                selected_ids,
+                selected_ids + ([entity_id] if entity_id else []),
             ).fetchall()
             payments = [{
                 'supplier_name': r['supplier_name'], 'iban': r['supplier_iban'], 'bic': r['supplier_bic'],
                 'amount': r['total'], 'reference': r['invoice_number'],
             } for r in rows]
             try:
-                xml_content, msg_id, total = generate_sepa_xml(dict(company) if company else {}, payments)
+                xml_content, msg_id, total = generate_sepa_xml(debtor_identity, payments)
             except ValueError as e:
                 c.close()
                 flash(f"Impossible de générer le fichier SEPA : {e}")
-                return redirect(url_for('purchase_sepa_batch'))
+                return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
 
             for r in rows:
                 c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?", (now(), r['id']))
@@ -1927,18 +1950,21 @@ def register(app):
                 deliver_webhook(c, 'purchase.paid', {'id': r['id'], 'invoice_number': r['invoice_number'],
                                                        'supplier_name': r['supplier_name'], 'total': r['total']})
             c.close()
-            log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} : {len(rows)} virement(s), {fr_number(total, 2)} €")
+            log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} ({debtor_identity['name']}) : {len(rows)} virement(s), {fr_number(total, 2)} €")
             filename = f"virements_{date.today().isoformat()}.xml"
             return Response(
                 xml_content.encode('utf-8'), mimetype='application/xml',
                 headers={'Content-Disposition': f'attachment; filename="{filename}"'},
             )
 
+        entity_filter = 'p.entity_id=?' if entity_id else 'p.entity_id IS NULL'
         candidates = c.execute(
-            """SELECT p.*, s.iban AS supplier_iban, s.bic AS supplier_bic
+            f"""SELECT p.*, s.iban AS supplier_iban, s.bic AS supplier_bic
                FROM purchase_invoices p LEFT JOIN suppliers s ON s.id = p.supplier_id
-               WHERE p.status='unpaid' AND (p.validation_status IS NULL OR p.validation_status='approved')
-               ORDER BY p.due_date"""
+               WHERE p.status='unpaid' AND {entity_filter}
+                 AND (p.validation_status IS NULL OR p.validation_status='approved')
+               ORDER BY p.due_date""",
+            ([entity_id] if entity_id else []),
         ).fetchall()
         ready, blocked = [], []
         for r in candidates:
@@ -1946,10 +1972,12 @@ def register(app):
                 ready.append(r)
             else:
                 blocked.append(r)
-        company_ready = bool(company and company['iban'] and validate_iban(company['iban']) and company['bic'])
+        company_ready = bool(debtor_identity['iban'] and validate_iban(debtor_identity['iban']) and debtor_identity['bic'])
+        entities = list_all_entities(c)
         c.close()
         return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked,
-                                company_ready=company_ready, company=company)
+                                company_ready=company_ready, company=debtor_identity,
+                                entities=entities, current_entity_id=entity_id)
 
     @app.route('/facturation/commandes')
     @login_required
@@ -2217,6 +2245,17 @@ def register(app):
             notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
 
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+            if entity_id is not None:
+                from profitos.entities import resolve_entity
+                try:
+                    resolve_entity(c,entity_id)
+                except ValueError:
+                    c.close()
+                    flash("Entité sélectionnée introuvable.")
+                    return redirect(url_for('invoicing_new'))
+
             if not client_name or not items:
                 c.close()
                 flash('Nom du client et au moins une ligne de facture requis.')
@@ -2227,17 +2266,17 @@ def register(app):
                 return redirect(url_for('invoicing_new'))
 
             subtotal,vat_amount,total=_totals(items)
-            invoice_number=_next_invoice_number(c)
+            invoice_number=_next_invoice_number(c,entity_id)
             issue_date=date.today().isoformat()
             token=secrets.token_urlsafe(20)
 
             c.execute('''INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,
                          line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,
-                         client_siren,operation_nature,vat_on_debits,delivery_address)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?)''',
+                         client_siren,operation_nature,vat_on_debits,delivery_address,entity_id)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)''',
                 (invoice_number,client_name,client_address,client_email,issue_date,due_date or None,
                  json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,token,now(),
-                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None))
+                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None,entity_id))
             c.commit()
             new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
@@ -2249,8 +2288,10 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=new_id))
 
         clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        from profitos.entities import list_all_entities
+        entities=list_all_entities(c)
         c.close()
-        return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat(),clients=clients)
+        return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat(),clients=clients,entities=entities)
 
     @app.route('/facturation/<int:invoice_id>')
     @login_required

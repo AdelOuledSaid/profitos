@@ -188,36 +188,45 @@ def register(app):
     @app.route('/comptabilite/export-fec', methods=['GET', 'POST'])
     @login_required
     def accounting_fec_export():
+        from profitos.entities import resolve_entity, list_all_entities
         c = cx()
         error = None
         if request.method == 'POST':
             date_from = (request.form.get('date_from') or '').strip()
             date_to = (request.form.get('date_to') or '').strip()
+            entity_id_raw = request.form.get('entity_id')
+            entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
             if not date_from or not date_to:
                 error = "Les deux dates (début et fin) sont obligatoires."
             elif date_from > date_to:
                 error = "La date de début doit précéder la date de fin."
             else:
-                company = c.execute('SELECT siret FROM company WHERE id=1').fetchone()
                 try:
-                    filename = fec_filename(company['siret'] if company else None, date_to)
+                    identity = resolve_entity(c, entity_id)
                 except ValueError as e:
                     error = str(e)
                 if not error:
-                    rows = generate_fec(c, date_from, date_to)
+                    try:
+                        filename = fec_filename(identity['siret'], date_to)
+                    except ValueError as e:
+                        error = str(e)
+                if not error:
+                    rows = generate_fec(c, date_from, date_to, entity_id)
                     c.close()
                     content = '\r\n'.join('|'.join(str(cell) for cell in row) for row in rows)
                     body = content.encode('utf-8')
-                    log_activity('FEC_EXPORT', f"Export FEC {date_from} → {date_to} ({len(rows) - 1} ligne(s))")
+                    log_activity('FEC_EXPORT', f"Export FEC {date_from} → {date_to} ({identity['name']}) : {len(rows) - 1} ligne(s)")
                     return Response(
                         body, mimetype='text/plain',
                         headers={'Content-Disposition': f'attachment; filename="{filename}"'},
                     )
         n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries').fetchone()['n']
         settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
+        entities = list_all_entities(c)
         c.close()
         return render_template('accounting_fec_export.html', error=error, n_entries=n_entries,
-                                accountant_email=settings['accountant_email'] if settings else None)
+                                accountant_email=settings['accountant_email'] if settings else None,
+                                entities=entities)
 
     @app.route('/comptabilite/export-fec/envoyer-comptable', methods=['POST'])
     @login_required
@@ -234,27 +243,38 @@ def register(app):
         if not date_from or not date_to or date_from > date_to:
             flash("Dates invalides.")
             return redirect(url_for('accounting_fec_export'))
+        entity_id_raw = request.form.get('entity_id')
+        entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        from profitos.entities import resolve_entity
+        c2 = cx()
+        try:
+            identity = resolve_entity(c2, entity_id)
+        except ValueError:
+            c2.close()
+            flash("Entité sélectionnée introuvable.")
+            return redirect(url_for('accounting_fec_export'))
+        c2.close()
 
         org = current_org()
         token = secrets.token_urlsafe(20)
         ac = auth_cx()
         ac.execute(
-            'INSERT INTO accounting_fec_tokens(token,organization_id,date_from,date_to,created_at) VALUES(?,?,?,?,?)',
-            (token, org['id'], date_from, date_to, now()),
+            'INSERT INTO accounting_fec_tokens(token,organization_id,date_from,date_to,created_at,entity_id) VALUES(?,?,?,?,?,?)',
+            (token, org['id'], date_from, date_to, now(), entity_id),
         )
         ac.commit(); ac.close()
 
         base = os.environ.get('APP_BASE_URL', request.host_url.rstrip('/'))
         link = f"{base}{url_for('accounting_fec_download', token=token)}"
         html = render_template(
-            'email_transactional.html', title=f"Export FEC — {org['name']}",
+            'email_transactional.html', title=f"Export FEC — {identity['name']}",
             intro=(f"Voici le lien pour télécharger le Fichier des Écritures Comptables (FEC) de "
-                   f"{org['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
+                   f"{identity['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
                    f"l'export à jour à chaque clic."),
             cta_label='Télécharger le FEC', cta_url=link,
             footer="Ce lien reste valable — contacte l'organisation si tu n'es pas concerné(e).",
         )
-        result = send_email(settings['accountant_email'], f"Export FEC — {org['name']}", html)
+        result = send_email(settings['accountant_email'], f"Export FEC — {identity['name']}", html)
         if result.get('dry_run'):
             flash(f"Service email non configuré — lien non envoyé réellement (mode simulation) à {settings['accountant_email']}.")
         else:
@@ -275,13 +295,17 @@ def register(app):
         if not mapping:
             abort(404)
         tc = tenant_cx_direct(mapping['organization_id'])
-        company = tc.execute('SELECT siret FROM company WHERE id=1').fetchone()
+        from profitos.entities import resolve_entity
         try:
-            filename = fec_filename(company['siret'] if company else None, mapping['date_to'])
+            identity = resolve_entity(tc, mapping['entity_id'])
+        except ValueError:
+            tc.close(); abort(404)
+        try:
+            filename = fec_filename(identity['siret'], mapping['date_to'])
         except ValueError:
             tc.close()
             abort(404)
-        rows = generate_fec(tc, mapping['date_from'], mapping['date_to'])
+        rows = generate_fec(tc, mapping['date_from'], mapping['date_to'], mapping['entity_id'])
         tc.close()
         content = '\r\n'.join('|'.join(str(cell) for cell in row) for row in rows)
         return Response(

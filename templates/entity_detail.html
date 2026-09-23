@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ENTITÉ</div>
+    <h1 class="purchase-title">{{ entity.name }}</h1>
+    <p class="purchase-subtitle">{{ invoice_count }} facture(s) client · {{ purchase_count }} facture(s) fournisseur enregistrées sous cette entité.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('entities_list') }}">← Entités</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Nom de l'entité<input name="name" value="{{ entity.name }}" required></label>
+    <label>SIRET<input name="siret" value="{{ entity.siret or '' }}"></label>
+    <label>N° TVA intracommunautaire<input name="vat_number" value="{{ entity.vat_number or '' }}"></label>
+    <label class="wide">Adresse<input name="address" value="{{ entity.address or '' }}"></label>
+    <label>Code postal<input name="postal_code" value="{{ entity.postal_code or '' }}"></label>
+    <label>IBAN<input name="iban" value="{{ entity.iban or '' }}"></label>
+    <label>BIC<input name="bic" value="{{ entity.bic or '' }}"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Enregistrer</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

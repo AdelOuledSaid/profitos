@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">MULTI-ENTITÉS</div>
+    <h1 class="purchase-title">Vue consolidée</h1>
+    <p class="purchase-subtitle">Chiffre d'affaires et achats par entité, et total groupe.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('entities_list') }}">← Entités</a>
+</div>
+
+<div class="purchase-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px;">
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">VENTES GROUPE</div><div class="purchase-stat-value">{{ grand_total_sales|fr_number(2) }} €</div></div>
+  </div>
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">ACHATS GROUPE</div><div class="purchase-stat-value">{{ grand_total_purchases|fr_number(2) }} €</div></div>
+  </div>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Entité</th><th style="text-align:right;">Ventes</th><th style="text-align:right;">Achats</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.entity.name }}</strong>{% if r.entity.id is none %} <span class="purchase-status">Société mère</span>{% endif %}</td>
+          <td style="text-align:right;">{{ r.sales|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ r.purchases|fr_number(2) }} €</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

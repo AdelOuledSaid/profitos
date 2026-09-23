@@ -31,6 +31,13 @@
             <a class="purchase-nav-btn" href="{{ url_for('invoicing_client_new') }}" style="display:inline-block;margin-top:10px;">+ Ajouter un nouveau client</a>
           </div>
           <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
+          {% if entities and entities|length > 1 %}
+          <label>Entité émettrice
+            <select name="entity_id">
+              {% for e in entities %}<option value="{{ e.id or '' }}">{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+            </select>
+          </label>
+          {% endif %}
           <label>Email du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi"></label>
           <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
           <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres, si connu"></label>

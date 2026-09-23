@@ -47,7 +47,7 @@ document.addEventListener('submit', function (event) {
   if (!sourceId) return;
   var source = document.getElementById(sourceId);
   if (!source) return;
-  ['date_from', 'date_to'].forEach(function (name) {
+  ['date_from', 'date_to', 'entity_id'].forEach(function (name) {
     var src = source.elements[name];
     var dst = form.elements[name];
     if (src && dst) dst.value = src.value;

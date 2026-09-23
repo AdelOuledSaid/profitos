@@ -18,6 +18,13 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Du<input type="date" name="date_from" required></label>
     <label>Au<input type="date" name="date_to" required></label>
+    {% if entities and entities|length > 1 %}
+    <label>Entité (un fichier FEC par entité — jamais mélangés)
+      <select name="entity_id">
+        {% for e in entities %}<option value="{{ e.id or '' }}">{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <div class="wide"><button type="submit" class="purchase-primary-btn primary">Télécharger le FEC</button></div>
   </form>
   <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Le nom du fichier généré suit le format réglementaire : SIREN + FEC + date de fin (AAAAMMJJ) + .txt. Le SIRET doit être renseigné dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a>.</p>
@@ -30,6 +37,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date_from">
       <input type="hidden" name="date_to">
+      <input type="hidden" name="entity_id">
       <button type="submit" class="purchase-primary-btn secondary">Envoyer à {{ accountant_email }}</button>
     </form>
   </div>

@@ -154,6 +154,7 @@ def generate_sale_entry(conn, invoice):
         conn, 'VE', invoice['issue_date'] or date.today(),
         f"Facture {invoice['invoice_number']} — {invoice['client_name']}",
         lines, source_type='outgoing_invoice', source_id=invoice['id'],
+        entity_id=invoice['entity_id'] if 'entity_id' in invoice.keys() else None,
     )
 
 
@@ -248,6 +249,7 @@ def generate_purchase_entry(conn, purchase):
         conn, 'AC', purchase['issue_date'] or date.today(),
         f"Facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         lines, source_type='purchase_invoice', source_id=purchase['id'],
+        entity_id=purchase['entity_id'] if 'entity_id' in purchase.keys() else None,
     )
 
 
@@ -328,7 +330,7 @@ def _next_piece_number(conn, journal_code, entry_date):
 
 
 def create_entry(conn, journal_code, entry_date, label, lines,
-                  source_type=None, source_id=None, created_by=None):
+                  source_type=None, source_id=None, created_by=None, entity_id=None):
     """Crée une écriture comptable en partie double, avec ses lignes.
 
     lines : liste de dicts {account_code, debit=0, credit=0, label=None,
@@ -408,9 +410,9 @@ def create_entry(conn, journal_code, entry_date, label, lines,
 
     cur = conn.execute(
         'INSERT INTO accounting_entries'
-        '(journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at)'
-        ' VALUES(?,?,?,?,?,?,0,?,?)',
-        (journal_code, piece_number, entry_date_str, label, source_type, source_id, created_by, now),
+        '(journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)'
+        ' VALUES(?,?,?,?,?,?,0,?,?,?)',
+        (journal_code, piece_number, entry_date_str, label, source_type, source_id, created_by, now, entity_id),
     )
     entry_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
     for order, ln in enumerate(clean_lines):
@@ -462,18 +464,31 @@ def _fec_amount(value):
     return f"{float(value or 0):.2f}"
 
 
-def generate_fec(conn, date_from, date_to):
+def generate_fec(conn, date_from, date_to, entity_id=None):
     """Génère le contenu FEC (liste de lignes, la première étant l'en-tête)
     pour toutes les écritures dont la date est comprise entre date_from et
-    date_to (inclus). Retourne une liste de listes de chaînes — une ligne par
+    date_to (inclus). entity_id filtre sur une seule entité à la fois —
+    None signifie explicitement « société mère uniquement » (entity_id NULL
+    en base), jamais « toutes les entités confondues » : chaque entité est
+    un sujet fiscal distinct et doit avoir son propre fichier FEC, jamais un
+    mélange. Retourne une liste de listes de chaînes — une ligne par
     écriture comptable, dans l'ordre chronologique puis par numéro de pièce."""
-    entries = conn.execute(
-        """SELECT e.*, j.label AS journal_label FROM accounting_entries e
-           JOIN accounting_journals j ON j.code = e.journal_code
-           WHERE e.entry_date BETWEEN ? AND ?
-           ORDER BY e.entry_date, e.journal_code, e.piece_number""",
-        (str(date_from), str(date_to)),
-    ).fetchall()
+    if entity_id:
+        entries = conn.execute(
+            """SELECT e.*, j.label AS journal_label FROM accounting_entries e
+               JOIN accounting_journals j ON j.code = e.journal_code
+               WHERE e.entry_date BETWEEN ? AND ? AND e.entity_id=?
+               ORDER BY e.entry_date, e.journal_code, e.piece_number""",
+            (str(date_from), str(date_to), entity_id),
+        ).fetchall()
+    else:
+        entries = conn.execute(
+            """SELECT e.*, j.label AS journal_label FROM accounting_entries e
+               JOIN accounting_journals j ON j.code = e.journal_code
+               WHERE e.entry_date BETWEEN ? AND ? AND e.entity_id IS NULL
+               ORDER BY e.entry_date, e.journal_code, e.piece_number""",
+            (str(date_from), str(date_to)),
+        ).fetchall()
 
     rows = [FEC_COLUMNS]
     for e in entries:

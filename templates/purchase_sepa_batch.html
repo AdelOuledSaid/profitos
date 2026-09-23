@@ -5,20 +5,33 @@
   <div>
     <div class="purchase-eyebrow">ACHATS · VIREMENTS GROUPÉS</div>
     <h1 class="purchase-title">Export SEPA</h1>
-    <p class="purchase-subtitle">Génère un fichier de virements groupés (norme SEPA, pain.001) à uploader dans l'espace banque en ligne de l'entreprise. Aucun virement n'est exécuté automatiquement — l'exécution reste entièrement de ton côté, via ta banque.</p>
+    <p class="purchase-subtitle">Génère un fichier de virements groupés (norme SEPA, pain.001) à uploader dans l'espace banque en ligne de {{ company.name }}. Aucun virement n'est exécuté automatiquement — l'exécution reste entièrement de ton côté, via ta banque.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a>
 </div>
 
+{% if entities and entities|length > 1 %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <form method="get" style="display:flex;gap:10px;align-items:end;">
+    <label>Entité (débiteur du virement)
+      <select name="entity_id" data-auto-submit>
+        {% for e in entities %}<option value="{{ e.id or '' }}" {% if (e.id or None)==current_entity_id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+</section>
+{% endif %}
+
 {% if not company_ready %}
 <section class="purchase-panel" style="margin-bottom:20px;">
-  <p class="purchase-alert-text" style="margin:0;">L'IBAN et le BIC de l'entreprise doivent être renseignés dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a> avant de pouvoir générer un fichier SEPA.</p>
+  <p class="purchase-alert-text" style="margin:0;">L'IBAN et le BIC de {{ company.name }} doivent être renseignés {% if company.id %}sur sa <a class="purchase-detail-link" href="{{ url_for('entity_detail',entity_id=company.id) }}">fiche entité</a>{% else %}dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a>{% endif %} avant de pouvoir générer un fichier SEPA.</p>
 </section>
 {% endif %}
 
 {% if ready %}
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="entity_id" value="{{ current_entity_id or '' }}">
   <section class="purchase-panel" style="margin-bottom:20px;">
     <div class="purchase-panel-head"><h2>Factures prêtes pour virement ({{ ready|length }})</h2></div>
     <div class="purchase-table-wrap">
