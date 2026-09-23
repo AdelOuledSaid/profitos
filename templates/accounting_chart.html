@@ -9,6 +9,7 @@
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">Journaux →</a>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_fec_export') }}">Export FEC →</a>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_closure') }}">Clôture →</a>
 </div>
 
 {% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}

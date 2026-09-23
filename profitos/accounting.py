@@ -350,6 +350,14 @@ def create_entry(conn, journal_code, entry_date, label, lines,
             "Une écriture doit avoir au moins deux lignes pour pouvoir être équilibrée."
         )
 
+    entry_date_str = entry_date.isoformat() if isinstance(entry_date, date) else str(entry_date)
+    closure = conn.execute('SELECT closed_until FROM accounting_closure WHERE id=1').fetchone()
+    if closure and closure['closed_until'] and entry_date_str <= closure['closed_until']:
+        raise AccountingError(
+            f"La période est clôturée jusqu'au {closure['closed_until']} — "
+            f"impossible d'ajouter une écriture au {entry_date_str}."
+        )
+
     journal = conn.execute(
         'SELECT code FROM accounting_journals WHERE code=?', (journal_code,)
     ).fetchone()
@@ -395,7 +403,6 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         )
 
     now = datetime.utcnow().isoformat()
-    entry_date_str = entry_date.isoformat() if isinstance(entry_date, date) else str(entry_date)
     piece_number = _next_piece_number(conn, journal_code, entry_date_str)
 
     cur = conn.execute(

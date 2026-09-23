@@ -143,12 +143,15 @@ def register(app):
             else:
                 placeholders = ','.join('?' * len(selected_ids))
                 rows = c.execute(
-                    f'SELECT id,debit,credit,lettrage_code,auxiliary_name FROM accounting_entry_lines '
-                    f'WHERE id IN ({placeholders}) AND account_code=?',
+                    f'SELECT l.id,l.debit,l.credit,l.lettrage_code,l.auxiliary_name,e.is_locked '
+                    f'FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id '
+                    f'WHERE l.id IN ({placeholders}) AND l.account_code=?',
                     (*selected_ids, account_code),
                 ).fetchall()
                 if len(rows) != len(selected_ids):
                     error = "Sélection invalide."
+                elif any(r['is_locked'] for r in rows):
+                    error = "Une des lignes appartient à une période comptable clôturée — lettrage impossible."
                 elif any(r['lettrage_code'] for r in rows):
                     error = "Une des lignes sélectionnées est déjà lettrée."
                 elif len({r['auxiliary_name'] for r in rows}) > 1:
@@ -170,7 +173,7 @@ def register(app):
                         return redirect(url_for('accounting_lettrage', account_code=account_code))
 
         lines = c.execute(
-            """SELECT l.*, e.entry_date, e.piece_number, e.label AS entry_label
+            """SELECT l.*, e.entry_date, e.piece_number, e.label AS entry_label, e.is_locked
                FROM accounting_entry_lines l JOIN accounting_entries e ON e.id = l.entry_id
                WHERE l.account_code=? ORDER BY COALESCE(l.auxiliary_name,''), e.entry_date""",
             (account_code,),
@@ -210,5 +213,118 @@ def register(app):
                         headers={'Content-Disposition': f'attachment; filename="{filename}"'},
                     )
         n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries').fetchone()['n']
+        settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
         c.close()
-        return render_template('accounting_fec_export.html', error=error, n_entries=n_entries)
+        return render_template('accounting_fec_export.html', error=error, n_entries=n_entries,
+                                accountant_email=settings['accountant_email'] if settings else None)
+
+    @app.route('/comptabilite/export-fec/envoyer-comptable', methods=['POST'])
+    @login_required
+    def accounting_fec_send_accountant():
+        c = cx()
+        settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
+        c.close()
+        if not settings or not settings['accountant_email']:
+            flash("Aucun email de comptable renseigné — configure-le dans Paramètres.")
+            return redirect(url_for('accounting_fec_export'))
+
+        date_from = (request.form.get('date_from') or '').strip()
+        date_to = (request.form.get('date_to') or '').strip()
+        if not date_from or not date_to or date_from > date_to:
+            flash("Dates invalides.")
+            return redirect(url_for('accounting_fec_export'))
+
+        org = current_org()
+        token = secrets.token_urlsafe(20)
+        ac = auth_cx()
+        ac.execute(
+            'INSERT INTO accounting_fec_tokens(token,organization_id,date_from,date_to,created_at) VALUES(?,?,?,?,?)',
+            (token, org['id'], date_from, date_to, now()),
+        )
+        ac.commit(); ac.close()
+
+        base = os.environ.get('APP_BASE_URL', request.host_url.rstrip('/'))
+        link = f"{base}{url_for('accounting_fec_download', token=token)}"
+        html = render_template(
+            'email_transactional.html', title=f"Export FEC — {org['name']}",
+            intro=(f"Voici le lien pour télécharger le Fichier des Écritures Comptables (FEC) de "
+                   f"{org['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
+                   f"l'export à jour à chaque clic."),
+            cta_label='Télécharger le FEC', cta_url=link,
+            footer="Ce lien reste valable — contacte l'organisation si tu n'es pas concerné(e).",
+        )
+        result = send_email(settings['accountant_email'], f"Export FEC — {org['name']}", html)
+        if result.get('dry_run'):
+            flash(f"Service email non configuré — lien non envoyé réellement (mode simulation) à {settings['accountant_email']}.")
+        else:
+            log_activity('FEC_SENT_TO_ACCOUNTANT', f"Export FEC {date_from} → {date_to} envoyé à {settings['accountant_email']}")
+            flash(f"Lien d'export FEC envoyé à {settings['accountant_email']}.")
+        return redirect(url_for('accounting_fec_export'))
+
+    @app.route('/comptabilite/export-fec/telecharger/<token>')
+    def accounting_fec_download(token):
+        """Téléchargement public authentifié par token — utilisé par le lien envoyé à
+        l'expert-comptable. Aucune connexion ProfitOS requise. Régénère le FEC à la
+        demande (jamais de fichier stocké)."""
+        ac = auth_cx()
+        mapping = ac.execute(
+            'SELECT * FROM accounting_fec_tokens WHERE token=?', (token,)
+        ).fetchone()
+        ac.close()
+        if not mapping:
+            abort(404)
+        tc = tenant_cx_direct(mapping['organization_id'])
+        company = tc.execute('SELECT siret FROM company WHERE id=1').fetchone()
+        try:
+            filename = fec_filename(company['siret'] if company else None, mapping['date_to'])
+        except ValueError:
+            tc.close()
+            abort(404)
+        rows = generate_fec(tc, mapping['date_from'], mapping['date_to'])
+        tc.close()
+        content = '\r\n'.join('|'.join(str(cell) for cell in row) for row in rows)
+        return Response(
+            content.encode('utf-8'), mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        )
+
+    @app.route('/comptabilite/cloture', methods=['GET', 'POST'])
+    @login_required
+    def accounting_closure():
+        c = cx()
+        error = None
+        if request.method == 'POST':
+            closed_until = (request.form.get('closed_until') or '').strip()
+            current = c.execute('SELECT closed_until FROM accounting_closure WHERE id=1').fetchone()
+            already_closed = current['closed_until'] if current else None
+            unbalanced = c.execute(
+                """SELECT COUNT(*) n FROM (
+                     SELECT entry_id FROM accounting_entry_lines GROUP BY entry_id
+                     HAVING ROUND(SUM(debit) - SUM(credit), 2) != 0
+                   )"""
+            ).fetchone()['n']
+            if not closed_until:
+                error = "La date de clôture est obligatoire."
+            elif already_closed and closed_until <= already_closed:
+                error = f"La comptabilité est déjà clôturée jusqu'au {already_closed} — impossible de reculer la clôture."
+            elif unbalanced:
+                error = "Impossible de clôturer : certaines écritures ne sont pas équilibrées (anomalie à corriger d'abord)."
+            else:
+                c.execute(
+                    'INSERT INTO accounting_closure(id,closed_until,closed_at,closed_by) VALUES(1,?,?,?) '
+                    'ON CONFLICT(id) DO UPDATE SET closed_until=excluded.closed_until,'
+                    'closed_at=excluded.closed_at,closed_by=excluded.closed_by',
+                    (closed_until, now(), session.get('user_id')),
+                )
+                c.execute(
+                    "UPDATE accounting_entries SET is_locked=1 WHERE entry_date<=?", (closed_until,)
+                )
+                c.commit()
+                log_activity('ACCOUNTING_CLOSED', f"Comptabilité clôturée jusqu'au {closed_until}")
+                flash(f"Comptabilité clôturée jusqu'au {closed_until}. Les écritures antérieures ou à cette date sont désormais verrouillées.")
+                return redirect(url_for('accounting_closure'))
+
+        closure = c.execute('SELECT * FROM accounting_closure WHERE id=1').fetchone()
+        locked_count = c.execute('SELECT COUNT(*) n FROM accounting_entries WHERE is_locked=1').fetchone()['n']
+        c.close()
+        return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error)

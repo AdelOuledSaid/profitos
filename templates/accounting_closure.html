@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Clôture</h1>
+    <p class="purchase-subtitle">Verrouille toutes les écritures jusqu'à une date donnée — elles ne pourront plus être créées, modifiées ni lettrées après clôture. Irréversible depuis cette page.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="max-width:560px;margin-bottom:20px;">
+  {% if closure and closure.closed_until %}
+    <p style="margin-top:0;">Statut : <strong class="purchase-ok-text">Clôturée jusqu'au {{ closure.closed_until|fr_date }}</strong></p>
+    <p class="purchase-muted" style="font-size:12px;">{{ locked_count }} écriture(s) verrouillée(s) au total. Clôturée le {{ closure.closed_at|fr_date(true) }}.</p>
+  {% else %}
+    <p style="margin-top:0;" class="purchase-muted">Aucune clôture effectuée pour l'instant — toutes les écritures restent modifiables.</p>
+  {% endif %}
+</section>
+
+<section class="purchase-panel" style="max-width:560px;">
+  <h2 style="color:#fff;margin-top:0;">Clôturer jusqu'à une date</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Clôturer jusqu'au (inclus)<input type="date" name="closed_until" required></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Clôturer</button></div>
+  </form>
+  <p class="purchase-muted" style="font-size:12px;margin-top:14px;">La clôture est refusée si des écritures existantes ne sont pas équilibrées (anomalie), et ne peut jamais reculer une date de clôture déjà passée.</p>
+</section>
+</div>
+{% endblock %}

@@ -14,13 +14,28 @@
 
 <section class="purchase-panel" style="max-width:560px;">
   <p class="purchase-muted" style="margin-top:0;">{{ n_entries }} écriture(s) au total dans ProfitOS.</p>
-  <form method="post" class="formgrid">
+  <form method="post" class="formgrid" id="fec-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Du<input type="date" name="date_from" required></label>
     <label>Au<input type="date" name="date_to" required></label>
     <div class="wide"><button type="submit" class="purchase-primary-btn primary">Télécharger le FEC</button></div>
   </form>
   <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Le nom du fichier généré suit le format réglementaire : SIREN + FEC + date de fin (AAAAMMJJ) + .txt. Le SIRET doit être renseigné dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a>.</p>
+
+  {% if accountant_email %}
+  <div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08);">
+    <h2 style="color:#fff;font-size:16px;margin:0 0 10px;">Envoyer à l'expert-comptable</h2>
+    <p class="purchase-muted" style="font-size:13px;">Envoie un lien de téléchargement sécurisé à <strong style="color:#fff;">{{ accountant_email }}</strong> pour les mêmes dates ci-dessus — le lien régénère l'export à jour à chaque clic, sans pièce jointe.</p>
+    <form method="post" action="{{ url_for('accounting_fec_send_accountant') }}" id="fec-accountant-form" data-copy-dates-from="fec-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date_from">
+      <input type="hidden" name="date_to">
+      <button type="submit" class="purchase-primary-btn secondary">Envoyer à {{ accountant_email }}</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Renseigne un email de comptable dans <a class="purchase-detail-link" href="{{ url_for('settings') }}">Paramètres</a> pour pouvoir lui envoyer un lien direct.</p>
+  {% endif %}
 </section>
 </div>
 {% endblock %}

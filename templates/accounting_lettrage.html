@@ -23,7 +23,7 @@
         <tbody>
         {% for l in lines %}
           <tr>
-            <td>{% if not l.lettrage_code %}<input type="checkbox" name="line_id" value="{{ l.id }}">{% endif %}</td>
+            <td>{% if not l.lettrage_code and not l.is_locked %}<input type="checkbox" name="line_id" value="{{ l.id }}">{% elif l.is_locked %}🔒{% endif %}</td>
             <td>{{ l.piece_number }}</td>
             <td>{{ l.entry_date|fr_date }}</td>
             <td>{{ l.entry_label }}</td>

@@ -32,6 +32,19 @@ document.addEventListener('click', function (event) {
   }
 });
 
+document.addEventListener('submit', function (event) {
+  var form = event.target;
+  var sourceId = form.getAttribute && form.getAttribute('data-copy-dates-from');
+  if (!sourceId) return;
+  var source = document.getElementById(sourceId);
+  if (!source) return;
+  ['date_from', 'date_to'].forEach(function (name) {
+    var src = source.elements[name];
+    var dst = form.elements[name];
+    if (src && dst) dst.value = src.value;
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Tour guidé — visite interactive de 5 étapes sur les liens de navigation
 // (repérés via [data-tour="..."] dans base.html). Se lance automatiquement

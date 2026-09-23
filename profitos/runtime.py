@@ -136,6 +136,13 @@ def init_auth_db():
         export_type TEXT,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS accounting_fec_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        date_from TEXT NOT NULL,
+        date_to TEXT NOT NULL,
+        created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoice_tokens(
         token TEXT PRIMARY KEY,
         organization_id INTEGER NOT NULL,
@@ -914,6 +921,12 @@ def init_tenant_db(org_id=None):
         category TEXT PRIMARY KEY,
         account_code TEXT NOT NULL,
         updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS accounting_closure(
+        id INTEGER PRIMARY KEY CHECK(id=1),
+        closed_until TEXT,
+        closed_at TEXT,
+        closed_by TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
