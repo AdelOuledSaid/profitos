@@ -107,6 +107,9 @@ def user_can_access_entity(conn, user_id, entity_id):
         return True
     row = conn.execute('SELECT 1 FROM user_entity_access WHERE user_id=? AND entity_id IS ?', (user_id, entity_id)).fetchone()
     return row is not None
+
+
+def get_cash_balance(conn, entity_id):
     """Lit le solde de trésorerie de l'entité donnée (None = société mère,
     table financial_settings inchangée ; un entier = filiale, table
     entity_financial_settings séparée puisque financial_settings a une

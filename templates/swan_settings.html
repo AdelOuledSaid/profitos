@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTE PRO · CARTES</div>
+    <h1 class="purchase-title">Swan (Banking-as-a-Service)</h1>
+    <p class="purchase-subtitle">Intégration expérimentale, jamais testée contre les vrais serveurs Swan — à valider en sandbox avant tout usage réel. Toute demande de compte ou de carte doit être validée par un humain sur une page hébergée par Swan avant de devenir active.</p>
+  </div>
+  <span class="purchase-status">{{ 'Sandbox' if environment=='sandbox' else 'PRODUCTION' }}</span>
+</div>
+
+{% if not configured %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <p class="purchase-alert-text" style="margin:0;">Non configuré — renseigne <code>SWAN_CLIENT_ID</code> et <code>SWAN_CLIENT_SECRET</code> (obtenus depuis ton tableau de bord Swan, rubrique Developers &gt; API) dans les variables d'environnement du serveur.</p>
+</section>
+{% else %}
+
+{% if remote_error %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <p class="purchase-alert-text" style="margin:0;">Connexion à Swan impossible : {{ remote_error }}</p>
+</section>
+{% elif remote_accounts %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Comptes existants chez Swan</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Nom</th><th>IBAN</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for a in remote_accounts %}
+        <tr><td>{{ a.name or '—' }}</td><td>{{ a.IBAN or '—' }}</td><td>{{ a.status or '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;max-width:520px;">
+  <h2 style="color:#fff;margin-top:0;">Demander un nouveau compte</h2>
+  <form method="post" action="{{ url_for('swan_account_request') }}" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Nom du compte<input name="name" placeholder="ex: Compte courant ACME" required></label>
+    {% if entities and entities|length > 1 %}
+    <label class="wide">Entité
+      <select name="entity_id">
+        {% for e in entities %}<option value="{{ e.id or '' }}" {% if (e.id or None)==current_entity_id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Demander l'ouverture</button></div>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <h2 style="color:#fff;margin-top:0;">Demandes suivies dans ProfitOS</h2>
+  {% for a in local_accounts %}
+  <div style="border-top:1px solid rgba(255,255,255,.08);padding:16px 0;">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div><strong style="color:#fff;">{{ a.name }}</strong> <span class="purchase-status">{{ a.status }}</span></div>
+      <span class="purchase-muted" style="font-size:12px;">demandé le {{ a.requested_at|fr_date(true) }}</span>
+    </div>
+    {% if a.consent_url %}
+    <p style="margin:8px 0;"><a class="purchase-detail-link" href="{{ a.consent_url }}" target="_blank" rel="noopener">Valider ce compte sur Swan →</a></p>
+    {% endif %}
+
+    {% if cards_by_account.get(a.id) %}
+    <div class="purchase-table-wrap" style="margin-top:10px;">
+      <table class="purchase-table">
+        <thead><tr><th>Porteur</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+        {% for card in cards_by_account[a.id] %}
+          <tr>
+            <td>{{ card.holder_name }}</td>
+            <td>{{ card.status }}</td>
+            <td>{% if card.consent_url %}<a class="purchase-detail-link" href="{{ card.consent_url }}" target="_blank" rel="noopener">Valider →</a>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('swan_card_request',account_row_id=a.id) }}" style="display:flex;gap:10px;margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="holder_name" placeholder="Nom du porteur de la carte" style="flex:1;">
+      <button type="submit" class="purchase-primary-btn secondary">Demander une carte</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="purchase-empty">Aucune demande pour l'instant.</p>
+  {% endfor %}
+</section>
+{% endif %}
+</div>
+{% endblock %}

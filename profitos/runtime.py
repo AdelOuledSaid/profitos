@@ -773,6 +773,34 @@ def init_tenant_db(org_id=None):
         UNIQUE(user_id,entity_id)
     );
     CREATE INDEX IF NOT EXISTS idx_user_entity_access_user ON user_entity_access(user_id);
+    CREATE TABLE IF NOT EXISTS swan_connections(
+        id INTEGER PRIMARY KEY CHECK(id=1),
+        environment TEXT DEFAULT 'sandbox',
+        client_id TEXT,
+        connected_at TEXT,
+        connected_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS swan_accounts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        swan_account_id TEXT NOT NULL UNIQUE,
+        name TEXT,
+        iban TEXT,
+        status TEXT,
+        consent_url TEXT,
+        requested_at TEXT,
+        activated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS swan_cards(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        swan_account_row_id INTEGER NOT NULL,
+        swan_card_id TEXT UNIQUE,
+        holder_name TEXT,
+        status TEXT,
+        consent_url TEXT,
+        requested_at TEXT,
+        activated_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS weinvoice_agreements(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         signatory_name TEXT NOT NULL,
