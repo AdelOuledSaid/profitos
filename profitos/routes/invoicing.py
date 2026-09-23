@@ -1902,7 +1902,15 @@ def register(app):
         c = cx()
 
         entity_id_raw = request.values.get('entity_id')
-        entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        if entity_id_raw is None:
+            # Aucun paramètre du tout (premier chargement de la page) -> utilise
+            # l'entité active du sélecteur permanent comme point de départ.
+            # Un entity_id_raw vide ("") signifie un choix explicite de la
+            # société mère et est respecté tel quel, jamais réécrit.
+            from profitos.entities import current_entity_id as _current_entity_id
+            entity_id = _current_entity_id()
+        else:
+            entity_id = int(entity_id_raw) if entity_id_raw.isdigit() else None
         try:
             debtor_identity = resolve_entity(c, entity_id)
         except ValueError:

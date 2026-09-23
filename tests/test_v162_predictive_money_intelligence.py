@@ -11,7 +11,11 @@ def test_v162_predictive_engine_present():
 
 def test_v162_uses_observed_history_and_learning_loop():
     t=(ROOT/'profitos/routes/money_hunter.py').read_text(encoding='utf-8')
-    assert 'FROM invoices GROUP BY customer' in t
+    # Requête scopée par entité (session 23/09/2026, multi-entités) : le motif
+    # exact a changé (ajout d'un filtre WHERE {ef} entre FROM et GROUP BY),
+    # mais la requête lit toujours l'historique observé des factures groupé
+    # par client, ce que ce test vérifie.
+    assert 'FROM invoices WHERE {ef} GROUP BY customer' in t
     assert "a.status='SENT'" in t
     assert "a.status='DONE'" in t
     assert "a.status='CANCELLED'" in t

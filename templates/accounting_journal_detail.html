@@ -18,7 +18,7 @@
   </div>
   <div class="purchase-table-wrap" style="margin-top:10px;">
     <table class="purchase-table">
-      <thead><tr><th>Compte</th><th>Tiers</th><th>Libellé</th><th style="text-align:right;">Débit</th><th style="text-align:right;">Crédit</th></tr></thead>
+      <thead><tr><th>Compte</th><th>Tiers</th><th>Libellé</th><th style="text-align:right;">Débit</th><th style="text-align:right;">Crédit</th><th>Tag analytique</th></tr></thead>
       <tbody>
       {% for l in entry_lines[e.id] %}
         <tr>
@@ -27,6 +27,17 @@
           <td>{{ l.label or '' }}</td>
           <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }} €{% endif %}</td>
           <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }} €{% endif %}</td>
+          <td>
+            {% if all_tags %}
+            <form method="post" action="{{ url_for('analytical_tag_line',line_id=l.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="analytical_tag_id" data-auto-submit style="font-size:12px;padding:4px 6px;">
+                <option value="" {% if not l.analytical_tag_id %}selected{% endif %}>—</option>
+                {% for tg in all_tags %}<option value="{{ tg.id }}" {% if l.analytical_tag_id==tg.id %}selected{% endif %}>{{ tg.axis_name }} : {{ tg.name }}</option>{% endfor %}
+              </select>
+            </form>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       </tbody>

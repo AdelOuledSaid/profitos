@@ -17,7 +17,13 @@ def test_financial_brain_is_explainable():
 def test_financial_brain_does_not_invent_cash():
     t=(ROOT/'profitos'/'routes'/'financial_brain.py').read_text(encoding='utf-8')
     # Financial Brain doit lire le solde persistant partagé, jamais en inventer un.
-    assert "SELECT cash_balance,cash_as_of FROM financial_settings WHERE id=1" in t
+    # Depuis la session 23/09/2026 (multi-entités), la lecture passe par
+    # get_cash_balance() plutôt que par du SQL en dur ciblant uniquement la
+    # société mère — cette fonction lit toujours un solde réellement persisté
+    # (financial_settings pour la société mère, entity_financial_settings pour
+    # une filiale), jamais inventé, et est elle-même testée dans profitos/entities.py.
+    assert "financial_settings=get_cash_balance(c,eid)" in t
+    assert "from profitos.entities import get_cash_balance" in t
     assert "cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None" in t
     assert "if cash_balance is None" in t
     assert 'Solde bancaire actuel non renseigné.' in t

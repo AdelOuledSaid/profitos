@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ ANALYTIQUE</div>
+    <h1 class="purchase-title">Rentabilité par {{ axes|selectattr('id','equalto',axis_id)|map(attribute='name')|first if axis_id else 'axe' }}</h1>
+    <p class="purchase-subtitle">Produits (classe 7) et charges (classe 6) des lignes taguées, sur la période choisie.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('analytical_axes_list') }}">← Axes et tags</a>
+</div>
+
+{% if not axes %}
+<section class="purchase-panel"><p class="purchase-empty">Aucun axe analytique défini. <a class="purchase-detail-link" href="{{ url_for('analytical_axes_list') }}">Crée-en un</a> pour commencer.</p></section>
+{% else %}
+<section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
+  <form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+    <label>Axe
+      <select name="axis_id" data-auto-submit>
+        {% for a in axes %}<option value="{{ a.id }}" {% if a.id==axis_id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Du<input type="date" name="date_from" value="{{ date_from }}"></label>
+    <label>Au<input type="date" name="date_to" value="{{ date_to }}"></label>
+    <button type="submit" class="purchase-primary-btn primary">Actualiser</button>
+  </form>
+</section>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Tag</th><th style="text-align:right;">Produits</th><th style="text-align:right;">Charges</th><th style="text-align:right;">Marge</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.tag.name }}</strong></td>
+          <td style="text-align:right;">{{ r.revenue|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ r.expense|fr_number(2) }} €</td>
+          <td style="text-align:right;"><strong class="{{ 'purchase-ok-text' if r.margin>=0 else 'purchase-alert-text' }}">{{ r.margin|fr_number(2) }} €</strong></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucun tag sur cet axe.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if untagged_revenue or untagged_expense %}
+<section class="purchase-panel">
+  <p class="purchase-muted" style="margin:0;">Non taguées sur cette période : {{ untagged_revenue|fr_number(2) }} € de produits, {{ untagged_expense|fr_number(2) }} € de charges — visibles dans les journaux mais pas encore réparties par {{ axes|selectattr('id','equalto',axis_id)|map(attribute='name')|first if axis_id else 'axe' }}.</p>
+</section>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

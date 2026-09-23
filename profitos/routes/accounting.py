@@ -8,8 +8,10 @@ def register(app):
     @app.route('/comptabilite/plan-comptable', methods=['GET', 'POST'])
     @login_required
     def accounting_chart():
+        from profitos.entities import current_entity_id
         c = cx()
         error = None
+        active_entity_id = current_entity_id()
         if request.method == 'POST':
             code = (request.form.get('code') or '').strip()
             label = (request.form.get('label') or '').strip()
@@ -18,6 +20,8 @@ def register(app):
             except (ValueError, IndexError):
                 klass = 0
             collective = 1 if request.form.get('is_collective') else 0
+            scope_to_entity = 1 if request.form.get('scope_to_entity') else 0
+            account_entity_id = active_entity_id if (scope_to_entity and active_entity_id) else None
             if not (code.isdigit() and 3 <= len(code) <= 8):
                 error = "Le numéro de compte doit être composé uniquement de chiffres (3 à 8)."
             elif not label:
@@ -25,6 +29,12 @@ def register(app):
             elif klass not in range(1, 8):
                 error = "Le numéro de compte doit commencer par un chiffre de 1 à 7 (classe PCG)."
             else:
+                # Unicité toujours globale, jamais par entité : deux comptes ne peuvent
+                # jamais partager le même code, même sur des entités différentes — c'est
+                # ce qui permet à toutes les jointures existantes (journaux, lettrage,
+                # TVA, FEC, immobilisations, analytique) de continuer à fonctionner sans
+                # modification, sur un simple account_code, sans avoir besoin de savoir
+                # de quelle entité elles parlent.
                 existing = c.execute(
                     'SELECT code FROM accounting_chart_of_accounts WHERE code=?', (code,)
                 ).fetchone()
@@ -33,16 +43,17 @@ def register(app):
                 else:
                     c.execute(
                         'INSERT INTO accounting_chart_of_accounts'
-                        '(code,label,account_class,is_collective,is_active,is_default,created_at)'
-                        ' VALUES(?,?,?,?,1,0,?)',
-                        (code, label, klass, collective, now()),
+                        '(code,label,account_class,is_collective,is_active,is_default,created_at,entity_id)'
+                        ' VALUES(?,?,?,?,1,0,?,?)',
+                        (code, label, klass, collective, now(), account_entity_id),
                     )
                     c.commit()
                     flash(f"Compte {code} — {label} ajouté.")
                     return redirect(url_for('accounting_chart'))
 
         accounts = c.execute(
-            'SELECT * FROM accounting_chart_of_accounts WHERE is_active=1 ORDER BY code'
+            'SELECT * FROM accounting_chart_of_accounts WHERE is_active=1 AND (entity_id IS NULL OR entity_id=?) ORDER BY code',
+            (active_entity_id,),
         ).fetchall()
         by_class = {}
         for a in accounts:
@@ -121,8 +132,13 @@ def register(app):
             entry_lines[e['id']] = c.execute(
                 'SELECT * FROM accounting_entry_lines WHERE entry_id=? ORDER BY line_order', (e['id'],)
             ).fetchall()
+        all_tags = c.execute(
+            """SELECT t.id,t.name,ax.name AS axis_name FROM analytical_tags t
+               JOIN analytical_axes ax ON ax.id=t.axis_id ORDER BY ax.name,t.name"""
+        ).fetchall()
+        c.close()
         return render_template('accounting_journal_detail.html', journal=journal,
-                                entries=entries, entry_lines=entry_lines)
+                                entries=entries, entry_lines=entry_lines, all_tags=all_tags)
 
     @app.route('/comptabilite/lettrage/<account_code>', methods=['GET', 'POST'])
     @login_required

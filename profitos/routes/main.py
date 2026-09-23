@@ -42,8 +42,12 @@ def register(app):
 
     @requires_active_plan
     def _home_dashboard():
-        c=cx(); recover=c.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']; save=c.execute("SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
-        top=list(c.execute("SELECT id,invoice_number title,customer subtitle,MAX(amount-paid_amount,0) value,score,'RECOVER' type FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC LIMIT 3").fetchall())+list(c.execute("SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC LIMIT 2").fetchall())+list(c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall())
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        ef='entity_id=?' if eid else 'entity_id IS NULL'
+        ep=(eid,) if eid else ()
+        c=cx(); recover=c.execute(f"SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef}",ep).fetchone()['t']; save=c.execute(f"SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef}",ep).fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
+        top=list(c.execute(f"SELECT id,invoice_number title,customer subtitle,MAX(amount-paid_amount,0) value,score,'RECOVER' type FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} ORDER BY score DESC LIMIT 3",ep).fetchall())+list(c.execute(f"SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC LIMIT 2",ep).fetchall())+list(c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall())
         snaps=c.execute('SELECT * FROM dso_snapshots ORDER BY snapshot_date ASC LIMIT 30').fetchall(); c.close(); top.sort(key=lambda x:x['score'],reverse=True)
         dso_values=[s['avg_days_overdue'] or 0 for s in snaps][-12:]
         dso_svg=sparkline_svg(dso_values) if len(dso_values)>=2 else None
@@ -588,14 +592,18 @@ def register(app):
     def _recover_filtered_rows():
         """Applique les filtres/recherche de la query string RECOVER (filter, q, min_amount,
         max_amount, date_from, date_to). Partagé entre l'écran RECOVER et son export."""
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        entity_filter='entity_id=?' if eid else 'entity_id IS NULL'
+        entity_params=(eid,) if eid else ()
         c=cx()
-        active=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC").fetchall()
+        active=c.execute(f"SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter} ORDER BY score DESC",entity_params).fetchall()
         total=sum(x['outstanding'] for x in active)
         filt=request.args.get('filter','all')
         if filt=='overdue':
             rows=[r for r in active if r['kind']!='RETENTION']
         elif filt=='retention':
-            rows=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' ORDER BY COALESCE(retention_release_date,due_date) ASC").fetchall()
+            rows=c.execute(f"SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND {entity_filter} ORDER BY COALESCE(retention_release_date,due_date) ASC",entity_params).fetchall()
         else:
             rows=active
         c.close()
@@ -666,7 +674,11 @@ def register(app):
     @requires_active_plan
     @require_area('save')
     def save():
-        c=cx(); rows=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC").fetchall(); c.close()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        entity_filter='entity_id=?' if eid else 'entity_id IS NULL'
+        entity_params=(eid,) if eid else ()
+        c=cx(); rows=c.execute(f"SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {entity_filter} ORDER BY score DESC",entity_params).fetchall(); c.close()
         total=sum(x['value'] for x in rows)
         q=request.args.get('q','').strip(); min_value=request.args.get('min_value','').strip(); max_value=request.args.get('max_value','').strip()
         rows=_filter_rows(rows,q,min_value,max_value,['title','details'])
@@ -683,7 +695,9 @@ def register(app):
         if not quota['allowed']:
             flash(f"Quota mensuel d'exports atteint pour la formule {org['plan']} ({quota['used']}/{quota['limit']}). Passez à une formule supérieure.")
             return redirect(url_for('save'))
-        c=cx(); rows=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC").fetchall(); c.close()
+        c=cx(); from profitos.entities import current_entity_id; eid=current_entity_id()
+        ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
+        rows=c.execute(f"SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC",ep).fetchall(); c.close()
         data=[{'Titre':r['title'],'Valeur estimée (€/an)':round(r['value'],2),'Score':r['score'],
                'Détails':r['details'],'Source':r['source']} for r in rows]
         record_usage('reports_per_month',organization_id=org['id'])

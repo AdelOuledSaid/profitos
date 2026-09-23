@@ -142,7 +142,8 @@ def init_auth_db():
         organization_id INTEGER NOT NULL,
         date_from TEXT NOT NULL,
         date_to TEXT NOT NULL,
-        created_at TEXT
+        created_at TEXT,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS supplier_inbox_tokens(
         token TEXT PRIMARY KEY,
@@ -199,6 +200,11 @@ def init_auth_db():
         ('scope',"ALTER TABLE api_keys ADD COLUMN scope TEXT DEFAULT 'read'"),
     ):
         if col not in api_keys_cols: c.execute(ddl)
+    fec_tokens_cols=[r['name'] for r in c.execute('PRAGMA table_info(accounting_fec_tokens)').fetchall()]
+    for col,ddl in (
+        ('entity_id',"ALTER TABLE accounting_fec_tokens ADD COLUMN entity_id INTEGER"),
+    ):
+        if col not in fec_tokens_cols: c.execute(ddl)
     c.commit(); c.close()
     ensure_security_events_table()
 
@@ -758,6 +764,15 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS price_index_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,index_name TEXT DEFAULT 'INDICE',reading_date TEXT,value REAL,created_at TEXT);
     CREATE TABLE IF NOT EXISTS fixed_price_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,project_name TEXT,customer TEXT,amount REAL,signed_date TEXT,materials_share_pct REAL DEFAULT 30,status TEXT DEFAULT 'ACTIVE',created_at TEXT);
     CREATE TABLE IF NOT EXISTS financial_settings(id INTEGER PRIMARY KEY CHECK(id=1),cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS entity_financial_settings(entity_id INTEGER PRIMARY KEY,cash_balance REAL,cash_as_of TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS user_entity_access(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id,entity_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_entity_access_user ON user_entity_access(user_id);
     CREATE TABLE IF NOT EXISTS weinvoice_agreements(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         signatory_name TEXT NOT NULL,
@@ -1085,6 +1100,30 @@ def init_tenant_db(org_id=None):
         line_order INTEGER DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_order ON purchase_order_lines(order_id);
+    CREATE TABLE IF NOT EXISTS entities(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        siret TEXT,
+        vat_number TEXT,
+        address TEXT,
+        postal_code TEXT,
+        iban TEXT,
+        bic TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS analytical_axes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS analytical_tags(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        axis_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(axis_id,name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_analytical_tags_axis ON analytical_tags(axis_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
@@ -1116,7 +1155,16 @@ def init_tenant_db(org_id=None):
                        ('bank_transactions','category'),
                        ('suppliers','iban'),('suppliers','bic'),
                        ('company','iban'),('company','bic'),
-                       ('purchase_invoices','purchase_order_id')):
+                       ('purchase_invoices','purchase_order_id'),
+                       ('purchase_invoices','entity_id'),
+                       ('outgoing_invoices','entity_id'),
+                       ('accounting_entries','entity_id'),
+                       ('accounting_entry_lines','analytical_tag_id'),
+                       ('accounting_chart_of_accounts','entity_id'),
+                       ('invoices','entity_id'),
+                       ('opportunities','entity_id'),
+                       ('expenses','entity_id'),
+                       ('bank_accounts','entity_id')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
@@ -1795,7 +1843,24 @@ def commercial_context():
     if u and CHANGELOG_ENTRIES:
         last_seen=u['last_seen_changelog'] or ''
         unseen_changelog=CHANGELOG_ENTRIES[0]['date']>last_seen
-    return {'auth_user':u,'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION',''),'notifications':live_notifications(),'branding':org_branding(),'changelog_entries':CHANGELOG_ENTRIES,'unseen_changelog':unseen_changelog}
+    active_entity=None
+    active_entities=[]
+    if session.get('org_id'):
+        try:
+            from profitos.entities import current_entity, accessible_entities, user_can_access_entity, current_entity_id
+            tc=tenant_cx_direct(session['org_id'])
+            active_entities=accessible_entities(tc, session.get('user_id'))
+            if not user_can_access_entity(tc, session.get('user_id'), current_entity_id()):
+                # L'accès à l'entité sélectionnée a été révoqué en cours de session
+                # (ou n'a jamais été accordé) — retombe sur la société mère plutôt
+                # que d'exposer silencieusement des données non autorisées.
+                session.pop('current_entity_id', None)
+            active_entity=current_entity(tc)
+            tc.close()
+        except Exception:
+            active_entity=None
+            active_entities=[]
+    return {'auth_user':u,'auth_org':current_org(),'phase2_enabled':PHASE2_ENABLED,'user_orgs':user_organizations(),'app_version':current_app.config.get('APP_VERSION',''),'notifications':live_notifications(),'branding':org_branding(),'changelog_entries':CHANGELOG_ENTRIES,'unseen_changelog':unseen_changelog,'active_entity':active_entity,'active_entities':active_entities}
 
 
 

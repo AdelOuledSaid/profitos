@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">COMPTABILITÉ</div>
     <h1 class="purchase-title">Plan comptable</h1>
-    <p class="purchase-subtitle">Comptes du Plan Comptable Général (PCG) utilisés par ProfitOS. Les comptes par défaut ne peuvent pas être supprimés ; tu peux en ajouter d'autres.</p>
+    <p class="purchase-subtitle">Comptes du Plan Comptable Général (PCG) utilisés par ProfitOS. Les comptes par défaut ne peuvent pas être supprimés ; tu peux en ajouter d'autres — partagés entre toutes les entités, ou propres à celle actuellement active{% if active_entity and active_entity.id %} ({{ active_entity.name }}){% endif %}.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">Journaux →</a>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_fec_export') }}">Export FEC →</a>
@@ -21,6 +21,9 @@
     <label>Numéro de compte<input name="code" placeholder="ex: 616100" maxlength="8" required></label>
     <label class="wide">Libellé<input name="label" placeholder="ex: Assurance responsabilité civile" required></label>
     <label style="display:flex;align-items:center;gap:8px;flex-direction:row;"><input type="checkbox" name="is_collective" style="width:auto;"> Compte collectif (utilisé avec un tiers — client/fournisseur)</label>
+    {% if active_entity and active_entity.id %}
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;"><input type="checkbox" name="scope_to_entity" style="width:auto;"> Propre à {{ active_entity.name }} uniquement (décoché = partagé entre toutes les entités)</label>
+    {% endif %}
     <div><button type="submit" class="purchase-primary-btn primary">Ajouter</button></div>
   </form>
 </section>
@@ -36,7 +39,7 @@
         <tr>
           <td><code>{{ a.code }}</code></td>
           <td>{{ a.label }}{% if a.is_collective %} <a class="purchase-status" href="{{ url_for('accounting_lettrage',account_code=a.code) }}" style="text-decoration:none;">lettrage →</a>{% endif %}</td>
-          <td>{% if a.is_default %}<span class="purchase-muted" style="font-size:12px;">Par défaut</span>{% endif %}</td>
+          <td>{% if a.is_default %}<span class="purchase-muted" style="font-size:12px;">Par défaut</span>{% elif a.entity_id %}<span class="purchase-status" style="font-size:11px;">Propre à l'entité</span>{% endif %}</td>
           <td style="text-align:right;">
             {% if not a.is_default %}
             <form method="post" action="{{ url_for('accounting_chart_deactivate',code=a.code) }}" style="display:inline;">

@@ -385,7 +385,8 @@ def create_entry(conn, journal_code, entry_date, label, lines,
                 f"Ligne {i + 1} ({account_code}) : doit avoir un débit ou un crédit non nul."
             )
         account = conn.execute(
-            'SELECT code FROM accounting_chart_of_accounts WHERE code=?', (account_code,)
+            'SELECT code FROM accounting_chart_of_accounts WHERE code=? AND (entity_id IS NULL OR entity_id=?)',
+            (account_code, entity_id),
         ).fetchone()
         if not account:
             raise AccountingError(f"Compte inconnu : {account_code!r} (ligne {i + 1}).")

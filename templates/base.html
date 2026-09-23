@@ -25,6 +25,15 @@
   <div class="brand">{% if branding and branding.logo_url %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}Profit<span>OS</span>{% endif %}</div>
   <div class="subbrand">Production · V{{ app_version }}</div>
 
+  {% if active_entities and active_entities|length > 1 %}
+  <form method="post" action="{{ url_for('entity_switch') }}" style="margin-bottom:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="entity_id" data-auto-submit style="width:100%;font-size:12px;padding:8px;border-radius:8px;">
+      {% for e in active_entities %}<option value="{{ e.id or '' }}" {% if (active_entity and active_entity.id)==e.id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+    </select>
+  </form>
+  {% endif %}
+
   <nav>
     <a href="{{ url_for('home') }}">Overview</a>
 
@@ -54,6 +63,7 @@
     <a href="{{ url_for('accounting_journals_view') }}">Journaux</a>
     <a href="{{ url_for('fixed_assets_list') }}">Immobilisations</a>
     <a href="{{ url_for('vat_summary') }}">Synthèse TVA</a>
+    <a href="{{ url_for('analytical_axes_list') }}">Comptabilité analytique</a>
     <a href="{{ url_for('expense_reports_list') }}">Notes de frais</a>
 
     <div class="navhead">ACCOUNT</div>

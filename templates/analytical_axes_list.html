@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ ANALYTIQUE</div>
+    <h1 class="purchase-title">Axes et tags</h1>
+    <p class="purchase-subtitle">Des dimensions indépendantes du plan comptable légal — projet, département, centre de coût — pour analyser ta rentabilité autrement que par compte.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('analytical_profitability') }}">Rapport de rentabilité →</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="max-width:480px;margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Nouvel axe</h2>
+  <form method="post" style="display:flex;gap:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="new_axis">
+    <input type="text" name="axis_name" placeholder="ex: Projet, Département">
+    <button type="submit" class="purchase-primary-btn primary">Créer</button>
+  </form>
+</section>
+
+{% for a in axes %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">{{ a.name }}</h2>
+  <div class="purchase-table-wrap" style="margin-bottom:14px;">
+    <table class="purchase-table">
+      <thead><tr><th>Tag</th><th></th></tr></thead>
+      <tbody>
+      {% for tg in tags_by_axis.get(a.id, []) %}
+        <tr>
+          <td>{{ tg.name }}</td>
+          <td style="text-align:right;">
+            <form method="post" action="{{ url_for('analytical_tag_delete',tag_id=tg.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="2" class="purchase-empty">Aucun tag sur cet axe.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" style="display:flex;gap:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="new_tag">
+    <input type="hidden" name="axis_id" value="{{ a.id }}">
+    <input type="text" name="tag_name" placeholder="ex: Projet Alpha">
+    <button type="submit" class="purchase-primary-btn secondary">+ Ajouter un tag</button>
+  </form>
+</section>
+{% else %}
+<section class="purchase-panel"><p class="purchase-empty">Aucun axe défini pour l'instant.</p></section>
+{% endfor %}
+</div>
+{% endblock %}

@@ -40,7 +40,7 @@
   <h2 style="color:#fff;">Comptes synchronisés</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Compte</th><th>Type</th><th>Devise</th><th>Solde</th><th>État</th></tr></thead>
+      <thead><tr><th>Compte</th><th>Type</th><th>Devise</th><th>Solde</th><th>État</th>{% if active_entities and active_entities|length > 1 %}<th>Entité</th>{% endif %}</tr></thead>
       <tbody>
       {% for a in accounts %}
         <tr>
@@ -49,6 +49,16 @@
           <td>{{ a.currency or 'EUR' }}</td>
           <td><strong>{{ a.balance or 0|fr_number(2) }} €</strong></td>
           <td><span class="purchase-status {{ '' if a.disabled else 'paid' }}">{{ 'Désactivé' if a.disabled else 'Actif' }}</span></td>
+          {% if active_entities and active_entities|length > 1 %}
+          <td>
+            <form method="post" action="{{ url_for('bank_account_set_entity',account_id=a.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="entity_id" data-auto-submit style="font-size:12px;padding:4px 6px;">
+                {% for e in active_entities %}<option value="{{ e.id or '' }}" {% if (a.entity_id|int(0) if a.entity_id else none)==e.id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+              </select>
+            </form>
+          </td>
+          {% endif %}
         </tr>
       {% endfor %}
       </tbody>

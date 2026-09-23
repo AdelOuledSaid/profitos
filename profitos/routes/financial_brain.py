@@ -32,10 +32,14 @@ def build_financial_brain():
     money=build_money_brief()
     c=cx()
     try:
-        expenses=c.execute("SELECT COALESCE(SUM(amount),0) total,COUNT(*) n FROM expenses").fetchone()
+        from profitos.entities import get_cash_balance, current_entity_id
+        eid=current_entity_id()
+        ef='entity_id=?' if eid else 'entity_id IS NULL'
+        ep=(eid,) if eid else ()
+        expenses=c.execute(f"SELECT COALESCE(SUM(amount),0) total,COUNT(*) n FROM expenses WHERE {ef}",ep).fetchone()
         grows=c.execute("SELECT id,title,value,score,buyer,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall()
         margin=_margin_risk(c)
-        financial_settings=c.execute("SELECT cash_balance,cash_as_of FROM financial_settings WHERE id=1").fetchone()
+        financial_settings=get_cash_balance(c,eid)
     finally:
         c.close()
 

@@ -158,16 +158,28 @@ def build_money_brief():
     """
     c = cx()
     try:
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
         invoices = c.execute(
             "SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,"
             "days_overdue,score,kind,due_date FROM invoices "
-            "WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 "
-            "ORDER BY score DESC"
+            f"WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} "
+            "ORDER BY score DESC",
+            ep,
         ).fetchall()
         saves = c.execute(
             "SELECT id,title,value,score,details FROM opportunities "
-            "WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC"
+            f"WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC",
+            ep,
         ).fetchall()
+        # GROW reste volontairement partagé entre toutes les entités : les
+        # opportunités BOAMP sont détectées à partir du profil de la société
+        # mère (activités/département/certifications), les filiales n'ont pas
+        # encore leur propre profil pour générer des résultats distincts —
+        # les scoper produirait une liste vide et trompeuse plutôt qu'une
+        # vraie absence d'opportunités.
         grows = c.execute(
             "SELECT id,title,value,score,buyer,deadline FROM opportunities "
             "WHERE type='GROW' AND status='OPEN' ORDER BY score DESC"
@@ -177,7 +189,8 @@ def build_money_brief():
             "SUM(CASE WHEN LOWER(COALESCE(status,''))='paid' THEN 1 ELSE 0 END) paid,"
             "SUM(CASE WHEN LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 THEN 1 ELSE 0 END) overdue_open,"
             "AVG(CASE WHEN days_overdue>0 THEN days_overdue ELSE NULL END) avg_overdue "
-            "FROM invoices GROUP BY customer"
+            f"FROM invoices WHERE {ef} GROUP BY customer",
+            ep,
         ).fetchall()
         action_rows = c.execute(
             "SELECT i.customer,"
@@ -185,7 +198,8 @@ def build_money_brief():
             "SUM(CASE WHEN a.status='DONE' THEN 1 ELSE 0 END) done,"
             "SUM(CASE WHEN a.status='CANCELLED' THEN 1 ELSE 0 END) cancelled "
             "FROM actions a JOIN invoices i ON i.id=a.opportunity_id "
-            "WHERE a.kind='RECOVER' GROUP BY i.customer"
+            f"WHERE a.kind='RECOVER' AND i.{ef} GROUP BY i.customer",
+            ep,
         ).fetchall()
     finally:
         c.close()

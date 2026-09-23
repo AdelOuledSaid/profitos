@@ -576,12 +576,9 @@ def register(app):
                 if balance_rows:
                     imported_balance_date,imported_balance=max(balance_rows,key=lambda x:x[0])
                     c=cx()
-                    c.execute(
-                        "INSERT INTO financial_settings(id,cash_balance,cash_as_of,updated_at) VALUES(1,?,?,?) "
-                        "ON CONFLICT(id) DO UPDATE SET cash_balance=excluded.cash_balance,cash_as_of=excluded.cash_as_of,updated_at=excluded.updated_at",
-                        (imported_balance,imported_balance_date.isoformat(),now())
-                    )
-                    c.commit(); c.close()
+                    from profitos.entities import set_cash_balance, current_entity_id
+                    set_cash_balance(c,current_entity_id(),imported_balance,imported_balance_date.isoformat(),now())
+                    c.close()
                     log_activity('CASH_BALANCE_IMPORT','Solde bancaire mis à jour depuis un relevé importé')
 
             matched_count=sum(1 for p in proposals if p['match'])
@@ -649,9 +646,32 @@ def register(app):
 
             RETENTION_KEYWORDS=('retenue','retention','garantie')
             c=cx()
-            previous_rows={r['invoice_number']:{'amount':r['amount'],'customer':r['customer']} for r in c.execute('SELECT invoice_number,amount,customer FROM invoices').fetchall()}
-            c.execute('DELETE FROM invoices'); today=date.today(); signals=0; retentions=0
-            ac_clean=auth_cx(); ac_clean.execute('DELETE FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)); ac_clean.commit(); ac_clean.close()
+            from profitos.entities import resolve_entity
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+            try:
+                target_entity=resolve_entity(c,entity_id)
+            except ValueError:
+                c.close()
+                flash("Entité sélectionnée introuvable.")
+                return redirect(request.url)
+            entity_filter='entity_id=?' if entity_id else 'entity_id IS NULL'
+            entity_params=(entity_id,) if entity_id else ()
+            previous_rows={r['invoice_number']:{'amount':r['amount'],'customer':r['customer']}
+                for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
+            # Ne remplace que les factures de CETTE entité — importer pour une filiale
+            # ne doit jamais effacer les données déjà importées pour une autre.
+            c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=date.today(); signals=0; retentions=0
+            # Nettoie les liens publics devenus orphelins (leur facture a été supprimée
+            # ci-dessus), sans jamais toucher aux tokens des factures d'autres entités
+            # qui, elles, existent toujours.
+            ac_clean=auth_cx()
+            still_existing_ids={r['id'] for r in c.execute('SELECT id FROM invoices').fetchall()}
+            org_tokens=ac_clean.execute('SELECT token,invoice_local_id FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)).fetchall()
+            for tok in org_tokens:
+                if tok['invoice_local_id'] not in still_existing_ids:
+                    ac_clean.execute('DELETE FROM public_invoice_tokens WHERE token=?',(tok['token'],))
+            ac_clean.commit(); ac_clean.close()
             for _,r in df.iterrows():
                 try:amount=float(r[m['amount']])
                 except:continue
@@ -673,37 +693,44 @@ def register(app):
                 signals+=score>0
                 email_val=str(r[m['email']]).strip() if 'email' in m and str(r[m['email']]).strip().lower()!='nan' else None
                 phone_val=str(r[m['phone']]).strip() if 'phone' in m and str(r[m['phone']]).strip().lower()!='nan' else None
-                c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                    (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val))
+                c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone,entity_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val,entity_id))
                 local_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
                 token=register_public_invoice_token(org['id'],local_id)
                 c.execute('UPDATE invoices SET public_token=? WHERE id=?',(token,local_id))
             c.commit()
 
-            snap=c.execute("SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()
+            snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
             today_iso=today.isoformat()
-            c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
-                         VALUES(?,?,?,?,?)
-                         ON CONFLICT(snapshot_date) DO UPDATE SET
-                           avg_days_overdue=excluded.avg_days_overdue,
-                           total_outstanding=excluded.total_outstanding,
-                           invoice_count=excluded.invoice_count,
-                           created_at=excluded.created_at''',
-                (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
-            c.commit()
+            if not entity_id:
+                # L'historique DSO (dso_snapshots) n'est pas encore scopé par entité —
+                # une contrainte unique porte sur la seule date, ce qui ferait qu'une
+                # filiale écraserait l'instantané d'une autre pour le même jour. En
+                # attendant une vraie séparation de cette table, seul l'import de la
+                # société mère alimente cet historique, pour ne jamais le corrompre
+                # avec des données mélangées entre entités.
+                c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
+                             VALUES(?,?,?,?,?)
+                             ON CONFLICT(snapshot_date) DO UPDATE SET
+                               avg_days_overdue=excluded.avg_days_overdue,
+                               total_outstanding=excluded.total_outstanding,
+                               invoice_count=excluded.invoice_count,
+                               created_at=excluded.created_at''',
+                    (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
+                c.commit()
 
-            urgent=c.execute("SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90").fetchone()
-            overdue_rows=c.execute("SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchall()
+            urgent=c.execute(f"SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 AND {entity_filter}",entity_params).fetchone()
+            overdue_rows=c.execute(f"SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchall()
 
             # Détection d'anomalies par rapport à l'import précédent : facture disparue,
             # ou montant qui a significativement changé pour le même numéro de facture.
             anomalies=[]
             if previous_rows:
-                current_numbers={r['invoice_number'] for r in c.execute('SELECT invoice_number FROM invoices').fetchall()}
+                current_numbers={r['invoice_number'] for r in c.execute(f'SELECT invoice_number FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
                 for num,old in previous_rows.items():
                     if num not in current_numbers:
                         anomalies.append(f"Facture #{num} ({old['customer']}, {fr_number(old['amount'])} €) présente à l'import précédent a disparu de ce nouvel import.")
-                for r in c.execute('SELECT invoice_number,amount,customer FROM invoices').fetchall():
+                for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall():
                     old=previous_rows.get(r['invoice_number'])
                     if old and old['amount'] and abs(r['amount']-old['amount'])/old['amount']>0.2:
                         anomalies.append(f"Facture #{r['invoice_number']} ({r['customer']}) : montant passé de {fr_number(old['amount'])} € à {fr_number(r['amount'])} €.")
@@ -845,33 +872,47 @@ def register(app):
                 return redirect(request.url)
 
             c=cx()
+            from profitos.entities import resolve_entity
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+            try:
+                resolve_entity(c,entity_id)
+            except ValueError:
+                c.close()
+                flash("Entité sélectionnée introuvable.")
+                return redirect(request.url)
+            entity_filter='entity_id=?' if entity_id else 'entity_id IS NULL'
+            entity_params=(entity_id,) if entity_id else ()
             # Imports cumulatifs : conserver les dépenses existantes et éviter
-            # de réinsérer un doublon strict lors d'un nouvel import.
+            # de réinsérer un doublon strict lors d'un nouvel import. Le doublon
+            # est aussi vérifié dans le périmètre de CETTE entité uniquement.
             for _,r in df.iterrows():
                 try:a=float(r[m['amount']])
                 except:continue
                 d=parse_date(r[m['date']]); v=str(r[m['vendor']]).strip(); desc=str(r[m['desc']]) if 'desc' in m else ''; cat=str(r[m['cat']]) if 'cat' in m else ''
                 d_iso=d.isoformat() if d else None
                 exists=c.execute(
-                    '''SELECT 1 FROM expenses
+                    f'''SELECT 1 FROM expenses
                        WHERE COALESCE(vendor,'')=? AND COALESCE(description,'')=?
                          AND amount=? AND COALESCE(expense_date,'')=COALESCE(?, '')
-                         AND COALESCE(category,'')=? LIMIT 1''',
-                    (v,desc,a,d_iso,cat)
+                         AND COALESCE(category,'')=? AND {entity_filter} LIMIT 1''',
+                    (v,desc,a,d_iso,cat,*entity_params)
                 ).fetchone()
                 if not exists:
-                    c.execute('INSERT INTO expenses(vendor,description,amount,expense_date,category) VALUES(?,?,?,?,?)',(v,desc,a,d_iso,cat))
+                    c.execute('INSERT INTO expenses(vendor,description,amount,expense_date,category,entity_id) VALUES(?,?,?,?,?,?)',(v,desc,a,d_iso,cat,entity_id))
 
-            # SAVE est recalculé sur tout l'historique conservé.
-            c.execute("DELETE FROM opportunities WHERE type='SAVE'")
+            # SAVE est recalculé sur tout l'historique conservé — de CETTE entité
+            # uniquement, pour ne jamais effacer ni mélanger les opportunités
+            # d'une autre entité.
+            c.execute(f"DELETE FROM opportunities WHERE type='SAVE' AND {entity_filter}",entity_params)
             clean=[]
-            for er in c.execute('SELECT vendor,amount,expense_date,category FROM expenses').fetchall():
+            for er in c.execute(f'SELECT vendor,amount,expense_date,category FROM expenses WHERE {entity_filter}',entity_params).fetchall():
                 clean.append((er['vendor'],float(er['amount'] or 0),parse_date(er['expense_date']),er['category'] or ''))
 
             for opp in run_save_engine(clean):
-                c.execute("INSERT INTO opportunities(type,title,value,score,details,source,reasons,warnings,status,created_at) VALUES('SAVE',?,?,?,?,?,?,?,'OPEN',?)",
+                c.execute("INSERT INTO opportunities(type,title,value,score,details,source,reasons,warnings,status,created_at,entity_id) VALUES('SAVE',?,?,?,?,?,?,?,'OPEN',?,?)",
                     (opp['title'],opp['value'],opp['score'],opp['details'],'Expense Engine',
-                     json.dumps(opp['reasons'],ensure_ascii=False),json.dumps(opp['warnings'],ensure_ascii=False),now()))
+                     json.dumps(opp['reasons'],ensure_ascii=False),json.dumps(opp['warnings'],ensure_ascii=False),now(),entity_id))
             c.commit(); c.close()
 
             record_usage('imports_per_month',organization_id=org['id'])

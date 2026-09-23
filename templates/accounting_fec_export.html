@@ -21,7 +21,7 @@
     {% if entities and entities|length > 1 %}
     <label>Entité (un fichier FEC par entité — jamais mélangés)
       <select name="entity_id">
-        {% for e in entities %}<option value="{{ e.id or '' }}">{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
+        {% for e in entities %}<option value="{{ e.id or '' }}" {% if (active_entity and active_entity.id)==e.id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
       </select>
     </label>
     {% endif %}

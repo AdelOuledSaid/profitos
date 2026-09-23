@@ -389,6 +389,51 @@ def register(app):
     def team():
         c=auth_cx(); rows=c.execute('SELECT memberships.*,users.email,users.full_name FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.organization_id=? ORDER BY memberships.id',(session['org_id'],)).fetchall(); c.close(); return render_template('team.html',members=rows)
 
+    @app.route('/team/<int:uid>/entites', methods=['GET', 'POST'])
+    @login_required
+    @require_area('team')
+    def team_entity_access(uid):
+        if current_role() != 'OWNER':
+            flash("Seul le propriétaire peut gérer les accès par entité.")
+            return redirect(url_for('team'))
+        ac = auth_cx()
+        member = ac.execute(
+            'SELECT memberships.*,users.email,users.full_name FROM memberships JOIN users ON users.id=memberships.user_id '
+            'WHERE memberships.organization_id=? AND memberships.user_id=?', (session['org_id'], uid),
+        ).fetchone()
+        ac.close()
+        if not member:
+            flash("Membre introuvable.")
+            return redirect(url_for('team'))
+
+        from profitos.entities import list_all_entities, user_has_entity_restrictions
+        c = cx()
+        if request.method == 'POST':
+            if request.form.get('mode') == 'unrestricted':
+                c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
+            else:
+                checked_raw = request.form.getlist('entity_id')
+                checked = {(int(v) if v else None) for v in checked_raw}
+                c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
+                for eid in checked:
+                    c.execute(
+                        'INSERT INTO user_entity_access(user_id,entity_id,created_at) VALUES(?,?,?)',
+                        (uid, eid, now()),
+                    )
+            c.commit(); c.close()
+            log_activity('TEAM_ENTITY_ACCESS_UPDATED', f"Accès par entité modifié pour {member['email']}")
+            flash("Accès par entité mis à jour.")
+            return redirect(url_for('team'))
+
+        entities = list_all_entities(c)
+        restricted = user_has_entity_restrictions(c, uid)
+        allowed_ids = set()
+        if restricted:
+            allowed_ids = {r['entity_id'] for r in c.execute('SELECT entity_id FROM user_entity_access WHERE user_id=?', (uid,)).fetchall()}
+        c.close()
+        return render_template('team_entity_access.html', member=member, entities=entities,
+                                restricted=restricted, allowed_ids=allowed_ids)
+
     @app.route('/settings/theme',methods=['POST'])
     @login_required
     def toggle_theme():

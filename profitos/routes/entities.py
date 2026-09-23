@@ -4,6 +4,36 @@ from profitos.sepa import validate_iban
 
 
 def register(app):
+    @app.route('/entites/basculer', methods=['POST'])
+    @login_required
+    def entity_switch():
+        from profitos.entities import user_can_access_entity
+        c = cx()
+        entity_id_raw = request.form.get('entity_id')
+        entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        try:
+            identity = resolve_entity(c, entity_id)
+        except ValueError:
+            c.close()
+            flash("Entité introuvable.")
+            return redirect(url_for('home'))
+        if not user_can_access_entity(c, session.get('user_id'), entity_id):
+            c.close()
+            flash("Tu n'as pas accès à cette entité.")
+            return redirect(url_for('home'))
+        c.close()
+        if entity_id:
+            session['current_entity_id'] = entity_id
+        else:
+            session.pop('current_entity_id', None)
+        flash(f"Entité active : {identity['name']}.")
+        target = None
+        if request.referrer:
+            parsed = urlsplit(request.referrer)
+            if parsed.netloc == request.host:
+                target = safe_next_url(parsed.path + (f"?{parsed.query}" if parsed.query else ''))
+        return redirect(target or url_for('home'))
+
     @app.route('/entites')
     @login_required
     @require_area('settings')

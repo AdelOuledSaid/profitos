@@ -326,18 +326,50 @@ def _reconciliation_suggestions(c, transactions):
 
 
 def register(app):
+    @app.route("/banking/comptes/<int:account_id>/entite", methods=["POST"])
+    @login_required
+    @requires_paid_plan
+    def bank_account_set_entity(account_id):
+        from profitos.entities import resolve_entity
+        c = cx()
+        account = c.execute("SELECT id FROM bank_accounts WHERE id=?", (account_id,)).fetchone()
+        if not account:
+            c.close(); abort(404)
+        entity_id_raw = request.form.get("entity_id")
+        entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        try:
+            identity = resolve_entity(c, entity_id)
+        except ValueError:
+            c.close()
+            flash("Entité introuvable.")
+            return redirect(url_for("banking"))
+        c.execute("UPDATE bank_accounts SET entity_id=? WHERE id=?", (entity_id, account_id))
+        c.commit(); c.close()
+        log_activity('BANK_ACCOUNT_ENTITY_SET', f"Compte bancaire #{account_id} rattaché à {identity['name']}")
+        flash(f"Compte rattaché à {identity['name']}.")
+        return redirect(url_for("banking"))
+
     @app.route("/banking")
     @login_required
     @requires_paid_plan
     def banking():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
         c = cx()
         try:
             connection = _connection_row(c)
             accounts = c.execute(
-                "SELECT * FROM bank_accounts WHERE provider='powens' ORDER BY disabled,balance DESC"
+                f"SELECT * FROM bank_accounts WHERE provider='powens' AND {ef} ORDER BY disabled,balance DESC",
+                ep,
             ).fetchall()
             transactions = c.execute(
-                "SELECT * FROM bank_transactions WHERE provider='powens' ORDER BY transaction_date DESC,id DESC LIMIT 50"
+                f"""SELECT t.* FROM bank_transactions t
+                    JOIN bank_accounts a ON a.provider_account_id=t.provider_account_id AND a.provider=t.provider
+                    WHERE t.provider='powens' AND a.{ef}
+                    ORDER BY t.transaction_date DESC,t.id DESC LIMIT 50""",
+                ep,
             ).fetchall()
             reconciliation_suggestions = _reconciliation_suggestions(c, transactions)
 
@@ -351,11 +383,13 @@ def register(app):
                     purchase_reconciliation_suggestions[tx["id"]] = suggestions
 
             reconciliations = c.execute(
-                '''SELECT r.*,t.transaction_date,t.label,t.amount,i.invoice_number,i.client_name
+                f'''SELECT r.*,t.transaction_date,t.label,t.amount,i.invoice_number,i.client_name
                    FROM bank_invoice_reconciliations r
                    JOIN bank_transactions t ON t.id=r.bank_transaction_id
                    JOIN outgoing_invoices i ON i.id=r.invoice_id
-                   ORDER BY r.id DESC LIMIT 20'''
+                   WHERE i.{ef}
+                   ORDER BY r.id DESC LIMIT 20''',
+                ep,
             ).fetchall()
             categories = sorted(DEFAULT_CATEGORY_MAPPING.keys())
         finally:
@@ -597,23 +631,25 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_use_balance():
+        from profitos.entities import set_cash_balance, current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
         c = cx()
         try:
             rows = c.execute(
-                "SELECT balance FROM bank_accounts WHERE provider='powens' AND disabled=0 AND balance IS NOT NULL"
+                f"SELECT balance FROM bank_accounts WHERE provider='powens' AND disabled=0 AND balance IS NOT NULL AND {ef}",
+                ep,
             ).fetchall()
             if not rows:
-                flash("Aucun solde bancaire disponible.")
+                flash("Aucun solde bancaire disponible pour cette entité — vérifie que ses comptes bancaires lui sont bien rattachés.")
                 return redirect(url_for("banking"))
             total = round(sum(float(r["balance"]) for r in rows), 2)
             now = datetime.utcnow().replace(microsecond=0).isoformat()
-            c.execute(
-                """INSERT INTO financial_settings(id,cash_balance,cash_as_of,updated_at) VALUES(1,?,?,?)
-                   ON CONFLICT(id) DO UPDATE SET cash_balance=excluded.cash_balance,
-                   cash_as_of=excluded.cash_as_of,updated_at=excluded.updated_at""",
-                (total, now[:10], now),
-            )
-            c.commit()
+            # Chaque compte bancaire est maintenant rattachable à une entité
+            # (voir /banking/comptes/<id>/entite) — ce solde ne somme que les
+            # comptes de l'entité actuellement active, jamais ceux des autres.
+            set_cash_balance(c, eid, total, now[:10], now)
             flash(f"Solde bancaire de {fr_number(total,2)} € appliqué au pilotage financier.")
         finally:
             c.close()

@@ -13,8 +13,9 @@ def _iso_date(value):
 
 
 def _cash_settings(c):
-    row=c.execute("SELECT * FROM financial_settings WHERE id=1").fetchone()
-    return row or {'cash_balance':None,'cash_as_of':None,'updated_at':None}
+    from profitos.entities import get_cash_balance, current_entity_id
+    balance=get_cash_balance(c, current_entity_id())
+    return {'cash_balance':balance['cash_balance'],'cash_as_of':balance['cash_as_of'],'updated_at':None}
 
 
 def _curve_points(values, width=920, height=220, pad=18):
@@ -74,15 +75,21 @@ def _simulate_curve(cash, daily_burn, receivables, scheduled_outflows=None, mode
 def build_cash_intelligence():
     c=cx()
     try:
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        ef='entity_id=?' if eid else 'entity_id IS NULL'
+        ep=(eid,) if eid else ()
         settings=_cash_settings(c)
         invoices=c.execute(
             "SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,"
             "days_overdue,score,due_date FROM invoices "
-            "WHERE LOWER(COALESCE(status,''))!='paid' AND MAX(amount-paid_amount,0)>0 "
-            "ORDER BY outstanding DESC"
+            f"WHERE LOWER(COALESCE(status,''))!='paid' AND MAX(amount-paid_amount,0)>0 AND {ef} "
+            "ORDER BY outstanding DESC",
+            ep,
         ).fetchall()
         expenses=c.execute(
-            "SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL ORDER BY expense_date DESC"
+            f"SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL AND {ef} ORDER BY expense_date DESC",
+            ep,
         ).fetchall()
     finally:
         c.close()
@@ -217,12 +224,9 @@ def register(app):
                 flash('Solde bancaire invalide.')
                 return redirect(url_for('cash_intelligence'))
             c=cx()
-            c.execute(
-                "INSERT INTO financial_settings(id,cash_balance,cash_as_of,updated_at) VALUES(1,?,?,?) "
-                "ON CONFLICT(id) DO UPDATE SET cash_balance=excluded.cash_balance,cash_as_of=excluded.cash_as_of,updated_at=excluded.updated_at",
-                (balance,date.today().isoformat(),now())
-            )
-            c.commit(); c.close()
+            from profitos.entities import set_cash_balance, current_entity_id
+            set_cash_balance(c, current_entity_id(), balance, date.today().isoformat(), now())
+            c.close()
             log_activity('CASH_BALANCE_UPDATE','Mise à jour manuelle du solde de trésorerie')
             flash('Solde de trésorerie mis à jour.')
             return redirect(url_for('cash_intelligence'))
