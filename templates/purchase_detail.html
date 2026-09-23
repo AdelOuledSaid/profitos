@@ -26,6 +26,13 @@
           <tr><td>TVA</td><td>{{ "%.2f"|format(p.vat_amount) }} €</td></tr>
           <tr><td>Total TTC</td><td><strong>{{ "%.2f"|format(p.total) }} €</strong></td></tr>
           <tr><td>Statut</td><td><span class="purchase-status {{ 'paid' if p.status=='paid' else '' }}">{{ 'Payée' if p.status=='paid' else 'À payer' }}</span></td></tr>
+          {% if p.validation_status=='pending' %}
+          <tr><td>Validation</td><td><span class="purchase-status-warn" style="display:inline-block;padding:2px 8px;border-radius:999px;">⏳ En attente de validation</span></td></tr>
+          {% elif p.validation_status=='rejected' %}
+          <tr><td>Validation</td><td><span class="purchase-alert-text">✗ Rejetée{% if p.rejection_reason %} — {{ p.rejection_reason }}{% endif %}</span>{% if p.validated_by %} <span class="purchase-muted" style="font-size:12px;">par {{ p.validated_by }} le {{ p.validated_at|fr_date(true) }}</span>{% endif %}</td></tr>
+          {% elif p.validation_status=='approved' and p.validated_by %}
+          <tr><td>Validation</td><td><span class="purchase-ok-text">✓ Validée</span> <span class="purchase-muted" style="font-size:12px;">par {{ p.validated_by }} le {{ p.validated_at|fr_date(true) }}</span></td></tr>
+          {% endif %}
           {% if p.notes %}<tr><td>Notes</td><td>{{ p.notes }}</td></tr>{% endif %}
           <tr>
             <td>Justificatif</td>
@@ -51,13 +58,28 @@
     </form>
   </section>
 
-  <div style="margin-top:24px;display:flex;gap:12px;align-items:center;">
+  <div style="margin-top:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    {% if p.validation_status=='pending' and current_role() in ('OWNER','ADMIN','COMPTABLE') %}
+    <form method="post" action="{{ url_for('purchase_validate',purchase_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn primary">Valider la facture</button>
+    </form>
+    <form method="post" action="{{ url_for('purchase_reject',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="rejection_reason" placeholder="Motif du rejet (optionnel)" style="width:220px;">
+      <button type="submit" class="purchase-primary-btn secondary">Rejeter</button>
+    </form>
+    {% endif %}
     {% if p.status=='unpaid' %}
     <a class="purchase-nav-btn" href="{{ url_for('purchase_edit',purchase_id=p.id) }}">Modifier</a>
+    {% if p.validation_status in ('pending','rejected') %}
+    <span class="purchase-muted" style="font-size:13px;">{{ 'Validation requise avant paiement.' if p.validation_status=='pending' else 'Facture rejetée — ne peut pas être payée.' }}</span>
+    {% else %}
     <form method="post" action="{{ url_for('purchase_mark_paid',purchase_id=p.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="purchase-primary-btn primary">Marquer payée</button>
     </form>
+    {% endif %}
     {% else %}
     <span class="muted">Facture payée — contenu verrouillé.</span>
     {% endif %}

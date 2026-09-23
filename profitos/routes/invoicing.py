@@ -1361,15 +1361,17 @@ def register(app):
                 return redirect(url_for('purchase_new'))
             category=request.form.get('category','autre')
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
+            settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
+            validation_status='pending' if (settings_row and settings_row['require_purchase_validation']) else 'approved'
             c.execute("""INSERT INTO purchase_invoices(
                          supplier_id,supplier_name,invoice_number,issue_date,due_date,
-                         subtotal,vat_amount,total,status,notes,created_at,document_path,category)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
                        request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
-                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category))
+                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status))
             c.commit()
             new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             try:
@@ -1683,6 +1685,14 @@ def register(app):
             c.close()
             abort(404)
         if p['status']=='unpaid':
+            if p['validation_status']=='pending':
+                c.close()
+                flash("Cette facture doit d'abord être validée avant d'être marquée comme payée.")
+                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            if p['validation_status']=='rejected':
+                c.close()
+                flash("Cette facture a été rejetée — elle ne peut pas être marquée comme payée.")
+                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?",(now(),purchase_id))
             c.commit()
             try:
@@ -1693,6 +1703,61 @@ def register(app):
             flash("Facture fournisseur marquée comme payée.")
         c.close()
         return redirect(url_for('purchase_list'))
+
+    @app.route('/facturation/achats/<int:purchase_id>/valider', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_validate(purchase_id):
+        if current_role() not in ('OWNER', 'ADMIN', 'COMPTABLE'):
+            flash("Seul un propriétaire, administrateur ou comptable peut valider une facture fournisseur.")
+            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+        validator = current_user()
+        validator_email = validator['email'] if validator else None
+        c = cx()
+        p = c.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        if not p:
+            c.close(); abort(404)
+        if p['validation_status'] != 'pending':
+            c.close()
+            flash("Cette facture n'est pas en attente de validation.")
+            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+        c.execute(
+            "UPDATE purchase_invoices SET validation_status='approved',validated_by=?,validated_at=?,rejection_reason=NULL WHERE id=?",
+            (validator_email, now(), purchase_id),
+        )
+        c.commit(); c.close()
+        log_activity('PURCHASE_VALIDATED', f"Facture fournisseur #{purchase_id} validée par {validator_email}")
+        flash("Facture validée — elle peut maintenant être marquée comme payée.")
+        return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+
+    @app.route('/facturation/achats/<int:purchase_id>/rejeter', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_reject(purchase_id):
+        if current_role() not in ('OWNER', 'ADMIN', 'COMPTABLE'):
+            flash("Seul un propriétaire, administrateur ou comptable peut rejeter une facture fournisseur.")
+            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+        validator = current_user()
+        validator_email = validator['email'] if validator else None
+        c = cx()
+        p = c.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        if not p:
+            c.close(); abort(404)
+        if p['validation_status'] != 'pending':
+            c.close()
+            flash("Cette facture n'est pas en attente de validation.")
+            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+        reason = (request.form.get('rejection_reason') or '').strip()
+        c.execute(
+            "UPDATE purchase_invoices SET validation_status='rejected',validated_by=?,validated_at=?,rejection_reason=? WHERE id=?",
+            (validator_email, now(), reason or None, purchase_id),
+        )
+        c.commit(); c.close()
+        log_activity('PURCHASE_REJECTED', f"Facture fournisseur #{purchase_id} rejetée par {validator_email}")
+        flash("Facture rejetée.")
+        return redirect(url_for('purchase_detail', purchase_id=purchase_id))
 
     @app.route('/facturation')
     @login_required

@@ -955,7 +955,10 @@ def init_tenant_db(org_id=None):
                        ('app_settings','weinvoice_status'),('app_settings','weinvoice_last_check_at'),
                        ('app_settings','weinvoice_last_error'),
                        ('app_settings','weinvoice_company_id'),('app_settings','weinvoice_kyb_status'),
-                       ('app_settings','weinvoice_onboarded_at')):
+                       ('app_settings','weinvoice_onboarded_at'),
+                       ('app_settings','require_purchase_validation'),
+                       ('purchase_invoices','validation_status'),('purchase_invoices','validated_by'),
+                       ('purchase_invoices','validated_at'),('purchase_invoices','rejection_reason')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:

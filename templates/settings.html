@@ -36,6 +36,7 @@
       <label>Webhook Teams (optionnel)<input name="teams_webhook_url" placeholder="https://outlook.office.com/webhook/..." value="{{ app_settings.teams_webhook_url or '' }}"></label>
       <label>Email du comptable (optionnel)<input type="email" name="accountant_email" placeholder="comptable@cabinet.fr" value="{{ app_settings.accountant_email or '' }}"></label>
       <label class="check"><input type="checkbox" name="weekly_export_enabled" {% if app_settings and app_settings.weekly_export_enabled %}checked{% endif %}> Prévoir un envoi hebdomadaire de l'export au comptable</label>
+      <label class="check"><input type="checkbox" name="require_purchase_validation" {% if app_settings and app_settings.require_purchase_validation %}checked{% endif %}> Exiger une validation (propriétaire/administrateur/comptable) avant qu'une facture fournisseur puisse être marquée payée</label>
       <label>Logo personnalisé — URL https (optionnel)<input name="logo_url" placeholder="https://.../logo.png" value="{{ app_settings.logo_url or '' }}"></label>
       <label>Couleur d'accent (optionnel)<input name="accent_color" placeholder="#5fe0ac" value="{{ app_settings.accent_color or '' }}"></label>
       <button class="purchase-primary-btn primary">Enregistrer</button>

@@ -132,6 +132,8 @@
               <span class="purchase-status {% if st == 'paid' %}paid{% elif item.overdue %}overdue{% endif %}">
                 {% if st == 'paid' %}Payée{% elif item.overdue %}En retard{% else %}À payer{% endif %}
               </span>
+              {% if inv.validation_status=='pending' %}<br><span class="purchase-status-warn" style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:11px;">⏳ À valider</span>
+              {% elif inv.validation_status=='rejected' %}<br><span class="purchase-alert-text" style="font-size:11px;">✗ Rejetée</span>{% endif %}
             </td>
             <td><strong>{{ '%.2f'|format(inv.total or 0) }} €</strong></td>
           </tr>
