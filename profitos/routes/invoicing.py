@@ -1363,7 +1363,8 @@ def register(app):
         domain = os.environ.get('SUPPLIER_INBOX_DOMAIN', 'achats.profitos.fr')
         c = cx()
         recent = c.execute(
-            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' ORDER BY id DESC LIMIT 20"
+            "SELECT * FROM purchase_invoices WHERE notes LIKE ? ORDER BY id DESC LIMIT 20",
+            ("Reçu par email%",)
         ).fetchall()
         c.close()
         return render_template('purchase_inbox_settings.html',
