@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Immobilisations</h1>
+    <p class="purchase-subtitle">Amortissement linéaire, prorata temporis sur l'année d'acquisition.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
+</div>
+
+{% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Nouvelle immobilisation</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Libellé<input name="label" placeholder="ex: Ordinateur portable" required></label>
+    <label>Date d'achat<input type="date" name="purchase_date" required></label>
+    <label>Montant d'achat HT (€)<input type="number" name="purchase_amount" step="0.01" min="0" required></label>
+    <label>Durée d'amortissement (années)<input type="number" name="useful_life_years" step="0.5" min="0.5" value="3" required></label>
+    <label>Compte d'immobilisation<select name="asset_account">{% for a in immobilisation_accounts %}<option value="{{ a.code }}">{{ a.code }} — {{ a.label }}</option>{% endfor %}</select></label>
+    <label>Compte d'amortissement<input name="depreciation_account" value="281830" placeholder="ex: 281830"></label>
+    <label>Compte de charge (dotation)<input name="expense_account" value="681000"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer</button></div>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Libellé</th><th>Date d'achat</th><th>Coût</th><th>Amorti</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for a in assets %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('fixed_asset_detail',asset_id=a.id) }}"><strong>{{ a.label }}</strong></a></td>
+          <td>{{ a.purchase_date|fr_date }}</td>
+          <td><strong>{{ a.purchase_amount|fr_number(2) }} €</strong></td>
+          <td>{{ posted.get(a.id,0)|fr_number(2) }} €</td>
+          <td><span class="purchase-status {{ '' if a.status=='active' else 'paid' }}">{{ 'Active' if a.status=='active' else 'Cédée' }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucune immobilisation enregistrée.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

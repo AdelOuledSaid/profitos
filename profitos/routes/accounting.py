@@ -1,5 +1,6 @@
 from profitos.runtime import *
-from profitos.accounting import AccountingError, generate_fec, fec_filename
+from profitos.accounting import (AccountingError, generate_fec, fec_filename,
+                                   compute_depreciation_for_year, generate_depreciation_entry)
 import io
 
 
@@ -328,3 +329,165 @@ def register(app):
         locked_count = c.execute('SELECT COUNT(*) n FROM accounting_entries WHERE is_locked=1').fetchone()['n']
         c.close()
         return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error)
+
+    @app.route('/comptabilite/immobilisations', methods=['GET', 'POST'])
+    @login_required
+    def fixed_assets_list():
+        c = cx()
+        error = None
+        if request.method == 'POST':
+            label = (request.form.get('label') or '').strip()
+            asset_account = (request.form.get('asset_account') or '').strip()
+            depreciation_account = (request.form.get('depreciation_account') or '').strip()
+            expense_account = (request.form.get('expense_account') or '681000').strip()
+            purchase_date_str = request.form.get('purchase_date') or ''
+            try:
+                purchase_amount = float(request.form.get('purchase_amount') or 0)
+                useful_life_years = float(request.form.get('useful_life_years') or 0)
+            except ValueError:
+                purchase_amount = useful_life_years = 0
+            if not label or not purchase_date_str:
+                error = "Le libellé et la date d'achat sont obligatoires."
+            elif purchase_amount <= 0:
+                error = "Le montant d'achat doit être positif."
+            elif useful_life_years <= 0:
+                error = "La durée d'amortissement doit être positive."
+            else:
+                for code, field_name in ((asset_account, 'immobilisation'), (depreciation_account, 'amortissement'),
+                                          (expense_account, 'charge')):
+                    exists = c.execute('SELECT code FROM accounting_chart_of_accounts WHERE code=?', (code,)).fetchone()
+                    if not exists:
+                        error = f"Compte {field_name} inconnu : {code!r}."
+                        break
+            if not error:
+                c.execute(
+                    """INSERT INTO fixed_assets
+                       (label,asset_account,depreciation_account,expense_account,purchase_date,
+                        purchase_amount,useful_life_years,status,created_at)
+                       VALUES(?,?,?,?,?,?,?,'active',?)""",
+                    (label, asset_account, depreciation_account, expense_account, purchase_date_str,
+                     purchase_amount, useful_life_years, now()),
+                )
+                c.commit()
+                new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                c.close()
+                flash(f"Immobilisation « {label} » créée.")
+                return redirect(url_for('fixed_asset_detail', asset_id=new_id))
+
+        assets = c.execute("SELECT * FROM fixed_assets ORDER BY status,purchase_date DESC").fetchall()
+        posted = {}
+        for a in assets:
+            t = c.execute('SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=?', (a['id'],)).fetchone()['t']
+            posted[a['id']] = t
+        immobilisation_accounts = c.execute(
+            "SELECT code,label FROM accounting_chart_of_accounts WHERE account_class=2 AND is_active=1 ORDER BY code"
+        ).fetchall()
+        c.close()
+        return render_template('fixed_assets_list.html', assets=assets, posted=posted, error=error,
+                                immobilisation_accounts=immobilisation_accounts)
+
+    @app.route('/comptabilite/immobilisations/<int:asset_id>')
+    @login_required
+    def fixed_asset_detail(asset_id):
+        c = cx()
+        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        if not asset:
+            c.close(); abort(404)
+        runs = c.execute(
+            'SELECT * FROM fixed_asset_depreciation_runs WHERE asset_id=? ORDER BY period_label', (asset_id,)
+        ).fetchall()
+        posted_total = sum(r['amount'] for r in runs)
+        current_year = date.today().year
+        preview = None
+        try:
+            preview = compute_depreciation_for_year(c, asset, current_year)
+        except Exception:
+            preview = None
+        already_run_this_year = c.execute(
+            'SELECT id FROM fixed_asset_depreciation_runs WHERE asset_id=? AND period_label=?',
+            (asset_id, str(current_year)),
+        ).fetchone() is not None
+        c.close()
+        return render_template('fixed_asset_detail.html', asset=asset, runs=runs, posted_total=posted_total,
+                                current_year=current_year, preview=preview, already_run_this_year=already_run_this_year)
+
+    @app.route('/comptabilite/immobilisations/<int:asset_id>/amortir', methods=['POST'])
+    @login_required
+    def fixed_asset_depreciate(asset_id):
+        c = cx()
+        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        if not asset:
+            c.close(); abort(404)
+        period = (request.form.get('period_label') or str(date.today().year)).strip()
+        try:
+            calendar_year = int(period)
+        except ValueError:
+            c.close()
+            flash("Année invalide.")
+            return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+        amount = compute_depreciation_for_year(c, asset, calendar_year)
+        try:
+            generate_depreciation_entry(c, asset, period, amount)
+            flash(f"Dotation {period} comptabilisée : {fr_number(amount, 2)} €.")
+        except AccountingError as e:
+            flash(str(e))
+        c.close()
+        return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+
+    @app.route('/comptabilite/immobilisations/<int:asset_id>/ceder', methods=['POST'])
+    @login_required
+    def fixed_asset_dispose(asset_id):
+        c = cx()
+        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        if not asset:
+            c.close(); abort(404)
+        if asset['status'] == 'disposed':
+            c.close()
+            flash("Cette immobilisation est déjà cédée.")
+            return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+        c.execute("UPDATE fixed_assets SET status='disposed',disposed_at=? WHERE id=?", (now(), asset_id))
+        c.commit(); c.close()
+        log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée")
+        flash("Immobilisation marquée cédée. Aucune écriture de sortie/plus-value générée automatiquement — "
+              "à saisir manuellement avec ton expert-comptable selon le prix de cession réel.")
+        return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+
+    @app.route('/comptabilite/tva', methods=['GET', 'POST'])
+    @login_required
+    def vat_summary():
+        c = cx()
+        date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
+        date_to = request.values.get('date_to') or date.today().isoformat()
+
+        collected = c.execute(
+            """SELECT COALESCE(SUM(l.credit),0) t FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ?""",
+            (date_from, date_to),
+        ).fetchone()['t']
+        deductible = c.execute(
+            """SELECT COALESCE(SUM(l.debit),0) t FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ?""",
+            (date_from, date_to),
+        ).fetchone()['t']
+        balance = collected - deductible
+
+        sales_lines = c.execute(
+            """SELECT e.entry_date,e.label,l.credit FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ?
+               ORDER BY e.entry_date DESC""",
+            (date_from, date_to),
+        ).fetchall()
+        purchase_lines = c.execute(
+            """SELECT e.entry_date,e.label,l.debit FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ?
+               ORDER BY e.entry_date DESC""",
+            (date_from, date_to),
+        ).fetchall()
+        c.close()
+        return render_template('vat_summary.html', date_from=date_from, date_to=date_to,
+                                collected=collected, deductible=deductible, balance=balance,
+                                sales_lines=sales_lines, purchase_lines=purchase_lines)

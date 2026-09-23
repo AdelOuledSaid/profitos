@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">IMMOBILISATION</div>
+    <h1 class="purchase-title">{{ asset.label }}</h1>
+    <p class="purchase-subtitle">Acquise le {{ asset.purchase_date|fr_date }} · {{ asset.purchase_amount|fr_number(2) }} € · amortie sur {{ asset.useful_life_years }} an(s)</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('fixed_assets_list') }}">← Immobilisations</a>
+</div>
+
+<div class="purchase-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:24px 0;">
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">VALEUR D'ORIGINE</div><div class="purchase-stat-value">{{ asset.purchase_amount|fr_number(2) }} €</div></div>
+  </div>
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">AMORTI À CE JOUR</div><div class="purchase-stat-value">{{ posted_total|fr_number(2) }} €</div></div>
+  </div>
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">VALEUR NETTE COMPTABLE</div><div class="purchase-stat-value">{{ (asset.purchase_amount - posted_total)|fr_number(2) }} €</div></div>
+  </div>
+</div>
+
+{% if asset.status=='active' %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Comptabiliser une dotation</h2>
+  <form method="post" action="{{ url_for('fixed_asset_depreciate',asset_id=asset.id) }}" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Année<input type="number" name="period_label" value="{{ current_year }}"></label>
+    <button type="submit" class="purchase-primary-btn primary" {% if already_run_this_year %}disabled{% endif %}>
+      {% if already_run_this_year %}Déjà comptabilisée pour {{ current_year }}{% elif preview %}Comptabiliser {{ preview|fr_number(2) }} € pour {{ current_year }}{% else %}Comptabiliser{% endif %}
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('fixed_asset_dispose',asset_id=asset.id) }}" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn secondary">Marquer cédée</button>
+  </form>
+</section>
+{% else %}
+<p class="purchase-muted" style="margin-bottom:20px;">Immobilisation cédée le {{ asset.disposed_at|fr_date(true) }}.</p>
+{% endif %}
+
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Historique des dotations</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Période</th><th style="text-align:right;">Montant</th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        <tr><td>{{ r.period_label }}</td><td style="text-align:right;"><strong>{{ r.amount|fr_number(2) }} €</strong></td></tr>
+      {% else %}
+        <tr><td colspan="2" class="purchase-empty">Aucune dotation comptabilisée pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

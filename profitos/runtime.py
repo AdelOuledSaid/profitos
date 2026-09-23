@@ -998,6 +998,32 @@ def init_tenant_db(org_id=None):
         UNIQUE(fiscal_power,bracket)
     );
     CREATE INDEX IF NOT EXISTS idx_expense_report_lines_report ON expense_report_lines(report_id);
+    CREATE TABLE IF NOT EXISTS fixed_assets(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label TEXT NOT NULL,
+        asset_account TEXT NOT NULL,
+        depreciation_account TEXT NOT NULL,
+        expense_account TEXT NOT NULL,
+        purchase_date TEXT NOT NULL,
+        purchase_amount REAL NOT NULL,
+        useful_life_years REAL NOT NULL,
+        method TEXT DEFAULT 'linear',
+        source_type TEXT,
+        source_id INTEGER,
+        status TEXT DEFAULT 'active',
+        disposed_at TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS fixed_asset_depreciation_runs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        asset_id INTEGER NOT NULL,
+        period_label TEXT NOT NULL,
+        amount REAL NOT NULL,
+        entry_id INTEGER,
+        created_at TEXT,
+        UNIQUE(asset_id,period_label)
+    );
+    CREATE INDEX IF NOT EXISTS idx_depreciation_runs_asset ON fixed_asset_depreciation_runs(asset_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.

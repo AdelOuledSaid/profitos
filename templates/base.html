@@ -51,6 +51,8 @@
     {% if can_access('invoicing') %}<a href="{{ url_for('invoicing_list') }}">Facturation</a>{% endif %}
     <a href="{{ url_for('accounting_chart') }}">Plan comptable</a>
     <a href="{{ url_for('accounting_journals_view') }}">Journaux</a>
+    <a href="{{ url_for('fixed_assets_list') }}">Immobilisations</a>
+    <a href="{{ url_for('vat_summary') }}">Synthèse TVA</a>
     <a href="{{ url_for('expense_reports_list') }}">Notes de frais</a>
 
     <div class="navhead">ACCOUNT</div>

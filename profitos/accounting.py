@@ -522,3 +522,66 @@ def fec_filename(siret, date_to):
         )
     siren = digits[:9]
     return f"{siren}FEC{_fec_date(date_to)}.txt"
+
+
+# --- Immobilisations / amortissements ---------------------------------------
+# Amortissement linéaire uniquement (le plus courant en TPE/PME). Prorata
+# temporis sur l'année d'acquisition (nombre de jours entre la date d'achat
+# et le 31 décembre de cette année, sur 365 — convention simple ; certains
+# cabinets utilisent une base 360 jours, à ajuster si besoin).
+
+def compute_depreciation_for_year(conn, asset, calendar_year):
+    """Calcule la dotation aux amortissements pour une année civile donnée.
+    Ne se fie jamais uniquement à la formule théorique : plafonne toujours
+    le résultat pour que la somme des dotations déjà comptabilisées plus
+    celle-ci ne dépasse jamais le coût d'achat — gère ainsi automatiquement
+    le prorata de la dernière année sans avoir à le calculer à part.
+    Retourne 0 si l'actif n'était pas encore acquis cette année-là, ou s'il
+    est déjà totalement amorti."""
+    purchase_date_obj = date.fromisoformat(str(asset['purchase_date'])[:10])
+    if calendar_year < purchase_date_obj.year:
+        return 0.0
+    annual_rate = asset['purchase_amount'] / asset['useful_life_years']
+    if calendar_year == purchase_date_obj.year:
+        days_remaining = (date(calendar_year, 12, 31) - purchase_date_obj).days + 1
+        theoretical = annual_rate * days_remaining / 365
+    else:
+        theoretical = annual_rate
+    already_posted = conn.execute(
+        'SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=?',
+        (asset['id'],),
+    ).fetchone()['t']
+    remaining = asset['purchase_amount'] - already_posted
+    return round(min(theoretical, max(remaining, 0.0)), 2)
+
+
+def generate_depreciation_entry(conn, asset, period_label, amount):
+    """Enregistre une dotation aux amortissements pour une période donnée :
+    débite le compte de charge (681xxx), crédite le compte d'amortissement
+    de l'actif (compte contra-actif, ex. 281830). Idempotent via la
+    contrainte UNIQUE(asset_id,period_label) de fixed_asset_depreciation_runs
+    — une même période ne peut jamais être comptabilisée deux fois pour le
+    même actif."""
+    existing = conn.execute(
+        'SELECT id FROM fixed_asset_depreciation_runs WHERE asset_id=? AND period_label=?',
+        (asset['id'], period_label),
+    ).fetchone()
+    if existing:
+        return None
+    if amount <= 0:
+        raise AccountingError("Aucune dotation à comptabiliser pour cette période (actif déjà totalement amorti).")
+    entry_id = create_entry(
+        conn, 'OD', date.today(),
+        f"Dotation aux amortissements — {asset['label']} ({period_label})",
+        [
+            {'account_code': asset['expense_account'], 'debit': amount},
+            {'account_code': asset['depreciation_account'], 'credit': amount},
+        ],
+        source_type='fixed_asset_depreciation', source_id=asset['id'],
+    )
+    conn.execute(
+        'INSERT INTO fixed_asset_depreciation_runs(asset_id,period_label,amount,entry_id,created_at) VALUES(?,?,?,?,?)',
+        (asset['id'], period_label, amount, entry_id, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+    return entry_id
