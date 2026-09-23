@@ -1063,6 +1063,28 @@ def init_tenant_db(org_id=None):
         imported_at TEXT,
         UNIQUE(connection_id,provider_file_id)
     );
+    CREATE TABLE IF NOT EXISTS purchase_orders(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER,
+        supplier_name TEXT NOT NULL,
+        order_number TEXT UNIQUE NOT NULL,
+        order_date TEXT NOT NULL,
+        expected_delivery_date TEXT,
+        status TEXT DEFAULT 'draft',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS purchase_order_lines(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit_price REAL NOT NULL DEFAULT 0,
+        quantity_received REAL NOT NULL DEFAULT 0,
+        line_order INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_order ON purchase_order_lines(order_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.
@@ -1091,7 +1113,10 @@ def init_tenant_db(org_id=None):
                        ('app_settings','require_purchase_validation'),
                        ('purchase_invoices','validation_status'),('purchase_invoices','validated_by'),
                        ('purchase_invoices','validated_at'),('purchase_invoices','rejection_reason'),
-                       ('bank_transactions','category')):
+                       ('bank_transactions','category'),
+                       ('suppliers','iban'),('suppliers','bic'),
+                       ('company','iban'),('company','bic'),
+                       ('purchase_invoices','purchase_order_id')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
@@ -1837,6 +1862,8 @@ def init_runtime(app):
     app.jinja_env.globals['asset_url'] = asset_url
     app.jinja_env.filters['fr_number'] = fr_number
     app.jinja_env.filters['fr_date'] = fr_date
+    from profitos.sepa import format_iban
+    app.jinja_env.filters['format_iban'] = format_iban
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)

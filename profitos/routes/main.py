@@ -91,8 +91,9 @@ def register(app):
                 c.close(); flash('Seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
             dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep
             vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),
-                  request.form.get('siret','').strip(),request.form.get('address','').strip(),request.form.get('vat_number','').strip(),request.form.get('postal_code','').strip(),now())
-            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,siret,address,vat_number,postal_code,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,siret=excluded.siret,address=excluded.address,vat_number=excluded.vat_number,postal_code=excluded.postal_code,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
+                  request.form.get('siret','').strip(),request.form.get('address','').strip(),request.form.get('vat_number','').strip(),request.form.get('postal_code','').strip(),
+                  (request.form.get('iban') or '').replace(' ','').upper().strip(),(request.form.get('bic') or '').upper().strip(),now())
+            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,siret,address,vat_number,postal_code,iban,bic,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,siret=excluded.siret,address=excluded.address,vat_number=excluded.vat_number,postal_code=excluded.postal_code,iban=excluded.iban,bic=excluded.bic,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
             org=current_org()
             if org and feature_enabled(org['plan'],'advanced_features'):
                 try:flash(f'GROW actualisé : {sync_grow()} opportunités pertinentes.')
@@ -202,7 +203,7 @@ def register(app):
         signature=request.headers.get('webhook-signature','')
         raw_body=request.get_data()
         try:
-            weinvoice_verify_webhook(webhook_id,webhook_timestamp,raw_body,signature)
+            weinvoice_verify_webhook(webhook_id,webhook_timestamp,raw_body,signature,secret_name='invoice')
         except WeInvoiceWebhookError as e:
             log_ops_event('WEINVOICE_INVOICE_WEBHOOK_REJECTED','WARNING',detail=str(e))
             abort(401)

@@ -42,9 +42,23 @@
           <tr><td>Adresse</td><td>{{ supplier.address or "—" }}</td></tr>
           <tr><td>SIRET</td><td>{{ supplier.siret or "—" }}</td></tr>
           <tr><td>N° TVA</td><td>{{ supplier.vat_number or "—" }}</td></tr>
+          <tr><td>IBAN</td><td>{{ supplier.iban|format_iban if supplier.iban else "—" }}</td></tr>
+          <tr><td>BIC</td><td>{{ supplier.bic or "—" }}</td></tr>
         </tbody>
       </table>
     </div>
+    <details style="margin-top:14px;">
+      <summary class="purchase-detail-link" style="cursor:pointer;">Modifier les coordonnées</summary>
+      <form method="post" action="{{ url_for('supplier_update',supplier_id=supplier.id) }}" class="formgrid" style="margin-top:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Email<input name="email" value="{{ supplier.email or '' }}"></label>
+        <label>Téléphone<input name="phone" value="{{ supplier.phone or '' }}"></label>
+        <label class="wide">Adresse<input name="address" value="{{ supplier.address or '' }}"></label>
+        <label>IBAN (pour virement SEPA)<input name="iban" value="{{ supplier.iban or '' }}" placeholder="FR76 1234 5678 ..."></label>
+        <label>BIC<input name="bic" value="{{ supplier.bic or '' }}" placeholder="ex: BNPAFRPP"></label>
+        <div class="wide"><button type="submit" class="purchase-primary-btn primary">Enregistrer</button></div>
+      </form>
+    </details>
   </section>
 
   <section class="purchase-panel" style="margin-top:20px;">

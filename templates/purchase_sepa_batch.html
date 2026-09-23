@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ACHATS · VIREMENTS GROUPÉS</div>
+    <h1 class="purchase-title">Export SEPA</h1>
+    <p class="purchase-subtitle">Génère un fichier de virements groupés (norme SEPA, pain.001) à uploader dans l'espace banque en ligne de l'entreprise. Aucun virement n'est exécuté automatiquement — l'exécution reste entièrement de ton côté, via ta banque.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a>
+</div>
+
+{% if not company_ready %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <p class="purchase-alert-text" style="margin:0;">L'IBAN et le BIC de l'entreprise doivent être renseignés dans le <a class="purchase-detail-link" href="{{ url_for('company') }}">profil entreprise</a> avant de pouvoir générer un fichier SEPA.</p>
+</section>
+{% endif %}
+
+{% if ready %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <div class="purchase-panel-head"><h2>Factures prêtes pour virement ({{ ready|length }})</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th></th><th>Fournisseur</th><th>Facture</th><th>Échéance</th><th style="text-align:right;">Montant</th></tr></thead>
+        <tbody>
+        {% for r in ready %}
+          <tr>
+            <td><input type="checkbox" name="purchase_id" value="{{ r.id }}" checked></td>
+            <td>{{ r.supplier_name }}</td>
+            <td>{{ r.invoice_number }}</td>
+            <td>{{ r.due_date|fr_date or '—' }}</td>
+            <td style="text-align:right;"><strong>{{ r.total|fr_number(2) }} €</strong></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="purchase-primary-btn primary" style="margin-top:16px;" {% if not company_ready %}disabled{% endif %}>
+      Générer le fichier SEPA et marquer payées
+    </button>
+  </section>
+</form>
+{% else %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <p class="purchase-empty">Aucune facture validée en attente avec un IBAN fournisseur renseigné.</p>
+</section>
+{% endif %}
+
+{% if blocked %}
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Non incluses — IBAN ou BIC fournisseur manquant ({{ blocked|length }})</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Fournisseur</th><th>Facture</th><th style="text-align:right;">Montant</th><th></th></tr></thead>
+      <tbody>
+      {% for r in blocked %}
+        <tr>
+          <td>{{ r.supplier_name }}</td>
+          <td>{{ r.invoice_number }}</td>
+          <td style="text-align:right;">{{ r.total|fr_number(2) }} €</td>
+          <td>{% if r.supplier_id %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=r.supplier_id) }}">Renseigner l'IBAN →</a>{% else %}<span class="purchase-muted" style="font-size:12px;">Aucun fournisseur lié</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

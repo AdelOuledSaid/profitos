@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ACHATS</div>
+    <h1 class="purchase-title">Bons de commande</h1>
+    <p class="purchase-subtitle">Ce qui est commandé, avant réception et facturation.</p>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('purchase_order_new') }}">+ Nouveau bon de commande</a>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>N°</th><th>Fournisseur</th><th>Date</th><th style="text-align:right;">Montant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('purchase_order_detail',order_id=o.id) }}"><strong>{{ o.order_number }}</strong></a></td>
+          <td>{{ o.supplier_name }}</td>
+          <td>{{ o.order_date|fr_date }}</td>
+          <td style="text-align:right;"><strong>{{ totals.get(o.id,0)|fr_number(2) }} €</strong></td>
+          <td>
+            <span class="purchase-status {{ 'paid' if o.status=='received' else ('overdue' if o.status=='cancelled' else '') }}">
+              {{ {'draft':'Brouillon','sent':'Envoyée','partially_received':'Partiellement reçue','received':'Reçue','cancelled':'Annulée'}.get(o.status, o.status) }}
+            </span>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun bon de commande pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

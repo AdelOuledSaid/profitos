@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ACHATS · BONS DE COMMANDE</div>
+    <h1 class="purchase-title">Nouveau bon de commande</h1>
+    <p class="purchase-subtitle">Formalise ce que tu commandes avant réception — sert de base au rapprochement avec la livraison puis la facture.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('purchase_orders_list') }}">← Bons de commande</a>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <div class="formgrid">
+      <label>Fournisseur existant
+        <select name="supplier_id">
+          <option value="">— Nouveau / non listé —</option>
+          {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Nom du fournisseur<input name="supplier_name" required></label>
+      <label>Date de commande<input type="date" name="order_date" value="{{ '' }}"></label>
+      <label>Date de livraison attendue<input type="date" name="expected_delivery_date"></label>
+      <label class="wide">Notes<input name="notes"></label>
+    </div>
+  </section>
+
+  <section class="purchase-panel">
+    <h2 style="color:#fff;margin-top:0;">Lignes commandées</h2>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (€)</th></tr></thead>
+        <tbody>
+        {% for i in range(8) %}
+          <tr>
+            <td><input name="description" placeholder="ex: Fournitures de bureau"></td>
+            <td><input type="number" name="quantity" value="1" step="0.01" min="0"></td>
+            <td><input type="number" name="unit_price" step="0.01" min="0" placeholder="0.00"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="purchase-primary-btn primary" style="margin-top:16px;">Créer le bon de commande</button>
+  </section>
+</form>
+</div>
+{% endblock %}

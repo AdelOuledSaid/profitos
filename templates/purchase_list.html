@@ -39,6 +39,18 @@
         </span>
         Boîte mail fournisseurs
       </a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_sepa_batch') }}">
+        <span class="purchase-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2" fill="none"></rect><path d="M2 10h20"></path></svg>
+        </span>
+        Virements groupés (SEPA)
+      </a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_orders_list') }}">
+        <span class="purchase-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 2h6l3 4H6z" fill="none"></path><path d="M3 6h18l-1.5 14a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z" fill="none"></path></svg>
+        </span>
+        Bons de commande
+      </a>
     </div>
 
     <div class="purchase-primary-actions">

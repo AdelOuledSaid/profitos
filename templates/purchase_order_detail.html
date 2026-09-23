@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">BON DE COMMANDE</div>
+    <h1 class="purchase-title">{{ order.order_number }}</h1>
+    <p class="purchase-subtitle">{{ order.supplier_name }} · commandé le {{ order.order_date|fr_date }}{% if order.expected_delivery_date %} · livraison attendue le {{ order.expected_delivery_date|fr_date }}{% endif %}</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('purchase_orders_list') }}">← Bons de commande</a>
+</div>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0 24px;">
+  <span class="purchase-status {{ 'paid' if order.status=='received' else ('overdue' if order.status=='cancelled' else '') }}">
+    {{ {'draft':'Brouillon','sent':'Envoyée','partially_received':'Partiellement reçue','received':'Reçue','cancelled':'Annulée'}.get(order.status, order.status) }}
+  </span>
+  {% if order.status=='draft' %}
+  <form method="post" action="{{ url_for('purchase_order_send',order_id=order.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Marquer comme envoyée</button>
+  </form>
+  {% endif %}
+  {% if order.status not in ('received','cancelled') %}
+  <form method="post" action="{{ url_for('purchase_order_cancel',order_id=order.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn secondary">Annuler</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if order.status in ('sent','partially_received') %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Enregistrer une réception</h2>
+  <form method="post" action="{{ url_for('purchase_order_receive',order_id=order.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Description</th><th>Commandé</th><th>Déjà reçu</th><th>Quantité reçue (total)</th></tr></thead>
+        <tbody>
+        {% for l in lines %}
+          <tr>
+            <td>{{ l.description }}</td>
+            <td>{{ l.quantity }}</td>
+            <td>{{ l.quantity_received }}</td>
+            <td><input type="number" name="received_{{ l.id }}" value="{{ l.quantity_received }}" min="0" max="{{ l.quantity }}" step="0.01" style="max-width:120px;"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="purchase-primary-btn primary" style="margin-top:16px;">Enregistrer la réception</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div class="purchase-panel-head"><h2>Lignes commandées</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Description</th><th style="text-align:right;">Quantité</th><th style="text-align:right;">Prix unitaire</th><th style="text-align:right;">Reçu</th><th style="text-align:right;">Total</th></tr></thead>
+      <tbody>
+      {% for l in lines %}
+        <tr>
+          <td>{{ l.description }}</td>
+          <td style="text-align:right;">{{ l.quantity }}</td>
+          <td style="text-align:right;">{{ l.unit_price|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ l.quantity_received }}{% if l.quantity_received < l.quantity %} <span class="purchase-alert-text" style="font-size:11px;">partiel</span>{% endif %}</td>
+          <td style="text-align:right;"><strong>{{ (l.quantity*l.unit_price)|fr_number(2) }} €</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="purchase-total-line" style="margin-top:16px;">
+    <span class="purchase-muted">Total</span>
+    <strong>{{ total|fr_number(2) }} €</strong>
+  </div>
+</section>
+
+{% if linked_invoices %}
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Factures liées</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Facture</th><th style="text-align:right;">Montant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for inv in linked_invoices %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail',purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
+          <td style="text-align:right;"><strong>{{ inv.total|fr_number(2) }} €</strong></td>
+          <td>{{ 'Payée' if inv.status=='paid' else 'À payer' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

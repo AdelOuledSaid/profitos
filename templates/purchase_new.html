@@ -75,6 +75,14 @@
           <label>Catégorie
             <select name="category">{% for key, label in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
           </label>
+          {% if open_orders %}
+          <label>Bon de commande lié (optionnel)
+            <select name="purchase_order_id">
+              <option value="">— Aucun —</option>
+              {% for o in open_orders %}<option value="{{ o.id }}">{{ o.order_number }} — {{ o.supplier_name }}</option>{% endfor %}
+            </select>
+          </label>
+          {% endif %}
           <label>Date de facture<input name="issue_date" type="date" value="{{ detected.issue_date if detected else '' }}"></label>
           <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
         </div>

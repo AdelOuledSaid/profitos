@@ -428,9 +428,6 @@ def _purchase_pdf_extract(path):
         r'(?:sous[\-\s]?total\s*ht|total\s*ht|montant\s*ht|subtotal)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
     ]))
     vat=_purchase_money(first([
-        # Cas courant : « TVA 20 % 25,00 € ». Le premier nombre est le taux,
-        # pas le montant de TVA ; on capture donc explicitement le montant après %.
-        r'(?:montant\s*)?tva\s*\(?\s*\d+(?:[.,]\d+)?\s*%\s*\)?\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
         r'(?:montant\s*)?tva(?:\s*\([^)]*\))?\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
         r'(?:vat)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)'
     ]))
@@ -1301,18 +1298,46 @@ def register(app):
                 flash("Le nom du fournisseur est obligatoire.")
                 return redirect(url_for('supplier_new'))
             c=cx()
-            c.execute("""INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,created_at)
-                         VALUES(?,?,?,?,?,?,?,?)""",
+            c.execute("""INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at)
+                         VALUES(?,?,?,?,?,?,?,?,?,?)""",
                       (name,(request.form.get('email') or '').strip(),
                        (request.form.get('phone') or '').strip(),
                        (request.form.get('address') or '').strip(),
                        (request.form.get('siret') or '').strip(),
                        (request.form.get('vat_number') or '').strip(),
-                       (request.form.get('notes') or '').strip(),now()))
+                       (request.form.get('notes') or '').strip(),
+                       (request.form.get('iban') or '').replace(' ','').upper().strip(),
+                       (request.form.get('bic') or '').upper().strip(),now()))
             c.commit(); c.close()
             flash("Fournisseur ajouté.")
             return redirect(url_for('purchase_list'))
         return render_template('supplier_new.html')
+
+    @app.route('/facturation/fournisseurs/<int:supplier_id>/modifier', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def supplier_update(supplier_id):
+        from profitos.sepa import validate_iban
+        c = cx()
+        supplier = c.execute("SELECT id FROM suppliers WHERE id=?", (supplier_id,)).fetchone()
+        if not supplier:
+            c.close(); abort(404)
+        iban = (request.form.get('iban') or '').replace(' ', '').upper().strip()
+        if iban and not validate_iban(iban):
+            c.close()
+            flash("IBAN invalide — vérifie la saisie (format et somme de contrôle incorrects).")
+            return redirect(url_for('supplier_detail', supplier_id=supplier_id))
+        c.execute(
+            "UPDATE suppliers SET email=?,phone=?,address=?,iban=?,bic=? WHERE id=?",
+            ((request.form.get('email') or '').strip(), (request.form.get('phone') or '').strip(),
+             (request.form.get('address') or '').strip(), iban,
+             (request.form.get('bic') or '').upper().strip(), supplier_id),
+        )
+        c.commit(); c.close()
+        flash("Fournisseur mis à jour.")
+        return redirect(url_for('supplier_detail', supplier_id=supplier_id))
 
     @app.post('/facturation/achats/importer-pdf')
     @login_required
@@ -1351,10 +1376,11 @@ def register(app):
 
         c=cx()
         suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
         c.close()
         flash("Document analysé par IA. Vérifiez les informations avant d'enregistrer." if used_ai
               else "PDF analysé. Vérifiez les informations avant d'enregistrer.")
-        return render_template('purchase_new.html',suppliers=suppliers,
+        return render_template('purchase_new.html',suppliers=suppliers,open_orders=open_orders,
                                detected=detected,pending_document=stored)
 
     @app.route('/facturation/achats/boite-mail')
@@ -1366,8 +1392,7 @@ def register(app):
         domain = os.environ.get('SUPPLIER_INBOX_DOMAIN', 'achats.profitos.fr')
         c = cx()
         recent = c.execute(
-            "SELECT * FROM purchase_invoices WHERE notes LIKE ? ORDER BY id DESC LIMIT 20",
-            ("Reçu par email%",)
+            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' ORDER BY id DESC LIMIT 20"
         ).fetchall()
         c.close()
         return render_template('purchase_inbox_settings.html',
@@ -1375,44 +1400,17 @@ def register(app):
 
     @app.route('/webhooks/supplier-inbox', methods=['POST'])
     def supplier_inbox_webhook():
-        """Réception Resend ``email.received`` pour la boîte mail fournisseurs.
-
-        Le webhook est authentifié avec la signature Svix/Resend sur le corps brut.
-        Le payload ne contient que les métadonnées des pièces jointes : leur contenu
-        est téléchargé via l'API Receiving de Resend, puis traité par le même moteur
-        PDF/IA que l'import manuel. Toute facture créée arrive en validation_status
-        ``pending`` afin qu'un humain la valide avant paiement.
-        """
-        webhook_secret = os.environ.get('RESEND_WEBHOOK_SECRET', '').strip()
-        resend_key = os.environ.get('RESEND_API_KEY', '').strip()
-        if not webhook_secret or not resend_key:
-            current_app.logger.error('Supplier inbox: configuration Resend incomplète')
-            return jsonify({'error': 'configuration Resend incomplète'}), 503
-
-        raw_body = request.get_data(cache=True)
-        try:
-            from svix.webhooks import Webhook
-            verified = Webhook(webhook_secret).verify(
-                raw_body,
-                {
-                    'svix-id': request.headers.get('svix-id', ''),
-                    'svix-timestamp': request.headers.get('svix-timestamp', ''),
-                    'svix-signature': request.headers.get('svix-signature', ''),
-                },
-            )
-        except Exception as exc:
-            current_app.logger.warning('Supplier inbox: signature Resend invalide: %s', exc)
-            return jsonify({'error': 'signature webhook invalide'}), 400
-
-        payload = verified if isinstance(verified, dict) else (request.get_json(silent=True) or {})
-        if payload.get('type') != 'email.received':
-            return jsonify({'received': True, 'ignored': True}), 200
-
-        event = payload.get('data') or {}
-        to_values = event.get('to') or []
-        if isinstance(to_values, str):
-            to_values = [to_values]
-        to_field = ' '.join(str(v) for v in to_values)
+        """Réception d'une facture fournisseur par email. Format générique attendu
+        (à adapter précisément selon le fournisseur d'email entrant réellement
+        configuré — Resend, Mailgun, SendGrid... les noms de champs exacts varient) :
+        {"to": "achats+TOKEN@domaine", "from": "...", "subject": "...",
+         "attachments": [{"filename": "...", "content_type": "...", "content": "<base64>"}]}
+        Chaque pièce jointe PDF/image est passée par la même extraction que l'import
+        manuel (texte natif d'abord, IA en repli), puis enregistrée en facture
+        fournisseur EN ATTENTE DE VALIDATION — toujours, quel que soit le réglage de
+        l'organisation, puisqu'aucun humain n'a encore vu ce document."""
+        payload = request.get_json(silent=True) or {}
+        to_field = str(payload.get('to') or '')
         m = re.search(r'achats\+([a-z0-9]+)@', to_field, re.I)
         if not m:
             return jsonify({'error': 'destinataire non reconnu'}), 400
@@ -1427,49 +1425,16 @@ def register(app):
             return jsonify({'error': 'jeton inconnu'}), 404
         org_id = mapping['organization_id']
 
-        email_id = str(event.get('email_id') or '').strip()
-        if not email_id:
-            return jsonify({'error': 'email_id Resend manquant'}), 400
-
-        # Idempotence : une relivraison/relecture Resend ne doit pas recréer la facture.
-        tc = tenant_cx_direct(org_id)
-        already = tc.execute(
-            "SELECT id FROM purchase_invoices WHERE notes LIKE ? LIMIT 1",
-            (f'%Resend email {email_id}%',),
-        ).fetchone()
-        tc.close()
-        if already:
-            return jsonify({'received': True, 'duplicate': True, 'created': [], 'failed': []}), 200
-
-        api_headers = {'Authorization': f'Bearer {resend_key}', 'Accept': 'application/json'}
-        try:
-            r = requests.get(
-                f'https://api.resend.com/emails/receiving/{email_id}/attachments',
-                headers=api_headers, timeout=15,
-            )
-            r.raise_for_status()
-            attachment_payload = r.json()
-            attachments = attachment_payload.get('data') or []
-        except Exception as exc:
-            current_app.logger.exception('Supplier inbox: impossible de lister les pièces jointes Resend')
-            return jsonify({'error': 'impossible de récupérer les pièces jointes'}), 502
-
+        attachments = payload.get('attachments') or []
         created, failed = [], []
-        sender = str(event.get('from') or '').strip()
         for att in attachments:
             filename = att.get('filename') or 'document'
-            download_url = str(att.get('download_url') or '').strip()
-            if not download_url.startswith('https://'):
-                failed.append(f"{filename} : URL de téléchargement absente ou invalide")
-                continue
+            content_b64 = att.get('content') or ''
             try:
-                dl = requests.get(download_url, timeout=20)
-                dl.raise_for_status()
-                data = dl.content
+                data = base64.b64decode(content_b64)
             except Exception:
-                failed.append(f"{filename} : téléchargement impossible")
+                failed.append(f"{filename} : pièce jointe illisible (base64 invalide)")
                 continue
-
             if len(data) > _PURCHASE_PDF_MAX_BYTES:
                 failed.append(f"{filename} : dépasse 5 Mo")
                 continue
@@ -1479,16 +1444,14 @@ def register(app):
                 mime, ext = 'image/jpeg', '.jpg'
             elif data.startswith(b"\x89PNG\r\n\x1a\n"):
                 mime, ext = 'image/png', '.png'
-            elif len(data) > 12 and data[0:4] == b"RIFF" and data[8:12] == b"WEBP":
-                mime, ext = 'image/webp', '.webp'
             else:
-                failed.append(f"{filename} : format non reconnu (PDF/JPEG/PNG/WEBP attendu)")
+                failed.append(f"{filename} : format non reconnu (PDF/JPEG/PNG attendu)")
                 continue
 
             pdf_dir = _purchase_pdf_dir_for_org(org_id)
             stored = uuid.uuid4().hex + ext
+            (pdf_dir / stored).write_bytes(data)
             path = pdf_dir / stored
-            path.write_bytes(data)
 
             try:
                 if mime == 'application/pdf':
@@ -1500,14 +1463,13 @@ def register(app):
                         detected = _purchase_ai_extract(path.read_bytes(), mime)
                 else:
                     detected = _purchase_ai_extract(path.read_bytes(), mime)
-            except ValueError as exc:
+            except ValueError as e:
                 path.unlink(missing_ok=True)
-                failed.append(f"{filename} : {exc}")
+                failed.append(f"{filename} : {e}")
                 continue
 
+            sender = (payload.get('from') or '').strip()
             tc = tenant_cx_direct(org_id)
-            note = f"Reçu par email de {sender}" if sender else 'Reçu par email'
-            note += f" · Resend email {email_id}"
             tc.execute(
                 """INSERT INTO purchase_invoices(
                      supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,
@@ -1516,22 +1478,22 @@ def register(app):
                 (detected['supplier_name'], detected['invoice_number'],
                  detected['issue_date'] or None, detected['due_date'] or None,
                  detected['subtotal'], detected['vat_amount'], detected['total'],
-                 'unpaid', note, now(), stored, 'autre', 'pending'),
+                 'unpaid', f"Reçu par email de {sender}" if sender else 'Reçu par email',
+                 now(), stored, 'autre', 'pending'),
             )
-            new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
             tc.commit()
+            new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
             try:
                 purchase_row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
                 generate_purchase_entry(tc, purchase_row)
-                tc.commit()
-            except AccountingError as exc:
-                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {exc}")
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {e}")
             tc.close()
             created.append(detected['invoice_number'])
 
         log_ops_event('SUPPLIER_INBOX_RECEIVED', outcome='INFO' if created else 'WARNING',
-                       detail=f"org={org_id} resend_email={email_id} créées={created} échecs={failed}")
-        return jsonify({'received': True, 'created': created, 'failed': failed}), 200
+                       detail=f"org={org_id} créées={created} échecs={failed}")
+        return jsonify({'created': created, 'failed': failed}), 200
 
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
     @login_required
@@ -1569,17 +1531,19 @@ def register(app):
                 return redirect(url_for('purchase_new'))
             category=request.form.get('category','autre')
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
+            po_id_raw = request.form.get('purchase_order_id')
+            purchase_order_id = int(po_id_raw) if po_id_raw and po_id_raw.isdigit() else None
             settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
             validation_status='pending' if (settings_row and settings_row['require_purchase_validation']) else 'approved'
             c.execute("""INSERT INTO purchase_invoices(
                          supplier_id,supplier_name,invoice_number,issue_date,due_date,
-                         subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status,purchase_order_id)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
                        request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,
                        subtotal,vat,total,'unpaid',
-                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status))
+                       (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status,purchase_order_id))
             c.commit()
             new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             try:
@@ -1592,8 +1556,9 @@ def register(app):
             c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
+        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
         c.close()
-        return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES)
+        return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES,open_orders=open_orders)
 
     @app.get('/facturation/fournisseurs/<int:supplier_id>')
     @login_required
@@ -1915,6 +1880,245 @@ def register(app):
             flash("Facture fournisseur marquée comme payée.")
         c.close()
         return redirect(url_for('purchase_list'))
+
+    @app.route('/facturation/achats/virements', methods=['GET', 'POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_sepa_batch():
+        from profitos.sepa import generate_sepa_xml, validate_iban
+        c = cx()
+        company = c.execute('SELECT * FROM company WHERE id=1').fetchone()
+
+        if request.method == 'POST':
+            selected_ids = [int(x) for x in request.form.getlist('purchase_id')]
+            if len(selected_ids) == 0:
+                c.close()
+                flash("Sélectionne au moins une facture à inclure dans le virement groupé.")
+                return redirect(url_for('purchase_sepa_batch'))
+            placeholders = ','.join('?' * len(selected_ids))
+            rows = c.execute(
+                f"""SELECT p.*, s.iban AS supplier_iban, s.bic AS supplier_bic
+                    FROM purchase_invoices p LEFT JOIN suppliers s ON s.id = p.supplier_id
+                    WHERE p.id IN ({placeholders}) AND p.status='unpaid'
+                      AND (p.validation_status IS NULL OR p.validation_status='approved')""",
+                selected_ids,
+            ).fetchall()
+            payments = [{
+                'supplier_name': r['supplier_name'], 'iban': r['supplier_iban'], 'bic': r['supplier_bic'],
+                'amount': r['total'], 'reference': r['invoice_number'],
+            } for r in rows]
+            try:
+                xml_content, msg_id, total = generate_sepa_xml(dict(company) if company else {}, payments)
+            except ValueError as e:
+                c.close()
+                flash(f"Impossible de générer le fichier SEPA : {e}")
+                return redirect(url_for('purchase_sepa_batch'))
+
+            for r in rows:
+                c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?", (now(), r['id']))
+                c.commit()
+                try:
+                    p_updated = c.execute('SELECT * FROM purchase_invoices WHERE id=?', (r['id'],)).fetchone()
+                    generate_purchase_payment_entry(c, p_updated)
+                except AccountingError as e:
+                    log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement SEPA {r['id']}: {e}")
+                deliver_webhook(c, 'purchase.paid', {'id': r['id'], 'invoice_number': r['invoice_number'],
+                                                       'supplier_name': r['supplier_name'], 'total': r['total']})
+            c.close()
+            log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} : {len(rows)} virement(s), {fr_number(total, 2)} €")
+            filename = f"virements_{date.today().isoformat()}.xml"
+            return Response(
+                xml_content.encode('utf-8'), mimetype='application/xml',
+                headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+            )
+
+        candidates = c.execute(
+            """SELECT p.*, s.iban AS supplier_iban, s.bic AS supplier_bic
+               FROM purchase_invoices p LEFT JOIN suppliers s ON s.id = p.supplier_id
+               WHERE p.status='unpaid' AND (p.validation_status IS NULL OR p.validation_status='approved')
+               ORDER BY p.due_date"""
+        ).fetchall()
+        ready, blocked = [], []
+        for r in candidates:
+            if r['supplier_iban'] and validate_iban(r['supplier_iban']) and r['supplier_bic']:
+                ready.append(r)
+            else:
+                blocked.append(r)
+        company_ready = bool(company and company['iban'] and validate_iban(company['iban']) and company['bic'])
+        c.close()
+        return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked,
+                                company_ready=company_ready, company=company)
+
+    @app.route('/facturation/commandes')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_orders_list():
+        c = cx()
+        orders = c.execute("SELECT * FROM purchase_orders ORDER BY order_date DESC,id DESC").fetchall()
+        totals = {}
+        for o in orders:
+            t = c.execute(
+                "SELECT COALESCE(SUM(quantity*unit_price),0) t FROM purchase_order_lines WHERE order_id=?", (o['id'],)
+            ).fetchone()['t']
+            totals[o['id']] = t
+        c.close()
+        return render_template('purchase_orders_list.html', orders=orders, totals=totals)
+
+    @app.route('/facturation/commandes/nouvelle', methods=['GET', 'POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_order_new():
+        c = cx()
+        if request.method == 'POST':
+            supplier_id = request.form.get('supplier_id') or None
+            supplier_name = (request.form.get('supplier_name') or '').strip()
+            order_date = request.form.get('order_date') or date.today().isoformat()
+            expected_delivery_date = request.form.get('expected_delivery_date') or None
+            descriptions = request.form.getlist('description')
+            quantities = request.form.getlist('quantity')
+            unit_prices = request.form.getlist('unit_price')
+
+            if not supplier_name:
+                c.close()
+                flash("Le nom du fournisseur est obligatoire.")
+                return redirect(url_for('purchase_order_new'))
+            lines = []
+            for i, desc in enumerate(descriptions):
+                desc = (desc or '').strip()
+                if not desc:
+                    continue
+                try:
+                    qty = float(quantities[i]) if i < len(quantities) else 0
+                    price = float(unit_prices[i]) if i < len(unit_prices) else 0
+                except (ValueError, IndexError):
+                    qty = price = 0
+                if qty <= 0:
+                    continue
+                lines.append((desc, qty, price))
+            if not lines:
+                c.close()
+                flash("Ajoute au moins une ligne avec une quantité positive.")
+                return redirect(url_for('purchase_order_new'))
+
+            year = date.today().year
+            seq = c.execute(
+                "SELECT COUNT(*) n FROM purchase_orders WHERE order_number LIKE ?", (f'BC-{year}-%',)
+            ).fetchone()['n'] + 1
+            order_number = f"BC-{year}-{seq:04d}"
+            c.execute(
+                """INSERT INTO purchase_orders
+                   (supplier_id,supplier_name,order_number,order_date,expected_delivery_date,status,notes,created_at,created_by)
+                   VALUES(?,?,?,?,?,'draft',?,?,?)""",
+                (supplier_id, supplier_name, order_number, order_date, expected_delivery_date,
+                 (request.form.get('notes') or '').strip(), now(), current_user()['email']),
+            )
+            c.commit()
+            order_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            for i, (desc, qty, price) in enumerate(lines):
+                c.execute(
+                    "INSERT INTO purchase_order_lines(order_id,description,quantity,unit_price,line_order) VALUES(?,?,?,?,?)",
+                    (order_id, desc, qty, price, i),
+                )
+            c.commit(); c.close()
+            flash(f"Bon de commande {order_number} créé.")
+            return redirect(url_for('purchase_order_detail', order_id=order_id))
+
+        suppliers = c.execute("SELECT id,name FROM suppliers ORDER BY name").fetchall()
+        c.close()
+        return render_template('purchase_order_new.html', suppliers=suppliers)
+
+    @app.route('/facturation/commandes/<int:order_id>')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_order_detail(order_id):
+        c = cx()
+        order = c.execute("SELECT * FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        if not order:
+            c.close(); abort(404)
+        lines = c.execute(
+            "SELECT * FROM purchase_order_lines WHERE order_id=? ORDER BY line_order", (order_id,)
+        ).fetchall()
+        total = sum((l['quantity'] or 0) * (l['unit_price'] or 0) for l in lines)
+        linked_invoices = c.execute(
+            "SELECT * FROM purchase_invoices WHERE purchase_order_id=? ORDER BY id DESC", (order_id,)
+        ).fetchall()
+        c.close()
+        return render_template('purchase_order_detail.html', order=order, lines=lines, total=total,
+                                linked_invoices=linked_invoices)
+
+    @app.route('/facturation/commandes/<int:order_id>/envoyer', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_order_send(order_id):
+        c = cx()
+        order = c.execute("SELECT status FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        if not order:
+            c.close(); abort(404)
+        if order['status'] == 'draft':
+            c.execute("UPDATE purchase_orders SET status='sent' WHERE id=?", (order_id,))
+            c.commit()
+            log_activity('PURCHASE_ORDER_SENT', f"Bon de commande #{order_id} envoyé")
+            flash("Bon de commande marqué comme envoyé.")
+        c.close()
+        return redirect(url_for('purchase_order_detail', order_id=order_id))
+
+    @app.route('/facturation/commandes/<int:order_id>/reception', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_order_receive(order_id):
+        c = cx()
+        order = c.execute("SELECT * FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        if not order:
+            c.close(); abort(404)
+        if order['status'] not in ('sent', 'partially_received'):
+            c.close()
+            flash("Seul un bon de commande envoyé peut recevoir une livraison.")
+            return redirect(url_for('purchase_order_detail', order_id=order_id))
+        lines = c.execute("SELECT * FROM purchase_order_lines WHERE order_id=?", (order_id,)).fetchall()
+        for l in lines:
+            key = f"received_{l['id']}"
+            if key in request.form:
+                try:
+                    received = float(request.form.get(key) or 0)
+                except ValueError:
+                    received = l['quantity_received']
+                received = max(0.0, min(received, l['quantity']))
+                c.execute("UPDATE purchase_order_lines SET quantity_received=? WHERE id=?", (received, l['id']))
+        c.commit()
+        updated_lines = c.execute("SELECT quantity,quantity_received FROM purchase_order_lines WHERE order_id=?", (order_id,)).fetchall()
+        fully_received = all(l['quantity_received'] >= l['quantity'] for l in updated_lines)
+        any_received = any(l['quantity_received'] > 0 for l in updated_lines)
+        new_status = 'received' if fully_received else ('partially_received' if any_received else order['status'])
+        c.execute("UPDATE purchase_orders SET status=? WHERE id=?", (new_status, order_id))
+        c.commit(); c.close()
+        log_activity('PURCHASE_ORDER_RECEIVED', f"Réception enregistrée pour le bon de commande #{order_id}")
+        flash("Quantités reçues enregistrées.")
+        return redirect(url_for('purchase_order_detail', order_id=order_id))
+
+    @app.route('/facturation/commandes/<int:order_id>/annuler', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def purchase_order_cancel(order_id):
+        c = cx()
+        order = c.execute("SELECT status FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        if not order:
+            c.close(); abort(404)
+        if order['status'] in ('received',):
+            c.close()
+            flash("Un bon de commande déjà reçu ne peut plus être annulé.")
+            return redirect(url_for('purchase_order_detail', order_id=order_id))
+        c.execute("UPDATE purchase_orders SET status='cancelled' WHERE id=?", (order_id,))
+        c.commit(); c.close()
+        flash("Bon de commande annulé.")
+        return redirect(url_for('purchase_order_detail', order_id=order_id))
 
     @app.route('/facturation/achats/<int:purchase_id>/valider', methods=['POST'])
     @login_required
