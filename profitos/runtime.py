@@ -1152,6 +1152,95 @@ def init_tenant_db(org_id=None):
         UNIQUE(axis_id,name)
     );
     CREATE INDEX IF NOT EXISTS idx_analytical_tags_axis ON analytical_tags(axis_id);
+    CREATE TABLE IF NOT EXISTS cutoff_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cutoff_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        amount REAL NOT NULL,
+        counterpart_account_code TEXT NOT NULL,
+        period_end_date TEXT NOT NULL,
+        entry_id INTEGER NOT NULL,
+        reversal_entry_id INTEGER,
+        entity_id INTEGER,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS loans(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        lender_name TEXT NOT NULL,
+        principal_amount REAL NOT NULL,
+        annual_rate REAL NOT NULL,
+        start_date TEXT NOT NULL,
+        duration_months INTEGER NOT NULL,
+        monthly_payment REAL NOT NULL,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS loan_installments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        loan_id INTEGER NOT NULL,
+        installment_number INTEGER NOT NULL,
+        due_date TEXT NOT NULL,
+        capital_amount REAL NOT NULL,
+        interest_amount REAL NOT NULL,
+        remaining_balance REAL NOT NULL,
+        paid INTEGER DEFAULT 0,
+        entry_id INTEGER,
+        paid_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_loan_installments_loan ON loan_installments(loan_id);
+    CREATE TABLE IF NOT EXISTS finance_leases(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        lessor_name TEXT NOT NULL,
+        asset_description TEXT NOT NULL,
+        asset_value REAL NOT NULL,
+        redevance_amount REAL NOT NULL,
+        periodicity TEXT DEFAULT 'monthly',
+        start_date TEXT NOT NULL,
+        duration_months INTEGER NOT NULL,
+        purchase_option_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS finance_lease_payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lease_id INTEGER NOT NULL,
+        payment_number INTEGER NOT NULL,
+        due_date TEXT NOT NULL,
+        amount REAL NOT NULL,
+        paid INTEGER DEFAULT 0,
+        entry_id INTEGER,
+        paid_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_lease_payments_lease ON finance_lease_payments(lease_id);
+    CREATE TABLE IF NOT EXISTS reviews(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        review_type TEXT NOT NULL,
+        period_label TEXT NOT NULL,
+        status TEXT DEFAULT 'in_progress',
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS review_items(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL,
+        item_order INTEGER NOT NULL,
+        label TEXT NOT NULL,
+        linked_route TEXT,
+        checked INTEGER DEFAULT 0,
+        note TEXT,
+        checked_by TEXT,
+        checked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_items_review ON review_items(review_id);
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.

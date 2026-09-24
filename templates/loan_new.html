@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ · EMPRUNTS</div>
+    <h1 class="purchase-title">Nouvel emprunt</h1>
+    <p class="purchase-subtitle">L'échéancier complet (capital, intérêts, solde) est généré automatiquement, méthode à échéances constantes.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('loans_list') }}">← Emprunts</a>
+</div>
+
+<section class="purchase-panel" style="max-width:560px;">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Prêteur<input name="lender_name" placeholder="ex: Banque Populaire" required></label>
+    <label>Montant emprunté (€)<input type="number" name="principal_amount" step="0.01" min="0.01" required></label>
+    <label>Taux annuel (%)<input type="number" name="annual_rate" step="0.01" min="0" value="0" placeholder="0 si sans intérêt"></label>
+    <label>Durée (mois)<input type="number" name="duration_months" min="1" required></label>
+    <label>Date de départ<input type="date" name="start_date" value="{{ today }}"></label>
+    <label class="wide">Notes<input name="notes"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer l'emprunt</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

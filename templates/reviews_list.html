@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Révision comptable</h1>
+    <p class="purchase-subtitle">Feuilles de travail structurées, révision courante (mensuelle) et annuelle (clôture).</p>
+  </div>
+</div>
+
+<section class="purchase-panel" style="margin-bottom:20px;max-width:520px;">
+  <h2 style="color:#fff;margin-top:0;">Démarrer une révision</h2>
+  <form method="post" action="{{ url_for('review_new') }}" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Type
+      <select name="review_type">
+        <option value="courante">Courante (mensuelle)</option>
+        <option value="annuelle">Annuelle (clôture)</option>
+      </select>
+    </label>
+    <label>Période<input name="period_label" placeholder="ex: {{ today_month }} ou {{ today_year }}" required></label>
+    <button type="submit" class="purchase-primary-btn primary">Créer</button>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Type</th><th>Période</th><th style="text-align:right;">Avancement</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for r in reviews %}
+        {% set done, total = progress.get(r.id, (0,0)) %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('review_detail',review_id=r.id) }}"><strong>{{ 'Annuelle' if r.review_type=='annuelle' else 'Courante' }}</strong></a></td>
+          <td>{{ r.period_label }}</td>
+          <td style="text-align:right;">{{ done }}/{{ total }}</td>
+          <td><span class="purchase-status {{ 'paid' if r.status=='completed' else '' }}">{{ 'Terminée' if r.status=='completed' else 'En cours' }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucune révision démarrée.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

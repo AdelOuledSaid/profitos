@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">EMPRUNT</div>
+    <h1 class="purchase-title">{{ loan.lender_name }}</h1>
+    <p class="purchase-subtitle">{{ loan.principal_amount|fr_number(2) }} € · {{ loan.annual_rate|fr_number(2) }} % · {{ loan.duration_months }} mois · mensualité {{ loan.monthly_payment|fr_number(2) }} €</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('loans_list') }}">← Emprunts</a>
+</div>
+
+<div class="purchase-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:24px;">
+  <div class="purchase-stat"><div><div class="purchase-stat-label">CAPITAL REMBOURSÉ</div><div class="purchase-stat-value">{{ paid_capital|fr_number(2) }} €</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">INTÉRÊTS PAYÉS</div><div class="purchase-stat-value">{{ paid_interest|fr_number(2) }} €</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">STATUT</div><div class="purchase-stat-value">{{ 'Soldé' if loan.status=='paid_off' else 'Actif' }}</div></div></div>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Échéancier</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>N°</th><th>Échéance</th><th style="text-align:right;">Capital</th><th style="text-align:right;">Intérêts</th><th style="text-align:right;">Solde restant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for i in installments %}
+        <tr>
+          <td>{{ i.installment_number }}</td>
+          <td>{{ i.due_date|fr_date }}</td>
+          <td style="text-align:right;">{{ i.capital_amount|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ i.interest_amount|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ i.remaining_balance|fr_number(2) }} €</td>
+          <td>
+            {% if i.paid %}
+            <span class="purchase-status paid">Réglée</span>
+            {% else %}
+            <form method="post" action="{{ url_for('loan_installment_pay',installment_id=i.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Marquer réglée</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

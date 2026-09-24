@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Crédit-bail</h1>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('finance_lease_new') }}">+ Nouveau contrat</a>
+</div>
+
+<div class="purchase-stats" style="grid-template-columns:1fr;margin-bottom:24px;">
+  <div class="purchase-stat">
+    <div>
+      <div class="purchase-stat-label">ENGAGEMENT HORS BILAN — TOTAL À MENTIONNER EN ANNEXE</div>
+      <div class="purchase-stat-value">{{ total_engagement|fr_number(2) }} €</div>
+    </div>
+  </div>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Bailleur</th><th>Bien</th><th style="text-align:right;">Redevance</th><th style="text-align:right;">Engagement restant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for l in leases %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('finance_lease_detail',lease_id=l.id) }}"><strong>{{ l.lessor_name }}</strong></a></td>
+          <td>{{ l.asset_description }}</td>
+          <td style="text-align:right;">{{ l.redevance_amount|fr_number(2) }} €</td>
+          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }} €</strong></td>
+          <td>
+            <span class="purchase-status {{ 'paid' if l.status in ('completed','option_exercised') else '' }}">
+              {{ {'active':'Actif','completed':'Terminé','option_exercised':'Option levée'}.get(l.status, l.status) }}
+            </span>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun contrat de crédit-bail enregistré.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

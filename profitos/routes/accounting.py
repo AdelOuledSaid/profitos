@@ -1,10 +1,83 @@
 from profitos.runtime import *
 from profitos.accounting import (AccountingError, generate_fec, fec_filename,
-                                   compute_depreciation_for_year, generate_depreciation_entry)
+                                   compute_depreciation_for_year, generate_depreciation_entry,
+                                   create_cutoff_entry, reverse_cutoff_entry, CUTOFF_ACCOUNTS, CUTOFF_LABELS)
 import io
 
 
 def register(app):
+    @app.route('/comptabilite/cutoff')
+    @login_required
+    def cutoff_list():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
+        c = cx()
+        rows = c.execute(
+            f"SELECT * FROM cutoff_entries WHERE {ef} ORDER BY period_end_date DESC, id DESC", ep
+        ).fetchall()
+        c.close()
+        pending = [r for r in rows if not r['reversal_entry_id']]
+        reversed_ = [r for r in rows if r['reversal_entry_id']]
+        return render_template('cutoff_list.html', pending=pending, reversed_=reversed_,
+                                cutoff_labels=CUTOFF_LABELS)
+
+    @app.route('/comptabilite/cutoff/nouveau', methods=['GET', 'POST'])
+    @login_required
+    def cutoff_new():
+        from profitos.entities import current_entity_id
+        c = cx()
+        if request.method == 'POST':
+            cutoff_type = request.form.get('cutoff_type')
+            label = (request.form.get('label') or '').strip()
+            counterpart_account_code = (request.form.get('counterpart_account_code') or '').strip()
+            period_end_date = request.form.get('period_end_date') or date.today().isoformat()
+            try:
+                amount = float(request.form.get('amount') or 0)
+            except ValueError:
+                amount = 0
+            if not label or not counterpart_account_code:
+                c.close()
+                flash("Le libellé et le compte de contrepartie sont obligatoires.")
+                return redirect(url_for('cutoff_new'))
+            try:
+                create_cutoff_entry(
+                    c, cutoff_type, label, amount, counterpart_account_code, period_end_date,
+                    entity_id=current_entity_id(), created_by=current_user()['email'],
+                )
+            except AccountingError as e:
+                c.close()
+                flash(f"Impossible d'enregistrer ce cut-off : {e}")
+                return redirect(url_for('cutoff_new'))
+            c.close()
+            log_activity('CUTOFF_CREATED', f"Cut-off {cutoff_type} créé : {label}")
+            flash("Écriture de cut-off enregistrée.")
+            return redirect(url_for('cutoff_list'))
+
+        accounts = c.execute(
+            "SELECT code,label FROM accounting_chart_of_accounts WHERE account_class IN (6,7) AND is_active=1 ORDER BY code"
+        ).fetchall()
+        c.close()
+        return render_template('cutoff_new.html', accounts=accounts, cutoff_labels=CUTOFF_LABELS,
+                                today=date.today().isoformat())
+
+    @app.route('/comptabilite/cutoff/<int:cutoff_id>/extourner', methods=['POST'])
+    @login_required
+    def cutoff_reverse(cutoff_id):
+        reversal_date = request.form.get('reversal_date') or date.today().isoformat()
+        c = cx()
+        try:
+            reverse_cutoff_entry(c, cutoff_id, reversal_date, created_by=current_user()['email'])
+        except AccountingError as e:
+            c.close()
+            flash(f"Extourne impossible : {e}")
+            return redirect(url_for('cutoff_list'))
+        c.close()
+        log_activity('CUTOFF_REVERSED', f"Cut-off #{cutoff_id} extourné")
+        flash("Extourne enregistrée.")
+        return redirect(url_for('cutoff_list'))
+
     @app.route('/comptabilite/plan-comptable', methods=['GET', 'POST'])
     @login_required
     def accounting_chart():

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Cut-off (CCA / FNP / FAE)</h1>
+    <p class="purchase-subtitle">Écritures de rattachement à la bonne période et leurs extournes.</p>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('cutoff_new') }}">+ Nouveau cut-off</a>
+</div>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div class="purchase-panel-head"><h2>En attente d'extourne ({{ pending|length }})</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Type</th><th>Libellé</th><th style="text-align:right;">Montant</th><th>Période</th><th></th></tr></thead>
+      <tbody>
+      {% for r in pending %}
+        <tr>
+          <td><span class="purchase-status">{{ r.cutoff_type }}</span></td>
+          <td>{{ r.label }}</td>
+          <td style="text-align:right;"><strong>{{ r.amount|fr_number(2) }} €</strong></td>
+          <td>{{ r.period_end_date|fr_date }}</td>
+          <td>
+            <form method="post" action="{{ url_for('cutoff_reverse',cutoff_id=r.id) }}" style="display:flex;gap:8px;align-items:center;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="date" name="reversal_date" style="max-width:150px;">
+              <button type="submit" class="purchase-primary-btn secondary">Extourner</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun cut-off en attente.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Extournés ({{ reversed_|length }})</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Type</th><th>Libellé</th><th style="text-align:right;">Montant</th><th>Période</th></tr></thead>
+      <tbody>
+      {% for r in reversed_ %}
+        <tr>
+          <td><span class="purchase-status paid">{{ r.cutoff_type }}</span></td>
+          <td>{{ r.label }}</td>
+          <td style="text-align:right;">{{ r.amount|fr_number(2) }} €</td>
+          <td>{{ r.period_end_date|fr_date }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucun cut-off extourné pour l'instant.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

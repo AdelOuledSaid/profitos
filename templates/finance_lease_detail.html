@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CRÉDIT-BAIL</div>
+    <h1 class="purchase-title">{{ lease.lessor_name }} — {{ lease.asset_description }}</h1>
+    <p class="purchase-subtitle">{{ lease.redevance_amount|fr_number(2) }} € · {{ {'monthly':'mensuelle','quarterly':'trimestrielle','annual':'annuelle'}.get(lease.periodicity) }} · {{ lease.duration_months }} mois</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('finance_leases_list') }}">← Crédit-bail</a>
+</div>
+
+<div class="purchase-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px;">
+  <div class="purchase-stat"><div><div class="purchase-stat-label">ENGAGEMENT RESTANT (ANNEXE)</div><div class="purchase-stat-value">{{ remaining|fr_number(2) }} €</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">STATUT</div><div class="purchase-stat-value">{{ {'active':'Actif','completed':'Terminé','option_exercised':'Option levée'}.get(lease.status, lease.status) }}</div></div></div>
+</div>
+
+{% if lease.status=='completed' and lease.purchase_option_amount %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Lever l'option d'achat</h2>
+  <p class="purchase-muted" style="font-size:13px;">Toutes les redevances sont réglées. Le bien devient une immobilisation ordinaire, amortie à partir de la date de levée.</p>
+  <form method="post" action="{{ url_for('finance_lease_exercise_option',lease_id=lease.id) }}" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Date de levée<input type="date" name="exercise_date" value="{{ today }}"></label>
+    <label>Compte d'immobilisation
+      <select name="asset_account">
+        {% for a in accounts %}<option value="{{ a.code }}">{{ a.code }} — {{ a.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Compte d'amortissement
+      <select name="depreciation_account">
+        {% for a in accounts %}<option value="{{ a.code }}">{{ a.code }} — {{ a.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Durée d'amortissement (années)<input type="number" name="useful_life_years" step="0.5" min="0.5" value="5"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Lever l'option ({{ lease.purchase_option_amount|fr_number(2) }} €)</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="purchase-panel">
+  <div class="purchase-panel-head"><h2>Échéancier des redevances</h2></div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>N°</th><th>Échéance</th><th style="text-align:right;">Montant</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for p in payments %}
+        <tr>
+          <td>{{ p.payment_number }}</td>
+          <td>{{ p.due_date|fr_date }}</td>
+          <td style="text-align:right;">{{ p.amount|fr_number(2) }} €</td>
+          <td>
+            {% if p.paid %}
+            <span class="purchase-status paid">Réglée</span>
+            {% else %}
+            <form method="post" action="{{ url_for('finance_lease_payment_pay',payment_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="purchase-primary-btn secondary">Marquer réglée</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

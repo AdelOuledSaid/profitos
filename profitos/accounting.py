@@ -32,7 +32,9 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('281830', 'Amortissements du matériel de bureau et informatique', 2, False),
     # Classe 4 — Tiers
     ('401000', 'Fournisseurs', 4, True),
+    ('408000', 'Fournisseurs - Factures non parvenues', 4, False),
     ('411000', 'Clients', 4, True),
+    ('418000', 'Clients - Produits non encore facturés', 4, False),
     ('421000', 'Personnel - rémunérations dues', 4, False),
     ('431000', 'Sécurité sociale', 4, False),
     ('445510', 'TVA à décaisser', 4, False),
@@ -40,6 +42,7 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('445710', 'TVA collectée', 4, False),
     ('447000', 'Autres impôts, taxes et versements assimilés', 4, False),
     ('467000', 'Autres comptes débiteurs ou créditeurs', 4, True),
+    ('486000', "Charges constatées d'avance", 4, False),
     # Classe 5 — Financiers
     ('512000', 'Banque', 5, False),
     ('530000', 'Caisse', 5, False),
@@ -48,6 +51,7 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('606400', 'Fournitures administratives', 6, False),
     ('606800', 'Autres matières et fournitures', 6, False),
     ('611000', 'Sous-traitance générale', 6, False),
+    ('612000', 'Redevances de crédit-bail', 6, False),
     ('613000', 'Locations', 6, False),
     ('615000', 'Entretien et réparations', 6, False),
     ('616000', "Primes d'assurance", 6, False),
@@ -600,4 +604,106 @@ def generate_depreciation_entry(conn, asset, period_label, amount):
         (asset['id'], period_label, amount, entry_id, datetime.utcnow().isoformat()),
     )
     conn.commit()
+
+
+CUTOFF_ACCOUNTS = {
+    'CCA': '486000',   # Charges constatées d'avance — actif
+    'FNP': '408000',   # Fournisseurs - Factures non parvenues — passif
+    'FAE': '418000',   # Clients - Produits non encore facturés — actif
+}
+CUTOFF_LABELS = {
+    'CCA': 'Charge constatée d\'avance',
+    'FNP': 'Facture non parvenue',
+    'FAE': 'Facture à établir',
+}
+
+
+def create_cutoff_entry(conn, cutoff_type, label, amount, counterpart_account_code,
+                         period_end_date, entity_id=None, created_by=None):
+    """Enregistre une écriture de cut-off (CCA, FNP ou FAE) à la clôture
+    d'une période, journal OD.
+
+    - CCA (charge constatée d'avance) : une charge déjà payée/comptabilisée
+      cette période concerne en réalité une période future. Débite 486000,
+      crédite le compte de charge (counterpart_account_code) — retire la
+      part qui ne concerne pas encore cette période.
+    - FNP (facture non parvenue) : un bien/service a été reçu cette période
+      mais la facture fournisseur n'est pas encore arrivée. Débite le compte
+      de charge (counterpart_account_code), crédite 408000 — rattache la
+      charge à la bonne période malgré la facture manquante.
+    - FAE (facture à établir) : une prestation a été livrée cette période
+      mais la facture client n'est pas encore émise. Débite 418000, crédite
+      le compte de produit (counterpart_account_code) — rattache le produit
+      à la bonne période.
+
+    Ne crée jamais la contre-passation elle-même : voir reverse_cutoff_entry,
+    déclenchée explicitement au début de la période suivante, pour ne jamais
+    dater une écriture dans le futur de façon silencieuse."""
+    if cutoff_type not in CUTOFF_ACCOUNTS:
+        raise AccountingError(f"Type de cut-off inconnu : {cutoff_type!r} (attendu CCA, FNP ou FAE).")
+    if amount <= 0:
+        raise AccountingError("Le montant du cut-off doit être positif.")
+    cutoff_account = CUTOFF_ACCOUNTS[cutoff_type]
+    full_label = f"{CUTOFF_LABELS[cutoff_type]} — {label}"
+
+    if cutoff_type == 'CCA':
+        lines = [{'account_code': cutoff_account, 'debit': amount},
+                  {'account_code': counterpart_account_code, 'credit': amount}]
+    elif cutoff_type == 'FNP':
+        lines = [{'account_code': counterpart_account_code, 'debit': amount},
+                  {'account_code': cutoff_account, 'credit': amount}]
+    else:  # FAE
+        lines = [{'account_code': cutoff_account, 'debit': amount},
+                  {'account_code': counterpart_account_code, 'credit': amount}]
+
+    entry_id = create_entry(
+        conn, 'OD', period_end_date, full_label, lines,
+        source_type='cutoff', created_by=created_by, entity_id=entity_id,
+    )
+    conn.execute(
+        """INSERT INTO cutoff_entries
+           (cutoff_type,label,amount,counterpart_account_code,period_end_date,entry_id,entity_id,created_at,created_by)
+           VALUES(?,?,?,?,?,?,?,?,?)""",
+        (cutoff_type, label, amount, counterpart_account_code, str(period_end_date), entry_id,
+         entity_id, datetime.utcnow().isoformat(), created_by),
+    )
+    conn.commit()
+    cutoff_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    # source_id de l'écriture comptable mis à jour après coup pour pointer
+    # vers la ligne de suivi cutoff_entries (son id n'existe qu'une fois
+    # l'écriture elle-même déjà créée).
+    conn.execute('UPDATE accounting_entries SET source_id=? WHERE id=?', (cutoff_id, entry_id))
+    conn.commit()
+    return cutoff_id
+
+
+def reverse_cutoff_entry(conn, cutoff_id, reversal_date, created_by=None):
+    """Génère la contre-passation (extourne) d'un cut-off existant : mêmes
+    comptes et montant, débit et crédit inversés, datée du jour choisi
+    (typiquement le tout début de la période suivante). Refuse si ce
+    cut-off a déjà été extourné — jamais une double contre-passation."""
+    cutoff = conn.execute('SELECT * FROM cutoff_entries WHERE id=?', (cutoff_id,)).fetchone()
+    if not cutoff:
+        raise AccountingError(f"Cut-off introuvable : id={cutoff_id!r}.")
+    if cutoff['reversal_entry_id']:
+        raise AccountingError("Ce cut-off a déjà été extourné.")
+
+    original_lines = conn.execute(
+        'SELECT account_code,debit,credit FROM accounting_entry_lines WHERE entry_id=? ORDER BY line_order',
+        (cutoff['entry_id'],),
+    ).fetchall()
+    reversed_lines = [
+        {'account_code': l['account_code'], 'debit': l['credit'] or 0, 'credit': l['debit'] or 0}
+        for l in original_lines
+    ]
+    reversal_id = create_entry(
+        conn, 'OD', reversal_date,
+        f"Extourne — {CUTOFF_LABELS[cutoff['cutoff_type']]} — {cutoff['label']}",
+        reversed_lines,
+        source_type='cutoff_reversal', source_id=cutoff_id,
+        created_by=created_by, entity_id=cutoff['entity_id'],
+    )
+    conn.execute('UPDATE cutoff_entries SET reversal_entry_id=? WHERE id=?', (reversal_id, cutoff_id))
+    conn.commit()
+    return reversal_id
     return entry_id

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Emprunts</h1>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('loan_new') }}">+ Nouvel emprunt</a>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Prêteur</th><th style="text-align:right;">Montant initial</th><th style="text-align:right;">Capital restant dû</th><th>Taux</th><th>Statut</th></tr></thead>
+      <tbody>
+      {% for l in loans %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('loan_detail',loan_id=l.id) }}"><strong>{{ l.lender_name }}</strong></a></td>
+          <td style="text-align:right;">{{ l.principal_amount|fr_number(2) }} €</td>
+          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }} €</strong></td>
+          <td>{{ l.annual_rate|fr_number(2) }} %</td>
+          <td><span class="purchase-status {{ 'paid' if l.status=='paid_off' else '' }}">{{ 'Soldé' if l.status=='paid_off' else 'Actif' }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun emprunt enregistré.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

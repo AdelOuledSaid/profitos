@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">RÉVISION {{ 'ANNUELLE' if review.review_type=='annuelle' else 'COURANTE' }}</div>
+    <h1 class="purchase-title">{{ review.period_label }}</h1>
+    <p class="purchase-subtitle">{{ done }} / {{ total }} points validés{% if review.status=='completed' %} · terminée le {{ review.completed_at|fr_date(true) }}{% endif %}</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('reviews_list') }}">← Révisions</a>
+</div>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  {% for i in items %}
+  <div style="border-top:1px solid rgba(255,255,255,.08);padding:14px 0;display:flex;gap:14px;align-items:flex-start;{% if loop.first %}border-top:none;padding-top:0;{% endif %}">
+    <form method="post" action="{{ url_for('review_item_toggle',item_id=i.id) }}" style="margin:0;display:flex;gap:10px;align-items:flex-start;flex:1;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-status {{ 'paid' if i.checked else '' }}" style="border:none;cursor:pointer;flex-shrink:0;">
+        {{ '✓ Validé' if i.checked else 'À valider' }}
+      </button>
+      <div style="flex:1;">
+        <div style="color:#fff;{% if i.checked %}text-decoration:line-through;opacity:.7;{% endif %}">{{ i.label }}</div>
+        {% if i.linked_route %}<a class="purchase-detail-link" href="{{ url_for(i.linked_route) }}" style="font-size:12px;" target="_blank">Ouvrir le module concerné →</a>{% endif %}
+        {% if i.checked and i.checked_by %}<div class="purchase-muted" style="font-size:11px;margin-top:4px;">validé par {{ i.checked_by }} le {{ i.checked_at|fr_date(true) }}</div>{% endif %}
+        <input type="text" name="note" value="{{ i.note or '' }}" placeholder="Note (feuille de travail, optionnel)" style="margin-top:6px;font-size:12px;padding:6px 8px;width:100%;max-width:400px;">
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+
+{% if review.status!='completed' %}
+<form method="post" action="{{ url_for('review_complete',review_id=review.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="purchase-primary-btn primary" {% if done<total %}disabled{% endif %}>
+    Marquer la révision comme terminée{% if done<total %} ({{ total-done }} point(s) restant(s)){% endif %}
+  </button>
+</form>
+{% endif %}
+</div>
+{% endblock %}

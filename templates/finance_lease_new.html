@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ · CRÉDIT-BAIL</div>
+    <h1 class="purchase-title">Nouveau contrat</h1>
+    <p class="purchase-subtitle">Traitement français standard : chaque redevance est une charge, pas une dette au bilan. L'engagement restant est mentionné en annexe.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('finance_leases_list') }}">← Crédit-bail</a>
+</div>
+
+<section class="purchase-panel" style="max-width:560px;">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Bailleur<input name="lessor_name" placeholder="ex: BNP Paribas Leasing" required></label>
+    <label class="wide">Bien loué<input name="asset_description" placeholder="ex: Véhicule utilitaire Renault Master" required></label>
+    <label>Valeur du bien (€)<input type="number" name="asset_value" step="0.01" min="0"></label>
+    <label>Redevance (€)<input type="number" name="redevance_amount" step="0.01" min="0.01" required></label>
+    <label>Périodicité
+      <select name="periodicity">
+        <option value="monthly">Mensuelle</option>
+        <option value="quarterly">Trimestrielle</option>
+        <option value="annual">Annuelle</option>
+      </select>
+    </label>
+    <label>Durée totale (mois)<input type="number" name="duration_months" min="1" required></label>
+    <label>Date de départ<input type="date" name="start_date" value="{{ today }}"></label>
+    <label>Montant de la levée d'option (€, si connu)<input type="number" name="purchase_option_amount" step="0.01" min="0"></label>
+    <label class="wide">Notes<input name="notes"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer le contrat</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}
