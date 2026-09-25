@@ -94,6 +94,20 @@ def create_loan(conn, lender_name, principal_amount, annual_rate, start_date, du
              row['capital_amount'], row['interest_amount'], row['remaining_balance']),
         )
     conn.commit()
+    # Écriture de déblocage des fonds — sans elle, 164000 ne serait jamais
+    # crédité initialement et ne recevrait que les débits des remboursements,
+    # ce qui ferait dériver le compte en négatif au lieu de refléter la
+    # dette réelle. Bien réel, comptabilisé dès la création de l'emprunt.
+    create_entry(
+        conn, 'BQ', start_date,
+        f"Déblocage des fonds — emprunt {lender_name}",
+        [
+            {'account_code': BANK_ACCOUNT, 'debit': principal_amount},
+            {'account_code': LOAN_ACCOUNT, 'credit': principal_amount},
+        ],
+        source_type='loan_drawdown', source_id=loan_id,
+        entity_id=entity_id, created_by=created_by,
+    )
     return loan_id
 
 

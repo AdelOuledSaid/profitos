@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Comptes annuels / Plaquette</h1>
+    <p class="purchase-subtitle">Bilan, compte de résultat et annexe simplifiée, générés à partir de tes écritures comptables. Document de synthèse de gestion — à faire valider par un expert-comptable avant tout dépôt officiel.</p>
+  </div>
+</div>
+
+<section class="purchase-panel" style="max-width:480px;">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Début d'exercice<input type="date" name="exercice_start" value="{{ year_start }}"></label>
+    <label>Date de clôture<input type="date" name="as_of_date" value="{{ today }}"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Générer le PDF</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

@@ -1,7 +1,8 @@
 from profitos.runtime import *
 from profitos.accounting import (AccountingError, generate_fec, fec_filename,
                                    compute_depreciation_for_year, generate_depreciation_entry,
-                                   create_cutoff_entry, reverse_cutoff_entry, CUTOFF_ACCOUNTS, CUTOFF_LABELS)
+                                   create_cutoff_entry, reverse_cutoff_entry, CUTOFF_ACCOUNTS, CUTOFF_LABELS,
+                                   compute_bilan, compute_compte_resultat)
 import io
 
 
@@ -473,13 +474,14 @@ def register(app):
                         error = f"Compte {field_name} inconnu : {code!r}."
                         break
             if not error:
+                from profitos.entities import current_entity_id
                 c.execute(
                     """INSERT INTO fixed_assets
                        (label,asset_account,depreciation_account,expense_account,purchase_date,
-                        purchase_amount,useful_life_years,status,created_at)
-                       VALUES(?,?,?,?,?,?,?,'active',?)""",
+                        purchase_amount,useful_life_years,status,created_at,entity_id)
+                       VALUES(?,?,?,?,?,?,?,'active',?,?)""",
                     (label, asset_account, depreciation_account, expense_account, purchase_date_str,
-                     purchase_amount, useful_life_years, now()),
+                     purchase_amount, useful_life_years, now(), current_entity_id()),
                 )
                 c.commit()
                 new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -604,3 +606,68 @@ def register(app):
         return render_template('vat_summary.html', date_from=date_from, date_to=date_to,
                                 collected=collected, deductible=deductible, balance=balance,
                                 sales_lines=sales_lines, purchase_lines=purchase_lines)
+
+    @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
+    @login_required
+    def plaquette():
+        from profitos.entities import current_entity_id, resolve_entity
+        from profitos.plaquette import render_plaquette_pdf
+        from profitos.finance_leases import total_remaining_commitment
+        eid = current_entity_id()
+        c = cx()
+        identity = resolve_entity(c, eid)
+
+        if request.method == 'POST':
+            as_of_date = request.form.get('as_of_date') or date.today().isoformat()
+            exercice_start = request.form.get('exercice_start') or f"{date.today().year}-01-01"
+            if exercice_start > as_of_date:
+                c.close()
+                flash("La date de début d'exercice doit précéder la date de clôture.")
+                return redirect(url_for('plaquette'))
+
+            actif, passif, resultat = compute_bilan(c, as_of_date, exercice_start, entity_id=eid)
+
+            ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+            ep = (eid,) if eid else ()
+            active_loans = c.execute(f"SELECT * FROM loans WHERE status='active' AND {ef}", ep).fetchall()
+            loans_summary = []
+            for l in active_loans:
+                remaining = c.execute(
+                    "SELECT COALESCE(SUM(capital_amount),0) t FROM loan_installments WHERE loan_id=? AND paid=0",
+                    (l['id'],),
+                ).fetchone()['t']
+                loans_summary.append({'lender_name': l['lender_name'], 'remaining_capital': remaining})
+
+            leases_engagement = total_remaining_commitment(c, eid)
+
+            active_assets = c.execute(f"SELECT * FROM fixed_assets WHERE status='active' AND {ef}", ep).fetchall()
+            fixed_assets_summary = []
+            for a in active_assets:
+                depreciated = c.execute(
+                    "SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=?",
+                    (a['id'],),
+                ).fetchone()['t']
+                fixed_assets_summary.append({
+                    'label': a['label'], 'net_value': round(a['purchase_amount'] - depreciated, 2),
+                })
+
+            company = c.execute('SELECT name FROM company WHERE id=1').fetchone()
+            company_name = company['name'] if company else identity['name']
+            c.close()
+
+            pdf_bytes = render_plaquette_pdf(
+                company_name, identity['name'] if eid else '', as_of_date, exercice_start,
+                actif, passif, resultat, loans_summary, leases_engagement, fixed_assets_summary,
+            )
+            if pdf_bytes is None:
+                flash("Génération PDF indisponible (fpdf2 non installé) — vérifie l'environnement serveur.")
+                return redirect(url_for('plaquette'))
+            log_activity('PLAQUETTE_GENERATED', f"Comptes annuels générés ({exercice_start} → {as_of_date})")
+            return Response(
+                pdf_bytes, mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment; filename="comptes-annuels-{as_of_date}.pdf"'},
+            )
+
+        c.close()
+        return render_template('plaquette.html', today=date.today().isoformat(),
+                                year_start=f"{date.today().year}-01-01")

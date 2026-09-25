@@ -706,4 +706,120 @@ def reverse_cutoff_entry(conn, cutoff_id, reversal_date, created_by=None):
     conn.execute('UPDATE cutoff_entries SET reversal_entry_id=? WHERE id=?', (reversal_id, cutoff_id))
     conn.commit()
     return reversal_id
-    return entry_id
+
+
+def compute_compte_resultat(conn, date_from, date_to, entity_id=None):
+    """Produits et charges de la période, classés par compte. Le résultat
+    (produits - charges) est aussi utilisé par compute_bilan() pour
+    apparaître au passif — calculé une seule fois, jamais recalculé
+    différemment à deux endroits."""
+    ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    rows = conn.execute(
+        f"""SELECT l.account_code, a.account_class, a.label,
+               COALESCE(SUM(l.debit),0) total_debit, COALESCE(SUM(l.credit),0) total_credit
+            FROM accounting_entry_lines l
+            JOIN accounting_entries e ON e.id=l.entry_id
+            JOIN accounting_chart_of_accounts a ON a.code=l.account_code
+            WHERE e.entry_date BETWEEN ? AND ? AND a.account_class IN (6,7) AND {ef}
+            GROUP BY l.account_code, a.account_class, a.label
+            ORDER BY l.account_code""",
+        (str(date_from), str(date_to), *ep),
+    ).fetchall()
+    charges = [{'code': r['account_code'], 'label': r['label'], 'amount': round(r['total_debit'] - r['total_credit'], 2)}
+               for r in rows if r['account_class'] == 6]
+    produits = [{'code': r['account_code'], 'label': r['label'], 'amount': round(r['total_credit'] - r['total_debit'], 2)}
+                for r in rows if r['account_class'] == 7]
+    total_charges = round(sum(c['amount'] for c in charges), 2)
+    total_produits = round(sum(p['amount'] for p in produits), 2)
+    return {
+        'charges': charges, 'produits': produits,
+        'total_charges': total_charges, 'total_produits': total_produits,
+        'resultat': round(total_produits - total_charges, 2),
+    }
+
+
+def compute_bilan(conn, as_of_date, exercice_start_date, entity_id=None):
+    """Bilan (actif/passif) à une date donnée. exercice_start_date sert à
+    calculer le résultat de l'exercice en cours à faire apparaître au
+    passif — le même calcul que compute_compte_resultat, jamais dupliqué
+    différemment.
+
+    Classement par classe PCG (account_class déjà stocké par compte) :
+    classe 2 = immobilisations (28xxxx = amortissements, en déduction) ;
+    classe 5 = disponibilités ; classe 4 = tiers, ventilé actif/passif selon
+    le sens du solde (créditeur = passif, débiteur = actif) plutôt que par
+    une liste de codes à maintenir à la main — un compte non prévu se classe
+    quand même correctement. Classe 1 hors 164000 (emprunts) = capitaux
+    propres hors résultat."""
+    resultat_data = compute_compte_resultat(conn, exercice_start_date, as_of_date, entity_id)
+    resultat_exercice = resultat_data['resultat']
+
+    ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    rows = conn.execute(
+        f"""SELECT l.account_code, a.account_class, a.label,
+               COALESCE(SUM(l.debit),0) total_debit, COALESCE(SUM(l.credit),0) total_credit
+            FROM accounting_entry_lines l
+            JOIN accounting_entries e ON e.id=l.entry_id
+            JOIN accounting_chart_of_accounts a ON a.code=l.account_code
+            WHERE e.entry_date<=? AND a.account_class IN (1,2,4,5) AND {ef}
+            GROUP BY l.account_code, a.account_class, a.label
+            ORDER BY l.account_code""",
+        (str(as_of_date), *ep),
+    ).fetchall()
+
+    immobilisations_brutes = 0.0
+    amortissements = 0.0
+    creances = 0.0
+    disponibilites = 0.0
+    dettes = 0.0
+    capitaux_propres_hors_resultat = 0.0
+    emprunts = 0.0
+    detail_actif_immo, detail_actif_tiers, detail_passif_tiers = [], [], []
+
+    for r in rows:
+        net = round(r['total_debit'] - r['total_credit'], 2)
+        code, klass, label = r['account_code'], r['account_class'], r['label']
+        if klass == 2:
+            if code.startswith('28'):
+                amortissements += -net
+                if net:
+                    detail_actif_immo.append({'code': code, 'label': label, 'amount': -net})
+            else:
+                immobilisations_brutes += net
+                if net:
+                    detail_actif_immo.append({'code': code, 'label': label, 'amount': net})
+        elif klass == 5:
+            disponibilites += net
+        elif klass == 4:
+            if net >= 0:
+                creances += net
+                if net:
+                    detail_actif_tiers.append({'code': code, 'label': label, 'amount': net})
+            else:
+                dettes += -net
+                if net:
+                    detail_passif_tiers.append({'code': code, 'label': label, 'amount': -net})
+        elif klass == 1:
+            if code == '164000':
+                emprunts += -net
+            else:
+                capitaux_propres_hors_resultat += -net
+
+    immobilisations_nettes = round(immobilisations_brutes - amortissements, 2)
+    total_actif = round(immobilisations_nettes + creances + disponibilites, 2)
+    total_passif = round(capitaux_propres_hors_resultat + resultat_exercice + emprunts + dettes, 2)
+
+    actif = {
+        'immobilisations_brutes': round(immobilisations_brutes, 2), 'amortissements': round(amortissements, 2),
+        'immobilisations_nettes': immobilisations_nettes, 'creances': round(creances, 2),
+        'disponibilites': round(disponibilites, 2), 'total': total_actif,
+        'detail_immo': detail_actif_immo, 'detail_tiers': detail_actif_tiers,
+    }
+    passif = {
+        'capitaux_propres': round(capitaux_propres_hors_resultat, 2), 'resultat_exercice': resultat_exercice,
+        'emprunts': round(emprunts, 2), 'dettes': round(dettes, 2), 'total': total_passif,
+        'detail_tiers': detail_passif_tiers,
+    }
+    return actif, passif, resultat_data

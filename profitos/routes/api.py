@@ -189,6 +189,148 @@ def register(app):
         return jsonify({'id': new_id, 'invoice_number': invoice_number, 'total': total, 'status': 'draft'}), 201
 
     # ------------------------------------------------------------------
+    # API en lecture étendue — relire ce que l'API en écriture permet de
+    # créer, plus les objets tiers (fournisseurs, entités). Même clé, même
+    # portée 'read' minimale — ces routes n'exposent jamais plus qu'un
+    # simple accès en lecture ne devrait.
+    # ------------------------------------------------------------------
+
+    @app.route('/api/v1/purchase-invoices', methods=['GET'])
+    @api_key_required
+    def api_list_purchase_invoices():
+        tc = tenant_cx_direct(g.api_org_id)
+        status = request.args.get('status')
+        try:
+            limit = min(int(request.args.get('limit', 50)), 200)
+        except (TypeError, ValueError):
+            limit = 50
+        query = "SELECT id,supplier_name,invoice_number,issue_date,due_date,total,status,validation_status,entity_id FROM purchase_invoices"
+        params = []
+        if status:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = tc.execute(query, params).fetchall()
+        tc.close()
+        return jsonify({'purchase_invoices': [dict(r) for r in rows]})
+
+    @app.route('/api/v1/purchase-invoices/<int:purchase_id>', methods=['GET'])
+    @api_key_required
+    def api_get_purchase_invoice(purchase_id):
+        tc = tenant_cx_direct(g.api_org_id)
+        row = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        tc.close()
+        if not row:
+            return jsonify({'error': 'not_found', 'message': f"Facture fournisseur {purchase_id} introuvable."}), 404
+        return jsonify(dict(row))
+
+    @app.route('/api/v1/purchase-invoices/<int:purchase_id>/mark-paid', methods=['POST'])
+    @api_key_required
+    @api_write_required
+    def api_mark_purchase_paid(purchase_id):
+        from profitos.accounting import generate_purchase_payment_entry, AccountingError
+        tc = tenant_cx_direct(g.api_org_id)
+        row = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        if not row:
+            tc.close()
+            return jsonify({'error': 'not_found', 'message': f"Facture fournisseur {purchase_id} introuvable."}), 404
+        if row['status'] == 'paid':
+            tc.close()
+            return jsonify({'error': 'already_paid', 'message': 'Cette facture est déjà marquée payée.'}), 409
+        tc.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?", (now(), purchase_id))
+        tc.commit()
+        updated = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        try:
+            generate_purchase_payment_entry(tc, updated)
+        except AccountingError as e:
+            log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement API achat {purchase_id}: {e}")
+        tc.close()
+        log_activity('API_PURCHASE_MARKED_PAID', f"Facture fournisseur {purchase_id} marquée payée via API")
+        return jsonify({'id': purchase_id, 'status': 'paid'})
+
+    @app.route('/api/v1/invoices', methods=['GET'])
+    @api_key_required
+    def api_list_invoices():
+        tc = tenant_cx_direct(g.api_org_id)
+        status = request.args.get('status')
+        try:
+            limit = min(int(request.args.get('limit', 50)), 200)
+        except (TypeError, ValueError):
+            limit = 50
+        query = "SELECT id,invoice_number,client_name,issue_date,due_date,total,status,entity_id FROM outgoing_invoices"
+        params = []
+        if status:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = tc.execute(query, params).fetchall()
+        tc.close()
+        return jsonify({'invoices': [dict(r) for r in rows]})
+
+    @app.route('/api/v1/invoices/<int:invoice_id>', methods=['GET'])
+    @api_key_required
+    def api_get_invoice(invoice_id):
+        tc = tenant_cx_direct(g.api_org_id)
+        row = tc.execute("SELECT * FROM outgoing_invoices WHERE id=?", (invoice_id,)).fetchone()
+        tc.close()
+        if not row:
+            return jsonify({'error': 'not_found', 'message': f"Facture {invoice_id} introuvable."}), 404
+        data = dict(row)
+        try:
+            data['line_items'] = json.loads(data.get('line_items') or '[]')
+        except (TypeError, ValueError):
+            pass
+        return jsonify(data)
+
+    @app.route('/api/v1/suppliers', methods=['GET'])
+    @api_key_required
+    def api_list_suppliers():
+        tc = tenant_cx_direct(g.api_org_id)
+        rows = tc.execute(
+            "SELECT id,name,email,phone,siret,vat_number,iban,bic FROM suppliers ORDER BY name"
+        ).fetchall()
+        tc.close()
+        return jsonify({'suppliers': [dict(r) for r in rows]})
+
+    @app.route('/api/v1/suppliers', methods=['POST'])
+    @api_key_required
+    @api_write_required
+    def api_create_supplier():
+        from profitos.sepa import validate_iban
+        payload = request.get_json(silent=True) or {}
+        name = (payload.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'missing_fields', 'message': 'name est obligatoire.'}), 400
+        iban = (payload.get('iban') or '').replace(' ', '').upper().strip()
+        if iban and not validate_iban(iban):
+            return jsonify({'error': 'invalid_iban', 'message': f"IBAN invalide : {payload.get('iban')!r}."}), 400
+        tc = tenant_cx_direct(g.api_org_id)
+        tc.execute(
+            """INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (name, (payload.get('email') or '').strip(), (payload.get('phone') or '').strip(),
+             (payload.get('address') or '').strip(), (payload.get('siret') or '').strip(),
+             (payload.get('vat_number') or '').strip(), (payload.get('notes') or '').strip(),
+             iban, (payload.get('bic') or '').upper().strip(), now()),
+        )
+        tc.commit()
+        new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+        tc.close()
+        log_activity('API_SUPPLIER_CREATED', f"Fournisseur « {name} » créé via API")
+        return jsonify({'id': new_id, 'name': name}), 201
+
+    @app.route('/api/v1/entities', methods=['GET'])
+    @api_key_required
+    def api_list_entities():
+        from profitos.entities import list_all_entities
+        tc = tenant_cx_direct(g.api_org_id)
+        entities = list_all_entities(tc)
+        tc.close()
+        return jsonify({'entities': entities})
+
+    # ------------------------------------------------------------------
     # Gestion des clés API (créer / lister / révoquer) — page normale,
     # authentifiée par session comme le reste de l'app, pas par clé API.
     # ------------------------------------------------------------------

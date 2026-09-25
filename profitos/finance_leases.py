@@ -144,12 +144,12 @@ def exercise_purchase_option(conn, lease_id, exercise_date, useful_life_years,
 
     conn.execute(
         """INSERT INTO fixed_assets(label,asset_account,depreciation_account,expense_account,
-           purchase_date,purchase_amount,useful_life_years,method,source_type,source_id,status,created_at)
-           VALUES(?,?,?,?,?,?,?,'linear','finance_lease',?,'active',?)""",
+           purchase_date,purchase_amount,useful_life_years,method,source_type,source_id,status,created_at,entity_id)
+           VALUES(?,?,?,?,?,?,?,'linear','finance_lease',?,'active',?,?)""",
         (f"{lease['asset_description']} (option levée — {lease['lessor_name']})",
          asset_account, depreciation_account, expense_account,
          str(exercise_date), lease['purchase_option_amount'], useful_life_years,
-         lease_id, datetime.utcnow().isoformat()),
+         lease_id, datetime.utcnow().isoformat(), entity_id),
     )
     conn.commit()
     asset_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]

@@ -16,7 +16,8 @@
 <section class="purchase-panel" style="margin:20px 0;">
   <h2 style="color:#fff;">Utilisation</h2>
   <pre style="background:rgba(0,0,0,.3);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">curl -H "Authorization: Bearer TA_CLE_API" {{ request.host_url }}api/v1/summary</pre>
-  <p class="purchase-muted" style="font-size:12px;">Endpoints disponibles : <code>/api/v1/recover</code>, <code>/api/v1/save</code>, <code>/api/v1/grow</code>, <code>/api/v1/summary</code>.</p>
+  <p class="purchase-muted" style="font-size:12px;">Lecture (toute clé) : <code>/api/v1/recover</code>, <code>/api/v1/save</code>, <code>/api/v1/grow</code>, <code>/api/v1/summary</code>, <code>/api/v1/purchase-invoices</code>, <code>/api/v1/purchase-invoices/&lt;id&gt;</code>, <code>/api/v1/invoices</code>, <code>/api/v1/invoices/&lt;id&gt;</code>, <code>/api/v1/suppliers</code>, <code>/api/v1/entities</code>.</p>
+  <p class="purchase-muted" style="font-size:12px;">Écriture (clé « Lecture + écriture » uniquement) : <code>POST /api/v1/purchase-invoices</code>, <code>POST /api/v1/purchase-invoices/&lt;id&gt;/mark-paid</code>, <code>POST /api/v1/expense-reports</code>, <code>POST /api/v1/invoices</code>, <code>POST /api/v1/suppliers</code>.</p>
 </section>
 
 <section class="purchase-panel">

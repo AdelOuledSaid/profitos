@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CABINET</div>
+    <h1 class="purchase-title">Portefeuille clients</h1>
+    <p class="purchase-subtitle">Temps de {{ month_label }}, révisions en cours, sur toutes les organisations auxquelles tu as accès.</p>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('cabinet_time_new') }}">+ Saisir du temps</a>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Client</th><th style="text-align:right;">Révisions en cours</th><th style="text-align:right;">Temps ce mois</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.org.name }}</strong></td>
+          <td style="text-align:right;">{{ r.reviews_pending }} / {{ r.reviews_total }}</td>
+          <td style="text-align:right;">{{ (r.minutes_month / 60)|round(1) }} h</td>
+          <td style="display:flex;gap:8px;">
+            <a class="purchase-detail-link" href="{{ url_for('cabinet_time_list',organization_id=r.org.id) }}">Temps →</a>
+            <a class="purchase-detail-link" href="{{ url_for('cabinet_documents',organization_id=r.org.id) }}">Documents →</a>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="purchase-empty">Aucune organisation accessible.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

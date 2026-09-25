@@ -43,6 +43,27 @@ def init_auth_db():
     CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,slug TEXT UNIQUE,plan TEXT DEFAULT 'TRIAL',status TEXT DEFAULT 'ACTIVE',trial_ends_at TEXT,stripe_customer_id TEXT,stripe_subscription_id TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,theme_preference TEXT DEFAULT 'dark',last_seen_changelog TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
+    CREATE TABLE IF NOT EXISTS cabinet_time_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        organization_id INTEGER NOT NULL,
+        entry_date TEXT NOT NULL,
+        duration_minutes INTEGER NOT NULL,
+        description TEXT,
+        billable INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cabinet_documents(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        uploaded_by INTEGER,
+        filename TEXT NOT NULL,
+        category TEXT,
+        stored_name TEXT NOT NULL,
+        uploaded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cabinet_time_org ON cabinet_time_entries(organization_id);
+    CREATE INDEX IF NOT EXISTS idx_cabinet_docs_org ON cabinet_documents(organization_id);
     CREATE TABLE IF NOT EXISTS activity_log(id INTEGER PRIMARY KEY AUTOINCREMENT,organization_id INTEGER,user_id INTEGER,event_type TEXT,description TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS security_events(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1281,7 +1302,8 @@ def init_tenant_db(org_id=None):
                        ('invoices','entity_id'),
                        ('opportunities','entity_id'),
                        ('expenses','entity_id'),
-                       ('bank_accounts','entity_id')):
+                       ('bank_accounts','entity_id'),
+                       ('fixed_assets','entity_id')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:

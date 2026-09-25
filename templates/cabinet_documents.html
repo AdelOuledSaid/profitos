@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CABINET · GED</div>
+    <h1 class="purchase-title">Documents — {{ org.name }}</h1>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('cabinet_portfolio') }}">← Portefeuille</a>
+</div>
+
+<section class="purchase-panel" style="margin-bottom:20px;max-width:480px;">
+  <form method="post" enctype="multipart/form-data" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Fichier<input type="file" name="file" required></label>
+    <label class="wide">Catégorie<input name="category" placeholder="ex: Justificatifs, Statuts, Déclarations"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Ajouter</button></div>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Fichier</th><th>Catégorie</th><th>Ajouté par</th><th>Date</th><th></th></tr></thead>
+      <tbody>
+      {% for d in docs %}
+        <tr>
+          <td>{{ d.filename }}</td>
+          <td>{{ d.category or '—' }}</td>
+          <td>{{ d.full_name or d.email or '—' }}</td>
+          <td>{{ d.uploaded_at|fr_date(true) }}</td>
+          <td><a class="purchase-detail-link" href="{{ url_for('cabinet_document_download',organization_id=org.id,doc_id=d.id) }}">Télécharger →</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun document pour ce client.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}
