@@ -46,7 +46,7 @@ def create_app(config_object=None):
     init_auth_db()
     init_runtime(app)
 
-    from .routes import account, dce, main, actions, reports, imports, api, money_hunter, financial_brain, cash_intelligence, decision_simulator, invoicing, bank_sync, accounting, expenses, cloud_storage, entities, analytics, swan_baas, loans, finance_leases, reviews, cabinet
+    from .routes import account, dce, main, actions, reports, imports, api, money_hunter, financial_brain, cash_intelligence, decision_simulator, invoicing, bank_sync, accounting, expenses, cloud_storage, entities, analytics, swan_baas, loans, finance_leases, reviews, cabinet, gocardless_baas
     account.register(app)
     dce.register(app)
     main.register(app)
@@ -70,6 +70,7 @@ def create_app(config_object=None):
     finance_leases.register(app)
     reviews.register(app)
     cabinet.register(app)
+    gocardless_baas.register(app)
 
     @app.before_request
     def request_context():

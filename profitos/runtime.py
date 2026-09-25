@@ -1262,6 +1262,41 @@ def init_tenant_db(org_id=None):
         checked_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_review_items_review ON review_items(review_id);
+    CREATE TABLE IF NOT EXISTS delivery_notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        delivery_number TEXT UNIQUE NOT NULL,
+        client_name TEXT NOT NULL,
+        client_address TEXT,
+        client_email TEXT,
+        delivery_date TEXT NOT NULL,
+        line_items TEXT NOT NULL,
+        status TEXT DEFAULT 'draft',
+        linked_invoice_id INTEGER,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS gocardless_mandates(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT NOT NULL,
+        client_email TEXT,
+        gc_customer_id TEXT,
+        gc_mandate_id TEXT,
+        status TEXT DEFAULT 'pending',
+        redirect_flow_id TEXT,
+        authorization_url TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS gocardless_payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mandate_row_id INTEGER NOT NULL,
+        invoice_id INTEGER,
+        gc_payment_id TEXT,
+        amount REAL NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT NOT NULL
+    );
 
     '''); c.commit()
     # Migration douce pour les bases tenant créées avant l'ajout de created_at / retenues contractuelles.

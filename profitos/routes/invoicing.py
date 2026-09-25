@@ -348,6 +348,19 @@ def _next_credit_number(c):
     return f"{prefix}{highest+1:03d}"
 
 
+def _next_delivery_number(c):
+    year=datetime.now(timezone.utc).year
+    prefix=f"BL-{year}-"
+    rows=c.execute("SELECT delivery_number FROM delivery_notes WHERE delivery_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['delivery_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    return f"{prefix}{highest+1:03d}"
+
+
 def _credited_total(c, invoice_id):
     row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND status='issued'",(invoice_id,)).fetchone()
     return float(row['n'] or 0)
@@ -2342,6 +2355,201 @@ def register(app):
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}.pdf"'})
 
+    @app.route('/facturation/<int:invoice_id>/proforma')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_proforma(invoice_id):
+        c=cx()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        c.close()
+        if not inv: abort(404)
+        if inv['status']!='draft':
+            flash("Le pro-forma n'a de sens que pour une facture encore au statut brouillon — celle-ci est déjà émise.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        pdf_bytes=_render_proforma_pdf(inv,company_row)
+        if pdf_bytes is None:
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        log_activity('PROFORMA_GENERATED', f"Pro-forma généré pour la facture brouillon {inv['invoice_number']}")
+        return Response(pdf_bytes,mimetype='application/pdf',
+            headers={'Content-Disposition':f'attachment; filename="proforma-{inv["invoice_number"]}.pdf"'})
+
+    @app.route('/facturation/livraisons')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def delivery_notes_list():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
+        c = cx()
+        rows = c.execute(f"SELECT * FROM delivery_notes WHERE {ef} ORDER BY delivery_date DESC, id DESC", ep).fetchall()
+        c.close()
+        return render_template('delivery_notes_list.html', rows=rows)
+
+    @app.route('/facturation/livraisons/nouvelle', methods=['GET', 'POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def delivery_note_new():
+        from profitos.entities import current_entity_id
+        c = cx()
+        if request.method == 'POST':
+            client_name = (request.form.get('client_name') or '').strip()
+            client_address = (request.form.get('client_address') or '').strip()
+            client_email = (request.form.get('client_email') or '').strip()
+            delivery_date = request.form.get('delivery_date') or date.today().isoformat()
+            items = _compute_line_items(request.form)
+            if not client_name or not items:
+                c.close()
+                flash("Nom du client et au moins une ligne sont requis.")
+                return redirect(url_for('delivery_note_new'))
+            delivery_number = _next_delivery_number(c)
+            c.execute(
+                """INSERT INTO delivery_notes
+                   (entity_id,delivery_number,client_name,client_address,client_email,delivery_date,line_items,status,notes,created_at,created_by)
+                   VALUES(?,?,?,?,?,?,?,'draft',?,?,?)""",
+                (current_entity_id(), delivery_number, client_name, client_address, client_email, delivery_date,
+                 json.dumps(items, ensure_ascii=False), (request.form.get('notes') or '').strip(),
+                 now(), current_user()['email']),
+            )
+            c.commit()
+            new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            c.close()
+            log_activity('DELIVERY_NOTE_CREATED', f"Bon de livraison {delivery_number} créé")
+            flash(f"Bon de livraison {delivery_number} créé.")
+            return redirect(url_for('delivery_note_detail', delivery_id=new_id))
+        c.close()
+        return render_template('delivery_note_new.html', today=date.today().isoformat())
+
+    @app.route('/facturation/livraisons/<int:delivery_id>')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def delivery_note_detail(delivery_id):
+        c = cx()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        c.close()
+        if not row: abort(404)
+        items = json.loads(row['line_items'] or '[]')
+        subtotal, vat_amount, total = _totals(items)
+        return render_template('delivery_note_detail.html', delivery=row, items=items,
+                                subtotal=subtotal, vat_amount=vat_amount, total=total)
+
+    @app.route('/facturation/livraisons/<int:delivery_id>/livrer', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def delivery_note_deliver(delivery_id):
+        c = cx()
+        row = c.execute('SELECT status FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        if not row: c.close(); abort(404)
+        if row['status'] == 'draft':
+            c.execute("UPDATE delivery_notes SET status='delivered' WHERE id=?", (delivery_id,))
+            c.commit()
+            log_activity('DELIVERY_NOTE_DELIVERED', f"Bon de livraison #{delivery_id} marqué livré")
+            flash("Bon de livraison marqué comme livré.")
+        c.close()
+        return redirect(url_for('delivery_note_detail', delivery_id=delivery_id))
+
+    @app.route('/facturation/livraisons/<int:delivery_id>/facturer', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def delivery_note_invoice(delivery_id):
+        from profitos.entities import current_entity_id
+        c = cx()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        if not row: c.close(); abort(404)
+        if row['linked_invoice_id']:
+            c.close()
+            flash("Ce bon de livraison a déjà été facturé.")
+            return redirect(url_for('delivery_note_detail', delivery_id=delivery_id))
+        items = json.loads(row['line_items'] or '[]')
+        subtotal, vat_amount, total = _totals(items)
+        invoice_number = _next_invoice_number(c, current_entity_id())
+        token = secrets.token_urlsafe(20)
+        c.execute(
+            """INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,
+               line_items,subtotal,vat_amount,total,status,public_token,created_at,entity_id,notes)
+               VALUES(?,?,?,?,?,?,?,?,?,'draft',?,?,?,?)""",
+            (invoice_number, row['client_name'], row['client_address'], row['client_email'], date.today().isoformat(),
+             row['line_items'], subtotal, vat_amount, total, token, now(), current_entity_id(),
+             f"Facturé à partir du bon de livraison {row['delivery_number']}"),
+        )
+        c.commit()
+        new_invoice_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+        ac = auth_cx()
+        ac.execute('INSERT INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+            (token, session['org_id'], new_invoice_id, now())); ac.commit(); ac.close()
+        c.execute("UPDATE delivery_notes SET linked_invoice_id=? WHERE id=?", (new_invoice_id, delivery_id))
+        c.commit(); c.close()
+        log_activity('DELIVERY_NOTE_INVOICED', f"Bon de livraison {row['delivery_number']} facturé ({invoice_number})")
+        flash(f"Facture {invoice_number} créée à partir du bon de livraison.")
+        return redirect(url_for('invoicing_detail', invoice_id=new_invoice_id))
+
+    @app.route('/facturation/livraisons/<int:delivery_id>/pdf')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def delivery_note_pdf(delivery_id):
+        c = cx()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        company_row = c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        c.close()
+        if not row: abort(404)
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
+            return redirect(url_for('delivery_note_detail', delivery_id=delivery_id))
+
+        def safe(text):
+            if text is None: return ''
+            text=str(text)
+            repl={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+            for a,b in repl.items(): text=text.replace(a,b)
+            return text.encode('latin-1',errors='replace').decode('latin-1')
+
+        items = json.loads(row['line_items'] or '[]')
+        pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+        pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
+        pdf.cell(0,12,safe(f"Bon de livraison {row['delivery_number']}"),ln=1)
+        pdf.set_font('Helvetica','',11); pdf.set_text_color(107,114,128)
+        if company_row:
+            pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        pdf.ln(4)
+        pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',12)
+        pdf.cell(0,7,'Livré à :',ln=1)
+        pdf.set_font('Helvetica','',11)
+        pdf.cell(0,6,safe(row['client_name']),ln=1)
+        if row['client_address']: pdf.cell(0,6,safe(row['client_address']),ln=1)
+        pdf.ln(4)
+        pdf.set_font('Helvetica','',10); pdf.set_text_color(107,114,128)
+        pdf.cell(0,6,safe(f"Date de livraison : {row['delivery_date']}"),ln=1)
+        pdf.ln(8)
+        pdf.set_fill_color(243,244,246); pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',10)
+        pdf.cell(100,8,'Description',border=0,fill=True)
+        pdf.cell(30,8,'Qté livrée',border=0,fill=True,align='R')
+        pdf.cell(50,8,'',border=0,fill=True,ln=1)
+        pdf.set_font('Helvetica','',10)
+        for it in items:
+            pdf.cell(100,7,safe(it['label']))
+            pdf.cell(30,7,safe(f"{it['qty']:g}"),align='R')
+            pdf.cell(50,7,'',ln=1)
+        pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
+        pdf.multi_cell(0,4,safe("Document généré via ProfitOS — bon de livraison, à faire signer par le destinataire pour valoir accusé de réception."))
+        pdf_bytes = bytes(pdf.output(dest='S'))
+        return Response(pdf_bytes, mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename="{row["delivery_number"]}.pdf"'})
+
     @app.route('/facturation/<int:invoice_id>/facturx')
     @login_required
     @requires_active_plan
@@ -2946,6 +3154,87 @@ def _render_invoice_pdf(inv,company_row):
 
     pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
     pdf.multi_cell(0,4,safe("Document genere via ProfitOS. Ce document n'est pas emis via une Plateforme Agreee DGFiP au sens de la reforme de facturation electronique."))
+
+    return bytes(pdf.output(dest='S'))
+
+
+def _render_proforma_pdf(inv, company_row):
+    """Génère un pro-forma — présentation alternative d'une facture encore
+    au statut brouillon, mêmes montants, mais explicitement sans valeur
+    comptable ni fiscale (utile pour une douane, un acompte, ou avant
+    accord définitif). Ne modifie jamais la facture elle-même, ne
+    consomme aucun numéro de séquence — un pro-forma n'est jamais une
+    vraie facture. Retourne None si fpdf2 n'est pas installé, même
+    convention que _render_invoice_pdf."""
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        repl={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+        for a,b in repl.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+
+    items=json.loads(inv['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4')
+    pdf.set_auto_page_break(auto=True,margin=18)
+    pdf.add_page()
+
+    pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
+    pdf.cell(0,12,safe(f"FACTURE PRO FORMA — {inv['invoice_number']}"),ln=1)
+    pdf.set_font('Helvetica','I',10); pdf.set_text_color(220,38,38)
+    pdf.cell(0,7,safe("Document sans valeur comptable ni fiscale — ne constitue pas une facture."),ln=1)
+    pdf.set_font('Helvetica','',11); pdf.set_text_color(107,114,128)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['address']: pdf.cell(0,6,safe(company_row['address']),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+        if company_row['vat_number']: pdf.cell(0,6,safe(f"TVA : {company_row['vat_number']}"),ln=1)
+    pdf.ln(6)
+
+    pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',12)
+    pdf.cell(0,7,'Destinataire :',ln=1)
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(0,6,safe(inv['client_name']),ln=1)
+    if inv['client_address']: pdf.cell(0,6,safe(inv['client_address']),ln=1)
+    pdf.ln(4)
+    pdf.set_font('Helvetica','',10); pdf.set_text_color(107,114,128)
+    pdf.cell(0,6,safe(f"Date d'émission : {inv['issue_date']}"),ln=1)
+    if inv['due_date']: pdf.cell(0,6,safe(f"Échéance indicative : {inv['due_date']}"),ln=1)
+    pdf.ln(8)
+
+    pdf.set_fill_color(243,244,246); pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',10)
+    pdf.cell(80,8,'Description',border=0,fill=True)
+    pdf.cell(20,8,'Qté',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Prix unit.',border=0,fill=True,align='R')
+    pdf.cell(20,8,'TVA',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Total HT',border=0,fill=True,align='R',ln=1)
+    pdf.set_font('Helvetica','',10)
+    for it in items:
+        pdf.cell(80,7,safe(it['label']))
+        pdf.cell(20,7,safe(f"{it['qty']:g}"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['unit_price'],2)} EUR"),align='R')
+        pdf.cell(20,7,safe(f"{it['vat_rate']:g}%"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
+    pdf.ln(6)
+
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(150,7,'Sous-total HT',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(150,7,'TVA',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['vat_amount'],2)} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(150,9,'Total TTC indicatif',align='R')
+    pdf.cell(30,9,safe(f"{fr_number(inv['total'],2)} EUR"),align='R',ln=1)
+
+    pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
+    pdf.multi_cell(0,4,safe(
+        "Document généré via ProfitOS à titre de pro-forma — présentation indicative avant facturation "
+        "définitive. Ne constitue ni une facture, ni un document comptable ou fiscal opposable."
+    ))
 
     return bytes(pdf.output(dest='S'))
 

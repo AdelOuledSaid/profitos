@@ -18,6 +18,13 @@
 
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
+    {% if inv.status!='draft' and inv.status!='paid' %}
+    <form method="post" action="{{ url_for('invoicing_gocardless_start',invoice_id=inv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-primary-btn secondary">Prélever via GoCardless</button>
+    </form>
+    {% endif %}
+    {% if inv.status=='draft' %}<a class="purchase-nav-btn" href="{{ url_for('invoicing_proforma',invoice_id=inv.id) }}">Générer un pro-forma</a>{% endif %}
     {% if inv.status=='draft' %}<a class="purchase-nav-btn" href="{{ url_for('invoicing_edit',invoice_id=inv.id) }}">Modifier le brouillon</a>{% endif %}
     {% if inv.status=='draft' %}
     <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Émettre et envoyer</button></form>

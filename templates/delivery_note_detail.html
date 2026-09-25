@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">BON DE LIVRAISON</div>
+    <h1 class="purchase-title">{{ delivery.delivery_number }}</h1>
+    <p class="purchase-subtitle">{{ delivery.client_name }} · {{ delivery.delivery_date|fr_date }}</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('delivery_notes_list') }}">← Bons de livraison</a>
+</div>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0 24px;">
+  <span class="purchase-status {{ 'paid' if delivery.status=='delivered' else '' }}">{{ 'Livré' if delivery.status=='delivered' else 'Brouillon' }}</span>
+  <a class="purchase-nav-btn" href="{{ url_for('delivery_note_pdf',delivery_id=delivery.id) }}">Télécharger le PDF</a>
+  {% if delivery.status=='draft' %}
+  <form method="post" action="{{ url_for('delivery_note_deliver',delivery_id=delivery.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Marquer comme livré</button>
+  </form>
+  {% endif %}
+  {% if delivery.linked_invoice_id %}
+  <a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=delivery.linked_invoice_id) }}">Voir la facture liée →</a>
+  {% else %}
+  <form method="post" action="{{ url_for('delivery_note_invoice',delivery_id=delivery.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn secondary">Facturer ce bon de livraison</button>
+  </form>
+  {% endif %}
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Description</th><th style="text-align:right;">Quantité</th><th style="text-align:right;">Prix unitaire</th><th style="text-align:right;">Total HT</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td>{{ it.label }}</td>
+          <td style="text-align:right;">{{ it.qty }}</td>
+          <td style="text-align:right;">{{ it.unit_price|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ it.line_total|fr_number(2) }} €</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="purchase-total-line" style="margin-top:16px;">
+    <span class="purchase-muted">Total HT {{ subtotal|fr_number(2) }} € · TVA {{ vat_amount|fr_number(2) }} €</span>
+    <strong>{{ total|fr_number(2) }} € TTC</strong>
+  </div>
+</section>
+</div>
+{% endblock %}
