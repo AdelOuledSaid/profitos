@@ -17,8 +17,10 @@ def register(app):
         if not is_configured():
             flash("GoCardless n'est pas configuré côté serveur (GOCARDLESS_ACCESS_TOKEN manquant).")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
+        inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?', (invoice_id, eid)).fetchone()
         if not inv:
             c.close(); abort(404)
 
@@ -39,9 +41,9 @@ def register(app):
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
 
         c.execute(
-            """INSERT INTO gocardless_mandates(client_name,client_email,status,redirect_flow_id,authorization_url,created_at)
-               VALUES(?,?,?,?,?,?)""",
-            (inv['client_name'], inv['client_email'], 'pending', flow['id'], flow['authorization_url'], now()),
+            """INSERT INTO gocardless_mandates(entity_id,client_name,client_email,status,redirect_flow_id,authorization_url,created_at)
+               VALUES(?,?,?,?,?,?,?)""",
+            (eid, inv['client_name'], inv['client_email'], 'pending', flow['id'], flow['authorization_url'], now()),
         )
         c.commit()
         mandate_row_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -71,24 +73,35 @@ def register(app):
             return redirect(url_for('invoicing_list'))
 
         c = cx()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        mandate = c.execute('SELECT * FROM gocardless_mandates WHERE id=? AND entity_id IS ?', (mandate_row_id, eid)).fetchone()
+        if not mandate:
+            c.close(); abort(404)
         c.execute(
-            "UPDATE gocardless_mandates SET status='active',gc_customer_id=?,gc_mandate_id=? WHERE id=?",
-            (result.get('customer_id'), result.get('mandate_id'), mandate_row_id),
+            "UPDATE gocardless_mandates SET status='active',gc_customer_id=?,gc_mandate_id=? WHERE id=? AND entity_id IS ?",
+            (result.get('customer_id'), result.get('mandate_id'), mandate_row_id, eid),
         )
         c.commit()
         log_activity('GOCARDLESS_MANDATE_ACTIVE', f"Mandat GoCardless #{mandate_row_id} activé")
 
         if invoice_id and result.get('mandate_id'):
-            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
+            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?', (invoice_id, eid)).fetchone()
             if inv:
                 try:
+                    existing = c.execute(
+                        "SELECT id FROM gocardless_payments WHERE invoice_id=? AND entity_id IS ? AND status NOT IN ('failed','cancelled') LIMIT 1",
+                        (invoice_id, eid),
+                    ).fetchone()
+                    if existing:
+                        raise ValueError("Un prélèvement GoCardless actif existe déjà pour cette facture.")
                     payment = create_payment(
                         result['mandate_id'], round(inv['total'] * 100), 'EUR',
                         f"Facture {inv['invoice_number']}",
                     )
                     c.execute(
-                        "INSERT INTO gocardless_payments(mandate_row_id,invoice_id,gc_payment_id,amount,status,created_at) VALUES(?,?,?,?,?,?)",
-                        (mandate_row_id, invoice_id, payment.get('id'), inv['total'], payment.get('status') or 'pending', now()),
+                        "INSERT INTO gocardless_payments(entity_id,mandate_row_id,invoice_id,gc_payment_id,amount,status,created_at) VALUES(?,?,?,?,?,?,?)",
+                        (eid, mandate_row_id, invoice_id, payment.get('id'), inv['total'], payment.get('status') or 'pending', now()),
                     )
                     c.commit()
                     log_activity('GOCARDLESS_PAYMENT_CREATED', f"Prélèvement demandé pour la facture {inv['invoice_number']}")

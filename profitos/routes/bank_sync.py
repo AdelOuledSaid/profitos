@@ -97,9 +97,10 @@ def _renew_token(provider_user_id):
     return data.get("access_token") or data.get("auth_token") or data.get("token")
 
 
-def _connection_row(c):
+def _connection_row(c, entity_id=None):
     return c.execute(
-        "SELECT * FROM bank_connections WHERE provider='powens' ORDER BY id DESC LIMIT 1"
+        "SELECT * FROM bank_connections WHERE provider='powens' AND entity_id IS ? ORDER BY id DESC LIMIT 1",
+        (entity_id,),
     ).fetchone()
 
 
@@ -129,17 +130,17 @@ def _sync_powens(c, row):
         if not disabled and balance is not None:
             active_balances.append(balance)
         c.execute(
-            """INSERT INTO bank_accounts(provider,provider_account_id,name,iban,account_type,currency,balance,disabled,last_synced_at)
-               VALUES(?,?,?,?,?,?,?,?,?)
+            """INSERT INTO bank_accounts(provider,provider_account_id,name,iban,account_type,currency,balance,disabled,last_synced_at,entity_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(provider,provider_account_id) DO UPDATE SET
                  name=excluded.name,iban=excluded.iban,account_type=excluded.account_type,
                  currency=excluded.currency,balance=excluded.balance,disabled=excluded.disabled,
-                 last_synced_at=excluded.last_synced_at""",
+                 last_synced_at=excluded.last_synced_at,entity_id=excluded.entity_id""",
             ("powens", aid, a.get("name") or a.get("original_name") or "Compte bancaire",
              a.get("iban"), a.get("type"),
              ((a.get("currency") or {}).get("id") if isinstance(a.get("currency"), dict) else (a.get("currency") or "EUR")),
              balance,
-             1 if disabled else 0, now),
+             1 if disabled else 0, now, row['entity_id']),
         )
 
     txs = _json(requests.get(
@@ -330,20 +331,23 @@ def register(app):
     @login_required
     @requires_paid_plan
     def bank_account_set_entity(account_id):
-        from profitos.entities import resolve_entity
+        from profitos.entities import resolve_entity, current_entity_id, user_can_access_entity
         c = cx()
-        account = c.execute("SELECT id FROM bank_accounts WHERE id=?", (account_id,)).fetchone()
+        current_eid = current_entity_id()
+        account = c.execute("SELECT id FROM bank_accounts WHERE id=? AND entity_id IS ?", (account_id,current_eid)).fetchone()
         if not account:
             c.close(); abort(404)
         entity_id_raw = request.form.get("entity_id")
         entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        if not user_can_access_entity(c, session.get('user_id'), entity_id):
+            c.close(); abort(403)
         try:
             identity = resolve_entity(c, entity_id)
         except ValueError:
             c.close()
             flash("Entité introuvable.")
             return redirect(url_for("banking"))
-        c.execute("UPDATE bank_accounts SET entity_id=? WHERE id=?", (entity_id, account_id))
+        c.execute("UPDATE bank_accounts SET entity_id=? WHERE id=? AND entity_id IS ?", (entity_id, account_id, current_eid))
         c.commit(); c.close()
         log_activity('BANK_ACCOUNT_ENTITY_SET', f"Compte bancaire #{account_id} rattaché à {identity['name']}")
         flash(f"Compte rattaché à {identity['name']}.")
@@ -359,7 +363,7 @@ def register(app):
         ep = (eid,) if eid else ()
         c = cx()
         try:
-            connection = _connection_row(c)
+            connection = _connection_row(c, eid)
             accounts = c.execute(
                 f"SELECT * FROM bank_accounts WHERE provider='powens' AND {ef} ORDER BY disabled,balance DESC",
                 ep,
@@ -417,6 +421,8 @@ def register(app):
         domain, client_id, _ = _cfg()
         state = secrets.token_urlsafe(24)
         session["powens_connect_state"] = state
+        from profitos.entities import current_entity_id
+        session["powens_connect_entity_id"] = current_entity_id()
         callback = _callback_url()
 
         # Powens officially supports a Connect Webview without a pre-created
@@ -443,6 +449,7 @@ def register(app):
     @requires_paid_plan
     def banking_callback():
         expected = session.pop("powens_connect_state", None)
+        connect_entity_id = session.pop("powens_connect_entity_id", None)
         received = request.args.get("state")
         if not expected or not received or not secrets.compare_digest(expected, received):
             flash("Retour bancaire refusé : état de sécurité invalide.")
@@ -465,7 +472,10 @@ def register(app):
 
         c = cx()
         try:
-            row = _connection_row(c)
+            from profitos.entities import user_can_access_entity
+            if not user_can_access_entity(c, session.get("user_id"), connect_entity_id):
+                abort(403)
+            row = _connection_row(c, connect_entity_id)
             provider_user_id = row["provider_user_id"] if row else None
 
             # When Connect was started without an initial user-scoped code,
@@ -505,38 +515,40 @@ def register(app):
                     c.execute(
                         """UPDATE bank_connections
                            SET provider_user_id=?,provider_connection_id=?,status='CONNECTED',updated_at=?
-                           WHERE id=?""",
+                           WHERE id=? AND entity_id IS ?""",
                         (
                             str(provider_user_id),
                             str(connection_id) if connection_id else row["provider_connection_id"],
                             now,
                             row["id"],
+                            connect_entity_id,
                         ),
                     )
                 else:
                     c.execute(
                         """INSERT INTO bank_connections(
-                               provider,provider_user_id,provider_connection_id,status,created_at,updated_at
-                           ) VALUES('powens',?,?, 'CONNECTED',?,?)""",
+                               provider,provider_user_id,provider_connection_id,status,created_at,updated_at,entity_id
+                           ) VALUES('powens',?,?, 'CONNECTED',?,?,?)""",
                         (
                             str(provider_user_id),
                             str(connection_id) if connection_id else None,
                             now,
                             now,
+                            connect_entity_id,
                         ),
                     )
                 c.commit()
-                row = _connection_row(c)
+                row = _connection_row(c, connect_entity_id)
 
             elif row and connection_id:
                 now = datetime.utcnow().replace(microsecond=0).isoformat()
                 c.execute(
                     """UPDATE bank_connections
-                       SET provider_connection_id=?,status='CONNECTED',updated_at=? WHERE id=?""",
-                    (str(connection_id), now, row["id"]),
+                       SET provider_connection_id=?,status='CONNECTED',updated_at=? WHERE id=? AND entity_id IS ?""",
+                    (str(connection_id), now, row["id"], connect_entity_id),
                 )
                 c.commit()
-                row = _connection_row(c)
+                row = _connection_row(c, connect_entity_id)
 
             if not row or not row["provider_user_id"]:
                 raise RuntimeError("Utilisateur Powens introuvable après connexion.")
@@ -561,8 +573,12 @@ def register(app):
     def banking_reconcile(transaction_id, invoice_id):
         c = cx()
         try:
-            t = c.execute("SELECT * FROM bank_transactions WHERE id=?",(transaction_id,)).fetchone()
-            inv = c.execute("SELECT * FROM outgoing_invoices WHERE id=?",(invoice_id,)).fetchone()
+            from profitos.entities import current_entity_id
+            eid = current_entity_id()
+            t = c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                              ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                              WHERE t.id=? AND a.entity_id IS ?""", (transaction_id,eid)).fetchone()
+            inv = c.execute("SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?",(invoice_id,eid)).fetchone()
             if not t or not inv:
                 abort(404)
 
@@ -590,15 +606,18 @@ def register(app):
                 (transaction_id,invoice_id,amount,matched_at)
             )
             c.execute(
-                "UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=?",
-                (matched_at,invoice_id)
+                "UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='sent'",
+                (matched_at,invoice_id,eid)
             )
-            c.commit()
             try:
-                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,eid)).fetchone()
                 generate_sale_payment_entry(c,inv_updated)
+                c.commit()
             except AccountingError as e:
+                c.rollback()
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
+                flash(f"Rapprochement annulé : {e}")
+                return redirect(url_for("banking"))
             log_activity(
                 'INVOICE_BANK_RECONCILED',
                 f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {fr_number(amount,2)} €"
@@ -614,7 +633,9 @@ def register(app):
     def banking_sync():
         c = cx()
         try:
-            row = _connection_row(c)
+            from profitos.entities import current_entity_id
+            eid = current_entity_id()
+            row = _connection_row(c, eid)
             if not row or not row["provider_user_id"]:
                 flash("Aucune banque connectée.")
                 return redirect(url_for("banking"))
@@ -665,8 +686,12 @@ def register(app):
         tx_id=int(request.form.get('bank_transaction_id') or 0)
         purchase_id=int(request.form.get('purchase_invoice_id') or 0)
         c=cx()
-        tx=c.execute("SELECT * FROM bank_transactions WHERE id=?",(tx_id,)).fetchone()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                          ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                          WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         if not tx or not p:
             c.close(); abort(404)
         if float(tx['amount'] or 0) >= 0:
@@ -689,13 +714,17 @@ def register(app):
         c.execute("""INSERT INTO bank_purchase_reconciliations
                      (bank_transaction_id,purchase_invoice_id,matched_amount,matched_at)
                      VALUES(?,?,?,?)""",(tx_id,purchase_id,amount,now()))
-        c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE id=?",(now(),purchase_id))
-        c.commit()
+        c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'",(now(),purchase_id,eid))
         try:
-            p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(purchase_id,)).fetchone()
+            p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
             generate_purchase_payment_entry(c,p_updated)
+            c.commit()
         except AccountingError as e:
+            c.rollback()
             log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
+            c.close()
+            flash(f"Rapprochement annulé : {e}")
+            return redirect(url_for('banking'))
         c.close()
         flash("Rapprochement fournisseur confirmé. La facture a été marquée payée.")
         return redirect(url_for('banking'))

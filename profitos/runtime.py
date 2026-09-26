@@ -832,6 +832,19 @@ def init_tenant_db(org_id=None):
         user_id INTEGER,
         created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS weinvoice_entity_settings(
+        entity_key INTEGER PRIMARY KEY,
+        weinvoice_status TEXT DEFAULT 'disconnected',
+        weinvoice_last_check_at TEXT,
+        weinvoice_last_error TEXT,
+        weinvoice_company_id TEXT,
+        weinvoice_kyb_status TEXT DEFAULT 'not_started',
+        weinvoice_onboarded_at TEXT,
+        created_at TEXT,
+        updated_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_weinvoice_entity_company_id
+        ON weinvoice_entity_settings(weinvoice_company_id) WHERE weinvoice_company_id IS NOT NULL;
     CREATE TABLE IF NOT EXISTS bank_connections(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         provider TEXT NOT NULL,
@@ -840,7 +853,8 @@ def init_tenant_db(org_id=None):
         status TEXT DEFAULT 'PENDING',
         last_synced_at TEXT,
         created_at TEXT,
-        updated_at TEXT
+        updated_at TEXT,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS bank_accounts(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -853,6 +867,7 @@ def init_tenant_db(org_id=None):
         balance REAL,
         disabled INTEGER DEFAULT 0,
         last_synced_at TEXT,
+        entity_id INTEGER,
         UNIQUE(provider,provider_account_id)
     );
     CREATE TABLE IF NOT EXISTS bank_transactions(
@@ -891,6 +906,7 @@ def init_tenant_db(org_id=None):
     );
     CREATE TABLE IF NOT EXISTS invoice_reminders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
         invoice_id INTEGER NOT NULL,
         recipient_email TEXT NOT NULL,
         sent_at TEXT NOT NULL,
@@ -930,7 +946,37 @@ def init_tenant_db(org_id=None):
         monthly_amount REAL NOT NULL DEFAULT 0,
         updated_at TEXT
     );
-    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT);
+    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT,entity_id INTEGER);
+    CREATE TABLE IF NOT EXISTS recurring_invoice_templates(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        client_name TEXT NOT NULL,
+        client_address TEXT,
+        client_email TEXT,
+        client_siren TEXT,
+        line_items TEXT NOT NULL,
+        notes TEXT,
+        operation_nature TEXT DEFAULT 'services',
+        vat_on_debits INTEGER DEFAULT 0,
+        delivery_address TEXT,
+        frequency TEXT NOT NULL,
+        interval_count INTEGER NOT NULL DEFAULT 1,
+        due_days INTEGER NOT NULL DEFAULT 30,
+        next_run_date TEXT NOT NULL,
+        end_date TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS recurring_invoice_runs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL,
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        run_date TEXT NOT NULL,
+        invoice_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(template_id,entity_key,run_date)
+    );
     CREATE TABLE IF NOT EXISTS outgoing_quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         quote_number TEXT UNIQUE,
@@ -969,7 +1015,8 @@ def init_tenant_db(org_id=None):
         total REAL,
         reason TEXT,
         status TEXT DEFAULT 'issued',
-        created_at TEXT
+        created_at TEXT,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS accounting_chart_of_accounts(
         code TEXT PRIMARY KEY,
@@ -1017,6 +1064,13 @@ def init_tenant_db(org_id=None):
     );
     CREATE TABLE IF NOT EXISTS accounting_closure(
         id INTEGER PRIMARY KEY CHECK(id=1),
+        closed_until TEXT,
+        closed_at TEXT,
+        closed_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS accounting_entity_closure(
+        entity_key INTEGER PRIMARY KEY,
+        entity_id INTEGER,
         closed_until TEXT,
         closed_at TEXT,
         closed_by TEXT
@@ -1080,6 +1134,7 @@ def init_tenant_db(org_id=None):
     CREATE INDEX IF NOT EXISTS idx_expense_report_lines_report ON expense_report_lines(report_id);
     CREATE TABLE IF NOT EXISTS fixed_assets(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
         label TEXT NOT NULL,
         asset_account TEXT NOT NULL,
         depreciation_account TEXT NOT NULL,
@@ -1137,7 +1192,8 @@ def init_tenant_db(org_id=None):
         status TEXT DEFAULT 'draft',
         notes TEXT,
         created_at TEXT NOT NULL,
-        created_by TEXT
+        created_by TEXT,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS purchase_order_lines(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1279,6 +1335,7 @@ def init_tenant_db(org_id=None):
     );
     CREATE TABLE IF NOT EXISTS gocardless_mandates(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
         client_name TEXT NOT NULL,
         client_email TEXT,
         gc_customer_id TEXT,
@@ -1290,6 +1347,7 @@ def init_tenant_db(org_id=None):
     );
     CREATE TABLE IF NOT EXISTS gocardless_payments(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
         mandate_row_id INTEGER NOT NULL,
         invoice_id INTEGER,
         gc_payment_id TEXT,
@@ -1331,20 +1389,51 @@ def init_tenant_db(org_id=None):
                        ('purchase_invoices','purchase_order_id'),
                        ('purchase_invoices','entity_id'),
                        ('outgoing_invoices','entity_id'),
+                       ('outgoing_invoices','recurring_template_id'),('outgoing_invoices','recurring_run_date'),
+                       ('outgoing_credit_notes','entity_id'),
+                       ('invoice_reminders','entity_id'),
                        ('accounting_entries','entity_id'),
                        ('accounting_entry_lines','analytical_tag_id'),
                        ('accounting_chart_of_accounts','entity_id'),
                        ('invoices','entity_id'),
                        ('opportunities','entity_id'),
                        ('expenses','entity_id'),
+                       ('bank_connections','entity_id'),
                        ('bank_accounts','entity_id'),
-                       ('fixed_assets','entity_id')):
+                       ('fixed_assets','entity_id'),
+                       ('delivery_notes','entity_id'),
+                       ('invoicing_clients','entity_id'),
+                       ('suppliers','entity_id'),
+                       ('purchase_orders','entity_id'),
+                       ('outgoing_quotes','entity_id'),
+                       ('gocardless_mandates','entity_id'),
+                       ('gocardless_payments','entity_id'),
+                       ('weinvoice_agreements','entity_id')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+    # WeInvoice multi-entités : entity_key=0 représente la société mère.
+    # L'ancienne configuration globale est reprise seulement pour la société mère.
+    try:
+        if not c.execute('SELECT 1 FROM weinvoice_entity_settings LIMIT 1').fetchone():
+            legacy=c.execute('SELECT weinvoice_status,weinvoice_last_check_at,weinvoice_last_error,weinvoice_company_id,weinvoice_kyb_status,weinvoice_onboarded_at FROM app_settings WHERE id=1').fetchone()
+            if legacy and any(legacy[k] for k in ('weinvoice_company_id','weinvoice_last_check_at','weinvoice_last_error','weinvoice_onboarded_at')):
+                c.execute("INSERT OR IGNORE INTO weinvoice_entity_settings(entity_key,weinvoice_status,weinvoice_last_check_at,weinvoice_last_error,weinvoice_company_id,weinvoice_kyb_status,weinvoice_onboarded_at,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,?)",
+                    (legacy['weinvoice_status'] or 'disconnected',legacy['weinvoice_last_check_at'],legacy['weinvoice_last_error'],legacy['weinvoice_company_id'],legacy['weinvoice_kyb_status'] or 'not_started',legacy['weinvoice_onboarded_at'],now(),now()))
+                c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
+
+    try:
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_outgoing_invoice_recurring_run ON outgoing_invoices(recurring_template_id, recurring_run_date) WHERE recurring_template_id IS NOT NULL")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_recurring_templates_due ON recurring_invoice_templates(entity_id,status,next_run_date)")
+        c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : index facturation récurrente ignoré ({e})")
+
     from profitos.accounting import seed_accounting_defaults
     seed_accounting_defaults(c)
     from profitos.expenses import seed_mileage_rate_table
@@ -1691,6 +1780,13 @@ def sync_buyer_signals(org_id, invoices_rows):
                        buyer_name_display=excluded.buyer_name_display,invoice_count=excluded.invoice_count,
                        avg_days_overdue=excluded.avg_days_overdue,updated_at=excluded.updated_at''',
             (key,org_id,customer,len(days_list),avg,now()))
+    # v1.8.9 — clôture comptable isolée par entité. L'ancienne clôture globale
+    # est reprise uniquement pour la société mère (entity_key=0).
+    legacy_closure = c.execute('SELECT closed_until,closed_at,closed_by FROM accounting_closure WHERE id=1').fetchone()
+    if legacy_closure and legacy_closure['closed_until']:
+        c.execute("""INSERT OR IGNORE INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
+                     VALUES(0,NULL,?,?,?)""",
+                  (legacy_closure['closed_until'], legacy_closure['closed_at'], legacy_closure['closed_by']))
     c.commit(); c.close()
 
 def buyer_risk_lookup(customer_name, exclude_org_id):

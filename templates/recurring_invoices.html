@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h1 class="h3 mb-1">Facturation récurrente</h1><p class="text-muted mb-0">Générez automatiquement des factures brouillon à chaque échéance.</p></div>
+    <form method="post" action="{{ url_for('recurring_invoices_generate') }}"><button class="btn btn-primary" type="submit">Générer les échéances dues</button></form>
+  </div>
+  <div class="card mb-4"><div class="card-body">
+    <h2 class="h5">Nouvelle récurrence</h2>
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">Client</label><input class="form-control" name="client_name" required></div>
+        <div class="col-md-6"><label class="form-label">E-mail</label><input class="form-control" type="email" name="client_email"></div>
+        <div class="col-md-6"><label class="form-label">Première génération</label><input class="form-control" type="date" name="next_run_date" value="{{ today }}" required></div>
+        <div class="col-md-3"><label class="form-label">Fréquence</label><select class="form-select" name="frequency"><option value="monthly">Mensuelle</option><option value="quarterly">Trimestrielle</option><option value="yearly">Annuelle</option><option value="weekly">Hebdomadaire</option></select></div>
+        <div class="col-md-3"><label class="form-label">Échéance (jours)</label><input class="form-control" type="number" min="0" max="365" name="due_days" value="30"></div>
+        <div class="col-md-6"><label class="form-label">Libellé</label><input class="form-control" name="label_1" required></div>
+        <div class="col-md-2"><label class="form-label">Quantité</label><input class="form-control" name="qty_1" value="1"></div>
+        <div class="col-md-2"><label class="form-label">Prix HT</label><input class="form-control" name="price_1" value="0" required></div>
+        <div class="col-md-2"><label class="form-label">TVA %</label><input class="form-control" name="vat_1" value="20"></div>
+        <div class="col-md-6"><label class="form-label">Date de fin (facultative)</label><input class="form-control" type="date" name="end_date"></div>
+        <div class="col-md-6"><label class="form-label">Notes</label><input class="form-control" name="notes"></div>
+      </div>
+      <button class="btn btn-success mt-3" type="submit">Créer la récurrence</button>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-body"><h2 class="h5">Récurrences</h2>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Client</th><th>Fréquence</th><th>Prochaine génération</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td>{{ r.client_name }}</td><td>{{ r.frequency }}</td><td>{{ r.next_run_date }}</td><td>{{ r.status }}</td><td>
+      <form class="d-inline" method="post" action="{{ url_for('recurring_invoice_status',template_id=r.id) }}">
+      {% if r.status == 'active' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="pause">Pause</button>{% elif r.status == 'paused' %}<button class="btn btn-sm btn-outline-success" name="action" value="resume">Reprendre</button>{% endif %}
+      {% if r.status not in ('stopped','completed') %}<button class="btn btn-sm btn-outline-danger" name="action" value="stop">Arrêter</button>{% endif %}</form>
+    </td></tr>{% else %}<tr><td colspan="5" class="text-muted">Aucune récurrence.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div></div>
+</div>
+{% endblock %}

@@ -66,10 +66,11 @@ def register(app):
     @app.route('/comptabilite/cutoff/<int:cutoff_id>/extourner', methods=['POST'])
     @login_required
     def cutoff_reverse(cutoff_id):
+        from profitos.entities import current_entity_id
         reversal_date = request.form.get('reversal_date') or date.today().isoformat()
         c = cx()
         try:
-            reverse_cutoff_entry(c, cutoff_id, reversal_date, created_by=current_user()['email'])
+            reverse_cutoff_entry(c, cutoff_id, reversal_date, created_by=current_user()['email'], entity_id=current_entity_id())
         except AccountingError as e:
             c.close()
             flash(f"Extourne impossible : {e}")
@@ -184,9 +185,11 @@ def register(app):
                     flash(f"Journal {code} — {label} créé.")
                     return redirect(url_for('accounting_journals_view'))
 
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         journals = c.execute('SELECT * FROM accounting_journals ORDER BY code').fetchall()
         counts = {r['journal_code']: r['n'] for r in c.execute(
-            'SELECT journal_code,COUNT(*) n FROM accounting_entries GROUP BY journal_code'
+            'SELECT journal_code,COUNT(*) n FROM accounting_entries WHERE entity_id IS ? GROUP BY journal_code', (eid,)
         ).fetchall()}
         return render_template('accounting_journals.html', journals=journals, counts=counts, error=error)
 
@@ -197,9 +200,11 @@ def register(app):
         journal = c.execute('SELECT * FROM accounting_journals WHERE code=?', (code,)).fetchone()
         if not journal:
             c.close(); abort(404)
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         entries = c.execute(
-            'SELECT * FROM accounting_entries WHERE journal_code=? ORDER BY entry_date DESC, id DESC',
-            (code,),
+            'SELECT * FROM accounting_entries WHERE journal_code=? AND entity_id IS ? ORDER BY entry_date DESC, id DESC',
+            (code, eid),
         ).fetchall()
         entry_lines = {}
         for e in entries:
@@ -217,6 +222,7 @@ def register(app):
     @app.route('/comptabilite/lettrage/<account_code>', methods=['GET', 'POST'])
     @login_required
     def accounting_lettrage(account_code):
+        from profitos.entities import current_entity_id
         c = cx()
         account = c.execute(
             'SELECT * FROM accounting_chart_of_accounts WHERE code=?', (account_code,)
@@ -236,8 +242,8 @@ def register(app):
                 rows = c.execute(
                     f'SELECT l.id,l.debit,l.credit,l.lettrage_code,l.auxiliary_name,e.is_locked '
                     f'FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id '
-                    f'WHERE l.id IN ({placeholders}) AND l.account_code=?',
-                    (*selected_ids, account_code),
+                    f'WHERE l.id IN ({placeholders}) AND l.account_code=? AND e.entity_id IS ?',
+                    (*selected_ids, account_code, current_entity_id()),
                 ).fetchall()
                 if len(rows) != len(selected_ids):
                     error = "Sélection invalide."
@@ -266,8 +272,8 @@ def register(app):
         lines = c.execute(
             """SELECT l.*, e.entry_date, e.piece_number, e.label AS entry_label, e.is_locked
                FROM accounting_entry_lines l JOIN accounting_entries e ON e.id = l.entry_id
-               WHERE l.account_code=? ORDER BY COALESCE(l.auxiliary_name,''), e.entry_date""",
-            (account_code,),
+               WHERE l.account_code=? AND e.entity_id IS ? ORDER BY COALESCE(l.auxiliary_name,''), e.entry_date""",
+            (account_code, current_entity_id()),
         ).fetchall()
         by_tiers = {}
         for l in lines:
@@ -310,7 +316,8 @@ def register(app):
                         body, mimetype='text/plain',
                         headers={'Content-Disposition': f'attachment; filename="{filename}"'},
                     )
-        n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries').fetchone()['n']
+        from profitos.entities import current_entity_id
+        n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries WHERE entity_id IS ?', (current_entity_id(),)).fetchone()['n']
         settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
         entities = list_all_entities(c)
         c.close()
@@ -406,47 +413,66 @@ def register(app):
     @app.route('/comptabilite/cloture', methods=['GET', 'POST'])
     @login_required
     def accounting_closure():
+        from profitos.entities import current_entity_id
         c = cx()
         error = None
+        entity_id = current_entity_id()
+        entity_key = int(entity_id) if entity_id is not None else 0
         if request.method == 'POST':
             closed_until = (request.form.get('closed_until') or '').strip()
-            current = c.execute('SELECT closed_until FROM accounting_closure WHERE id=1').fetchone()
+            current = c.execute(
+                'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?', (entity_key,)
+            ).fetchone()
             already_closed = current['closed_until'] if current else None
             unbalanced = c.execute(
-                """SELECT COUNT(*) n FROM (
-                     SELECT entry_id FROM accounting_entry_lines GROUP BY entry_id
-                     HAVING ROUND(SUM(debit) - SUM(credit), 2) != 0
-                   )"""
+                '''SELECT COUNT(*) n FROM (
+                     SELECT e.id FROM accounting_entries e
+                     JOIN accounting_entry_lines l ON l.entry_id=e.id
+                     WHERE e.entity_id IS ?
+                     GROUP BY e.id
+                     HAVING ROUND(SUM(l.debit) - SUM(l.credit), 2) != 0
+                   )''',
+                (entity_id,),
             ).fetchone()['n']
             if not closed_until:
                 error = "La date de clôture est obligatoire."
             elif already_closed and closed_until <= already_closed:
                 error = f"La comptabilité est déjà clôturée jusqu'au {already_closed} — impossible de reculer la clôture."
             elif unbalanced:
-                error = "Impossible de clôturer : certaines écritures ne sont pas équilibrées (anomalie à corriger d'abord)."
+                error = "Impossible de clôturer : certaines écritures de cette entité ne sont pas équilibrées (anomalie à corriger d'abord)."
             else:
                 c.execute(
-                    'INSERT INTO accounting_closure(id,closed_until,closed_at,closed_by) VALUES(1,?,?,?) '
-                    'ON CONFLICT(id) DO UPDATE SET closed_until=excluded.closed_until,'
-                    'closed_at=excluded.closed_at,closed_by=excluded.closed_by',
-                    (closed_until, now(), session.get('user_id')),
+                    '''INSERT INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
+                       VALUES(?,?,?,?,?)
+                       ON CONFLICT(entity_key) DO UPDATE SET closed_until=excluded.closed_until,
+                       closed_at=excluded.closed_at,closed_by=excluded.closed_by''',
+                    (entity_key, entity_id, closed_until, now(), session.get('user_id')),
                 )
                 c.execute(
-                    "UPDATE accounting_entries SET is_locked=1 WHERE entry_date<=?", (closed_until,)
+                    "UPDATE accounting_entries SET is_locked=1 WHERE entity_id IS ? AND entry_date<=?",
+                    (entity_id, closed_until),
                 )
                 c.commit()
-                log_activity('ACCOUNTING_CLOSED', f"Comptabilité clôturée jusqu'au {closed_until}")
-                flash(f"Comptabilité clôturée jusqu'au {closed_until}. Les écritures antérieures ou à cette date sont désormais verrouillées.")
+                log_activity('ACCOUNTING_CLOSED', f"Comptabilité entité {entity_key} clôturée jusqu'au {closed_until}")
+                flash(f"Comptabilité clôturée jusqu'au {closed_until}. Les écritures de cette entité antérieures ou à cette date sont désormais verrouillées.")
                 return redirect(url_for('accounting_closure'))
 
-        closure = c.execute('SELECT * FROM accounting_closure WHERE id=1').fetchone()
-        locked_count = c.execute('SELECT COUNT(*) n FROM accounting_entries WHERE is_locked=1').fetchone()['n']
+        closure = c.execute(
+            'SELECT * FROM accounting_entity_closure WHERE entity_key=?', (entity_key,)
+        ).fetchone()
+        locked_count = c.execute(
+            'SELECT COUNT(*) n FROM accounting_entries WHERE entity_id IS ? AND is_locked=1', (entity_id,)
+        ).fetchone()['n']
         c.close()
         return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error)
 
     @app.route('/comptabilite/immobilisations', methods=['GET', 'POST'])
     @login_required
     def fixed_assets_list():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
         c = cx()
         error = None
         if request.method == 'POST':
@@ -474,14 +500,13 @@ def register(app):
                         error = f"Compte {field_name} inconnu : {code!r}."
                         break
             if not error:
-                from profitos.entities import current_entity_id
                 c.execute(
                     """INSERT INTO fixed_assets
                        (label,asset_account,depreciation_account,expense_account,purchase_date,
                         purchase_amount,useful_life_years,status,created_at,entity_id)
                        VALUES(?,?,?,?,?,?,?,'active',?,?)""",
                     (label, asset_account, depreciation_account, expense_account, purchase_date_str,
-                     purchase_amount, useful_life_years, now(), current_entity_id()),
+                     purchase_amount, useful_life_years, now(), eid),
                 )
                 c.commit()
                 new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -489,7 +514,7 @@ def register(app):
                 flash(f"Immobilisation « {label} » créée.")
                 return redirect(url_for('fixed_asset_detail', asset_id=new_id))
 
-        assets = c.execute("SELECT * FROM fixed_assets ORDER BY status,purchase_date DESC").fetchall()
+        assets = c.execute(f"SELECT * FROM fixed_assets WHERE {ef} ORDER BY status,purchase_date DESC", ep).fetchall()
         posted = {}
         for a in assets:
             t = c.execute('SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=?', (a['id'],)).fetchone()['t']
@@ -504,8 +529,12 @@ def register(app):
     @app.route('/comptabilite/immobilisations/<int:asset_id>')
     @login_required
     def fixed_asset_detail(asset_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (asset_id, eid) if eid else (asset_id,)
         c = cx()
-        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        asset = c.execute(f'SELECT * FROM fixed_assets WHERE id=? AND {ef}', ep).fetchone()
         if not asset:
             c.close(); abort(404)
         runs = c.execute(
@@ -529,8 +558,12 @@ def register(app):
     @app.route('/comptabilite/immobilisations/<int:asset_id>/amortir', methods=['POST'])
     @login_required
     def fixed_asset_depreciate(asset_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (asset_id, eid) if eid else (asset_id,)
         c = cx()
-        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        asset = c.execute(f'SELECT * FROM fixed_assets WHERE id=? AND {ef}', ep).fetchone()
         if not asset:
             c.close(); abort(404)
         period = (request.form.get('period_label') or str(date.today().year)).strip()
@@ -552,15 +585,19 @@ def register(app):
     @app.route('/comptabilite/immobilisations/<int:asset_id>/ceder', methods=['POST'])
     @login_required
     def fixed_asset_dispose(asset_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (asset_id, eid) if eid else (asset_id,)
         c = cx()
-        asset = c.execute('SELECT * FROM fixed_assets WHERE id=?', (asset_id,)).fetchone()
+        asset = c.execute(f'SELECT * FROM fixed_assets WHERE id=? AND {ef}', ep).fetchone()
         if not asset:
             c.close(); abort(404)
         if asset['status'] == 'disposed':
             c.close()
             flash("Cette immobilisation est déjà cédée.")
             return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
-        c.execute("UPDATE fixed_assets SET status='disposed',disposed_at=? WHERE id=?", (now(), asset_id))
+        c.execute(f"UPDATE fixed_assets SET status='disposed',disposed_at=? WHERE id=? AND {ef}", (now(), asset_id, eid) if eid else (now(), asset_id))
         c.commit(); c.close()
         log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée")
         flash("Immobilisation marquée cédée. Aucune écriture de sortie/plus-value générée automatiquement — "
@@ -570,37 +607,41 @@ def register(app):
     @app.route('/comptabilite/tva', methods=['GET', 'POST'])
     @login_required
     def vat_summary():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'e.entity_id=?' if eid else 'e.entity_id IS NULL'
+        ep = (eid,) if eid else ()
         c = cx()
         date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
         date_to = request.values.get('date_to') or date.today().isoformat()
 
         collected = c.execute(
-            """SELECT COALESCE(SUM(l.credit),0) t FROM accounting_entry_lines l
+            f"""SELECT COALESCE(SUM(l.credit),0) t FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ?""",
-            (date_from, date_to),
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+            (date_from, date_to) + ep,
         ).fetchone()['t']
         deductible = c.execute(
-            """SELECT COALESCE(SUM(l.debit),0) t FROM accounting_entry_lines l
+            f"""SELECT COALESCE(SUM(l.debit),0) t FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ?""",
-            (date_from, date_to),
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+            (date_from, date_to) + ep,
         ).fetchone()['t']
         balance = collected - deductible
 
         sales_lines = c.execute(
-            """SELECT e.entry_date,e.label,l.credit FROM accounting_entry_lines l
+            f"""SELECT e.entry_date,e.label,l.credit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ?
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}
                ORDER BY e.entry_date DESC""",
-            (date_from, date_to),
+            (date_from, date_to) + ep,
         ).fetchall()
         purchase_lines = c.execute(
-            """SELECT e.entry_date,e.label,l.debit FROM accounting_entry_lines l
+            f"""SELECT e.entry_date,e.label,l.debit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ?
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}
                ORDER BY e.entry_date DESC""",
-            (date_from, date_to),
+            (date_from, date_to) + ep,
         ).fetchall()
         c.close()
         return render_template('vat_summary.html', date_from=date_from, date_to=date_to,

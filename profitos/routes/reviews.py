@@ -41,8 +41,12 @@ def register(app):
     @app.route('/comptabilite/revision/<int:review_id>')
     @login_required
     def review_detail(review_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (review_id, eid) if eid else (review_id,)
         c = cx()
-        review = c.execute('SELECT * FROM reviews WHERE id=?', (review_id,)).fetchone()
+        review = c.execute(f'SELECT * FROM reviews WHERE id=? AND {ef}', ep).fetchone()
         if not review:
             c.close(); abort(404)
         items = c.execute(
@@ -55,8 +59,15 @@ def register(app):
     @app.route('/comptabilite/revision/item/<int:item_id>/toggle', methods=['POST'])
     @login_required
     def review_item_toggle(item_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'r.entity_id=?' if eid else 'r.entity_id IS NULL'
+        ep = (item_id, eid) if eid else (item_id,)
         c = cx()
-        item = c.execute('SELECT review_id,checked FROM review_items WHERE id=?', (item_id,)).fetchone()
+        item = c.execute(
+            f'''SELECT i.review_id,i.checked FROM review_items i
+                JOIN reviews r ON r.id=i.review_id WHERE i.id=? AND {ef}''', ep
+        ).fetchone()
         if not item:
             c.close(); abort(404)
         new_checked = not item['checked']
@@ -69,7 +80,14 @@ def register(app):
     @app.route('/comptabilite/revision/<int:review_id>/terminer', methods=['POST'])
     @login_required
     def review_complete(review_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (review_id, eid) if eid else (review_id,)
         c = cx()
+        review = c.execute(f'SELECT id FROM reviews WHERE id=? AND {ef}', ep).fetchone()
+        if not review:
+            c.close(); abort(404)
         try:
             complete_review(c, review_id)
         except ValueError as e:

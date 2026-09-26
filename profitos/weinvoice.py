@@ -98,24 +98,33 @@ def fetch_access_token(timeout=10, credential_set='management'):
     return token
 
 
-def test_connection_and_store_status(organization_id):
+def _entity_key(entity_id):
+    return int(entity_id) if entity_id not in (None, '', 0, '0') else 0
+
+def get_entity_settings(conn, entity_id=None):
+    return conn.execute("SELECT * FROM weinvoice_entity_settings WHERE entity_key=?", (_entity_key(entity_id),)).fetchone()
+
+def _store_entity_settings(conn, entity_id=None, **values):
+    key=_entity_key(entity_id)
+    conn.execute("INSERT OR IGNORE INTO weinvoice_entity_settings(entity_key,weinvoice_status,weinvoice_kyb_status,created_at,updated_at) VALUES(?, 'disconnected', 'not_started', ?, ?)", (key, now(), now()))
+    allowed={'weinvoice_status','weinvoice_last_check_at','weinvoice_last_error','weinvoice_company_id','weinvoice_kyb_status','weinvoice_onboarded_at'}
+    values={k:v for k,v in values.items() if k in allowed}
+    if values:
+        sets=','.join(f"{k}=?" for k in values)+',updated_at=?'
+        conn.execute(f"UPDATE weinvoice_entity_settings SET {sets} WHERE entity_key=?", tuple(values.values())+(now(),key))
+
+def test_connection_and_store_status(organization_id, entity_id=None):
     """Tente une authentification et enregistre le résultat dans app_settings
     (jamais le token ni le secret — uniquement un statut lisible et un horodatage).
     Retourne (ok: bool, message: str)."""
     c = cx()
     try:
         fetch_access_token()
-        c.execute(
-            "UPDATE app_settings SET weinvoice_status='connected',weinvoice_last_check_at=?,weinvoice_last_error=NULL WHERE id=1",
-            (now(),)
-        )
+        _store_entity_settings(c, entity_id, weinvoice_status='connected', weinvoice_last_check_at=now(), weinvoice_last_error=None)
         c.commit()
         return True, "Connexion sandbox WeInvoice opérationnelle."
     except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
-        c.execute(
-            "UPDATE app_settings SET weinvoice_status='error',weinvoice_last_check_at=?,weinvoice_last_error=? WHERE id=1",
-            (now(), str(e))
-        )
+        _store_entity_settings(c, entity_id, weinvoice_status='error', weinvoice_last_check_at=now(), weinvoice_last_error=str(e))
         c.commit()
         return False, str(e)
     finally:
@@ -322,7 +331,7 @@ def get_client_onboarding_status(client_id):
         raise WeInvoiceAPIError("Réponse WeInvoice illisible (pas du JSON valide).") from e
 
 
-def onboard_company_and_store_status(company_row, signatory_name, signatory_quality, proof_ref, signed_at):
+def onboard_company_and_store_status(company_row, signatory_name, signatory_quality, proof_ref, signed_at, entity_id=None):
     """Crée le client WeInvoice et enregistre son identifiant + statut initial.
     Sur un 409 siren_taken, récupère le client déjà existant au lieu d'échouer —
     ne recrée jamais un client pour ce SIREN. Retourne (ok: bool, message: str)."""
@@ -374,17 +383,11 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
             status = existing.get('onboardingStatus') or existing.get('status') or existing.get('onboarding_status') or 'pending'
             message = f"Client déjà existant chez WeInvoice retrouvé — identifiant {client_id or '(non renvoyé)'}, statut : {status}."
 
-        c.execute(
-            "UPDATE app_settings SET weinvoice_company_id=?,weinvoice_kyb_status=?,weinvoice_onboarded_at=?,weinvoice_last_error=NULL WHERE id=1",
-            (client_id, status, now())
-        )
+        _store_entity_settings(c, entity_id, weinvoice_company_id=client_id, weinvoice_kyb_status=status, weinvoice_onboarded_at=now(), weinvoice_last_error=None)
         c.commit()
         return True, message
     except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
-        c.execute(
-            "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
-            (str(e), now())
-        )
+        _store_entity_settings(c, entity_id, weinvoice_last_error=str(e), weinvoice_last_check_at=now())
         c.commit()
         return False, str(e)
     finally:
@@ -392,7 +395,7 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
 
 
 
-def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_id=None):
+def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_id=None, entity_id=None):
     """Enregistre une preuve RÉELLE d'accord formel dans ProfitOS avant tout envoi
     à WeInvoice — signatory_name/quality saisis explicitement par un utilisateur
     authentifié de ProfitOS, avec horodatage et adresse IP. proof_ref est un jeton
@@ -412,9 +415,9 @@ def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_
     c = cx()
     try:
         c.execute(
-            "INSERT INTO weinvoice_agreements(signatory_name,signatory_quality,signed_at,ip_address,proof_ref,user_id,created_at) "
-            "VALUES(?,?,?,?,?,?,?)",
-            (signatory_name.strip(), signatory_quality.strip(), signed_at, ip_address or '', proof_ref, user_id, now())
+            "INSERT INTO weinvoice_agreements(signatory_name,signatory_quality,signed_at,ip_address,proof_ref,user_id,created_at,entity_id) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (signatory_name.strip(), signatory_quality.strip(), signed_at, ip_address or '', proof_ref, user_id, now(), entity_id)
         )
         c.commit()
         agreement_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -423,7 +426,7 @@ def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_
     return proof_ref, signed_at, agreement_id
 
 
-def refresh_onboarding_status_and_store(client_id):
+def refresh_onboarding_status_and_store(client_id, entity_id=None):
     """Interroge GET /v1/clients/{id}/client-onboarding et met à jour le statut
     enregistré. À utiliser pour un rafraîchissement manuel (bouton "Actualiser"),
     en complément du webhook qui reste la voie recommandée pour le temps réel."""
@@ -431,17 +434,11 @@ def refresh_onboarding_status_and_store(client_id):
     try:
         data = get_client_onboarding_status(client_id)
         status = data.get('status') or data.get('onboarding_status') or 'pending'
-        c.execute(
-            "UPDATE app_settings SET weinvoice_kyb_status=?,weinvoice_last_check_at=?,weinvoice_last_error=NULL WHERE id=1",
-            (status, now())
-        )
+        _store_entity_settings(c, entity_id, weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=None)
         c.commit()
         return True, f"Statut actualisé : {status}."
     except (WeInvoiceConfigError, WeInvoiceAPIError) as e:
-        c.execute(
-            "UPDATE app_settings SET weinvoice_last_error=?,weinvoice_last_check_at=? WHERE id=1",
-            (str(e), now())
-        )
+        _store_entity_settings(c, entity_id, weinvoice_last_error=str(e), weinvoice_last_check_at=now())
         c.commit()
         return False, str(e)
     finally:
@@ -456,13 +453,19 @@ def handle_onboarding_webhook(payload):
     """
     status = payload.get('status', 'pending')
     reason = payload.get('reason') or ''
+    data = payload.get('data') if isinstance(payload.get('data'), dict) else payload
+    company_id = data.get('organizationId') or data.get('clientId') or data.get('organization_id') or data.get('client_id')
+    if not company_id:
+        log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNSCOPED','WARNING',detail='Webhook onboarding sans identifiant organisation/client')
+        return False
     c = cx()
     try:
-        c.execute(
-            "UPDATE app_settings SET weinvoice_kyb_status=?,weinvoice_last_check_at=?,weinvoice_last_error=? WHERE id=1",
-            (status, now(), reason or None)
-        )
-        c.commit()
+        row=c.execute('SELECT entity_key FROM weinvoice_entity_settings WHERE weinvoice_company_id=?',(str(company_id),)).fetchone()
+        if not row:
+            log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNKNOWN','WARNING',detail=f'company_id={company_id}')
+            return False
+        _store_entity_settings(c, None if row['entity_key']==0 else row['entity_key'], weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=reason or None)
+        c.commit(); return True
     finally:
         c.close()
 

@@ -119,13 +119,13 @@ DEFAULT_CATEGORY_MAPPING = {
 }
 
 
-def _entry_already_exists(conn, source_type, source_id):
+def _entry_already_exists(conn, source_type, source_id, entity_id=None):
     """Vérifie si une écriture a déjà été générée pour cette source, pour ne
     jamais dupliquer une écriture si la route déclenchante est appelée deux
     fois (ex. double clic, nouvelle tentative après erreur réseau)."""
     row = conn.execute(
-        'SELECT id FROM accounting_entries WHERE source_type=? AND source_id=? LIMIT 1',
-        (source_type, source_id),
+        'SELECT id FROM accounting_entries WHERE source_type=? AND source_id=? AND entity_id IS ? LIMIT 1',
+        (source_type, source_id, entity_id),
     ).fetchone()
     return row is not None
 
@@ -146,7 +146,8 @@ def generate_sale_entry(conn, invoice):
     Clients (411) au débit du TTC, Prestations de services (706) et TVA
     collectée (445710) au crédit. invoice : ligne de outgoing_invoices.
     Idempotent — ne crée rien si déjà généré pour cette facture."""
-    if _entry_already_exists(conn, 'outgoing_invoice', invoice['id']):
+    entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
+    if _entry_already_exists(conn, 'outgoing_invoice', invoice['id'], entity_id):
         return None
     lines = [
         {'account_code': '411000', 'debit': invoice['total'], 'auxiliary_name': invoice['client_name']},
@@ -158,7 +159,33 @@ def generate_sale_entry(conn, invoice):
         conn, 'VE', invoice['issue_date'] or date.today(),
         f"Facture {invoice['invoice_number']} — {invoice['client_name']}",
         lines, source_type='outgoing_invoice', source_id=invoice['id'],
-        entity_id=invoice['entity_id'] if 'entity_id' in invoice.keys() else None,
+        entity_id=entity_id,
+    )
+
+
+def generate_sale_credit_entry(conn, credit):
+    """Génère l'écriture comptable d'un avoir client émis.
+
+    L'écriture inverse la vente d'origine : produits et TVA au débit, client
+    (411) au crédit. Elle est idempotente par avoir et par entité.
+    """
+    entity_id = credit['entity_id'] if 'entity_id' in credit.keys() else None
+    if _entry_already_exists(conn, 'outgoing_credit_note', credit['id'], entity_id):
+        return None
+    lines = [
+        {'account_code': '706000', 'debit': credit['subtotal']},
+    ]
+    if credit['vat_amount']:
+        lines.append({'account_code': '445710', 'debit': credit['vat_amount']})
+    lines.append({
+        'account_code': '411000', 'credit': credit['total'],
+        'auxiliary_name': credit['client_name'],
+    })
+    return create_entry(
+        conn, 'VE', credit['issue_date'] or date.today(),
+        f"Avoir {credit['credit_number']} — {credit['client_name']}",
+        lines, source_type='outgoing_credit_note', source_id=credit['id'],
+        entity_id=entity_id,
     )
 
 
@@ -182,7 +209,7 @@ def _next_lettrage_code(conn):
     return 'A' + ''.join(chars)
 
 
-def _letter_pair(conn, account_code, original_source_type, original_source_id, new_entry_id):
+def _letter_pair(conn, account_code, original_source_type, original_source_id, new_entry_id, entity_id=None):
     """Lettre automatiquement la ligne d'origine (facture) et la ligne de
     règlement qui vient d'être créée, sur le même compte collectif (411 ou
     401), si les deux existent, ne sont pas déjà lettrées et que leurs
@@ -192,9 +219,9 @@ def _letter_pair(conn, account_code, original_source_type, original_source_id, n
     original_line = conn.execute(
         """SELECT l.id, l.debit, l.credit FROM accounting_entry_lines l
            JOIN accounting_entries e ON e.id = l.entry_id
-           WHERE e.source_type=? AND e.source_id=? AND l.account_code=? AND l.lettrage_code IS NULL
+           WHERE e.source_type=? AND e.source_id=? AND e.entity_id IS ? AND l.account_code=? AND l.lettrage_code IS NULL
            LIMIT 1""",
-        (original_source_type, original_source_id, account_code),
+        (original_source_type, original_source_id, entity_id, account_code),
     ).fetchone()
     new_line = conn.execute(
         """SELECT id, debit, credit FROM accounting_entry_lines
@@ -219,7 +246,8 @@ def generate_sale_payment_entry(conn, invoice):
     Lettre automatiquement cette écriture avec la facture d'origine sur le
     compte 411. Idempotent."""
     source_type = 'outgoing_invoice_payment'
-    if _entry_already_exists(conn, source_type, invoice['id']):
+    entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
+    if _entry_already_exists(conn, source_type, invoice['id'], entity_id):
         return None
     entry_id = create_entry(
         conn, 'BQ', date.today(),
@@ -228,9 +256,9 @@ def generate_sale_payment_entry(conn, invoice):
             {'account_code': '512000', 'debit': invoice['total']},
             {'account_code': '411000', 'credit': invoice['total'], 'auxiliary_name': invoice['client_name']},
         ],
-        source_type=source_type, source_id=invoice['id'],
+        source_type=source_type, source_id=invoice['id'], entity_id=entity_id,
     )
-    _letter_pair(conn, '411000', 'outgoing_invoice', invoice['id'], entry_id)
+    _letter_pair(conn, '411000', 'outgoing_invoice', invoice['id'], entry_id, entity_id)
     return entry_id
 
 
@@ -263,7 +291,8 @@ def generate_purchase_payment_entry(conn, purchase):
     au crédit. Lettre automatiquement cette écriture avec la facture
     d'origine sur le compte 401. Idempotent."""
     source_type = 'purchase_invoice_payment'
-    if _entry_already_exists(conn, source_type, purchase['id']):
+    entity_id = purchase['entity_id'] if 'entity_id' in purchase.keys() else None
+    if _entry_already_exists(conn, source_type, purchase['id'], entity_id):
         return None
     entry_id = create_entry(
         conn, 'BQ', date.today(),
@@ -272,9 +301,9 @@ def generate_purchase_payment_entry(conn, purchase):
             {'account_code': '401000', 'debit': purchase['total'], 'auxiliary_name': purchase['supplier_name']},
             {'account_code': '512000', 'credit': purchase['total']},
         ],
-        source_type=source_type, source_id=purchase['id'],
+        source_type=source_type, source_id=purchase['id'], entity_id=entity_id,
     )
-    _letter_pair(conn, '401000', 'purchase_invoice', purchase['id'], entry_id)
+    _letter_pair(conn, '401000', 'purchase_invoice', purchase['id'], entry_id, entity_id)
     return entry_id
 
 
@@ -313,15 +342,15 @@ class AccountingError(ValueError):
     précisément ce qu'elle empêche."""
 
 
-def _next_piece_number(conn, journal_code, entry_date):
+def _next_piece_number(conn, journal_code, entry_date, entity_id=None):
     """Numéro de pièce séquentiel par journal et par année civile, au format
     {JOURNAL}-{ANNÉE}-{SÉQUENCE sur 5 chiffres}, ex. VE-2026-00001."""
     year = str(entry_date)[:4]
     prefix = f'{journal_code}-{year}-'
     row = conn.execute(
         "SELECT piece_number FROM accounting_entries"
-        " WHERE journal_code=? AND piece_number LIKE ? ORDER BY id DESC LIMIT 1",
-        (journal_code, prefix + '%'),
+        " WHERE journal_code=? AND piece_number LIKE ? AND entity_id IS ? ORDER BY id DESC LIMIT 1",
+        (journal_code, prefix + '%', entity_id),
     ).fetchone()
     if row:
         try:
@@ -358,7 +387,10 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         )
 
     entry_date_str = entry_date.isoformat() if isinstance(entry_date, date) else str(entry_date)
-    closure = conn.execute('SELECT closed_until FROM accounting_closure WHERE id=1').fetchone()
+    entity_key = int(entity_id) if entity_id is not None else 0
+    closure = conn.execute(
+        'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?', (entity_key,)
+    ).fetchone()
     if closure and closure['closed_until'] and entry_date_str <= closure['closed_until']:
         raise AccountingError(
             f"La période est clôturée jusqu'au {closure['closed_until']} — "
@@ -411,7 +443,7 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         )
 
     now = datetime.utcnow().isoformat()
-    piece_number = _next_piece_number(conn, journal_code, entry_date_str)
+    piece_number = _next_piece_number(conn, journal_code, entry_date_str, entity_id)
 
     cur = conn.execute(
         'INSERT INTO accounting_entries'
@@ -500,8 +532,9 @@ def generate_fec(conn, date_from, date_to, entity_id=None):
         lines = conn.execute(
             """SELECT l.*, a.label AS account_label FROM accounting_entry_lines l
                JOIN accounting_chart_of_accounts a ON a.code = l.account_code
+                    AND (a.entity_id IS NULL OR a.entity_id=?)
                WHERE l.entry_id=? ORDER BY l.line_order""",
-            (e['id'],),
+            (e['entity_id'], e['id']),
         ).fetchall()
         validation_date = _fec_date(e['created_at'][:10]) if e['created_at'] else _fec_date(e['entry_date'])
         for l in lines:
@@ -597,7 +630,8 @@ def generate_depreciation_entry(conn, asset, period_label, amount):
             {'account_code': asset['expense_account'], 'debit': amount},
             {'account_code': asset['depreciation_account'], 'credit': amount},
         ],
-        source_type='fixed_asset_depreciation', source_id=asset['id'],
+        source_type=f"fixed_asset_depreciation:{period_label}", source_id=asset['id'],
+        entity_id=asset['entity_id'] if 'entity_id' in asset.keys() else None,
     )
     conn.execute(
         'INSERT INTO fixed_asset_depreciation_runs(asset_id,period_label,amount,entry_id,created_at) VALUES(?,?,?,?,?)',
@@ -677,12 +711,14 @@ def create_cutoff_entry(conn, cutoff_type, label, amount, counterpart_account_co
     return cutoff_id
 
 
-def reverse_cutoff_entry(conn, cutoff_id, reversal_date, created_by=None):
+def reverse_cutoff_entry(conn, cutoff_id, reversal_date, created_by=None, entity_id=None):
     """Génère la contre-passation (extourne) d'un cut-off existant : mêmes
     comptes et montant, débit et crédit inversés, datée du jour choisi
     (typiquement le tout début de la période suivante). Refuse si ce
     cut-off a déjà été extourné — jamais une double contre-passation."""
-    cutoff = conn.execute('SELECT * FROM cutoff_entries WHERE id=?', (cutoff_id,)).fetchone()
+    ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
+    ep = (cutoff_id, entity_id) if entity_id else (cutoff_id,)
+    cutoff = conn.execute(f'SELECT * FROM cutoff_entries WHERE id=? AND {ef}', ep).fetchone()
     if not cutoff:
         raise AccountingError(f"Cut-off introuvable : id={cutoff_id!r}.")
     if cutoff['reversal_entry_id']:
@@ -703,7 +739,10 @@ def reverse_cutoff_entry(conn, cutoff_id, reversal_date, created_by=None):
         source_type='cutoff_reversal', source_id=cutoff_id,
         created_by=created_by, entity_id=cutoff['entity_id'],
     )
-    conn.execute('UPDATE cutoff_entries SET reversal_entry_id=? WHERE id=?', (reversal_id, cutoff_id))
+    conn.execute(
+        f'UPDATE cutoff_entries SET reversal_entry_id=? WHERE id=? AND {ef}',
+        (reversal_id, cutoff_id, entity_id) if entity_id else (reversal_id, cutoff_id),
+    )
     conn.commit()
     return reversal_id
 

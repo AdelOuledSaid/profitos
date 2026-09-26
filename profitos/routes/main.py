@@ -12,6 +12,7 @@ from profitos.weinvoice import (
     handle_invoice_status_webhook as weinvoice_handle_invoice_status_webhook,
     record_formal_agreement as weinvoice_record_agreement,
     WeInvoiceWebhookError,
+    get_entity_settings as weinvoice_entity_settings,
 )
 import io
 
@@ -104,7 +105,8 @@ def register(app):
                 except Exception as e:flash(f'Profil enregistré, mais BOAMP est indisponible : {e}')
             return redirect(url_for('grow'))
         p=c.execute('SELECT * FROM company WHERE id=1').fetchone()
-        settings_row=c.execute('SELECT weinvoice_status,weinvoice_last_check_at,weinvoice_last_error,weinvoice_company_id,weinvoice_kyb_status,weinvoice_onboarded_at FROM app_settings WHERE id=1').fetchone()
+        from profitos.entities import current_entity_id
+        settings_row=weinvoice_entity_settings(c,current_entity_id())
         c.close()
         return render_template('company.html',p=p,weinvoice=settings_row,
                                weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV)
@@ -118,7 +120,8 @@ def register(app):
             flash('Seuls le propriétaire ou un administrateur peuvent tester cette connexion.')
             return redirect(url_for('company'))
         org=current_org()
-        ok,message=weinvoice_test_connection(org['id'])
+        from profitos.entities import current_entity_id
+        ok,message=weinvoice_test_connection(org['id'], entity_id=current_entity_id())
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 
@@ -131,7 +134,8 @@ def register(app):
         if not can_access('settings'):
             flash('Seuls le propriétaire ou un administrateur peuvent lancer cet onboarding.')
             return redirect(url_for('company'))
-        c=cx(); company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close()
+        c=cx(); from profitos.entities import current_entity_id, resolve_entity
+        eid=current_entity_id(); company_row=resolve_entity(c,eid); c.close()
         if not company_row or not company_row['name'] or not company_row['siret'] or not company_row['address']:
             flash("Nom, SIRET et adresse doivent être renseignés dans le profil entreprise avant l'onboarding WeInvoice.")
             return redirect(url_for('company'))
@@ -152,13 +156,13 @@ def register(app):
         try:
             proof_ref,signed_at,_agreement_id=weinvoice_record_agreement(
                 signatory_name,signatory_quality,request.remote_addr or '',
-                user_id=(user['id'] if user else None),
+                user_id=(user['id'] if user else None), entity_id=eid,
             )
         except ValueError as e:
             flash(str(e))
             return redirect(url_for('company_weinvoice_onboard'))
 
-        ok,message=weinvoice_onboard_company(company_row,signatory_name,signatory_quality,proof_ref,signed_at)
+        ok,message=weinvoice_onboard_company(company_row,signatory_name,signatory_quality,proof_ref,signed_at,entity_id=eid)
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 
@@ -171,11 +175,12 @@ def register(app):
         if not can_access('settings'):
             flash('Seuls le propriétaire ou un administrateur peuvent actualiser ce statut.')
             return redirect(url_for('company'))
-        c=cx(); row=c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone(); c.close()
+        c=cx(); from profitos.entities import current_entity_id
+        eid=current_entity_id(); row=weinvoice_entity_settings(c,eid); c.close()
         if not row or not row['weinvoice_company_id']:
             flash("Aucun identifiant WeInvoice enregistré — lance d'abord l'onboarding.")
             return redirect(url_for('company'))
-        ok,message=weinvoice_refresh_status(row['weinvoice_company_id'])
+        ok,message=weinvoice_refresh_status(row['weinvoice_company_id'], entity_id=eid)
         flash(('✅ ' if ok else '🔴 ') + message)
         return redirect(url_for('company'))
 

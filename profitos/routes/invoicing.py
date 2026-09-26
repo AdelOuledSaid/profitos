@@ -7,7 +7,9 @@ from pypdf.errors import PyPdfError
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
-from profitos.accounting import generate_sale_entry, generate_sale_payment_entry, generate_purchase_entry, generate_purchase_payment_entry, AccountingError
+from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry,
+    generate_sale_credit_entry, generate_purchase_entry,
+    generate_purchase_payment_entry, AccountingError)
 from profitos.webhooks_outbound import deliver_webhook
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
@@ -335,9 +337,9 @@ def _next_invoice_number(c, entity_id=None):
     return f"{prefix}{candidate:03d}"
 
 
-def _next_credit_number(c):
+def _next_credit_number(c, entity_id=None):
     year=datetime.now(timezone.utc).year
-    prefix=f"AV-{year}-"
+    prefix=f"AV-{year}-" if not entity_id else f"AV-E{entity_id}-{year}-"
     rows=c.execute("SELECT credit_number FROM outgoing_credit_notes WHERE credit_number LIKE ?",(prefix+'%',)).fetchall()
     highest=0
     for row in rows:
@@ -361,14 +363,26 @@ def _next_delivery_number(c):
     return f"{prefix}{highest+1:03d}"
 
 
-def _credited_total(c, invoice_id):
-    row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND status='issued'",(invoice_id,)).fetchone()
+def _credited_total(c, invoice_id, entity_id=None):
+    row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? AND status='issued'",(invoice_id,entity_id)).fetchone()
     return float(row['n'] or 0)
 
 
-def _next_quote_number(c):
+def _current_invoice(c, invoice_id):
+    from profitos.entities import current_entity_id
+    return c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',
+                     (invoice_id,current_entity_id())).fetchone()
+
+
+def _current_credit(c, credit_id):
+    from profitos.entities import current_entity_id
+    return c.execute('SELECT * FROM outgoing_credit_notes WHERE id=? AND entity_id IS ?',
+                     (credit_id,current_entity_id())).fetchone()
+
+
+def _next_quote_number(c, entity_id=None):
     year=datetime.now(timezone.utc).year
-    prefix=f"DEV-{year}-"
+    prefix=f"DEV-{year}-" if not entity_id else f"DEV-E{entity_id}-{year}-"
     rows=c.execute("SELECT quote_number FROM outgoing_quotes WHERE quote_number LIKE ?",(prefix+'%',)).fetchall()
     highest=0
     for row in rows:
@@ -751,6 +765,64 @@ def _detect_recurring_suppliers(rows):
 
 
 
+def _recurring_add_period(iso_date, frequency, interval_count=1):
+    """Retourne la prochaine échéance en conservant au mieux le jour du mois."""
+    import calendar
+    d=date.fromisoformat(iso_date)
+    n=max(1,int(interval_count or 1))
+    if frequency=='weekly':
+        return (d+timedelta(weeks=n)).isoformat()
+    if frequency=='yearly':
+        months=12*n
+    elif frequency=='quarterly':
+        months=3*n
+    else:
+        months=n
+    absolute=(d.year*12+d.month-1)+months
+    year,month=divmod(absolute,12)
+    month+=1
+    day=min(d.day,calendar.monthrange(year,month)[1])
+    return date(year,month,day).isoformat()
+
+
+def _generate_due_recurring_invoices(c, entity_id, through_date=None):
+    """Génère les brouillons dus pour une entité. Idempotence garantie en base."""
+    through=through_date or date.today().isoformat()
+    entity_key=int(entity_id or 0)
+    templates=c.execute("""SELECT * FROM recurring_invoice_templates
+        WHERE entity_id IS ? AND status='active' AND next_run_date<=?
+        ORDER BY next_run_date,id""",(entity_id,through)).fetchall()
+    created=[]
+    for tpl in templates:
+        run_date=tpl['next_run_date']
+        while run_date and run_date<=through and (not tpl['end_date'] or run_date<=tpl['end_date']):
+            exists=c.execute("SELECT invoice_id FROM recurring_invoice_runs WHERE template_id=? AND entity_key=? AND run_date=?",
+                             (tpl['id'],entity_key,run_date)).fetchone()
+            if not exists:
+                items=json.loads(tpl['line_items'] or '[]')
+                subtotal,vat_amount,total=_totals(items)
+                number=_next_invoice_number(c,entity_id)
+                due=(date.fromisoformat(run_date)+timedelta(days=max(0,int(tpl['due_days'] or 0)))).isoformat()
+                token=secrets.token_urlsafe(20)
+                c.execute("""INSERT INTO outgoing_invoices(
+                    invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,
+                    subtotal,vat_amount,total,notes,status,public_token,created_at,client_siren,operation_nature,
+                    vat_on_debits,delivery_address,entity_id,recurring_template_id,recurring_run_date)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?)""",
+                    (number,tpl['client_name'],tpl['client_address'],tpl['client_email'],run_date,due,tpl['line_items'],
+                     subtotal,vat_amount,total,tpl['notes'],token,now(),tpl['client_siren'],tpl['operation_nature'],
+                     tpl['vat_on_debits'],tpl['delivery_address'],entity_id,tpl['id'],run_date))
+                invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                c.execute("INSERT INTO recurring_invoice_runs(template_id,entity_key,run_date,invoice_id,created_at) VALUES(?,?,?,?,?)",
+                          (tpl['id'],entity_key,run_date,invoice_id,now()))
+                created.append((invoice_id,number,token))
+            run_date=_recurring_add_period(run_date,tpl['frequency'],tpl['interval_count'])
+        status='completed' if tpl['end_date'] and run_date>tpl['end_date'] else 'active'
+        c.execute("UPDATE recurring_invoice_templates SET next_run_date=?,status=?,updated_at=? WHERE id=? AND entity_id IS ?",
+                  (run_date,status,now(),tpl['id'],entity_id))
+    return created
+
+
 def register(app):
     @app.route('/facturation/clients')
     @login_required
@@ -759,10 +831,12 @@ def register(app):
     @require_area('invoicing')
     def invoicing_clients():
         c=cx()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         rows=c.execute("""SELECT cl.*,
           (SELECT COUNT(*) FROM outgoing_invoices i WHERE lower(i.client_name)=lower(cl.name)) invoice_count,
           (SELECT COALESCE(SUM(i.total),0) FROM outgoing_invoices i WHERE lower(i.client_name)=lower(cl.name) AND i.status='paid') paid_total
-          FROM invoicing_clients cl ORDER BY lower(cl.name)""").fetchall()
+          FROM invoicing_clients cl WHERE cl.entity_id IS ? ORDER BY lower(cl.name)""",(eid,)).fetchall()
         c.close()
         return render_template('invoicing_clients.html',rows=rows)
 
@@ -772,6 +846,7 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_client_new():
+        from profitos.entities import current_entity_id
         if request.method=='POST':
             name=request.form.get('name','').strip()
             if not name:
@@ -782,11 +857,11 @@ def register(app):
                 flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
                 return redirect(url_for('invoicing_client_new'))
             c=cx()
-            c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at,siren)
-                         VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at,siren,entity_id)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
               (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
                request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
-               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),now(),siren or None))
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),now(),siren or None,current_entity_id()))
             c.commit(); client_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]; c.close()
             flash(f"Client {name} créé.")
             return redirect(url_for('invoicing_client_detail',client_id=client_id))
@@ -799,7 +874,9 @@ def register(app):
     @require_area('invoicing')
     def invoicing_client_detail(client_id):
         c=cx()
-        client=c.execute('SELECT * FROM invoicing_clients WHERE id=?',(client_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        client=c.execute('SELECT * FROM invoicing_clients WHERE id=? AND entity_id IS ?',(client_id,eid)).fetchone()
         if not client: c.close(); abort(404)
         if request.method=='POST':
             name=request.form.get('name','').strip()
@@ -810,13 +887,13 @@ def register(app):
             if siren and len(siren)!=9:
                 c.close(); flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
                 return redirect(url_for('invoicing_client_detail',client_id=client_id))
-            c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=?,siren=? WHERE id=?""",
+            c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=?,siren=? WHERE id=? AND entity_id IS ?""",
               (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
                request.form.get('siret','').strip(),request.form.get('vat_number','').strip(),
-               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),siren or None,client_id))
-            c.commit(); client=c.execute('SELECT * FROM invoicing_clients WHERE id=?',(client_id,)).fetchone()
+               request.form.get('phone','').strip(),request.form.get('notes','').strip(),now(),siren or None,client_id,eid))
+            c.commit(); client=c.execute('SELECT * FROM invoicing_clients WHERE id=? AND entity_id IS ?',(client_id,eid)).fetchone()
             flash("Fiche client mise à jour.")
-        invoices=c.execute("SELECT * FROM outgoing_invoices WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
+        invoices=c.execute("SELECT * FROM outgoing_invoices WHERE lower(client_name)=lower(?) AND entity_id IS ? ORDER BY id DESC",(client['name'],eid)).fetchall()
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
         c.close()
         return render_template('invoicing_client_detail.html',client=client,invoices=invoices,credits=credits)
@@ -828,7 +905,9 @@ def register(app):
     @require_area('invoicing')
     def invoicing_quotes():
         c=cx()
-        rows=c.execute("SELECT * FROM outgoing_quotes ORDER BY id DESC").fetchall()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        rows=c.execute("SELECT * FROM outgoing_quotes WHERE entity_id IS ? ORDER BY id DESC",(eid,)).fetchall()
         c.close()
         return render_template('invoicing_quotes.html',rows=rows,quote_status_label=_quote_status_label)
 
@@ -839,7 +918,8 @@ def register(app):
     @require_area('invoicing')
     def invoicing_quote_new():
         c=cx()
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        from profitos.entities import current_entity, current_entity_id
+        company_row=current_entity(c)
         clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
         if request.method=='POST':
             client_name=request.form.get('client_name','').strip()
@@ -853,15 +933,17 @@ def register(app):
             subtotal=round(sum(x['line_total'] for x in items),2)
             vat_amount=round(sum(x['line_total']*x['vat_rate']/100 for x in items),2)
             total=round(subtotal+vat_amount,2)
-            quote_number=_next_quote_number(c)
+            from profitos.entities import current_entity_id
+            entity_id=current_entity_id()
+            quote_number=_next_quote_number(c,entity_id)
             c.execute("""INSERT INTO outgoing_quotes
               (quote_number,client_name,client_address,client_email,issue_date,valid_until,line_items,
-               subtotal,vat_amount,total,notes,status,created_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?)""",
+               subtotal,vat_amount,total,notes,status,created_at,entity_id)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?)""",
               (quote_number,client_name,request.form.get('client_address','').strip(),
                request.form.get('client_email','').strip(),date.today().isoformat(),
                request.form.get('valid_until') or None,json.dumps(items,ensure_ascii=False),
-               subtotal,vat_amount,total,request.form.get('notes','').strip(),now()))
+               subtotal,vat_amount,total,request.form.get('notes','').strip(),now(),entity_id))
             c.commit()
             quote_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
@@ -881,7 +963,9 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def invoicing_quote_detail(quote_id):
-        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone(); c.close()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone(); c.close()
         if not q: abort(404)
         return render_template('invoicing_quote_detail.html',q=q,items=json.loads(q['line_items'] or '[]'),
                                status_label=_quote_status_label(q['status']))
@@ -892,8 +976,10 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_send(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q:
             c.close(); abort(404)
         if q['status'] not in ('draft','sent'):
@@ -937,7 +1023,7 @@ def register(app):
         if result.get('dry_run'):
             flash(f"Service email non configuré — devis non envoyé réellement (mode simulation) à {q['client_email']}.")
         elif result.get('sent'):
-            c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=?",(now(),quote_id))
+            c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
             c.commit()
             log_activity('QUOTE_SENT',f"Devis {q['quote_number']} envoyé à {q['client_email']}")
             flash(f"Devis envoyé à {q['client_email']}.")
@@ -952,15 +1038,17 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_accept(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q:
             c.close(); abort(404)
         if q['status']!='sent':
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=?",(now(),quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
         log_activity('QUOTE_ACCEPTED',f"Devis {q['quote_number']} accepté")
         flash(f"Devis {q['quote_number']} accepté.")
@@ -972,15 +1060,17 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_refuse(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q:
             c.close(); abort(404)
         if q['status']!='sent':
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=?",(now(),quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
         log_activity('QUOTE_REFUSED',f"Devis {q['quote_number']} refusé")
         flash(f"Devis {q['quote_number']} refusé.")
@@ -992,25 +1082,27 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_quote_convert(quote_id):
-        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx(); q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q: c.close(); abort(404)
         if q['status']!='accepted' or q['converted_invoice_id']:
             c.close(); flash("Seul un devis accepté et non encore facturé peut être converti.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        invoice_number=_next_invoice_number(c)
+        invoice_number=_next_invoice_number(c,eid)
         token=secrets.token_urlsafe(24)
         due=(date.today()+timedelta(days=30)).isoformat()
         c.execute("""INSERT INTO outgoing_invoices
           (invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,
-           subtotal,vat_amount,total,notes,status,public_token,created_at)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+           subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)""",
           (invoice_number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,
            q['line_items'],q['subtotal'],q['vat_amount'],q['total'],
            f"Créée depuis le devis {q['quote_number']}." + (("\\n"+q['notes']) if q['notes'] else ""),
-           token,now()))
+           token,now(),eid))
         c.commit()
         invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-        c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=?",(invoice_id,quote_id))
+        c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=? AND entity_id IS ?",(invoice_id,quote_id,eid))
         c.commit(); c.close()
         log_activity('QUOTE_CONVERTED',f"Devis {q['quote_number']} converti en {invoice_number}")
         flash(f"Devis {q['quote_number']} converti en facture {invoice_number}.")
@@ -1021,9 +1113,12 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def invoicing_quote_pdf(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=?',(quote_id,)).fetchone()
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
+        from profitos.entities import resolve_entity
+        company_row=resolve_entity(c,eid) if q else None
         c.close()
         if not q: abort(404)
         pdf_bytes=_render_quote_pdf(q,company_row)
@@ -1113,8 +1208,10 @@ def register(app):
     @require_area('invoicing')
     def purchase_list():
         c=cx()
-        purchases=c.execute("SELECT * FROM purchase_invoices ORDER BY due_date ASC, id DESC").fetchall()
-        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        purchases=c.execute("SELECT * FROM purchase_invoices WHERE entity_id IS ? ORDER BY due_date ASC, id DESC",(eid,)).fetchall()
+        suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
         today=date.today()
         total_unpaid=0.0
         total_overdue=0.0
@@ -1309,14 +1406,15 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def supplier_new():
+        from profitos.entities import current_entity_id
         if request.method=='POST':
             name=(request.form.get('name') or '').strip()
             if not name:
                 flash("Le nom du fournisseur est obligatoire.")
                 return redirect(url_for('supplier_new'))
             c=cx()
-            c.execute("""INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at)
-                         VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            c.execute("""INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at,entity_id)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                       (name,(request.form.get('email') or '').strip(),
                        (request.form.get('phone') or '').strip(),
                        (request.form.get('address') or '').strip(),
@@ -1324,7 +1422,7 @@ def register(app):
                        (request.form.get('vat_number') or '').strip(),
                        (request.form.get('notes') or '').strip(),
                        (request.form.get('iban') or '').replace(' ','').upper().strip(),
-                       (request.form.get('bic') or '').upper().strip(),now()))
+                       (request.form.get('bic') or '').upper().strip(),now(),current_entity_id()))
             c.commit(); c.close()
             flash("Fournisseur ajouté.")
             return redirect(url_for('purchase_list'))
@@ -1338,7 +1436,9 @@ def register(app):
     def supplier_update(supplier_id):
         from profitos.sepa import validate_iban
         c = cx()
-        supplier = c.execute("SELECT id FROM suppliers WHERE id=?", (supplier_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        supplier = c.execute("SELECT id FROM suppliers WHERE id=? AND entity_id IS ?", (supplier_id,eid)).fetchone()
         if not supplier:
             c.close(); abort(404)
         iban = (request.form.get('iban') or '').replace(' ', '').upper().strip()
@@ -1347,10 +1447,10 @@ def register(app):
             flash("IBAN invalide — vérifie la saisie (format et somme de contrôle incorrects).")
             return redirect(url_for('supplier_detail', supplier_id=supplier_id))
         c.execute(
-            "UPDATE suppliers SET email=?,phone=?,address=?,iban=?,bic=? WHERE id=?",
+            "UPDATE suppliers SET email=?,phone=?,address=?,iban=?,bic=? WHERE id=? AND entity_id IS ?",
             ((request.form.get('email') or '').strip(), (request.form.get('phone') or '').strip(),
              (request.form.get('address') or '').strip(), iban,
-             (request.form.get('bic') or '').upper().strip(), supplier_id),
+             (request.form.get('bic') or '').upper().strip(), supplier_id, eid),
         )
         c.commit(); c.close()
         flash("Fournisseur mis à jour.")
@@ -1392,7 +1492,7 @@ def register(app):
             return redirect(url_for('purchase_new'))
 
         c=cx()
-        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
         open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
         from profitos.entities import list_all_entities
         entities=list_all_entities(c)
@@ -1521,12 +1621,12 @@ def register(app):
     @require_area('invoicing')
     def purchase_new():
         c=cx()
-        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
         if request.method=='POST':
             supplier_id=request.form.get('supplier_id') or None
             supplier_name=(request.form.get('supplier_name') or '').strip()
             if supplier_id:
-                s=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+                s=c.execute("SELECT * FROM suppliers WHERE id=? AND entity_id IS ?",(supplier_id,eid)).fetchone()
                 if s:
                     supplier_name=s['name']
             number=(request.form.get('invoice_number') or '').strip()
@@ -1590,10 +1690,12 @@ def register(app):
     @require_area('invoicing')
     def supplier_detail(supplier_id):
         c=cx()
-        supplier=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        supplier=c.execute("SELECT * FROM suppliers WHERE id=? AND entity_id IS ?",(supplier_id,eid)).fetchone()
         if not supplier:
             c.close(); abort(404)
-        purchases=c.execute("SELECT * FROM purchase_invoices WHERE supplier_id=? ORDER BY issue_date DESC,id DESC",(supplier_id,)).fetchall()
+        purchases=c.execute("SELECT * FROM purchase_invoices WHERE supplier_id=? AND entity_id IS ? ORDER BY issue_date DESC,id DESC",(supplier_id,eid)).fetchall()
         total=sum(float(p['total'] or 0) for p in purchases)
         unpaid=sum(float(p['total'] or 0) for p in purchases if p['status']=='unpaid')
         c.close()
@@ -1759,12 +1861,14 @@ def register(app):
     @require_area('invoicing')
     def purchase_detail(purchase_id):
         c=cx()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         if not p:
             c.close(); abort(404)
         supplier=None
         if p['supplier_id']:
-            supplier=c.execute("SELECT * FROM suppliers WHERE id=?",(p['supplier_id'],)).fetchone()
+            supplier=c.execute("SELECT * FROM suppliers WHERE id=? AND entity_id IS ?",(p['supplier_id'],eid)).fetchone()
         c.close()
         return render_template('purchase_detail.html',p=p,supplier=supplier)
 
@@ -1774,20 +1878,22 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_edit(purchase_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         if not p:
             c.close(); abort(404)
         if p['status']!='unpaid':
             c.close()
             flash("Une facture fournisseur payée est verrouillée.")
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-        suppliers=c.execute("SELECT * FROM suppliers ORDER BY name ASC").fetchall()
+        suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
         if request.method=='POST':
             supplier_id=request.form.get('supplier_id') or None
             supplier_name=(request.form.get('supplier_name') or '').strip()
             if supplier_id:
-                s=c.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+                s=c.execute("SELECT * FROM suppliers WHERE id=? AND entity_id IS ?",(supplier_id,eid)).fetchone()
                 if s:
                     supplier_name=s['name']
             number=(request.form.get('invoice_number') or '').strip()
@@ -1803,10 +1909,10 @@ def register(app):
             category=request.form.get('category','autre')
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             c.execute("""UPDATE purchase_invoices SET supplier_id=?,supplier_name=?,invoice_number=?,
-                         issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=?,category=? WHERE id=?""",
+                         issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=?,category=? WHERE id=? AND entity_id IS ?""",
                       (supplier_id,supplier_name,number,request.form.get('issue_date') or None,
                        request.form.get('due_date') or None,subtotal,vat,round(subtotal+vat,2),
-                       (request.form.get('notes') or '').strip(),category,purchase_id))
+                       (request.form.get('notes') or '').strip(),category,purchase_id,eid))
             c.commit(); c.close()
             flash("Facture fournisseur mise à jour.")
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
@@ -1819,8 +1925,10 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_document_upload(purchase_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c=cx()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         if not p:
             c.close(); abort(404)
         try:
@@ -1835,7 +1943,7 @@ def register(app):
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
 
         old=p['document_path']
-        c.execute("UPDATE purchase_invoices SET document_path=? WHERE id=?",(stored,purchase_id))
+        c.execute("UPDATE purchase_invoices SET document_path=? WHERE id=? AND entity_id IS ?",(stored,purchase_id,eid))
         c.commit(); c.close()
 
         if old and old != stored:
@@ -1852,8 +1960,10 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_document_view(purchase_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c=cx()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         c.close()
         if not p or not p['document_path']:
             abort(404)
@@ -1877,8 +1987,10 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_mark_paid(purchase_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c=cx()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=?",(purchase_id,)).fetchone()
+        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
         if not p:
             c.close()
             abort(404)
@@ -1891,13 +2003,17 @@ def register(app):
                 c.close()
                 flash("Cette facture a été rejetée — elle ne peut pas être marquée comme payée.")
                 return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-            c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?",(now(),purchase_id))
-            c.commit()
+            c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'",(now(),purchase_id,eid))
             try:
-                p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(purchase_id,)).fetchone()
+                p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
                 generate_purchase_payment_entry(c,p_updated)
+                c.commit()
             except AccountingError as e:
+                c.rollback()
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
+                c.close()
+                flash(f"Paiement non enregistré : {e}")
+                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             deliver_webhook(c,'purchase.paid',{'id':purchase_id,'invoice_number':p['invoice_number'],
                 'supplier_name':p['supplier_name'],'total':p['total']})
             flash("Facture fournisseur marquée comme payée.")
@@ -1961,13 +2077,17 @@ def register(app):
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
 
             for r in rows:
-                c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?", (now(), r['id']))
-                c.commit()
+                c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'", (now(), r['id'], entity_id))
                 try:
-                    p_updated = c.execute('SELECT * FROM purchase_invoices WHERE id=?', (r['id'],)).fetchone()
+                    p_updated = c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?', (r['id'], entity_id)).fetchone()
                     generate_purchase_payment_entry(c, p_updated)
+                    c.commit()
                 except AccountingError as e:
+                    c.rollback()
                     log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement SEPA {r['id']}: {e}")
+                    c.close()
+                    flash(f"Lot SEPA interrompu : la facture {r['invoice_number']} n'a pas été marquée payée ({e}).")
+                    return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
                 deliver_webhook(c, 'purchase.paid', {'id': r['id'], 'invoice_number': r['invoice_number'],
                                                        'supplier_name': r['supplier_name'], 'total': r['total']})
             c.close()
@@ -2005,8 +2125,10 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_orders_list():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        orders = c.execute("SELECT * FROM purchase_orders ORDER BY order_date DESC,id DESC").fetchall()
+        orders = c.execute("SELECT * FROM purchase_orders WHERE entity_id IS ? ORDER BY order_date DESC,id DESC", (eid,)).fetchall()
         totals = {}
         for o in orders:
             t = c.execute(
@@ -2021,6 +2143,8 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_order_new():
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
         if request.method == 'POST':
             supplier_id = request.form.get('supplier_id') or None
@@ -2054,16 +2178,17 @@ def register(app):
                 return redirect(url_for('purchase_order_new'))
 
             year = date.today().year
+            prefix = f"BC-E{eid}-{year}-" if eid else f"BC-{year}-"
             seq = c.execute(
-                "SELECT COUNT(*) n FROM purchase_orders WHERE order_number LIKE ?", (f'BC-{year}-%',)
+                "SELECT COUNT(*) n FROM purchase_orders WHERE order_number LIKE ? AND entity_id IS ?", (prefix + '%', eid)
             ).fetchone()['n'] + 1
-            order_number = f"BC-{year}-{seq:04d}"
+            order_number = f"{prefix}{seq:04d}"
             c.execute(
                 """INSERT INTO purchase_orders
-                   (supplier_id,supplier_name,order_number,order_date,expected_delivery_date,status,notes,created_at,created_by)
-                   VALUES(?,?,?,?,?,'draft',?,?,?)""",
+                   (supplier_id,supplier_name,order_number,order_date,expected_delivery_date,status,notes,created_at,created_by,entity_id)
+                   VALUES(?,?,?,?,?,'draft',?,?,?,?)""",
                 (supplier_id, supplier_name, order_number, order_date, expected_delivery_date,
-                 (request.form.get('notes') or '').strip(), now(), current_user()['email']),
+                 (request.form.get('notes') or '').strip(), now(), current_user()['email'], eid),
             )
             c.commit()
             order_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -2076,7 +2201,7 @@ def register(app):
             flash(f"Bon de commande {order_number} créé.")
             return redirect(url_for('purchase_order_detail', order_id=order_id))
 
-        suppliers = c.execute("SELECT id,name FROM suppliers ORDER BY name").fetchall()
+        suppliers = c.execute("SELECT id,name FROM suppliers WHERE entity_id IS ? ORDER BY name", (eid,)).fetchall()
         c.close()
         return render_template('purchase_order_new.html', suppliers=suppliers)
 
@@ -2085,8 +2210,10 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_order_detail(order_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        order = c.execute("SELECT * FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        order = c.execute("SELECT * FROM purchase_orders WHERE id=? AND entity_id IS ?", (order_id, eid)).fetchone()
         if not order:
             c.close(); abort(404)
         lines = c.execute(
@@ -2094,7 +2221,7 @@ def register(app):
         ).fetchall()
         total = sum((l['quantity'] or 0) * (l['unit_price'] or 0) for l in lines)
         linked_invoices = c.execute(
-            "SELECT * FROM purchase_invoices WHERE purchase_order_id=? ORDER BY id DESC", (order_id,)
+            "SELECT * FROM purchase_invoices WHERE purchase_order_id=? AND entity_id IS ? ORDER BY id DESC", (order_id, eid)
         ).fetchall()
         c.close()
         return render_template('purchase_order_detail.html', order=order, lines=lines, total=total,
@@ -2105,12 +2232,14 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_order_send(order_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        order = c.execute("SELECT status FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        order = c.execute("SELECT status FROM purchase_orders WHERE id=? AND entity_id IS ?", (order_id, eid)).fetchone()
         if not order:
             c.close(); abort(404)
         if order['status'] == 'draft':
-            c.execute("UPDATE purchase_orders SET status='sent' WHERE id=?", (order_id,))
+            c.execute("UPDATE purchase_orders SET status='sent' WHERE id=? AND entity_id IS ?", (order_id, eid))
             c.commit()
             log_activity('PURCHASE_ORDER_SENT', f"Bon de commande #{order_id} envoyé")
             flash("Bon de commande marqué comme envoyé.")
@@ -2122,8 +2251,10 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_order_receive(order_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        order = c.execute("SELECT * FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        order = c.execute("SELECT * FROM purchase_orders WHERE id=? AND entity_id IS ?", (order_id, eid)).fetchone()
         if not order:
             c.close(); abort(404)
         if order['status'] not in ('sent', 'partially_received'):
@@ -2145,7 +2276,7 @@ def register(app):
         fully_received = all(l['quantity_received'] >= l['quantity'] for l in updated_lines)
         any_received = any(l['quantity_received'] > 0 for l in updated_lines)
         new_status = 'received' if fully_received else ('partially_received' if any_received else order['status'])
-        c.execute("UPDATE purchase_orders SET status=? WHERE id=?", (new_status, order_id))
+        c.execute("UPDATE purchase_orders SET status=? WHERE id=? AND entity_id IS ?", (new_status, order_id, eid))
         c.commit(); c.close()
         log_activity('PURCHASE_ORDER_RECEIVED', f"Réception enregistrée pour le bon de commande #{order_id}")
         flash("Quantités reçues enregistrées.")
@@ -2156,15 +2287,17 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_order_cancel(order_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        order = c.execute("SELECT status FROM purchase_orders WHERE id=?", (order_id,)).fetchone()
+        order = c.execute("SELECT status FROM purchase_orders WHERE id=? AND entity_id IS ?", (order_id, eid)).fetchone()
         if not order:
             c.close(); abort(404)
         if order['status'] in ('received',):
             c.close()
             flash("Un bon de commande déjà reçu ne peut plus être annulé.")
             return redirect(url_for('purchase_order_detail', order_id=order_id))
-        c.execute("UPDATE purchase_orders SET status='cancelled' WHERE id=?", (order_id,))
+        c.execute("UPDATE purchase_orders SET status='cancelled' WHERE id=? AND entity_id IS ?", (order_id, eid))
         c.commit(); c.close()
         flash("Bon de commande annulé.")
         return redirect(url_for('purchase_order_detail', order_id=order_id))
@@ -2179,8 +2312,10 @@ def register(app):
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         validator = current_user()
         validator_email = validator['email'] if validator else None
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        p = c.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        p = c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?", (purchase_id, eid)).fetchone()
         if not p:
             c.close(); abort(404)
         if p['validation_status'] != 'pending':
@@ -2188,8 +2323,8 @@ def register(app):
             flash("Cette facture n'est pas en attente de validation.")
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         c.execute(
-            "UPDATE purchase_invoices SET validation_status='approved',validated_by=?,validated_at=?,rejection_reason=NULL WHERE id=?",
-            (validator_email, now(), purchase_id),
+            "UPDATE purchase_invoices SET validation_status='approved',validated_by=?,validated_at=?,rejection_reason=NULL WHERE id=? AND entity_id IS ?",
+            (validator_email, now(), purchase_id, eid),
         )
         c.commit(); c.close()
         log_activity('PURCHASE_VALIDATED', f"Facture fournisseur #{purchase_id} validée par {validator_email}")
@@ -2206,8 +2341,10 @@ def register(app):
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         validator = current_user()
         validator_email = validator['email'] if validator else None
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        p = c.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        p = c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?", (purchase_id, eid)).fetchone()
         if not p:
             c.close(); abort(404)
         if p['validation_status'] != 'pending':
@@ -2216,8 +2353,8 @@ def register(app):
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         reason = (request.form.get('rejection_reason') or '').strip()
         c.execute(
-            "UPDATE purchase_invoices SET validation_status='rejected',validated_by=?,validated_at=?,rejection_reason=? WHERE id=?",
-            (validator_email, now(), reason or None, purchase_id),
+            "UPDATE purchase_invoices SET validation_status='rejected',validated_by=?,validated_at=?,rejection_reason=? WHERE id=? AND entity_id IS ?",
+            (validator_email, now(), reason or None, purchase_id, eid),
         )
         c.commit(); c.close()
         log_activity('PURCHASE_REJECTED', f"Facture fournisseur #{purchase_id} rejetée par {validator_email}")
@@ -2230,7 +2367,9 @@ def register(app):
     @require_area('invoicing')
     def invoicing_list():
         c=cx()
-        rows=c.execute('SELECT * FROM outgoing_invoices ORDER BY id DESC').fetchall()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        rows=c.execute('SELECT * FROM outgoing_invoices WHERE entity_id IS ? ORDER BY id DESC',(eid,)).fetchall()
         c.close()
         totals={'draft':0,'sent':0,'overdue':0,'paid':0,'cancelled':0}
         display_statuses={}
@@ -2269,13 +2408,16 @@ def register(app):
             entity_id_raw=request.form.get('entity_id')
             entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
             if entity_id is not None:
-                from profitos.entities import resolve_entity
+                from profitos.entities import resolve_entity, user_can_access_entity
                 try:
                     resolve_entity(c,entity_id)
                 except ValueError:
                     c.close()
                     flash("Entité sélectionnée introuvable.")
                     return redirect(url_for('invoicing_new'))
+                if not user_can_access_entity(c, session.get('user_id'), entity_id):
+                    c.close()
+                    abort(403)
 
             if not client_name or not items:
                 c.close()
@@ -2320,7 +2462,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_detail(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         c.close()
         if not inv: abort(404)
@@ -2328,9 +2470,9 @@ def register(app):
         mention_checks,missing_mentions=_check_mandatory_mentions(inv,company_row)
         emitter_missing_count=sum(1 for m in missing_mentions if 'émetteur' in m)
         c=cx()
-        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? ORDER BY id DESC",(invoice_id,)).fetchall()
-        credited_total=_credited_total(c,invoice_id)
-        reminders=c.execute("SELECT * FROM invoice_reminders WHERE invoice_id=? ORDER BY reminder_number DESC",(invoice_id,)).fetchall()
+        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? ORDER BY id DESC",(invoice_id,inv['entity_id'])).fetchall()
+        credited_total=_credited_total(c,invoice_id,inv['entity_id'])
+        reminders=c.execute("SELECT * FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ? ORDER BY reminder_number DESC",(invoice_id,inv['entity_id'])).fetchall()
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,
@@ -2344,10 +2486,12 @@ def register(app):
     @require_area('invoicing')
     def invoicing_pdf(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        inv=_current_invoice(c,invoice_id)
+        if not inv:
+            c.close(); abort(404)
+        from profitos.entities import resolve_entity
+        company_row=resolve_entity(c,inv['entity_id'])
         c.close()
-        if not inv: abort(404)
         pdf_bytes=_render_invoice_pdf(inv,company_row)
         if pdf_bytes is None:
             flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
@@ -2361,9 +2505,11 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_proforma(invoice_id):
+        from profitos.entities import current_entity_id, resolve_entity
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        eid=current_entity_id()
+        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,eid)).fetchone()
+        company_row=resolve_entity(c,eid)
         c.close()
         if not inv: abort(404)
         if inv['status']!='draft':
@@ -2432,7 +2578,9 @@ def register(app):
     @require_area('invoicing')
     def delivery_note_detail(delivery_id):
         c = cx()
-        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=? AND entity_id IS ?', (delivery_id, eid)).fetchone()
         c.close()
         if not row: abort(404)
         items = json.loads(row['line_items'] or '[]')
@@ -2446,10 +2594,12 @@ def register(app):
     @require_area('invoicing')
     def delivery_note_deliver(delivery_id):
         c = cx()
-        row = c.execute('SELECT status FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        row = c.execute('SELECT status FROM delivery_notes WHERE id=? AND entity_id IS ?', (delivery_id, eid)).fetchone()
         if not row: c.close(); abort(404)
         if row['status'] == 'draft':
-            c.execute("UPDATE delivery_notes SET status='delivered' WHERE id=?", (delivery_id,))
+            c.execute("UPDATE delivery_notes SET status='delivered' WHERE id=? AND entity_id IS ?", (delivery_id, eid))
             c.commit()
             log_activity('DELIVERY_NOTE_DELIVERED', f"Bon de livraison #{delivery_id} marqué livré")
             flash("Bon de livraison marqué comme livré.")
@@ -2464,7 +2614,8 @@ def register(app):
     def delivery_note_invoice(delivery_id):
         from profitos.entities import current_entity_id
         c = cx()
-        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
+        eid = current_entity_id()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=? AND entity_id IS ?', (delivery_id, eid)).fetchone()
         if not row: c.close(); abort(404)
         if row['linked_invoice_id']:
             c.close()
@@ -2487,7 +2638,7 @@ def register(app):
         ac = auth_cx()
         ac.execute('INSERT INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
             (token, session['org_id'], new_invoice_id, now())); ac.commit(); ac.close()
-        c.execute("UPDATE delivery_notes SET linked_invoice_id=? WHERE id=?", (new_invoice_id, delivery_id))
+        c.execute("UPDATE delivery_notes SET linked_invoice_id=? WHERE id=? AND entity_id IS ?", (new_invoice_id, delivery_id, current_entity_id()))
         c.commit(); c.close()
         log_activity('DELIVERY_NOTE_INVOICED', f"Bon de livraison {row['delivery_number']} facturé ({invoice_number})")
         flash(f"Facture {invoice_number} créée à partir du bon de livraison.")
@@ -2499,8 +2650,11 @@ def register(app):
     @require_area('invoicing')
     def delivery_note_pdf(delivery_id):
         c = cx()
-        row = c.execute('SELECT * FROM delivery_notes WHERE id=?', (delivery_id,)).fetchone()
-        company_row = c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        row = c.execute('SELECT * FROM delivery_notes WHERE id=? AND entity_id IS ?', (delivery_id, eid)).fetchone()
+        from profitos.entities import resolve_entity
+        company_row = resolve_entity(c, eid)
         c.close()
         if not row: abort(404)
         try:
@@ -2560,7 +2714,7 @@ def register(app):
         mentions obligatoires (Lot 21) ou les règles métier EN16931 (BR-*)
         ne sont pas toutes réunies."""
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         c.close()
         if not inv: abort(404)
@@ -2591,9 +2745,11 @@ def register(app):
         """Lot 23.3 — transmet le Factur-X à WeInvoice avec idempotence stricte."""
         c = cx()
         try:
-            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
-            company_row = c.execute('SELECT * FROM company WHERE id=1').fetchone()
-            settings = c.execute('SELECT weinvoice_company_id,weinvoice_kyb_status FROM app_settings WHERE id=1').fetchone()
+            inv = _current_invoice(c,invoice_id)
+            if not inv: abort(404)
+            from profitos.entities import resolve_entity
+            company_row = resolve_entity(c,inv['entity_id'])
+            settings = c.execute('SELECT weinvoice_company_id,weinvoice_kyb_status FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             if not inv: abort(404)
             if inv['status'] == 'cancelled':
                 flash("Une facture annulée ne peut pas être transmise à WeInvoice.")
@@ -2620,22 +2776,22 @@ def register(app):
             if pdf_bytes is None:
                 flash("Impossible de générer le Factur-X PDF/A-3 — transmission WeInvoice annulée.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            idem = (inv['weinvoice_idempotency_key'] if 'weinvoice_idempotency_key' in inv.keys() else None) or f"profitos-{invoice_id}-{uuid.uuid4()}"
-            c.execute('UPDATE outgoing_invoices SET weinvoice_idempotency_key=?,weinvoice_last_error=NULL WHERE id=?', (idem, invoice_id))
+            idem = (inv['weinvoice_idempotency_key'] if 'weinvoice_idempotency_key' in inv.keys() else None) or f"profitos-{session.get('org_id')}-{invoice_id}"
+            c.execute('UPDATE outgoing_invoices SET weinvoice_idempotency_key=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (idem, invoice_id, inv['entity_id']))
             c.commit()
             try:
                 data = submit_invoice_file(settings['weinvoice_company_id'], pdf_bytes, f"{inv['invoice_number']}_facturx.pdf", idem)
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
-                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', (str(e)[:1500], invoice_id))
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (str(e)[:1500], invoice_id, inv['entity_id']))
                 c.commit(); flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             remote_id = data.get('eInvoicingId') or data.get('generationId') or data.get('id') or ''
             remote_status = data.get('status') or ('GENERATION' if data.get('generationId') else 'SUBMITTED')
             if not remote_id:
-                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', ("WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé.", invoice_id))
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', ("WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé.", invoice_id, inv['entity_id']))
                 c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifie les logs avant tout nouvel envoi.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=?', (remote_id, remote_status, now(), invoice_id))
+            c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (remote_id, remote_status, now(), invoice_id, inv['entity_id']))
             c.commit()
             log_activity('INVOICE_WEINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à WeInvoice ({remote_id}, {remote_status})")
             flash(f"Facture transmise à WeInvoice — identifiant {remote_id}, statut : {remote_status}.")
@@ -2652,8 +2808,8 @@ def register(app):
         """Lot 23.4 — resynchronisation manuelle du statut via la timeline officielle."""
         c = cx()
         try:
-            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
-            settings = c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone()
+            inv = _current_invoice(c,invoice_id)
+            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             if not inv: abort(404)
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
@@ -2666,11 +2822,11 @@ def register(app):
                 data = get_invoice_timeline(settings['weinvoice_company_id'], remote_id)
                 status, regulatory_code = invoice_status_from_timeline(data)
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
-                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', (str(e)[:1500], invoice_id))
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (str(e)[:1500], invoice_id, inv['entity_id']))
                 c.commit(); flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',
-                      (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id))
+            c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',
+                      (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id, inv['entity_id']))
             c.commit()
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
@@ -2688,8 +2844,8 @@ def register(app):
         """Lot 23.6 : seul le webhook entrant doit modifier le statut local."""
         c = cx()
         try:
-            inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (invoice_id,)).fetchone()
-            settings = c.execute('SELECT weinvoice_company_id FROM app_settings WHERE id=1').fetchone()
+            inv = _current_invoice(c,invoice_id)
+            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             if not inv: abort(404)
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
@@ -2716,7 +2872,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_send(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status'] in ('paid','cancelled'):
@@ -2740,16 +2896,17 @@ def register(app):
             flash(f"Service email non configuré — facture non envoyée réellement (mode simulation) à {inv['client_email']}.")
         elif result.get('sent'):
             issue_date = date.today().isoformat() if inv['status']=='draft' else inv['issue_date']
-            c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=?,issue_date=? WHERE id=?",
-                      (now(),issue_date,invoice_id))
+            c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=?,issue_date=? WHERE id=? AND entity_id IS ?",
+                      (now(),issue_date,invoice_id,inv['entity_id']))
             c.commit()
-            try:
-                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
-                generate_sale_entry(c,inv_updated)
-            except AccountingError as e:
-                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
-            deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
-                'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']})
+            if inv['status']=='draft':
+                try:
+                    inv_updated=_current_invoice(c,invoice_id)
+                    generate_sale_entry(c,inv_updated)
+                except AccountingError as e:
+                    log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
+                deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
+                    'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']})
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Facture envoyée à {inv['client_email']}.")
         else:
@@ -2764,7 +2921,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_remind(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status']!='sent' or _display_status(inv)!='overdue':
@@ -2775,12 +2932,12 @@ def register(app):
             c.close()
             flash("Aucun email client renseigné pour cette facture.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        if _credited_total(c,invoice_id) >= float(inv['total'] or 0)-0.01:
+        if _credited_total(c,invoice_id,inv['entity_id']) >= float(inv['total'] or 0)-0.01:
             c.close()
             flash("Cette facture est entièrement couverte par un avoir et ne peut pas être relancée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
-        row=c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=?",(invoice_id,)).fetchone()
+        row=c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",(invoice_id,inv['entity_id'])).fetchone()
         reminder_number=int(row['n'] or 0)+1
         org=current_org()
         base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
@@ -2798,8 +2955,8 @@ def register(app):
             flash(f"Service email non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
         elif result.get('sent'):
             sent_at=now()
-            c.execute("INSERT INTO invoice_reminders(invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?)",
-                      (invoice_id,inv['client_email'],sent_at,reminder_number))
+            c.execute("INSERT INTO invoice_reminders(entity_id,invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?,?)",
+                      (inv['entity_id'],invoice_id,inv['client_email'],sent_at,reminder_number))
             c.commit()
             log_activity('INVOICE_REMINDER_SENT',f"Relance n°{reminder_number} pour {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Relance n°{reminder_number} envoyée à {inv['client_email']}.")
@@ -2814,20 +2971,32 @@ def register(app):
     @require_area('invoicing')
     def invoicing_mark_paid(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status']=='cancelled':
             c.close()
             flash("Une facture annulée ne peut pas être marquée comme payée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=?",(now(),invoice_id))
-        c.commit()
+        if inv['status']=='paid':
+            c.close()
+            flash("Cette facture est déjà marquée comme payée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        cur=c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status!='paid'",(now(),invoice_id,inv['entity_id']))
+        if cur.rowcount != 1:
+            c.rollback(); c.close()
+            flash("Cette facture a déjà été marquée comme payée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         try:
-            inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+            inv_updated=_current_invoice(c,invoice_id)
             generate_sale_payment_entry(c,inv_updated)
+            c.commit()
         except AccountingError as e:
+            c.rollback()
             log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
+            c.close()
+            flash(f"Paiement non enregistré : {e}")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],
             'client_name':inv['client_name'],'total':inv['total']})
         c.close()
@@ -2843,7 +3012,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_edit(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status']!='draft':
@@ -2862,8 +3031,8 @@ def register(app):
                 flash('Nom du client et au moins une ligne de facture requis.')
                 return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
             subtotal,vat_amount,total=_totals(items)
-            c.execute("UPDATE outgoing_invoices SET client_name=?,client_address=?,client_email=?,due_date=?,line_items=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=? AND status='draft'",
-                (client_name,client_address,client_email,due_date or None,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,invoice_id))
+            c.execute("UPDATE outgoing_invoices SET client_name=?,client_address=?,client_email=?,due_date=?,line_items=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=? AND entity_id IS ? AND status='draft'",
+                (client_name,client_address,client_email,due_date or None,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,invoice_id,inv['entity_id']))
             c.commit(); c.close()
             log_activity('INVOICE_UPDATED',f"Facture {inv['invoice_number']} modifiée")
             flash(f"Facture {inv['invoice_number']} mise à jour.")
@@ -2879,7 +3048,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_cancel(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status'] in ('sent','paid'):
@@ -2889,7 +3058,7 @@ def register(app):
         if inv['status']=='cancelled':
             c.close()
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        c.execute("UPDATE outgoing_invoices SET status='cancelled' WHERE id=?",(invoice_id,))
+        c.execute("UPDATE outgoing_invoices SET status='cancelled' WHERE id=? AND entity_id IS ?",(invoice_id,inv['entity_id']))
         c.commit(); c.close()
         log_activity('INVOICE_CANCELLED',f"Facture {inv['invoice_number']} annulée")
         flash(f"Facture {inv['invoice_number']} annulée.")
@@ -2902,14 +3071,14 @@ def register(app):
     @require_area('invoicing')
     def invoicing_credit_new(invoice_id):
         c=cx()
-        inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=?',(invoice_id,)).fetchone()
+        inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
         if inv['status'] not in ('sent','paid'):
             c.close()
             flash("Un avoir ne peut être créé que pour une facture émise.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        already=_credited_total(c,invoice_id)
+        already=_credited_total(c,invoice_id,inv['entity_id'])
         remaining=max(0,float(inv['total'] or 0)-already)
         if remaining <= 0.005:
             c.close()
@@ -2917,6 +3086,22 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
         if request.method=='POST':
+            # Sérialise la création des avoirs : deux requêtes concurrentes ne
+            # peuvent pas toutes deux créditer le même solde restant.
+            c.execute('BEGIN IMMEDIATE')
+            inv=_current_invoice(c,invoice_id)
+            if not inv:
+                c.rollback(); c.close(); abort(404)
+            already=_credited_total(c,invoice_id,inv['entity_id'])
+            remaining=max(0,float(inv['total'] or 0)-already)
+            sale_entry=c.execute(
+                "SELECT id FROM accounting_entries WHERE source_type='outgoing_invoice' AND source_id=? AND entity_id IS ? LIMIT 1",
+                (invoice_id,inv['entity_id']),
+            ).fetchone()
+            if not sale_entry:
+                c.rollback(); c.close()
+                flash("Avoir impossible : l'écriture comptable de la facture d'origine est absente. Corrigez d'abord la comptabilisation de la facture.")
+                return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
             reason=request.form.get('reason','').strip()
             try:
                 amount_ttc=float(request.form.get('amount_ttc','0').replace(',','.'))
@@ -2937,15 +3122,24 @@ def register(app):
                               'line_total':line_total})
             subtotal=round(float(inv['subtotal'])*ratio,2)
             vat_amount=round(amount_ttc-subtotal,2)
-            credit_number=_next_credit_number(c)
+            credit_number=_next_credit_number(c,inv['entity_id'])
             c.execute("""INSERT INTO outgoing_credit_notes
-                (credit_number,original_invoice_id,original_invoice_number,client_name,issue_date,
+                (entity_id,credit_number,original_invoice_id,original_invoice_number,client_name,issue_date,
                  line_items,subtotal,vat_amount,total,reason,status,created_at)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,'issued',?)""",
-                (credit_number,invoice_id,inv['invoice_number'],inv['client_name'],date.today().isoformat(),
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,'issued',?)""",
+                (inv['entity_id'],credit_number,invoice_id,inv['invoice_number'],inv['client_name'],date.today().isoformat(),
                  json.dumps(items,ensure_ascii=False),subtotal,vat_amount,round(amount_ttc,2),reason,now()))
-            c.commit()
             credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            credit=_current_credit(c,credit_id)
+            try:
+                generate_sale_credit_entry(c,credit)
+                c.commit()
+            except AccountingError as e:
+                c.rollback()
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"avoir facture {invoice_id}: {e}")
+                c.close()
+                flash(f"Avoir non créé : {e}")
+                return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
             c.close()
             log_activity('CREDIT_NOTE_CREATED',f"Avoir {credit_number} créé pour {inv['invoice_number']} ({amount_ttc:.2f} € TTC)")
             flash(f"Avoir {credit_number} créé.")
@@ -2960,7 +3154,7 @@ def register(app):
     @require_area('invoicing')
     def invoicing_credit_detail(credit_id):
         c=cx()
-        credit=c.execute('SELECT * FROM outgoing_credit_notes WHERE id=?',(credit_id,)).fetchone()
+        credit=_current_credit(c,credit_id)
         c.close()
         if not credit: abort(404)
         items=json.loads(credit['line_items'] or '[]')
@@ -2972,10 +3166,12 @@ def register(app):
     @require_area('invoicing')
     def invoicing_credit_pdf(credit_id):
         c=cx()
-        credit=c.execute('SELECT * FROM outgoing_credit_notes WHERE id=?',(credit_id,)).fetchone()
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        credit=_current_credit(c,credit_id)
+        if not credit:
+            c.close(); abort(404)
+        from profitos.entities import resolve_entity
+        company_row=resolve_entity(c,credit['entity_id'])
         c.close()
-        if not credit: abort(404)
         pdf_bytes=_render_credit_pdf(credit,company_row)
         if pdf_bytes is None:
             flash("La génération PDF nécessite le paquet 'fpdf2'.")
@@ -2991,7 +3187,12 @@ def register(app):
         if not mapping: abort(404)
         tc=tenant_cx_direct(mapping['organization_id'])
         q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
-        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if q else None
+        
+        if q:
+            from profitos.entities import resolve_entity
+            company_row=resolve_entity(tc,q['entity_id'])
+        else:
+            company_row=None
         tc.close()
         if not q: abort(404)
         return render_template('invoicing_quote_public.html',q=q,
@@ -3041,7 +3242,12 @@ def register(app):
         if not mapping: abort(404)
         tc=tenant_cx_direct(mapping['organization_id'])
         q=tc.execute('SELECT * FROM outgoing_quotes WHERE id=?',(mapping['quote_local_id'],)).fetchone()
-        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if q else None
+        
+        if q:
+            from profitos.entities import resolve_entity
+            company_row=resolve_entity(tc,q['entity_id'])
+        else:
+            company_row=None
         tc.close()
         if not q: abort(404)
         pdf_bytes=_render_quote_pdf(q,company_row)
@@ -3060,7 +3266,12 @@ def register(app):
         if not mapping: abort(404)
         tc=tenant_cx_direct(mapping['organization_id'])
         inv=tc.execute('SELECT * FROM outgoing_invoices WHERE id=?',(mapping['invoice_local_id'],)).fetchone()
-        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if inv else None
+        
+        if inv:
+            from profitos.entities import resolve_entity
+            company_row=resolve_entity(tc,inv['entity_id'])
+        else:
+            company_row=None
         tc.close()
         if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
@@ -3074,13 +3285,107 @@ def register(app):
         if not mapping: abort(404)
         tc=tenant_cx_direct(mapping['organization_id'])
         inv=tc.execute('SELECT * FROM outgoing_invoices WHERE id=?',(mapping['invoice_local_id'],)).fetchone()
-        company_row=tc.execute('SELECT * FROM company WHERE id=1').fetchone() if inv else None
+        
+        if inv:
+            from profitos.entities import resolve_entity
+            company_row=resolve_entity(tc,inv['entity_id'])
+        else:
+            company_row=None
         tc.close()
         if not inv: abort(404)
         pdf_bytes=_render_invoice_pdf(inv,company_row)
         if pdf_bytes is None: abort(404)
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'inline; filename="{inv["invoice_number"]}.pdf"'})
+
+
+
+    @app.route('/facturation/recurrentes',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def recurring_invoices():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        if request.method=='POST':
+            client_name=(request.form.get('client_name') or '').strip()
+            client_email=(request.form.get('client_email') or '').strip()
+            client_address=(request.form.get('client_address') or '').strip()
+            start=(request.form.get('next_run_date') or '').strip()
+            frequency=(request.form.get('frequency') or 'monthly').strip()
+            if frequency not in ('weekly','monthly','quarterly','yearly'): frequency='monthly'
+            try: due_days=max(0,min(365,int(request.form.get('due_days') or 30)))
+            except ValueError: due_days=30
+            try: interval_count=max(1,min(24,int(request.form.get('interval_count') or 1)))
+            except ValueError: interval_count=1
+            try: date.fromisoformat(start)
+            except ValueError:
+                c.close(); flash("Date de première génération invalide."); return redirect(url_for('recurring_invoices'))
+            items=_compute_line_items(request.form)
+            if not client_name or not items:
+                c.close(); flash("Client et au moins une ligne sont requis."); return redirect(url_for('recurring_invoices'))
+            end=(request.form.get('end_date') or '').strip() or None
+            if end:
+                try: date.fromisoformat(end)
+                except ValueError:
+                    c.close(); flash("Date de fin invalide."); return redirect(url_for('recurring_invoices'))
+                if end<start:
+                    c.close(); flash("La date de fin doit être postérieure à la première génération."); return redirect(url_for('recurring_invoices'))
+            c.execute("""INSERT INTO recurring_invoice_templates(entity_id,client_name,client_address,client_email,client_siren,
+                line_items,notes,operation_nature,vat_on_debits,delivery_address,frequency,interval_count,due_days,next_run_date,
+                end_date,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?)""",
+                (eid,client_name,client_address,client_email,(request.form.get('client_siren') or '').strip() or None,
+                 json.dumps(items,ensure_ascii=False),(request.form.get('notes') or '').strip(),
+                 request.form.get('operation_nature') or 'services',1 if request.form.get('vat_on_debits')=='on' else 0,
+                 (request.form.get('delivery_address') or '').strip() or None,frequency,interval_count,due_days,start,end,now(),now()))
+            c.commit(); c.close(); flash("Facturation récurrente créée."); return redirect(url_for('recurring_invoices'))
+        rows=c.execute("SELECT * FROM recurring_invoice_templates WHERE entity_id IS ? ORDER BY id DESC",(eid,)).fetchall()
+        clients=c.execute("SELECT * FROM invoicing_clients WHERE entity_id IS ? ORDER BY lower(name)",(eid,)).fetchall()
+        c.close()
+        return render_template('recurring_invoices.html',rows=rows,clients=clients,today=date.today().isoformat())
+
+    @app.route('/facturation/recurrentes/generer',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def recurring_invoices_generate():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        try:
+            created=_generate_due_recurring_invoices(c,eid)
+            c.commit()
+        except Exception:
+            c.rollback(); c.close(); raise
+        c.close()
+        # Les jetons publics vivent dans auth.db : on les inscrit après commit tenant.
+        if created:
+            ac=auth_cx()
+            try:
+                for invoice_id,number,token in created:
+                    ac.execute('INSERT OR IGNORE INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+                               (token,session['org_id'],invoice_id,now()))
+                ac.commit()
+            finally: ac.close()
+        flash(f"{len(created)} facture(s) récurrente(s) générée(s) en brouillon.")
+        return redirect(url_for('recurring_invoices'))
+
+    @app.route('/facturation/recurrentes/<int:template_id>/statut',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def recurring_invoice_status(template_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); action=request.form.get('action')
+        new_status={'pause':'paused','resume':'active','stop':'stopped'}.get(action)
+        if not new_status: abort(400)
+        c=cx(); row=c.execute("SELECT id FROM recurring_invoice_templates WHERE id=? AND entity_id IS ?",(template_id,eid)).fetchone()
+        if not row: c.close(); abort(404)
+        c.execute("UPDATE recurring_invoice_templates SET status=?,updated_at=? WHERE id=? AND entity_id IS ?",(new_status,now(),template_id,eid))
+        c.commit(); c.close(); flash("Statut de la récurrence mis à jour.")
+        return redirect(url_for('recurring_invoices'))
 
 
 def _render_invoice_pdf(inv,company_row):

@@ -10,17 +10,20 @@ def register(app):
     @login_required
     @require_area('settings')
     def swan_settings():
-        from profitos.entities import current_entity_id, list_all_entities
+        from profitos.entities import current_entity_id, accessible_entities
         c = cx()
+        eid = current_entity_id()
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
         local_accounts = c.execute(
-            'SELECT * FROM swan_accounts ORDER BY requested_at DESC'
+            f'SELECT * FROM swan_accounts WHERE {ef} ORDER BY requested_at DESC', ep
         ).fetchall()
         cards_by_account = {}
         for a in local_accounts:
             cards_by_account[a['id']] = c.execute(
                 'SELECT * FROM swan_cards WHERE swan_account_row_id=? ORDER BY requested_at DESC', (a['id'],)
             ).fetchall()
-        entities = list_all_entities(c)
+        entities = accessible_entities(c, session.get('user_id'))
         c.close()
 
         remote_error = None
@@ -28,7 +31,9 @@ def register(app):
         if is_configured():
             try:
                 token = get_server_token()
-                remote_accounts = list_accounts(token)
+                all_remote_accounts = list_accounts(token)
+                allowed_remote_ids = {str(a['swan_account_id']) for a in local_accounts}
+                remote_accounts = [a for a in all_remote_accounts if str(a.get('id') or a.get('account_id') or '') in allowed_remote_ids]
             except ValueError as e:
                 remote_error = str(e)
 
@@ -51,6 +56,11 @@ def register(app):
             return redirect(url_for('swan_settings'))
         entity_id_raw = request.form.get('entity_id')
         entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+        c = cx()
+        from profitos.entities import user_can_access_entity
+        if not user_can_access_entity(c, session.get('user_id'), entity_id):
+            c.close(); abort(403)
+        c.close()
 
         try:
             token = get_server_token()
@@ -86,7 +96,9 @@ def register(app):
             flash("Swan n'est pas configuré côté serveur.")
             return redirect(url_for('swan_settings'))
         c = cx()
-        account = c.execute('SELECT * FROM swan_accounts WHERE id=?', (account_row_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        account = c.execute('SELECT * FROM swan_accounts WHERE id=? AND entity_id IS ?', (account_row_id, eid)).fetchone()
         if not account:
             c.close(); abort(404)
         holder_name = (request.form.get('holder_name') or '').strip()
