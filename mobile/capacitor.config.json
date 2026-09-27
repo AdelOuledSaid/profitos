@@ -1,0 +1,21 @@
+{
+  "appId": "fr.profitos.app",
+  "appName": "ProfitOS",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.profitos.fr",
+    "cleartext": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#081020",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#081020"
+    }
+  }
+}
