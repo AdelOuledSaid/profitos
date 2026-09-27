@@ -4,7 +4,7 @@
 <div class="purchase-eyebrow">API</div>
 <h1 class="purchase-title">Clés API</h1>
 <a class="purchase-nav-btn" href="{{ url_for('outbound_webhooks') }}" style="display:inline-block;margin-bottom:16px;">Webhooks sortants →</a>
-<p class="purchase-subtitle">Lecture seule pour l'instant (RECOVER/SAVE/GROW/résumé). Utile pour connecter un outil externe (ERP, logiciel de devis) qui doit lire tes données ProfitOS.</p>
+<p class="purchase-subtitle">API v1 sécurisée par token haché et révocable. Chaque clé peut être limitée à une entité et à des scopes précis. Les écritures sensibles exigent un <code>Idempotency-Key</code>.</p>
 
 {% if new_key %}
 <section class="purchase-panel" style="margin:20px 0;border-color:rgba(61,220,132,.4);">
@@ -28,7 +28,7 @@
       {% for k in keys %}
         <tr>
           <td>
-            <strong>{{ k.key_prefix }}...</strong> <span class="purchase-status" style="font-size:11px;">{{ 'Lecture + écriture' if k.scope=='read_write' else 'Lecture seule' }}</span><br>
+            <strong>{{ k.key_prefix }}...</strong> <span class="purchase-status" style="font-size:11px;">{{ k.scopes or k.scope or 'read' }}{% if k.entity_id %} · entité #{{ k.entity_id }}{% else %} · société principale{% endif %}</span><br>
             <small class="purchase-muted">Créée le {{ k.created_at|fr_date }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at|fr_date }}{% endif %}</small>
           </td>
           <td style="text-align:right;">
@@ -48,12 +48,12 @@
   </div>
 </section>
 
-<form method="post" style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+<form method="post" style="margin-top:20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
-  <select name="scope">
-    <option value="read">Lecture seule</option>
-    <option value="read_write">Lecture + écriture</option>
-  </select>
+  <label><input type="checkbox" name="scopes" value="read" checked> Lecture</label>
+  <label><input type="checkbox" name="scopes" value="write"> Écriture métier</label>
+  <label><input type="checkbox" name="scopes" value="webhooks"> Webhooks</label>
+  <label>Entité <input name="entity_id" inputmode="numeric" placeholder="vide = société principale" style="width:190px;"></label>
   <button class="purchase-primary-btn primary">Générer une nouvelle clé</button>
 </form>
 </div>

@@ -10,27 +10,68 @@ from flask import flash, redirect, render_template, request, session, url_for
 
 from profitos.feature_access import requires_paid_plan
 from profitos.runtime import *
-from profitos.accounting import generate_purchase_payment_entry, generate_sale_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
+from profitos.accounting import generate_purchase_payment_entry, generate_purchase_partial_payment_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
 
 
 POWENS_TIMEOUT = 20
 
 
-def apply_categorization_rule(conn, label):
-    """Retourne la catégorie de la première règle (par priorité décroissante)
-    dont le motif apparaît dans le libellé de la transaction (comparaison
-    insensible à la casse et aux accents), ou None si aucune règle ne
-    correspond. N'écrit rien — c'est à l'appelant de décider quoi en faire."""
+def apply_categorization_rule(conn, label, entity_id=None):
+    """Catégorie historique, désormais isolée par entité.
+
+    Les règles globales héritées (entity_id NULL) restent utilisables comme
+    repli, mais une règle de l'entité active est toujours prioritaire.
+    """
     if not label:
         return None
     label_norm = norm(label)
     rules = conn.execute(
-        'SELECT pattern,category FROM bank_categorization_rules ORDER BY priority DESC, id ASC'
+        """SELECT pattern,category FROM bank_categorization_rules
+           WHERE entity_id IS ? OR entity_id IS NULL
+           ORDER BY CASE WHEN entity_id IS ? THEN 0 ELSE 1 END, priority DESC, id ASC""",
+        (entity_id, entity_id),
     ).fetchall()
     for r in rules:
         if norm(r['pattern']) in label_norm:
             return r['category']
     return None
+
+
+def _learning_pattern(label):
+    """Construit une signature prudente et lisible à partir du libellé bancaire."""
+    words=[w for w in re.findall(r'[a-z0-9]+', norm(label or '')) if len(w)>=3 and not w.isdigit()]
+    return ' '.join(words[:5])[:120]
+
+
+def _accounting_suggestion(conn, tx, entity_id):
+    """Propose catégorie, compte, TVA et tiers sans jamais comptabiliser.
+
+    Le score reflète uniquement la qualité des indices disponibles. La
+    validation humaine reste obligatoire, même avec un score élevé.
+    """
+    label=tx['label'] or ''
+    signature=_learning_pattern(label)
+    learned=None
+    if signature:
+        learned=conn.execute(
+            """SELECT * FROM bank_accounting_learning_rules
+               WHERE entity_id IS ? AND ? LIKE '%' || pattern || '%'
+               ORDER BY confirmations DESC, length(pattern) DESC, id DESC LIMIT 1""",
+            (entity_id, signature),
+        ).fetchone()
+    if learned:
+        score=min(95, 70 + min(int(learned['confirmations'] or 1), 5)*5)
+        return dict(category=learned['category'], account_code=learned['account_code'],
+                    vat_rate=learned['vat_rate'], counterparty_type=learned['counterparty_type'],
+                    counterparty_id=learned['counterparty_id'], confidence_score=score,
+                    reason=f"Habitude validée {int(learned['confirmations'] or 1)} fois")
+
+    category=tx['category'] or apply_categorization_rule(conn,label,entity_id)
+    account=DEFAULT_CATEGORY_MAPPING.get(category) if category else None
+    score=55 if account else 0
+    reason='Correspondance catégorie → compte PCG' if account else 'Aucune habitude suffisamment fiable'
+    return dict(category=category, account_code=account, vat_rate=None,
+                counterparty_type=None, counterparty_id=None, confidence_score=score, reason=reason)
 
 
 def _cfg():
@@ -162,7 +203,7 @@ def _sync_powens(c, row):
         account_id = str(t.get("id_account") or t.get("account_id") or "")
         label = t.get("simplified_wording") or t.get("wording") or t.get("original_wording") or ""
         tx_date = str(t.get("date") or t.get("application_date") or "")[:10]
-        auto_category = apply_categorization_rule(c, label)
+        auto_category = apply_categorization_rule(c, label, entity_id)
         c.execute(
             """INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at,category)
                VALUES(?,?,?,?,?,?,?,?,?)
@@ -221,19 +262,22 @@ def _purchase_reconciliation_suggestions(c, tx):
         return []
     target = abs(amount)
 
+    eid=tx['entity_id'] if 'entity_id' in tx.keys() else None
     rows=c.execute("""
-        SELECT p.*
+        SELECT p.*,
+               COALESCE((SELECT SUM(pp.amount) FROM purchase_invoice_payments pp
+                         WHERE pp.purchase_invoice_id=p.id AND pp.entity_id IS p.entity_id),0) AS paid_total
         FROM purchase_invoices p
-        LEFT JOIN bank_purchase_reconciliations r ON r.purchase_invoice_id=p.id
-        WHERE p.status='unpaid' AND r.id IS NULL
+        WHERE p.entity_id IS ?
+          AND COALESCE(p.status,'unpaid')!='paid'
         ORDER BY p.due_date ASC, p.id ASC
-    """).fetchall()
+    """,(eid,)).fetchall()
 
     tx_label=_norm_text(tx['label'] or '')
     out=[]
     for p in rows:
-        total=float(p['total'] or 0)
-        if abs(total-target)>0.01:
+        total=max(0.0,float(p['total'] or 0)-float(p['paid_total'] or 0))
+        if total<=.005 or abs(total-target)>0.01:
             continue
         score=60
         reasons=['montant exact']
@@ -256,74 +300,63 @@ def _purchase_reconciliation_suggestions(c, tx):
     # Exact same amount can be ambiguous: keep all suggestions visible, never auto-pay.
     return out
 
+def _bank_allocated_total(c, transaction_id, entity_id):
+    row=c.execute("SELECT COALESCE(SUM(matched_amount),0) n FROM bank_invoice_allocations WHERE bank_transaction_id=? AND entity_id IS ?",(transaction_id,entity_id)).fetchone()
+    return round(float(row['n'] or 0),2)
+
+def _invoice_bank_balance(c, invoice):
+    row=c.execute("SELECT COALESCE(SUM(amount),0) n FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ?",(invoice['id'],invoice['entity_id'])).fetchone()
+    return max(0.0,round(float(invoice['total'] or 0)-float(row['n'] or 0),2))
+
+def _bank_match_score(invoice, tx, balance, available):
+    score=0; reasons=[]
+    delta=abs(balance-available)
+    if delta <= .01:
+        score += 60; reasons.append('solde exact')
+    elif available < balance and available > 0:
+        score += 30; reasons.append('paiement partiel possible')
+    ref=_norm_text(invoice['invoice_number'] or '')
+    label=_norm_text(tx['label'] or '')
+    if ref and ref in label:
+        score += 35; reasons.append('n° facture')
+    ns=_name_similarity(invoice['client_name'],tx['label'] or '')
+    if ns:
+        score += ns; reasons.append('client reconnu')
+    return score,reasons
+
 def _reconciliation_suggestions(c, transactions):
-    reconciled_tx = {
-        r["bank_transaction_id"]
-        for r in c.execute("SELECT bank_transaction_id FROM bank_invoice_reconciliations").fetchall()
-    }
-    invoices = c.execute(
-        "SELECT * FROM outgoing_invoices WHERE status='sent' AND total>0 ORDER BY issue_date,id"
-    ).fetchall()
-
-    suggestions = []
+    # Advanced matching: use remaining invoice balance and remaining bank amount.
+    # Never auto-post: suggestions remain subject to explicit confirmation.
+    from profitos.entities import current_entity_id
+    eid=current_entity_id()
+    invoices=c.execute("SELECT * FROM outgoing_invoices WHERE entity_id IS ? AND status IN ('sent','partially_paid') AND total>0 ORDER BY issue_date,id",(eid,)).fetchall()
+    suggestions=[]
     for t in transactions:
-        if t["id"] in reconciled_tx:
-            continue
-        try:
-            amount = float(t["amount"] or 0)
-        except (TypeError, ValueError):
-            continue
-        if amount <= 0:
-            continue
-
-        exact = [inv for inv in invoices if abs(float(inv["total"] or 0) - amount) <= 0.01]
-        if not exact:
-            continue
-
-        label = t["label"] or ""
-        scored = []
-        for inv in exact:
-            score = 60  # exact amount
-            reasons = ["montant exact"]
-
-            invoice_ref = (inv["invoice_number"] or "").strip()
-            if invoice_ref and _norm_text(invoice_ref) in _norm_text(label):
-                score += 35
-                reasons.append("n° de facture trouvé dans le libellé")
-
-            name_score = _name_similarity(inv["client_name"], label)
-            if name_score:
-                score += name_score
-                reasons.append("nom client reconnu")
-
-            scored.append((score, inv, reasons))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        best_score, candidate, reasons = scored[0]
-        second_score = scored[1][0] if len(scored) > 1 else None
-
-        # If several invoices have the same amount, require a unique stronger identity signal.
-        if len(scored) > 1:
-            if best_score < 80:
-                continue
-            if second_score is not None and best_score - second_score < 15:
-                continue
-
-        if best_score >= 90:
-            confidence = "Élevée"
-        elif best_score >= 75:
-            confidence = "Moyenne"
-        else:
-            confidence = "Faible"
-
-        suggestions.append({
-            "transaction": t,
-            "invoice": candidate,
-            "score": best_score,
-            "confidence": confidence,
-            "reasons": ", ".join(reasons),
-        })
+        try: total_amount=float(t['amount'] or 0)
+        except (TypeError,ValueError): continue
+        if total_amount <= 0: continue
+        available=round(total_amount-_bank_allocated_total(c,t['id'],eid),2)
+        if available <= .005: continue
+        scored=[]
+        for inv in invoices:
+            balance=_invoice_bank_balance(c,inv)
+            if balance <= .005: continue
+            score,reasons=_bank_match_score(inv,t,balance,available)
+            if score < 30: continue
+            allocation=min(balance,available)
+            scored.append((score,inv,reasons,allocation,balance))
+        scored.sort(key=lambda x:(-x[0],x[1]['id']))
+        if not scored: continue
+        best=scored[0]
+        second=scored[1][0] if len(scored)>1 else None
+        # Ambiguous weak matches are deliberately not proposed.
+        if second is not None and best[0] < 80 and best[0]-second < 15: continue
+        confidence='Élevée' if best[0]>=90 else ('Moyenne' if best[0]>=60 else 'Faible')
+        suggestions.append({'transaction':t,'invoice':best[1],'score':best[0],'confidence':confidence,
+                            'reasons':', '.join(best[2]),'matched_amount':best[3],
+                            'invoice_balance':best[4],'transaction_available':available})
     return suggestions
+
 
 
 def register(app):
@@ -376,6 +409,7 @@ def register(app):
                 ep,
             ).fetchall()
             reconciliation_suggestions = _reconciliation_suggestions(c, transactions)
+            accounting_suggestions = {t['id']: _accounting_suggestion(c, t, eid) for t in transactions}
 
             # Lot 14: suggestions de rapprochement des paiements fournisseurs.
             # La vue banking.html attend un dictionnaire indexé par l'id
@@ -388,10 +422,10 @@ def register(app):
 
             reconciliations = c.execute(
                 f'''SELECT r.*,t.transaction_date,t.label,t.amount,i.invoice_number,i.client_name
-                   FROM bank_invoice_reconciliations r
+                   FROM bank_invoice_allocations r
                    JOIN bank_transactions t ON t.id=r.bank_transaction_id
                    JOIN outgoing_invoices i ON i.id=r.invoice_id
-                   WHERE i.{ef}
+                   WHERE r.{ef}
                    ORDER BY r.id DESC LIMIT 20''',
                 ep,
             ).fetchall()
@@ -404,6 +438,7 @@ def register(app):
             accounts=accounts,
             transactions=transactions,
             reconciliation_suggestions=reconciliation_suggestions,
+            accounting_suggestions=accounting_suggestions,
             purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
             powens_configured=_configured(),
@@ -571,61 +606,47 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_reconcile(transaction_id, invoice_id):
-        c = cx()
+        c=cx()
         try:
             from profitos.entities import current_entity_id
-            eid = current_entity_id()
-            t = c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+            eid=current_entity_id()
+            t=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
                               ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
-                              WHERE t.id=? AND a.entity_id IS ?""", (transaction_id,eid)).fetchone()
-            inv = c.execute("SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?",(invoice_id,eid)).fetchone()
-            if not t or not inv:
-                abort(404)
-
-            if inv["status"] != "sent":
-                flash("Cette facture n'est plus disponible pour le rapprochement.")
-                return redirect(url_for("banking"))
-
-            amount = float(t["amount"] or 0)
-            total = float(inv["total"] or 0)
-            if amount <= 0 or abs(amount-total) > 0.01:
-                flash("Rapprochement refusé : le montant bancaire ne correspond pas exactement à la facture.")
-                return redirect(url_for("banking"))
-
-            already = c.execute(
-                "SELECT 1 FROM bank_invoice_reconciliations WHERE bank_transaction_id=? OR invoice_id=?",
-                (transaction_id,invoice_id)
-            ).fetchone()
-            if already:
-                flash("Cette transaction ou cette facture est déjà rapprochée.")
-                return redirect(url_for("banking"))
-
-            matched_at = now()
-            c.execute(
-                "INSERT INTO bank_invoice_reconciliations(bank_transaction_id,invoice_id,matched_amount,matched_at) VALUES(?,?,?,?)",
-                (transaction_id,invoice_id,amount,matched_at)
-            )
-            c.execute(
-                "UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='sent'",
-                (matched_at,invoice_id,eid)
-            )
-            try:
-                inv_updated=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,eid)).fetchone()
-                generate_sale_payment_entry(c,inv_updated)
-                c.commit()
-            except AccountingError as e:
-                c.rollback()
-                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
-                flash(f"Rapprochement annulé : {e}")
-                return redirect(url_for("banking"))
-            log_activity(
-                'INVOICE_BANK_RECONCILED',
-                f"Facture {inv['invoice_number']} rapprochée avec une transaction bancaire de {fr_number(amount,2)} €"
-            )
-            flash(f"Facture {inv['invoice_number']} rapprochée et marquée payée.")
+                              WHERE t.id=? AND a.entity_id IS ?""",(transaction_id,eid)).fetchone()
+            inv=c.execute("SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?",(invoice_id,eid)).fetchone()
+            if not t or not inv: abort(404)
+            if inv['status'] not in ('sent','partially_paid'):
+                flash("Cette facture n'est plus disponible pour le rapprochement."); return redirect(url_for('banking'))
+            tx_amount=float(t['amount'] or 0)
+            available=round(tx_amount-_bank_allocated_total(c,transaction_id,eid),2)
+            balance=_invoice_bank_balance(c,inv)
+            if tx_amount <= 0 or available <= .005 or balance <= .005:
+                flash("Aucun montant restant à rapprocher."); return redirect(url_for('banking'))
+            requested=(request.form.get('matched_amount') or '').replace(',','.').strip()
+            amount=round(float(requested),2) if requested else min(available,balance)
+            if amount <= 0 or amount > available+.001 or amount > balance+.001:
+                flash("Montant de rapprochement invalide."); return redirect(url_for('banking'))
+            idem=f"bank:{eid}:{transaction_id}:{invoice_id}:{amount:.2f}"
+            matched_at=now()
+            cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                             VALUES(?,?,?,?,?,?,?,?)""",(eid,invoice_id,amount,t['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',t['label'] or 'Rapprochement bancaire',idem,matched_at))
+            payment_id=cur.lastrowid
+            payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,eid)).fetchone()
+            generate_sale_partial_payment_entry(c,inv,payment)
+            c.execute("""INSERT INTO bank_invoice_allocations(entity_id,bank_transaction_id,invoice_id,payment_id,matched_amount,match_method,matched_at,idempotency_key)
+                         VALUES(?,?,?,?,?,'manual',?,?)""",(eid,transaction_id,invoice_id,payment_id,amount,matched_at,idem))
+            new_balance=round(balance-amount,2)
+            status='paid' if new_balance <= .005 else 'partially_paid'
+            c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,matched_at if status=='paid' else None,invoice_id,eid))
+            c.commit()
+            flash(f"{fr_number(amount,2)} € rapprochés avec la facture {inv['invoice_number']}.")
+        except (sqlite3.IntegrityError,ValueError):
+            c.rollback(); flash("Ce rapprochement a déjà été enregistré ou son montant est invalide.")
+        except AccountingError as e:
+            c.rollback(); log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"rapprochement facture {invoice_id}: {e}"); flash(f"Rapprochement annulé : {e}")
         finally:
             c.close()
-        return redirect(url_for("banking"))
+        return redirect(url_for('banking'))
 
     @app.post("/banking/sync")
     @login_required
@@ -683,56 +704,39 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def confirm_purchase_reconciliation():
-        tx_id=int(request.form.get('bank_transaction_id') or 0)
-        purchase_id=int(request.form.get('purchase_invoice_id') or 0)
-        c=cx()
+        tx_id=int(request.form.get('bank_transaction_id') or 0); purchase_id=int(request.form.get('purchase_invoice_id') or 0)
+        requested=request.form.get('matched_amount','').strip(); c=cx()
         from profitos.entities import current_entity_id
         eid=current_entity_id()
-        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
-                          ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
-                          WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
+        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
         p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
-        if not tx or not p:
-            c.close(); abort(404)
-        if float(tx['amount'] or 0) >= 0:
-            c.close(); flash("Cette opération bancaire n'est pas une sortie d'argent.")
-            return redirect(url_for('banking'))
-        if p['status'] != 'unpaid':
-            c.close(); flash("Cette facture fournisseur n'est plus à payer.")
-            return redirect(url_for('banking'))
-        amount=abs(float(tx['amount'] or 0))
-        total=float(p['total'] or 0)
-        if abs(amount-total)>0.01:
-            c.close(); flash("Le montant bancaire ne correspond pas au total de la facture fournisseur.")
-            return redirect(url_for('banking'))
-        exists=c.execute("""SELECT id FROM bank_purchase_reconciliations
-                            WHERE bank_transaction_id=? OR purchase_invoice_id=?""",
-                         (tx_id,purchase_id)).fetchone()
-        if exists:
-            c.close(); flash("Cette opération ou cette facture est déjà rapprochée.")
-            return redirect(url_for('banking'))
-        c.execute("""INSERT INTO bank_purchase_reconciliations
-                     (bank_transaction_id,purchase_invoice_id,matched_amount,matched_at)
-                     VALUES(?,?,?,?)""",(tx_id,purchase_id,amount,now()))
-        c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'",(now(),purchase_id,eid))
+        if not tx or not p: c.close(); abort(404)
+        if float(tx['amount'] or 0)>=0: c.close(); flash("Cette opération n'est pas une sortie d'argent."); return redirect(url_for('banking'))
+        paid=c.execute("SELECT COALESCE(SUM(amount),0) AS x FROM purchase_invoice_payments WHERE entity_id IS ? AND purchase_invoice_id=?",(eid,purchase_id)).fetchone()['x'] or 0
+        balance=max(0.0,round(float(p['total'] or 0)-float(paid),2))
+        allocated=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
+        available=max(0.0,round(abs(float(tx['amount'] or 0))-float(allocated),2))
+        amount=round(float(requested),2) if requested else min(balance,available)
+        if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
+        key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}:{float(allocated):.2f}"
         try:
-            p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
-            generate_purchase_payment_entry(c,p_updated)
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['booking_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
+            payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
+            generate_purchase_partial_payment_entry(c,p,payment)
+            c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
+            new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
+            c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
             c.commit()
-        except AccountingError as e:
-            c.rollback()
-            log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
-            c.close()
-            flash(f"Rapprochement annulé : {e}")
-            return redirect(url_for('banking'))
-        c.close()
-        flash("Rapprochement fournisseur confirmé. La facture a été marquée payée.")
-        return redirect(url_for('banking'))
+        except (AccountingError, sqlite3.IntegrityError) as e:
+            c.rollback(); c.close(); flash(f"Rapprochement annulé : {e}"); return redirect(url_for('banking'))
+        c.close(); flash("Rapprochement fournisseur enregistré."); return redirect(url_for('banking'))
 
     @app.route('/banking/regles', methods=['GET', 'POST'])
     @login_required
     @requires_paid_plan
     def banking_rules():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c = cx()
         error = None
         if request.method == 'POST':
@@ -746,18 +750,19 @@ def register(app):
                 error = "Le motif et la catégorie sont obligatoires."
             else:
                 c.execute(
-                    'INSERT INTO bank_categorization_rules(pattern,category,priority,created_at) VALUES(?,?,?,?)',
-                    (pattern, category, priority, now()),
+                    'INSERT INTO bank_categorization_rules(entity_id,pattern,category,priority,created_at) VALUES(?,?,?,?,?)',
+                    (eid, pattern, category, priority, now()),
                 )
                 c.commit()
                 flash(f"Règle ajoutée : « {pattern} » → {category}.")
                 return redirect(url_for('banking_rules'))
 
         rules = c.execute(
-            'SELECT * FROM bank_categorization_rules ORDER BY priority DESC, id ASC'
+            'SELECT * FROM bank_categorization_rules WHERE entity_id IS ? ORDER BY priority DESC, id ASC', (eid,)
         ).fetchall()
         uncategorized_count = c.execute(
-            'SELECT COUNT(*) n FROM bank_transactions WHERE category IS NULL'
+            '''SELECT COUNT(*) n FROM bank_transactions t JOIN bank_accounts a ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+           WHERE t.category IS NULL AND a.entity_id IS ?''', (eid,)
         ).fetchone()['n']
         c.close()
         return render_template('banking_rules.html', rules=rules, error=error,
@@ -768,8 +773,10 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_rule_delete(rule_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c = cx()
-        c.execute('DELETE FROM bank_categorization_rules WHERE id=?', (rule_id,))
+        c.execute('DELETE FROM bank_categorization_rules WHERE id=? AND entity_id IS ?', (rule_id,eid))
         c.commit(); c.close()
         flash("Règle supprimée.")
         return redirect(url_for('banking_rules'))
@@ -778,13 +785,16 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_rules_apply():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         c = cx()
         rows = c.execute(
-            'SELECT id,label FROM bank_transactions WHERE category IS NULL'
+            '''SELECT t.id,t.label FROM bank_transactions t JOIN bank_accounts a ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+               WHERE t.category IS NULL AND a.entity_id IS ?''', (eid,)
         ).fetchall()
         applied = 0
         for r in rows:
-            category = apply_categorization_rule(c, r['label'])
+            category = apply_categorization_rule(c, r['label'], eid)
             if category:
                 c.execute('UPDATE bank_transactions SET category=? WHERE id=?', (category, r['id']))
                 applied += 1
@@ -796,10 +806,47 @@ def register(app):
     @login_required
     @requires_paid_plan
     def banking_transaction_categorize(tx_id):
-        category = (request.form.get('category') or '').strip() or None
-        c = cx()
-        c.execute('UPDATE bank_transactions SET category=? WHERE id=?', (category, tx_id))
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        category=(request.form.get('category') or '').strip() or None
+        account_code=(request.form.get('account_code') or '').strip() or None
+        vat_raw=(request.form.get('vat_rate') or '').strip()
+        vat_rate=float(vat_raw) if vat_raw else None
+        c=cx()
+        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                        ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                        WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
+        if not tx:
+            c.close(); flash('Transaction bancaire introuvable pour cette entité.')
+            return redirect(url_for('banking'))
+        if account_code:
+            valid=c.execute("SELECT 1 FROM accounting_chart_of_accounts WHERE code=? AND (entity_id IS ? OR entity_id IS NULL) LIMIT 1",(account_code,eid)).fetchone()
+            if not valid:
+                c.close(); flash('Compte comptable invalide pour cette entité.')
+                return redirect(url_for('banking'))
+        c.execute('UPDATE bank_transactions SET category=? WHERE id=?',(category,tx_id))
+        if account_code:
+            signature=_learning_pattern(tx['label'])
+            suggestion=_accounting_suggestion(c,tx,eid)
+            c.execute("""INSERT INTO bank_accounting_validations
+                (entity_id,bank_transaction_id,category,account_code,vat_rate,counterparty_type,counterparty_id,confidence_score,suggestion_reason,validated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(entity_id,bank_transaction_id) DO UPDATE SET
+                category=excluded.category,account_code=excluded.account_code,vat_rate=excluded.vat_rate,
+                confidence_score=excluded.confidence_score,suggestion_reason=excluded.suggestion_reason,validated_at=excluded.validated_at""",
+                (eid,tx_id,category,account_code,vat_rate,None,None,suggestion['confidence_score'],suggestion['reason'],now()))
+            if signature:
+                row=c.execute("""SELECT id,confirmations FROM bank_accounting_learning_rules
+                    WHERE entity_id IS ? AND pattern=? AND account_code=? AND vat_rate IS ?
+                    AND counterparty_type IS NULL AND counterparty_id IS NULL""",(eid,signature,account_code,vat_rate)).fetchone()
+                if row:
+                    c.execute('UPDATE bank_accounting_learning_rules SET confirmations=?,category=?,last_confirmed_at=? WHERE id=?',
+                              (int(row['confirmations'] or 0)+1,category,now(),row['id']))
+                else:
+                    c.execute("""INSERT INTO bank_accounting_learning_rules
+                        (entity_id,pattern,category,account_code,vat_rate,counterparty_type,counterparty_id,confirmations,last_confirmed_at)
+                        VALUES(?,?,?,?,?,NULL,NULL,1,?)""",(eid,signature,category,account_code,vat_rate,now()))
         c.commit(); c.close()
-        flash("Catégorie mise à jour." if category else "Catégorie retirée.")
+        flash('Catégorisation comptable validée et apprise.' if account_code else ('Catégorie mise à jour.' if category else 'Catégorie retirée.'))
         return redirect(url_for('banking'))
 

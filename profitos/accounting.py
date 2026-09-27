@@ -35,6 +35,7 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('408000', 'Fournisseurs - Factures non parvenues', 4, False),
     ('411000', 'Clients', 4, True),
     ('418000', 'Clients - Produits non encore facturés', 4, False),
+    ('419100', 'Clients - Avances et acomptes reçus sur commandes', 4, False),
     ('421000', 'Personnel - rémunérations dues', 4, False),
     ('431000', 'Sécurité sociale', 4, False),
     ('445510', 'TVA à décaisser', 4, False),
@@ -163,6 +164,44 @@ def generate_sale_entry(conn, invoice):
     )
 
 
+
+def generate_customer_deposit_entry(conn, invoice):
+    """Comptabilise une facture d'acompte sans reconnaître prématurément le CA.
+
+    411 au débit du TTC, 4191 au crédit du HT d'acompte et TVA collectée au
+    crédit. Idempotent par facture et entité.
+    """
+    entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
+    if _entry_already_exists(conn, 'customer_deposit_invoice', invoice['id'], entity_id):
+        return None
+    lines=[
+        {'account_code':'411000','debit':invoice['total'],'auxiliary_name':invoice['client_name']},
+        {'account_code':'419100','credit':invoice['subtotal']},
+    ]
+    if invoice['vat_amount']:
+        lines.append({'account_code':'445710','credit':invoice['vat_amount']})
+    return create_entry(conn,'VE',invoice['issue_date'] or date.today(),
+        f"Facture d'acompte {invoice['invoice_number']} — {invoice['client_name']}",
+        lines,source_type='customer_deposit_invoice',source_id=invoice['id'],entity_id=entity_id)
+
+
+def generate_customer_final_entry(conn, invoice):
+    """Comptabilise la facture finale et apure le HT des acomptes déjà facturés."""
+    entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
+    if _entry_already_exists(conn, 'customer_final_invoice', invoice['id'], entity_id):
+        return None
+    applied_ht=float(invoice['deposit_applied_subtotal'] or 0) if 'deposit_applied_subtotal' in invoice.keys() else 0.0
+    gross_ht=round(float(invoice['subtotal'] or 0)+applied_ht,2)
+    lines=[{'account_code':'411000','debit':invoice['total'],'auxiliary_name':invoice['client_name']}]
+    if applied_ht:
+        lines.append({'account_code':'419100','debit':applied_ht})
+    lines.append({'account_code':'706000','credit':gross_ht})
+    if invoice['vat_amount']:
+        lines.append({'account_code':'445710','credit':invoice['vat_amount']})
+    return create_entry(conn,'VE',invoice['issue_date'] or date.today(),
+        f"Facture finale {invoice['invoice_number']} — {invoice['client_name']}",
+        lines,source_type='customer_final_invoice',source_id=invoice['id'],entity_id=entity_id)
+
 def generate_sale_credit_entry(conn, credit):
     """Génère l'écriture comptable d'un avoir client émis.
 
@@ -262,6 +301,29 @@ def generate_sale_payment_entry(conn, invoice):
     return entry_id
 
 
+def generate_sale_partial_payment_entry(conn, invoice, payment):
+    """Comptabilise un règlement client individuel. Chaque règlement possède
+    sa propre clé source, ce qui autorise plusieurs paiements sur une facture
+    tout en restant idempotent. Le lettrage complet est laissé au moteur de
+    lettrage lorsque le solde 411 est entièrement compensé."""
+    entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
+    amount = round(float(payment['amount'] or 0), 2)
+    if amount <= 0:
+        raise AccountingError("Le montant du règlement doit être strictement positif.")
+    source_type = 'outgoing_invoice_payment_v2'
+    if _entry_already_exists(conn, source_type, payment['id'], entity_id):
+        return None
+    return create_entry(
+        conn, 'BQ', payment['payment_date'] or date.today(),
+        f"Règlement facture {invoice['invoice_number']} — {invoice['client_name']}",
+        [
+            {'account_code': '512000', 'debit': amount},
+            {'account_code': '411000', 'credit': amount, 'auxiliary_name': invoice['client_name']},
+        ],
+        source_type=source_type, source_id=payment['id'], entity_id=entity_id,
+    )
+
+
 def generate_purchase_entry(conn, purchase):
     """Génère l'écriture d'achat (journal AC) pour une facture fournisseur
     enregistrée : compte de charge (selon la catégorie) + TVA déductible
@@ -305,6 +367,23 @@ def generate_purchase_payment_entry(conn, purchase):
     )
     _letter_pair(conn, '401000', 'purchase_invoice', purchase['id'], entry_id, entity_id)
     return entry_id
+
+
+def generate_purchase_partial_payment_entry(conn, purchase, payment):
+    """Comptabilise un règlement fournisseur individuel, entity-scoped et idempotent."""
+    entity_id = purchase['entity_id'] if 'entity_id' in purchase.keys() else None
+    amount = round(float(payment['amount'] or 0), 2)
+    if amount <= 0:
+        raise AccountingError("Le montant du règlement doit être strictement positif.")
+    source_type = 'purchase_invoice_payment_v2'
+    if _entry_already_exists(conn, source_type, payment['id'], entity_id):
+        return None
+    return create_entry(conn, 'BQ', payment['payment_date'] or date.today(),
+        f"Règlement facture {purchase['invoice_number']} — {purchase['supplier_name']}",
+        [
+            {'account_code':'401000','debit':amount,'auxiliary_name':purchase['supplier_name']},
+            {'account_code':'512000','credit':amount},
+        ], source_type=source_type, source_id=payment['id'], entity_id=entity_id)
 
 
 def seed_accounting_defaults(conn):

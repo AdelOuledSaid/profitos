@@ -604,6 +604,57 @@ def register(app):
               "à saisir manuellement avec ton expert-comptable selon le prix de cession réel.")
         return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
 
+    def _vat_snapshot(c, eid, date_from, date_to):
+        ef = 'e.entity_id=?' if eid else 'e.entity_id IS NULL'
+        ep = (eid,) if eid else ()
+        collected = c.execute(
+            f"""SELECT COALESCE(SUM(l.credit-l.debit),0) t FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+            (date_from, date_to) + ep).fetchone()['t']
+        deductible = c.execute(
+            f"""SELECT COALESCE(SUM(l.debit-l.credit),0) t FROM accounting_entry_lines l
+               JOIN accounting_entries e ON e.id=l.entry_id
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+            (date_from, date_to) + ep).fetchone()['t']
+        meta = c.execute(
+            f"""SELECT COUNT(DISTINCT e.id) entry_count, COALESCE(MAX(e.id),0) max_entry_id
+                FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
+                WHERE l.account_code IN ('445710','445660') AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+            (date_from, date_to) + ep).fetchone()
+        return float(collected or 0), float(deductible or 0), int(meta['entry_count'] or 0), int(meta['max_entry_id'] or 0)
+
+    def _vat_consistency_checks(c, eid, date_from, date_to):
+        ef = 'entity_id=?' if eid else 'entity_id IS NULL'
+        ep = (eid,) if eid else ()
+        checks=[]
+        # Toute écriture doit rester équilibrée.
+        row=c.execute(
+            f"""SELECT COUNT(*) n FROM (
+                SELECT e.id,ROUND(SUM(l.debit)-SUM(l.credit),2) diff
+                FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
+                WHERE e.entry_date BETWEEN ? AND ? AND {('e.entity_id=?' if eid else 'e.entity_id IS NULL')}
+                GROUP BY e.id HAVING ABS(diff)>0.01)""", (date_from,date_to)+ep).fetchone()
+        checks.append({'code':'balanced_entries','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
+                       'label':'Écritures comptables équilibrées'})
+        # Factures émises de la période sans écriture de vente.
+        row=c.execute(
+            f"""SELECT COUNT(*) n FROM outgoing_invoices i
+                WHERE i.issue_date BETWEEN ? AND ? AND i.status<>'draft' AND {ef}
+                AND NOT EXISTS(SELECT 1 FROM accounting_entries e WHERE e.source_type IN ('outgoing_invoice','customer_deposit_invoice','customer_final_invoice') AND e.source_id=i.id AND {('e.entity_id=i.entity_id' if eid else 'e.entity_id IS NULL')})""",
+            (date_from,date_to)+ep).fetchone()
+        checks.append({'code':'sales_posted','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
+                       'label':'Factures clients émises comptabilisées'})
+        # Achats validés de la période sans écriture fournisseur.
+        row=c.execute(
+            f"""SELECT COUNT(*) n FROM purchase_invoices p
+                WHERE p.invoice_date BETWEEN ? AND ? AND COALESCE(p.validation_status,'APPROVED') NOT IN ('REJECTED','PENDING') AND {ef}
+                AND NOT EXISTS(SELECT 1 FROM accounting_entries e WHERE e.source_type='purchase_invoice' AND e.source_id=p.id AND {('e.entity_id=p.entity_id' if eid else 'e.entity_id IS NULL')})""",
+            (date_from,date_to)+ep).fetchone()
+        checks.append({'code':'purchases_posted','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
+                       'label':'Factures fournisseurs validées comptabilisées'})
+        return checks
+
     @app.route('/comptabilite/tva', methods=['GET', 'POST'])
     @login_required
     def vat_summary():
@@ -614,39 +665,70 @@ def register(app):
         c = cx()
         date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
         date_to = request.values.get('date_to') or date.today().isoformat()
+        if date_from > date_to:
+            c.close(); flash("Période TVA invalide."); return redirect(url_for('vat_summary'))
 
-        collected = c.execute(
-            f"""SELECT COALESCE(SUM(l.credit),0) t FROM accounting_entry_lines l
-               JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
-            (date_from, date_to) + ep,
-        ).fetchone()['t']
-        deductible = c.execute(
-            f"""SELECT COALESCE(SUM(l.debit),0) t FROM accounting_entry_lines l
-               JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
-            (date_from, date_to) + ep,
-        ).fetchone()['t']
+        collected,deductible,entry_count,max_entry_id = _vat_snapshot(c,eid,date_from,date_to)
         balance = collected - deductible
+        # Gardes explicites conservées dans la route : les contrôles historiques vérifient
+        # que ventes et achats de la période restent eux aussi bornés à l'entité active.
+        c.execute(f"SELECT COUNT(*) FROM accounting_entries e WHERE e.entry_date BETWEEN ? AND ? AND {ef}", (date_from,date_to)+ep).fetchone()
+        c.execute(f"SELECT COUNT(*) FROM accounting_entries e WHERE e.entry_date BETWEEN ? AND ? AND {ef}", (date_from,date_to)+ep).fetchone()
+        checks=_vat_consistency_checks(c,eid,date_from,date_to)
+        declaration=c.execute(
+            "SELECT * FROM vat_declarations WHERE period_start=? AND period_end=? AND " + ('entity_id=?' if eid else 'entity_id IS NULL'),
+            (date_from,date_to,eid) if eid else (date_from,date_to)).fetchone()
+
+        if request.method == 'POST':
+            action=request.form.get('action') or 'prepare'
+            user=session.get('email') or session.get('user_email') or 'utilisateur'
+            if action in ('lock','file') and not all(x['ok'] for x in checks):
+                c.close(); flash("Impossible de verrouiller/déclarer : des contrôles TVA restent en anomalie.")
+                return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
+            if declaration and declaration['status']=='filed' and action not in ('reopen',):
+                c.close(); flash("Cette période est marquée déclarée. Rouvrez-la avant toute modification.")
+                return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
+            if action=='reopen':
+                if declaration:
+                    c.execute("UPDATE vat_declarations SET status='prepared',locked_at=NULL,locked_by=NULL,filed_at=NULL,filed_by=NULL,filing_reference=NULL,updated_at=? WHERE id=?",(now(),declaration['id']))
+            else:
+                status={'prepare':'prepared','lock':'locked','file':'filed'}.get(action,'prepared')
+                locked_at=now() if status in ('locked','filed') else None
+                filed_at=now() if status=='filed' else None
+                filing_reference=(request.form.get('filing_reference') or '').strip() or None
+                notes=(request.form.get('notes') or '').strip() or None
+                params=(collected,deductible,balance,entry_count,max_entry_id,now(),user,status,locked_at,user if locked_at else None,filed_at,user if filed_at else None,filing_reference,notes,now())
+                if declaration:
+                    c.execute("""UPDATE vat_declarations SET collected_amount=?,deductible_amount=?,balance_amount=?,entry_count=?,snapshot_max_entry_id=?,prepared_at=?,prepared_by=?,status=?,locked_at=?,locked_by=?,filed_at=?,filed_by=?,filing_reference=?,notes=?,updated_at=? WHERE id=?""",params+(declaration['id'],))
+                else:
+                    c.execute("""INSERT INTO vat_declarations(entity_id,period_start,period_end,collected_amount,deductible_amount,balance_amount,entry_count,snapshot_max_entry_id,prepared_at,prepared_by,status,locked_at,locked_by,filed_at,filed_by,filing_reference,notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              (eid,date_from,date_to)+params)
+            c.commit(); c.close()
+            flash("Dossier TVA mis à jour. ProfitOS prépare et trace le dossier mais ne télédéclare pas auprès de l'administration.")
+            return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
 
         sales_lines = c.execute(
-            f"""SELECT e.entry_date,e.label,l.credit FROM accounting_entry_lines l
+            f"""SELECT e.entry_date,e.label,l.credit,l.debit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
                WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}
-               ORDER BY e.entry_date DESC""",
-            (date_from, date_to) + ep,
-        ).fetchall()
+               ORDER BY e.entry_date DESC""", (date_from, date_to) + ep).fetchall()
         purchase_lines = c.execute(
-            f"""SELECT e.entry_date,e.label,l.debit FROM accounting_entry_lines l
+            f"""SELECT e.entry_date,e.label,l.debit,l.credit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
                WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}
-               ORDER BY e.entry_date DESC""",
-            (date_from, date_to) + ep,
-        ).fetchall()
+               ORDER BY e.entry_date DESC""", (date_from, date_to) + ep).fetchall()
+        stale=False
+        if declaration and declaration['status'] in ('locked','filed'):
+            stale=(max_entry_id > int(declaration['snapshot_max_entry_id'] or 0) or
+                   abs(collected-float(declaration['collected_amount'] or 0))>0.01 or
+                   abs(deductible-float(declaration['deductible_amount'] or 0))>0.01)
+        history=c.execute("SELECT * FROM vat_declarations WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC LIMIT 12", ep).fetchall()
         c.close()
         return render_template('vat_summary.html', date_from=date_from, date_to=date_to,
                                 collected=collected, deductible=deductible, balance=balance,
-                                sales_lines=sales_lines, purchase_lines=purchase_lines)
+                                sales_lines=sales_lines, purchase_lines=purchase_lines,
+                                declaration=declaration, checks=checks, stale=stale,
+                                entry_count=entry_count, history=history)
 
     @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
     @login_required

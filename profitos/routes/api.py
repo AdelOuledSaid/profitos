@@ -1,9 +1,46 @@
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
+from profitos.entities import current_entity_id
 from profitos.webhooks_outbound import validate_outbound_webhook_url, new_webhook_secret, deliver_webhook, WEBHOOK_EVENTS
 
 
 def register(app):
+    def _api_eid():
+        return getattr(g,'api_entity_id',None)
+
+    def _entity_where(prefix=''):
+        col=f"{prefix}entity_id"
+        eid=_api_eid()
+        return (f"{col}=?",(eid,)) if eid is not None else (f"{col} IS NULL",())
+
+    def _api_audit(method,path,scope,status,idempotency_key=None):
+        c=auth_cx()
+        c.execute("""INSERT INTO api_audit_log
+                     (api_key_id,organization_id,entity_id,method,path,scope_required,status_code,idempotency_key,created_at)
+                     VALUES(?,?,?,?,?,?,?,?,?)""",
+                  (getattr(g,'api_key_id',None),g.api_org_id,_api_eid(),method,path,scope,status,
+                   idempotency_key,now()))
+        c.commit(); c.close()
+
+    def _idempotency_lookup(key):
+        c=auth_cx(); ek=_api_eid() or 0
+        row=c.execute("""SELECT response_status,response_body FROM api_idempotency
+                         WHERE organization_id=? AND entity_key=? AND idempotency_key=?
+                           AND method=? AND path=?""",
+                      (g.api_org_id,ek,key,request.method,request.path)).fetchone()
+        c.close()
+        if not row: return None
+        return current_app.response_class(row['response_body'],status=row['response_status'],
+                                          mimetype='application/json')
+
+    def _idempotency_store(key,status,payload):
+        body=json.dumps(payload,ensure_ascii=False,default=str)
+        c=auth_cx(); ek=_api_eid() or 0
+        c.execute("""INSERT OR IGNORE INTO api_idempotency
+                     (organization_id,entity_key,api_key_id,idempotency_key,method,path,response_status,response_body,created_at)
+                     VALUES(?,?,?,?,?,?,?,?,?)""",
+                  (g.api_org_id,ek,getattr(g,'api_key_id',None),key,request.method,request.path,status,body,now()))
+        c.commit(); c.close()
     # ------------------------------------------------------------------
     # API publique en lecture seule, authentifiée par clé API (Bearer token).
     # Permet à un outil externe (ERP, logiciel de facturation...) de lire les
@@ -13,6 +50,7 @@ def register(app):
 
     @app.route('/api/v1/recover')
     @api_key_required
+    @api_scope_required('read')
     def api_recover():
         tc=tenant_cx_direct(g.api_org_id)
         rows=tc.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,days_overdue,status,score,kind FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC").fetchall()
@@ -21,6 +59,7 @@ def register(app):
 
     @app.route('/api/v1/save')
     @api_key_required
+    @api_scope_required('read')
     def api_save():
         tc=tenant_cx_direct(g.api_org_id)
         rows=tc.execute("SELECT id,title,value,score,details FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC").fetchall()
@@ -29,6 +68,7 @@ def register(app):
 
     @app.route('/api/v1/grow')
     @api_key_required
+    @api_scope_required('read')
     def api_grow():
         tc=tenant_cx_direct(g.api_org_id)
         rows=tc.execute("SELECT id,title,buyer,score,departments,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall()
@@ -37,6 +77,7 @@ def register(app):
 
     @app.route('/api/v1/summary')
     @api_key_required
+    @api_scope_required('read')
     def api_summary():
         tc=tenant_cx_direct(g.api_org_id)
         recover=tc.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']
@@ -74,16 +115,18 @@ def register(app):
         total = round(subtotal + vat_amount, 2)
 
         tc = tenant_cx_direct(g.api_org_id)
-        existing = tc.execute('SELECT id FROM purchase_invoices WHERE invoice_number=?', (invoice_number,)).fetchone()
+        ef, ep = _entity_where()
+        existing = tc.execute(f'SELECT id FROM purchase_invoices WHERE invoice_number=? AND {ef}',
+                              (invoice_number, *ep)).fetchone()
         if existing:
             tc.close()
             return jsonify({'error': 'duplicate_invoice_number', 'message': f"Facture {invoice_number} déjà enregistrée."}), 409
         tc.execute(
             """INSERT INTO purchase_invoices
-               (supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,notes,created_at,category,validation_status)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+               (supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,notes,created_at,category,validation_status,entity_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (supplier_name, invoice_number, payload.get('issue_date'), payload.get('due_date'),
-             subtotal, vat_amount, total, 'unpaid', 'Créée via API', now(), category, 'pending'),
+             subtotal, vat_amount, total, 'unpaid', 'Créée via API', now(), category, 'pending', _api_eid()),
         )
         tc.commit()
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -176,11 +219,11 @@ def register(app):
         tc.execute(
             """INSERT INTO outgoing_invoices
                (invoice_number,client_name,client_address,client_email,issue_date,due_date,
-                line_items,subtotal,vat_amount,total,status,created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                line_items,subtotal,vat_amount,total,status,created_at,entity_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (invoice_number, client_name, payload.get('client_address', ''), payload.get('client_email', ''),
              date.today().isoformat(), payload.get('due_date'), json.dumps(clean_lines, ensure_ascii=False),
-             subtotal, vat_amount, total, 'draft', now()),
+             subtotal, vat_amount, total, 'draft', now(), _api_eid()),
         )
         tc.commit()
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -197,6 +240,7 @@ def register(app):
 
     @app.route('/api/v1/purchase-invoices', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_list_purchase_invoices():
         tc = tenant_cx_direct(g.api_org_id)
         status = request.args.get('status')
@@ -204,10 +248,11 @@ def register(app):
             limit = min(int(request.args.get('limit', 50)), 200)
         except (TypeError, ValueError):
             limit = 50
-        query = "SELECT id,supplier_name,invoice_number,issue_date,due_date,total,status,validation_status,entity_id FROM purchase_invoices"
-        params = []
+        ef, ep = _entity_where()
+        query = f"SELECT id,supplier_name,invoice_number,issue_date,due_date,total,status,validation_status,entity_id FROM purchase_invoices WHERE {ef}"
+        params = list(ep)
         if status:
-            query += " WHERE status=?"
+            query += " AND status=?"
             params.append(status)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
@@ -217,9 +262,11 @@ def register(app):
 
     @app.route('/api/v1/purchase-invoices/<int:purchase_id>', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_get_purchase_invoice(purchase_id):
         tc = tenant_cx_direct(g.api_org_id)
-        row = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        ef, ep = _entity_where()
+        row = tc.execute(f"SELECT * FROM purchase_invoices WHERE id=? AND {ef}", (purchase_id, *ep)).fetchone()
         tc.close()
         if not row:
             return jsonify({'error': 'not_found', 'message': f"Facture fournisseur {purchase_id} introuvable."}), 404
@@ -227,30 +274,54 @@ def register(app):
 
     @app.route('/api/v1/purchase-invoices/<int:purchase_id>/mark-paid', methods=['POST'])
     @api_key_required
-    @api_write_required
+    @api_scope_required('write')
     def api_mark_purchase_paid(purchase_id):
-        from profitos.accounting import generate_purchase_payment_entry, AccountingError
-        tc = tenant_cx_direct(g.api_org_id)
-        row = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+        """Compatibilité : solde le reste dû via le ledger Pass 18, jamais par
+        simple changement de statut. Idempotency-Key empêche un double règlement."""
+        from profitos.accounting import generate_purchase_partial_payment_entry, AccountingError
+        key,err=api_require_idempotency()
+        if err: return err
+        replay=_idempotency_lookup(key)
+        if replay is not None: return replay
+        tc=tenant_cx_direct(g.api_org_id)
+        ef,ep=_entity_where()
+        row=tc.execute(f"SELECT * FROM purchase_invoices WHERE id=? AND {ef}",(purchase_id,*ep)).fetchone()
         if not row:
+            tc.close(); return jsonify({'error':'not_found'}),404
+        paid=tc.execute(f"""SELECT COALESCE(SUM(amount),0) t FROM purchase_invoice_payments
+                            WHERE purchase_invoice_id=? AND {ef}""",(purchase_id,*ep)).fetchone()['t']
+        remaining=round(max(float(row['total'] or 0)-float(paid or 0),0),2)
+        if remaining<=0:
             tc.close()
-            return jsonify({'error': 'not_found', 'message': f"Facture fournisseur {purchase_id} introuvable."}), 404
-        if row['status'] == 'paid':
-            tc.close()
-            return jsonify({'error': 'already_paid', 'message': 'Cette facture est déjà marquée payée.'}), 409
-        tc.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=?", (now(), purchase_id))
-        tc.commit()
-        updated = tc.execute("SELECT * FROM purchase_invoices WHERE id=?", (purchase_id,)).fetchone()
+            payload={'id':purchase_id,'status':'paid','remaining':0,'replayed':True}
+            _idempotency_store(key,200,payload)
+            return jsonify(payload),200
+        payment_key=f"api:{getattr(g,'api_key_id',0)}:{key}"
         try:
-            generate_purchase_payment_entry(tc, updated)
-        except AccountingError as e:
-            log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement API achat {purchase_id}: {e}")
+            cur=tc.execute("""INSERT INTO purchase_invoice_payments
+                              (entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                              VALUES(?,?,?,?,?,?,?,?)""",
+                           (_api_eid(),purchase_id,remaining,date.today().isoformat(),'api',
+                            'API mark-paid',payment_key,now()))
+            payment_id=cur.lastrowid
+            payment=tc.execute("SELECT * FROM purchase_invoice_payments WHERE id=?",(payment_id,)).fetchone()
+            generate_purchase_partial_payment_entry(tc,row,payment)
+            tc.execute(f"UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND {ef}",
+                       (now(),purchase_id,*ep))
+            tc.commit()
+        except Exception as exc:
+            tc.rollback(); tc.close()
+            if isinstance(exc,AccountingError):
+                return jsonify({'error':'accounting_failed','message':str(exc)}),409
+            raise
         tc.close()
-        log_activity('API_PURCHASE_MARKED_PAID', f"Facture fournisseur {purchase_id} marquée payée via API")
-        return jsonify({'id': purchase_id, 'status': 'paid'})
+        payload={'id':purchase_id,'status':'paid','paid_amount':remaining,'remaining':0}
+        _idempotency_store(key,200,payload); _api_audit('POST',request.path,'write',200,key)
+        return jsonify(payload),200
 
     @app.route('/api/v1/invoices', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_list_invoices():
         tc = tenant_cx_direct(g.api_org_id)
         status = request.args.get('status')
@@ -258,10 +329,11 @@ def register(app):
             limit = min(int(request.args.get('limit', 50)), 200)
         except (TypeError, ValueError):
             limit = 50
-        query = "SELECT id,invoice_number,client_name,issue_date,due_date,total,status,entity_id FROM outgoing_invoices"
-        params = []
+        ef, ep = _entity_where()
+        query = f"SELECT id,invoice_number,client_name,issue_date,due_date,total,status,entity_id FROM outgoing_invoices WHERE {ef}"
+        params = list(ep)
         if status:
-            query += " WHERE status=?"
+            query += " AND status=?"
             params.append(status)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
@@ -271,9 +343,11 @@ def register(app):
 
     @app.route('/api/v1/invoices/<int:invoice_id>', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_get_invoice(invoice_id):
         tc = tenant_cx_direct(g.api_org_id)
-        row = tc.execute("SELECT * FROM outgoing_invoices WHERE id=?", (invoice_id,)).fetchone()
+        ef, ep = _entity_where()
+        row = tc.execute(f"SELECT * FROM outgoing_invoices WHERE id=? AND {ef}", (invoice_id, *ep)).fetchone()
         tc.close()
         if not row:
             return jsonify({'error': 'not_found', 'message': f"Facture {invoice_id} introuvable."}), 404
@@ -286,10 +360,12 @@ def register(app):
 
     @app.route('/api/v1/suppliers', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_list_suppliers():
         tc = tenant_cx_direct(g.api_org_id)
         rows = tc.execute(
-            "SELECT id,name,email,phone,siret,vat_number,iban,bic FROM suppliers ORDER BY name"
+            f"SELECT id,name,email,phone,siret,vat_number,iban,bic FROM suppliers WHERE {_entity_where()[0]} ORDER BY name",
+            _entity_where()[1]
         ).fetchall()
         tc.close()
         return jsonify({'suppliers': [dict(r) for r in rows]})
@@ -308,12 +384,12 @@ def register(app):
             return jsonify({'error': 'invalid_iban', 'message': f"IBAN invalide : {payload.get('iban')!r}."}), 400
         tc = tenant_cx_direct(g.api_org_id)
         tc.execute(
-            """INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO suppliers(name,email,phone,address,siret,vat_number,notes,iban,bic,created_at,entity_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
             (name, (payload.get('email') or '').strip(), (payload.get('phone') or '').strip(),
              (payload.get('address') or '').strip(), (payload.get('siret') or '').strip(),
              (payload.get('vat_number') or '').strip(), (payload.get('notes') or '').strip(),
-             iban, (payload.get('bic') or '').upper().strip(), now()),
+             iban, (payload.get('bic') or '').upper().strip(), now(), _api_eid()),
         )
         tc.commit()
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -323,6 +399,7 @@ def register(app):
 
     @app.route('/api/v1/entities', methods=['GET'])
     @api_key_required
+    @api_scope_required('read')
     def api_list_entities():
         from profitos.entities import list_all_entities
         tc = tenant_cx_direct(g.api_org_id)
@@ -349,11 +426,20 @@ def register(app):
             action=request.form.get('action')
             if action=='create':
                 raw_key=generate_api_key()
-                scope=request.form.get('scope') if request.form.get('scope') in ('read','read_write') else 'read'
-                c.execute('INSERT INTO api_keys(organization_id,key_hash,key_prefix,created_by,created_at,scope) VALUES(?,?,?,?,?,?)',
-                    (org['id'],hash_api_key(raw_key),raw_key[:16],current_user()['email'],now(),scope))
+                requested=request.form.getlist('scopes')
+                allowed={'read','write','webhooks'}
+                scopes=sorted(set(requested)&allowed) or ['read']
+                if 'write' in scopes and 'read' not in scopes: scopes.append('read')
+                entity_raw=(request.form.get('entity_id') or '').strip()
+                entity_id=int(entity_raw) if entity_raw.isdigit() else None
+                scope_legacy='read_write' if 'write' in scopes else 'read'
+                c.execute('''INSERT INTO api_keys
+                             (organization_id,key_hash,key_prefix,created_by,created_at,scope,scopes,entity_id)
+                             VALUES(?,?,?,?,?,?,?,?)''',
+                    (org['id'],hash_api_key(raw_key),raw_key[:16],current_user()['email'],now(),
+                     scope_legacy,','.join(sorted(scopes)),entity_id))
                 c.commit(); c.close()
-                log_activity('API_KEY_CREATED',f'Nouvelle clé API créée (portée : {scope})')
+                log_activity('API_KEY_CREATED',f"Nouvelle clé API créée (scopes : {','.join(sorted(scopes))})")
                 flash('Clé créée — copie-la maintenant, elle ne sera plus jamais affichée en clair.')
                 keys=_load_api_keys(org['id'])
                 return render_template('api_keys.html',keys=keys,new_key=raw_key)
@@ -392,15 +478,18 @@ def register(app):
             else:
                 secret = new_webhook_secret()
                 c.execute(
-                    'INSERT INTO webhook_subscriptions(url,secret,events,is_active,created_at,created_by) VALUES(?,?,?,1,?,?)',
-                    (url, secret, ','.join(events), now(), current_user()['email']),
+                    'INSERT INTO webhook_subscriptions(url,secret,events,is_active,created_at,created_by,entity_id) VALUES(?,?,?,1,?,?,?)',
+                    (url, secret, ','.join(events), now(), current_user()['email'], current_entity_id()),
                 )
                 c.commit()
                 log_activity('WEBHOOK_CREATED', f"Webhook sortant créé vers {url}")
                 flash(f"Webhook créé. Secret de signature (copie-le maintenant, affiché une seule fois) : {secret}")
                 return redirect(url_for('outbound_webhooks'))
 
-        subs = c.execute('SELECT * FROM webhook_subscriptions ORDER BY id DESC').fetchall()
+        eid=current_entity_id()
+        wef='entity_id=?' if eid else 'entity_id IS NULL'
+        wep=(eid,) if eid else ()
+        subs = c.execute(f'SELECT * FROM webhook_subscriptions WHERE {wef} ORDER BY id DESC',wep).fetchall()
         recent_deliveries = {}
         for s in subs:
             recent_deliveries[s['id']] = c.execute(
@@ -416,8 +505,11 @@ def register(app):
     @require_area('settings')
     def outbound_webhook_delete(sub_id):
         c = cx()
-        c.execute('DELETE FROM webhook_subscriptions WHERE id=?', (sub_id,))
-        c.execute('DELETE FROM webhook_deliveries WHERE subscription_id=?', (sub_id,))
+        eid=current_entity_id(); wef='entity_id=?' if eid else 'entity_id IS NULL'; wep=(sub_id,eid) if eid else (sub_id,)
+        owned=c.execute(f'SELECT id FROM webhook_subscriptions WHERE id=? AND {wef}',wep).fetchone()
+        if not owned: c.close(); abort(404)
+        c.execute('DELETE FROM webhook_subscriptions WHERE id=?',(sub_id,))
+        c.execute('DELETE FROM webhook_deliveries WHERE subscription_id=?',(sub_id,))
         c.commit(); c.close()
         flash("Webhook supprimé.")
         return redirect(url_for('outbound_webhooks'))
@@ -427,13 +519,14 @@ def register(app):
     @require_area('settings')
     def outbound_webhook_test(sub_id):
         c = cx()
-        sub = c.execute('SELECT * FROM webhook_subscriptions WHERE id=?', (sub_id,)).fetchone()
+        eid=current_entity_id(); wef='entity_id=?' if eid else 'entity_id IS NULL'; wep=(sub_id,eid) if eid else (sub_id,)
+        sub = c.execute(f'SELECT * FROM webhook_subscriptions WHERE id=? AND {wef}',wep).fetchone()
         if not sub:
             c.close(); abort(404)
         events = (sub['events'] or '').split(',')
         test_event = events[0] if events else 'invoice.sent'
         deliver_webhook(c, test_event, {'test': True, 'message': 'Ceci est un envoi de test depuis ProfitOS.'},
-                         only_subscription_id=sub_id)
+                         only_subscription_id=sub_id,entity_id=eid)
         c.close()
         flash(f"Test envoyé ({test_event}) — regarde le journal des livraisons ci-dessous pour le résultat.")
         return redirect(url_for('outbound_webhooks'))

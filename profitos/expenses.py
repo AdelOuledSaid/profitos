@@ -86,10 +86,10 @@ def compute_mileage_allowance(conn, fiscal_power, km):
     return round(amount, 2)
 
 
-def _entry_already_exists(conn, source_type, source_id):
+def _entry_already_exists(conn, source_type, source_id, entity_id=None):
     row = conn.execute(
-        'SELECT id FROM accounting_entries WHERE source_type=? AND source_id=? LIMIT 1',
-        (source_type, source_id),
+        'SELECT id FROM accounting_entries WHERE source_type=? AND source_id=? AND entity_id IS ? LIMIT 1',
+        (source_type, source_id, entity_id),
     ).fetchone()
     return row is not None
 
@@ -100,7 +100,7 @@ def generate_expense_report_entry(conn, report):
     catégorie des lignes de la note), au crédit du compte 421000 (Personnel
     - rémunérations dues) pour le total — l'entreprise doit cette somme à
     l'employé tant qu'elle n'est pas remboursée. Idempotent."""
-    if _entry_already_exists(conn, 'expense_report', report['id']):
+    if _entry_already_exists(conn, 'expense_report', report['id'], report['entity_id']):
         return None
     lines = conn.execute(
         'SELECT category,SUM(amount) as total FROM expense_report_lines WHERE report_id=? GROUP BY category',
@@ -119,7 +119,7 @@ def generate_expense_report_entry(conn, report):
     return create_entry(
         conn, 'OD', date.today(),
         f"Note de frais {report['employee_email']} — {report['period_label'] or ''}".strip(),
-        entry_lines, source_type='expense_report', source_id=report['id'],
+        entry_lines, source_type='expense_report', source_id=report['id'], entity_id=report['entity_id'],
     )
 
 
@@ -128,7 +128,7 @@ def generate_expense_reimbursement_entry(conn, report):
     frais est marquée remboursée : Personnel (421) au débit (la dette envers
     l'employé est soldée), Banque (512) au crédit. Idempotent."""
     source_type = 'expense_report_reimbursement'
-    if _entry_already_exists(conn, source_type, report['id']):
+    if _entry_already_exists(conn, source_type, report['id'], report['entity_id']):
         return None
     total = conn.execute(
         'SELECT SUM(amount) t FROM expense_report_lines WHERE report_id=?', (report['id'],)
@@ -140,5 +140,5 @@ def generate_expense_reimbursement_entry(conn, report):
             {'account_code': '421000', 'debit': total, 'auxiliary_name': report['employee_email']},
             {'account_code': '512000', 'credit': total},
         ],
-        source_type=source_type, source_id=report['id'],
+        source_type=source_type, source_id=report['id'], entity_id=report['entity_id'],
     )

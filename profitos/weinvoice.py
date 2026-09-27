@@ -615,7 +615,7 @@ def _tenant_connection_for_remote_invoice(remote_id):
             org_id=int(db_path.stem.split('_',1)[1])
             from profitos import db as _dbmod
             conn=_dbmod.connect_tenant(org_id, tenant_db(org_id))
-            row=conn.execute('SELECT id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',(str(remote_id),)).fetchone()
+            row=conn.execute('SELECT id,entity_id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',(str(remote_id),)).fetchone()
             if row: return conn,row
             conn.close()
         except Exception:
@@ -643,7 +643,11 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
         cdv=data.get('cdvCode')
-        conn.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=?',(str(status),str(cdv) if cdv is not None else None,now(),row['id']))
+        conn.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',(str(status),str(cdv) if cdv is not None else None,now(),row['id'],row['entity_id']))
+        conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
+                     VALUES(?,?,'weinvoice','webhook_status',?,?,?,?,?,?,?)""",
+                     (row['entity_id'],row['id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
+                      event_id or f'webhook-{remote_id}-{status}-{cdv}',event_name,now()))
         if event_id:
             conn.execute('INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',(event_id,str(webhook_id or ''),event_name,now()))
         conn.commit()

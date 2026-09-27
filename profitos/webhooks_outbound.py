@@ -72,7 +72,7 @@ def _sign(secret, timestamp, body):
     return hmac.new(secret.encode('utf-8'), message, hashlib.sha256).hexdigest()
 
 
-def deliver_webhook(conn, event_type, data, only_subscription_id=None):
+def deliver_webhook(conn, event_type, data, only_subscription_id=None, entity_id=None):
     """Envoie l'événement à tous les abonnements actifs de ce type sur cette
     organisation (conn = connexion tenant déjà ouverte) — ou à un seul
     abonnement précis si only_subscription_id est fourni (utilisé par le
@@ -84,16 +84,30 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None):
     à l'appelant (un webhook sortant qui échoue ne doit jamais casser l'action
     métier qui l'a déclenché)."""
     if only_subscription_id is not None:
-        subs = conn.execute(
-            "SELECT * FROM webhook_subscriptions WHERE is_active=1 AND id=?", (only_subscription_id,)
-        ).fetchall()
+        if entity_id is None:
+            subs = conn.execute(
+                "SELECT * FROM webhook_subscriptions WHERE is_active=1 AND id=? AND entity_id IS NULL",
+                (only_subscription_id,)
+            ).fetchall()
+        else:
+            subs = conn.execute(
+                "SELECT * FROM webhook_subscriptions WHERE is_active=1 AND id=? AND entity_id=?",
+                (only_subscription_id,entity_id)
+            ).fetchall()
     else:
-        subs = conn.execute(
-            "SELECT * FROM webhook_subscriptions WHERE is_active=1"
-        ).fetchall()
+        if entity_id is None:
+            subs = conn.execute(
+                "SELECT * FROM webhook_subscriptions WHERE is_active=1 AND entity_id IS NULL"
+            ).fetchall()
+        else:
+            subs = conn.execute(
+                "SELECT * FROM webhook_subscriptions WHERE is_active=1 AND entity_id=?",(entity_id,)
+            ).fetchall()
     if not subs:
         return
-    body = json.dumps({'event': event_type, 'data': data, 'created_at': datetime.utcnow().isoformat()},
+    event_id='evt_'+secrets.token_hex(12)
+    body = json.dumps({'id':event_id,'event': event_type, 'data': data,
+                       'created_at': datetime.utcnow().isoformat()},
                        ensure_ascii=False, default=str)
     timestamp = str(int(datetime.utcnow().timestamp()))
     for sub in subs:
@@ -110,6 +124,7 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None):
                 'Content-Type': 'application/json',
                 'X-ProfitOS-Signature': f"t={timestamp},v1={signature}",
                 'X-ProfitOS-Event': event_type,
+                'X-ProfitOS-Event-Id': event_id,
             }
             try:
                 resp = requests.post(

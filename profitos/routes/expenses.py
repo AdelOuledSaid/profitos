@@ -15,6 +15,8 @@ from profitos.expenses import (
     generate_expense_report_entry, generate_expense_reimbursement_entry,
 )
 
+from profitos.entities import current_entity_id
+
 _RECEIPT_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -132,10 +134,10 @@ def register(app):
         user = current_user()
         can_see_all = current_role() in ('OWNER', 'ADMIN', 'COMPTABLE')
         if can_see_all:
-            reports = c.execute('SELECT * FROM expense_reports ORDER BY id DESC').fetchall()
+            reports = c.execute('SELECT * FROM expense_reports WHERE entity_id IS ? ORDER BY id DESC',(current_entity_id(),)).fetchall()
         else:
             reports = c.execute(
-                'SELECT * FROM expense_reports WHERE employee_email=? ORDER BY id DESC', (user['email'],)
+                'SELECT * FROM expense_reports WHERE employee_email=? AND entity_id IS ? ORDER BY id DESC', (user['email'],current_entity_id())
             ).fetchall()
         totals = {}
         for r in reports:
@@ -153,8 +155,8 @@ def register(app):
         period_label = (request.form.get('period_label') or '').strip()
         c = cx()
         c.execute(
-            "INSERT INTO expense_reports(employee_email,period_label,status,created_at) VALUES(?,?,'draft',?)",
-            (user['email'], period_label, now()),
+            "INSERT INTO expense_reports(employee_email,period_label,status,entity_id,created_at) VALUES(?,?,'draft',?,?)",
+            (user['email'], period_label, current_entity_id(), now()),
         )
         c.commit()
         new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -167,7 +169,7 @@ def register(app):
     @require_area('invoicing')
     def expense_report_detail(report_id):
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
         user = current_user()
@@ -189,9 +191,11 @@ def register(app):
     @require_area('invoicing')
     def expense_report_add_line(report_id):
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
+        if report['employee_email'] != current_user()['email']:
+            c.close(); abort(403)
         if report['status'] != 'draft':
             c.close()
             flash("On ne peut ajouter une ligne qu'à une note de frais en brouillon.")
@@ -296,7 +300,9 @@ def register(app):
     @require_area('invoicing')
     def expense_report_delete_line(report_id, line_id):
         c = cx()
-        report = c.execute('SELECT status FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT status,employee_email FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
+        if report and report['employee_email'] != current_user()['email']:
+            c.close(); abort(403)
         if report and report['status'] == 'draft':
             c.execute('DELETE FROM expense_report_lines WHERE id=? AND report_id=?', (line_id, report_id))
             c.commit()
@@ -309,14 +315,16 @@ def register(app):
     @require_area('invoicing')
     def expense_report_submit(report_id):
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
+        if report['employee_email'] != current_user()['email']:
+            c.close(); abort(403)
         n_lines = c.execute('SELECT COUNT(*) n FROM expense_report_lines WHERE report_id=?', (report_id,)).fetchone()['n']
         if n_lines == 0:
             flash("Ajoute au moins une ligne avant de soumettre.")
         elif report['status'] == 'draft':
-            c.execute("UPDATE expense_reports SET status='submitted',submitted_at=? WHERE id=?", (now(), report_id))
+            c.execute("UPDATE expense_reports SET status='submitted',submitted_at=? WHERE id=? AND entity_id IS ?", (now(), report_id,current_entity_id()))
             c.commit()
             log_activity('EXPENSE_REPORT_SUBMITTED', f"Note de frais #{report_id} soumise")
             flash("Note de frais soumise pour validation.")
@@ -332,7 +340,7 @@ def register(app):
             flash("Seul un propriétaire, administrateur ou comptable peut valider une note de frais.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
         if report['status'] != 'submitted':
@@ -340,19 +348,22 @@ def register(app):
             flash("Cette note de frais n'est pas en attente de validation.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
         validator = current_user()
-        c.execute(
-            "UPDATE expense_reports SET status='approved',approved_by=?,approved_at=?,rejection_reason=NULL WHERE id=?",
-            (validator['email'], now(), report_id),
-        )
-        c.commit()
         try:
-            report_updated = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+            c.execute(
+                "UPDATE expense_reports SET status='approved',approved_by=?,approved_at=?,rejection_reason=NULL WHERE id=? AND entity_id IS ?",
+                (validator['email'], now(), report_id,current_entity_id()),
+            )
+            report_updated = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
             generate_expense_report_entry(c, report_updated)
+            c.commit()
         except AccountingError as e:
+            c.rollback(); c.close()
             log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"note de frais {report_id}: {e}")
+            flash(f"Validation annulée : écriture comptable impossible ({e}).")
+            return redirect(url_for('expense_report_detail', report_id=report_id))
         c.close()
         log_activity('EXPENSE_REPORT_APPROVED', f"Note de frais #{report_id} validée par {validator['email']}")
-        flash("Note de frais validée.")
+        flash("Note de frais validée et comptabilisée.")
         return redirect(url_for('expense_report_detail', report_id=report_id))
 
     @app.route('/notes-de-frais/<int:report_id>/rejeter', methods=['POST'])
@@ -364,7 +375,7 @@ def register(app):
             flash("Seul un propriétaire, administrateur ou comptable peut rejeter une note de frais.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
         if report['status'] != 'submitted':
@@ -374,8 +385,8 @@ def register(app):
         validator = current_user()
         reason = (request.form.get('rejection_reason') or '').strip()
         c.execute(
-            "UPDATE expense_reports SET status='rejected',approved_by=?,approved_at=?,rejection_reason=? WHERE id=?",
-            (validator['email'], now(), reason or None, report_id),
+            "UPDATE expense_reports SET status='rejected',approved_by=?,approved_at=?,rejection_reason=? WHERE id=? AND entity_id IS ?",
+            (validator['email'], now(), reason or None, report_id,current_entity_id()),
         )
         c.commit(); c.close()
         log_activity('EXPENSE_REPORT_REJECTED', f"Note de frais #{report_id} rejetée par {validator['email']}")
@@ -391,22 +402,25 @@ def register(app):
             flash("Seul un propriétaire, administrateur ou comptable peut marquer un remboursement.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
         c = cx()
-        report = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+        report = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
         if not report:
             c.close(); abort(404)
         if report['status'] != 'approved':
             c.close()
             flash("Seule une note de frais validée peut être marquée remboursée.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
-        c.execute("UPDATE expense_reports SET status='reimbursed',reimbursed_at=? WHERE id=?", (now(), report_id))
-        c.commit()
         try:
-            report_updated = c.execute('SELECT * FROM expense_reports WHERE id=?', (report_id,)).fetchone()
+            c.execute("UPDATE expense_reports SET status='reimbursed',reimbursed_at=? WHERE id=? AND entity_id IS ?", (now(), report_id,current_entity_id()))
+            report_updated = c.execute('SELECT * FROM expense_reports WHERE id=? AND entity_id IS ?', (report_id,current_entity_id())).fetchone()
             generate_expense_reimbursement_entry(c, report_updated)
+            c.commit()
         except AccountingError as e:
+            c.rollback(); c.close()
             log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"remboursement note {report_id}: {e}")
+            flash(f"Remboursement annulé : écriture comptable impossible ({e}).")
+            return redirect(url_for('expense_report_detail', report_id=report_id))
         c.close()
-        flash("Note de frais marquée remboursée.")
+        flash("Note de frais remboursée et comptabilisée.")
         return redirect(url_for('expense_report_detail', report_id=report_id))
 
     @app.route('/notes-de-frais/bareme', methods=['GET', 'POST'])

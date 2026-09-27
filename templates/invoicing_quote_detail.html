@@ -27,7 +27,13 @@
     <form method="post" action="{{ url_for('invoicing_quote_refuse',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Refuser</button></form>
     {% endif %}
     {% if q.status=='accepted' %}
-    <form method="post" action="{{ url_for('invoicing_quote_convert',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Convertir en facture</button></form>
+    <form method="post" action="{{ url_for('invoicing_quote_deposit',quote_id=q.id) }}" style="display:flex;gap:6px;align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input name="deposit_percent" type="number" min="0.01" max="100" step="0.01" value="30" style="width:78px;">
+      <button type="submit" class="purchase-primary-btn secondary">Créer acompte %</button>
+    </form>
+    <form method="post" action="{{ url_for('invoicing_quote_final_invoice',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Créer facture finale</button></form>
+    <form method="post" action="{{ url_for('invoicing_quote_convert',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Facture standard</button></form>
     {% endif %}
     <span class="purchase-status">{{ status_label }}</span>
   </div>

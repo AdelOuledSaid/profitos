@@ -11,6 +11,7 @@
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
     <div>
       <h1 class="purchase-title" style="margin-bottom:6px;">{{ inv.invoice_number }}</h1>
+      {% if inv.invoice_kind=='deposit' %}<span class="purchase-status">Facture d’acompte{% if inv.deposit_percent %} · {{ inv.deposit_percent|fr_number(2) }}%{% endif %}</span>{% elif inv.invoice_kind=='final' %}<span class="purchase-status">Facture finale · acomptes déduits {{ (inv.deposit_applied_subtotal + inv.deposit_applied_vat)|fr_number(2) }} €</span>{% endif %}
       <p class="purchase-subtitle" style="margin:0;">{{ inv.client_name }} · émise le {{ inv.issue_date|fr_date }}{% if inv.due_date %} · échéance {{ inv.due_date|fr_date }}{% endif %}</p>
     </div>
     <div class="heroScore">{{ inv.total|fr_number }} €<span>TTC</span></div>
@@ -29,16 +30,37 @@
     {% if inv.status=='draft' %}
     <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Émettre et envoyer</button></form>
     <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Annuler le brouillon</button></form>
-    {% elif inv.status=='sent' %}
+    {% elif inv.status in ('sent','partially_paid') %}
     <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Renvoyer par email</button></form>
     {% if display_status=='overdue' %}
     <form method="post" action="{{ url_for('invoicing_remind',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Relancer le client</button></form>
     {% endif %}
     <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Marquer comme payée</button></form>
     {% endif %}
-    <span class="purchase-status {{ 'paid' if display_status=='paid' else ('overdue' if display_status=='overdue' else '') }}">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
-    {% if inv.status in ('sent','paid') %}<span class="purchase-muted">Facture émise — contenu verrouillé.</span>{% endif %}
+    <span class="purchase-status {{ 'paid' if display_status=='paid' else ('overdue' if display_status=='overdue' else '') }}">{{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','partially_paid':'Partiellement payée','paid':'Payée','cancelled':'Annulée'}.get(display_status, display_status) }}</span>
+    {% if inv.status in ('sent','partially_paid','paid') %}<span class="purchase-muted">Facture émise — contenu verrouillé.</span>{% endif %}
   </div>
+
+  {% if inv.status in ('sent','partially_paid','paid') %}
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <div class="purchase-panel-head"><h2>Règlements</h2></div>
+    <div class="purchase-total-line"><span>Déjà encaissé : <strong>{{ paid_total|fr_number(2) }} €</strong></span><span>Reste à payer : <strong>{{ balance_due|fr_number(2) }} €</strong></span></div>
+    {% if inv.status in ('sent','partially_paid') and balance_due > 0 %}
+    <form method="post" action="{{ url_for('invoicing_add_payment',invoice_id=inv.id) }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Montant (€)<br><input name="amount" type="number" min="0.01" max="{{ balance_due }}" step="0.01" value="{{ balance_due }}" required></label>
+      <label>Date<br><input name="payment_date" type="date" required></label>
+      <label>Référence<br><input name="reference" maxlength="120" placeholder="Virement, chèque…"></label>
+      <button type="submit" class="purchase-primary-btn primary">Enregistrer le règlement</button>
+    </form>
+    {% endif %}
+    {% if payments %}
+    <div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Référence</th></tr></thead><tbody>
+      {% for p in payments %}<tr><td>{{ p.payment_date|fr_date }}</td><td>{{ p.amount|fr_number(2) }} €</td><td>{{ p.payment_method }}</td><td>{{ p.reference or '—' }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% endif %}
+  </section>
+  {% endif %}
 
   {% if reminders %}
   <section class="purchase-panel">
@@ -110,6 +132,13 @@
     </form>
     {% endif %}
     {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
+    {% if einvoice_events %}
+    <details style="margin:10px 0 14px;"><summary style="cursor:pointer;font-weight:700;">Historique de transmission ({{ einvoice_events|length }})</summary>
+      <div class="purchase-table-wrap" style="margin-top:8px;"><table><thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th></tr></thead><tbody>
+      {% for ev in einvoice_events %}<tr><td>{{ ev.occurred_at|fr_date(true) }}</td><td>{{ ev.event_type }}</td><td>{{ ev.status or '—' }}</td><td>{{ ev.regulatory_code or '—' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </details>
+    {% endif %}
     {% endif %}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;margin-top:10px;">
       {% for check in mention_checks %}
@@ -128,6 +157,6 @@
     </div>
   </section>
 
-  <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. Ce document n'est pas émis via une Plateforme Agréée DGFiP au sens de la réforme de facturation électronique (obligatoire à partir du 1er septembre 2026).</p>
+  <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. La conformité réglementaire de l'échange dépend de sa transmission effective par une plateforme agréée et du statut retourné par celle-ci.</p>
 </div>
 {% endblock %}

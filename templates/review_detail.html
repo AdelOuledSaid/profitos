@@ -7,8 +7,41 @@
     <h1 class="purchase-title">{{ review.period_label }}</h1>
     <p class="purchase-subtitle">{{ done }} / {{ total }} points validés{% if review.status=='completed' %} · terminée le {{ review.completed_at|fr_date(true) }}{% endif %}</p>
   </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accountant_collaboration', review_id=review.id) }}">Collaboration cabinet</a>
   <a class="purchase-nav-btn" href="{{ url_for('reviews_list') }}">← Révisions</a>
 </div>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+    <div>
+      <div class="purchase-eyebrow">DIAGNOSTIC AUTOMATIQUE</div>
+      {% if diag_run %}
+        <div style="margin-top:6px;color:#fff;"><strong>{{ diag_run.blocker_count }}</strong> blocage(s) · <strong>{{ diag_run.warning_count }}</strong> alerte(s)</div>
+        <div class="purchase-muted" style="font-size:12px;">Dernier contrôle : {{ diag_run.run_at|fr_date(true) }} · {{ diag_run.entry_count }} écriture(s) analysée(s)</div>
+      {% else %}
+        <div class="purchase-muted" style="margin-top:6px;">Aucun diagnostic exécuté pour cette révision.</div>
+      {% endif %}
+    </div>
+    {% if review.status!='completed' %}
+    <form method="post" action="{{ url_for('review_diagnostic_run',review_id=review.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="purchase-nav-btn">Actualiser le diagnostic</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if diag_issues %}
+    <div style="margin-top:14px;">
+    {% for d in diag_issues %}
+      <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
+        <strong>{{ '⛔ Blocage' if d.severity=='blocker' else '⚠ Alerte' }} — {{ d.label }}</strong>
+        <div class="purchase-muted" style="font-size:12px;">{{ d.item_count }} élément(s){% if d.amount %} · montant indicatif {{ '%.2f'|format(d.amount) }} €{% endif %}</div>
+      </div>
+    {% endfor %}
+    </div>
+  {% elif diag_run %}
+    <div style="margin-top:12px;">✓ Aucun écart détecté par les contrôles automatiques.</div>
+  {% endif %}
+</section>
 
 <section class="purchase-panel" style="margin-bottom:20px;">
   {% for i in items %}

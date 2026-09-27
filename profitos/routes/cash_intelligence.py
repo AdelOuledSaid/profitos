@@ -73,141 +73,96 @@ def _simulate_curve(cash, daily_burn, receivables, scheduled_outflows=None, mode
 
 
 def build_cash_intelligence():
+    """Prévision 90 j fondée sur les soldes réellement ouverts de l'entité active."""
     c=cx()
     try:
         from profitos.entities import current_entity_id
         eid=current_entity_id()
-        ef='entity_id=?' if eid else 'entity_id IS NULL'
-        ep=(eid,) if eid else ()
+        ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
         settings=_cash_settings(c)
-        invoices=c.execute(
-            "SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,"
-            "days_overdue,score,due_date FROM invoices "
-            f"WHERE LOWER(COALESCE(status,''))!='paid' AND MAX(amount-paid_amount,0)>0 AND {ef} "
-            "ORDER BY outstanding DESC",
-            ep,
-        ).fetchall()
-        expenses=c.execute(
-            f"SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL AND {ef} ORDER BY expense_date DESC",
-            ep,
-        ).fetchall()
-    finally:
-        c.close()
-
-    today=date.today()
-    cash=None if settings['cash_balance'] is None else _safe_float(settings['cash_balance'])
-
-    # Dépense quotidienne observée : moyenne des dépenses passées des 90 derniers jours.
-    # Les dépenses datées dans le futur (URSSAF, TVA, impôts, factures à échéance...)
-    # sont traitées comme sorties planifiées et ne sont donc pas noyées dans le burn moyen.
-    recent=[]
-    scheduled_outflows=[]
+        sales=c.execute(
+            "SELECT oi.*,COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p WHERE p.invoice_id=oi.id AND p.entity_id IS oi.entity_id),0) paid_total "
+            "FROM outgoing_invoices oi WHERE oi.entity_id IS ? AND oi.status IN ('sent','partially_paid') ORDER BY oi.due_date,oi.id",(eid,)).fetchall()
+        purchases=c.execute(
+            "SELECT pi.*,COALESCE((SELECT SUM(p.amount) FROM purchase_invoice_payments p WHERE p.purchase_invoice_id=pi.id AND p.entity_id IS pi.entity_id),0) paid_total "
+            "FROM purchase_invoices pi WHERE pi.entity_id IS ? AND COALESCE(pi.status,'unpaid')!='paid' ORDER BY pi.due_date,pi.id",(eid,)).fetchall()
+        expenses=c.execute(f"SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL AND {ef} ORDER BY expense_date DESC",ep).fetchall()
+    finally: c.close()
+    today=date.today(); cash=None if settings['cash_balance'] is None else _safe_float(settings['cash_balance'])
+    recent=[]; scheduled_outflows=[]; supplier_payables=[]
+    # Fournisseurs : le solde réel restant dû prime sur les dépenses futures importées.
+    purchase_signatures=set()
+    for inv in purchases:
+        amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total']),2))
+        if amount<=.005: continue
+        due=_iso_date(inv['due_date']) or _iso_date(inv['issue_date']) or today
+        day=max(0,(due-today).days)
+        item={'date':due.isoformat(),'day':min(day,90),'amount':amount,'vendor':inv['supplier_name'],
+              'description':f"Facture {inv['invoice_number']}",'category':'facture fournisseur','source':'purchase_invoice','id':inv['id']}
+        supplier_payables.append(item)
+        if day<=90: scheduled_outflows.append(item)
+        purchase_signatures.add(((inv['supplier_name'] or '').strip().lower(),round(amount,2),due.isoformat()))
     for e in expenses:
-        d=_iso_date(e['expense_date'])
-        amount=_safe_float(e['amount'])
-        if not d or amount<=0:
-            continue
+        d=_iso_date(e['expense_date']); amount=_safe_float(e['amount'])
+        if not d or amount<=0: continue
         delta=(d-today).days
-        if -90 <= delta <= 0:
-            recent.append(amount)
-        elif 1 <= delta <= 90:
-            scheduled_outflows.append({
-                'date':d.isoformat(),'day':delta,'amount':round(amount,2),
-                'vendor':e['vendor'],'description':e['description'],'category':e['category'],
-            })
-    observed_90=sum(recent)
-    daily_burn=observed_90/90.0 if recent else 0.0
-    monthly_burn=daily_burn*30.0
+        if -90<=delta<=0: recent.append(amount)
+        elif 1<=delta<=90:
+            sig=((e['vendor'] or '').strip().lower(),round(amount,2),d.isoformat())
+            if sig in purchase_signatures: continue
+            scheduled_outflows.append({'date':d.isoformat(),'day':delta,'amount':round(amount,2),'vendor':e['vendor'],
+                'description':e['description'],'category':e['category'],'source':'expense'})
+    observed_90=sum(recent); daily_burn=observed_90/90.0 if recent else 0.0; monthly_burn=daily_burn*30.0
     planned_outflows_90=round(sum(x['amount'] for x in scheduled_outflows),2)
-
     receivables=[]
-    for inv in invoices:
-        amount=_safe_float(inv['outstanding'])
-        confidence=_confidence(inv['score'])/100.0
-        overdue=max(0,int(inv['days_overdue'] or 0))
-        # Horizon prudent et explicable, identique à la logique RECOVER existante.
-        delay=21 if overdue<=30 else (45 if overdue<=60 else 75)
-        expected_date=today+timedelta(days=delay)
-        receivables.append({
-            'id':inv['id'],'invoice_number':inv['invoice_number'],'customer':inv['customer'],
-            'amount':round(amount,2),'confidence':round(confidence*100),
-            'expected_amount':round(amount*confidence,2),'expected_date':expected_date.isoformat(),
-            'days_overdue':overdue,
-        })
-
+    for inv in sales:
+        amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total']),2))
+        if amount<=.005: continue
+        due=_iso_date(inv['due_date']) or _iso_date(inv['issue_date']) or today
+        overdue=max(0,(today-due).days)
+        # Facture commerciale émise : 100% du solde est connu; seul le timing varie selon le scénario.
+        expected=due if due>=today else today+timedelta(days=7 if overdue<=30 else 21 if overdue<=60 else 45)
+        receivables.append({'id':inv['id'],'invoice_number':inv['invoice_number'],'customer':inv['client_name'],
+            'amount':amount,'confidence':100,'expected_amount':amount,'expected_date':expected.isoformat(),
+            'days_overdue':overdue,'source':'outgoing_invoice'})
+    receivables.sort(key=lambda r:r['amount'],reverse=True)
     horizons={30:0.0,60:0.0,90:0.0}
     if cash is not None:
         for h in horizons:
-            inflow=sum(r['expected_amount'] for r in receivables if (_iso_date(r['expected_date'])-today).days<=h)
+            inflow=sum(r['expected_amount'] for r in receivables if max(0,(_iso_date(r['expected_date'])-today).days)<=h)
             planned=sum(x['amount'] for x in scheduled_outflows if x['day']<=h)
-            horizons[h]=round(cash + inflow - daily_burn*h - planned,2)
-
+            horizons[h]=round(cash+inflow-daily_burn*h-planned,2)
     min_cash=None; min_day=None
     if cash is not None:
-        running=cash
-        events={}
-        outflow_events={}
+        running=cash; events={}; outs={}
         for r in receivables:
-            day=(_iso_date(r['expected_date'])-today).days
-            if 1<=day<=90: events[day]=events.get(day,0.0)+r['expected_amount']
+            day=max(1,min(90,(_iso_date(r['expected_date'])-today).days)); events[day]=events.get(day,0)+r['expected_amount']
         for x in scheduled_outflows:
-            outflow_events[x['day']]=outflow_events.get(x['day'],0.0)+x['amount']
+            day=max(1,min(90,x['day'])); outs[day]=outs.get(day,0)+x['amount']
         min_cash=running; min_day=0
         for day in range(1,91):
-            running-=daily_burn
-            running-=outflow_events.get(day,0.0)
-            running+=events.get(day,0.0)
-            if running<min_cash:
-                min_cash=running; min_day=day
+            running-=daily_burn+outs.get(day,0); running+=events.get(day,0)
+            if running<min_cash: min_cash=running; min_day=day
         min_cash=round(min_cash,2)
-
-    top=receivables[0] if receivables else None
-    scenarios=[]
+    top=receivables[0] if receivables else None; scenarios=[]
     if cash is not None and top:
         for delay in (7,30,60):
-            # Scénario : la facture principale est payée intégralement à la date testée;
-            # les autres créances restent pondérées par leur confiance.
-            running=cash; minimum=cash
-            other_events={}
-            for r in receivables[1:]:
-                d=(_iso_date(r['expected_date'])-today).days
-                if 1<=d<=90: other_events[d]=other_events.get(d,0.0)+r['expected_amount']
-            outflow_events={}
-            for x in scheduled_outflows:
-                outflow_events[x['day']]=outflow_events.get(x['day'],0.0)+x['amount']
-            for day in range(1,91):
-                running-=daily_burn
-                running-=outflow_events.get(day,0.0)
-                running+=other_events.get(day,0.0)
-                if day==delay: running+=top['amount']
-                minimum=min(minimum,running)
-            scenarios.append({'delay':delay,'minimum':round(minimum,2),'end_90':round(running,2)})
-
+            curve=_simulate_curve(cash,daily_burn,receivables,scheduled_outflows=scheduled_outflows,mode='probable',top_delay=delay)
+            scenarios.append({'delay':delay,'minimum':curve['minimum'],'end_90':curve['end_90']})
     curves=[]
-    selected_delay=None
     if cash is not None:
         for mode in ('prudent','probable','optimiste'):
             curves.append(_simulate_curve(cash,daily_burn,receivables,scheduled_outflows=scheduled_outflows,mode=mode))
-
     risk_day=(today+timedelta(days=min_day)).isoformat() if min_cash is not None and min_cash<0 else None
-    if cash is None:
-        alert_level='INCOMPLET'; alert='Renseignez le solde bancaire actuel pour activer la prévision.'
-    elif min_cash is not None and min_cash<0:
-        alert_level='ALERTE'; alert=f"Tension de trésorerie projetée autour du {risk_day}."
-    elif horizons[30] < monthly_burn*0.5:
-        alert_level='VIGILANCE'; alert='Marge de sécurité de trésorerie faible à 30 jours.'
-    else:
-        alert_level='STABLE'; alert='Aucune tension détectée sur les données actuellement connues.'
-
-    return {
-        'cash_balance':cash,'cash_as_of':settings['cash_as_of'],'monthly_burn':round(monthly_burn,2),
-        'observed_90':round(observed_90,2),'expense_rows':len(recent),'horizons':horizons,
-        'scheduled_outflows':scheduled_outflows,'planned_outflows_90':planned_outflows_90,
-        'receivables':receivables,'top_receivable':top,'scenarios':scenarios,
-        'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,
-        'alert_level':alert_level,'alert':alert,'curves':curves,
-        'method_note':'Prévision calculée à partir du solde saisi, des créances RECOVER pondérées par leur score, de la dépense quotidienne observée sur les 90 derniers jours et des dépenses/charges futures importées (URSSAF, TVA, impôts, factures, etc.).',
-    }
+    if cash is None: alert_level='INCOMPLET'; alert='Renseignez le solde bancaire actuel pour activer la prévision.'
+    elif min_cash is not None and min_cash<0: alert_level='ALERTE'; alert=f"Tension de trésorerie projetée autour du {risk_day}."
+    elif horizons[30] < max(monthly_burn*.5,1000): alert_level='VIGILANCE'; alert='Marge de sécurité de trésorerie faible à 30 jours.'
+    else: alert_level='STABLE'; alert='Aucune tension détectée sur les données actuellement connues.'
+    return {'cash_balance':cash,'cash_as_of':settings['cash_as_of'],'monthly_burn':round(monthly_burn,2),'observed_90':round(observed_90,2),
+        'expense_rows':len(recent),'horizons':horizons,'scheduled_outflows':scheduled_outflows,'supplier_payables':supplier_payables,
+        'planned_outflows_90':planned_outflows_90,'receivables':receivables,'top_receivable':top,'scenarios':scenarios,
+        'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,'alert_level':alert_level,'alert':alert,'curves':curves,
+        'method_note':"Prévision calculée par entité à partir du solde disponible, des factures clients émises restant à encaisser, des factures fournisseurs restant à payer et des dépenses futures enregistrées. Les paiements partiels sont déduits. Les scénarios modifient le timing des encaissements, jamais les écritures comptables."}
 
 
 def register(app):

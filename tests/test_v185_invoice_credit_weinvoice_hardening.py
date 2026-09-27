@@ -20,9 +20,21 @@ def test_credit_notes_are_scoped_and_numbered_per_entity():
 
 
 def test_mark_paid_is_idempotent_and_entity_scoped():
-    assert "if inv['status']=='paid':" in INV
-    assert "AND entity_id IS ? AND status!='paid'" in INV
-    assert 'if cur.rowcount != 1:' in INV
+    start = INV.index('def invoicing_mark_paid(invoice_id):')
+    end = INV.index("@app.route('/facturation/<int:invoice_id>/modifier'", start)
+    block = INV[start:end]
+    assert 'inv=_current_invoice(c,invoice_id)' in block
+    assert "inv['status'] not in ('sent','partially_paid')" in block
+    assert 'balance=_invoice_balance(c,inv)' in block
+    assert 'if balance <= 0.005:' in block
+    assert 'outgoing_invoice_payments' in block
+    assert "inv['entity_id']" in block
+    assert 'idempotency_key' in block
+    assert 'generate_sale_partial_payment_entry(c,inv,payment)' in block
+    assert "WHERE id=? AND entity_id IS ?" in block
+    assert 'except sqlite3.IntegrityError:' in block
+    assert 'except AccountingError as e:' in block
+    assert 'c.rollback()' in block
 
 
 def test_credit_creation_serializes_remaining_balance_check():

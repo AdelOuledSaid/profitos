@@ -76,7 +76,7 @@
 <section class="purchase-panel" style="margin-top:20px;">
   <div class="purchase-eyebrow">RAPPROCHEMENT</div>
   <h2 style="color:#fff;">Paiements à rapprocher</h2>
-  <p class="purchase-muted">ProfitOS compare le montant, le numéro de facture et le nom du client quand ils sont présents dans le libellé bancaire. La validation reste toujours manuelle.</p>
+  <p class="purchase-muted">ProfitOS compare le solde restant, le numéro de facture et le client. Un même virement peut être réparti sur plusieurs factures et une facture peut recevoir plusieurs virements. La validation reste toujours manuelle.</p>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
       <thead><tr><th>Transaction</th><th>Montant</th><th>Facture proposée</th><th>Client</th><th>Confiance</th><th></th></tr></thead>
@@ -84,14 +84,15 @@
       {% for m in reconciliation_suggestions %}
         <tr>
           <td>{{ m.transaction.transaction_date|fr_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
-          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }} €</strong></td>
+          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }} €</strong><br><span class="purchase-muted">Disponible : {{ m.transaction_available|fr_number(2) }} €</span></td>
           <td>{{ m.invoice.invoice_number }}</td>
           <td>{{ m.invoice.client_name }}</td>
           <td><strong>{{ m.confidence }}</strong><br><span class="purchase-muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
           <td>
             <form method="post" action="{{ url_for('banking_reconcile',transaction_id=m.transaction.id,invoice_id=m.invoice.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="purchase-primary-btn secondary">Confirmer le paiement</button>
+              <input type="number" name="matched_amount" min="0.01" step="0.01" max="{{ m.transaction_available }}" value="{{ m.matched_amount }}" style="width:110px;margin-bottom:6px;">
+              <button type="submit" class="purchase-primary-btn secondary">Rapprocher</button>
             </form>
           </td>
         </tr>
@@ -161,7 +162,7 @@
   <h2 style="color:#fff;">Dernières transactions</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Catégorie</th></tr></thead>
+      <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Catégorisation comptable assistée</th></tr></thead>
       <tbody>
       {% for t in transactions %}
         <tr>
@@ -169,12 +170,17 @@
           <td>{{ t.label or '—' }}</td>
           <td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td>
           <td>
-            <form method="post" action="{{ url_for('banking_transaction_categorize',tx_id=t.id) }}" style="display:flex;gap:6px;align-items:center;">
+            {% set sug = accounting_suggestions.get(t.id) %}
+            <form method="post" action="{{ url_for('banking_transaction_categorize',tx_id=t.id) }}" style="display:grid;grid-template-columns:minmax(130px,1fr) 90px 75px auto;gap:6px;align-items:center;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="category" data-auto-submit style="font-size:12px;padding:4px 6px;">
-                <option value="" {% if not t.category %}selected{% endif %}>—</option>
-                {% for cat in categories %}<option value="{{ cat }}" {% if t.category==cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+              <select name="category" style="font-size:12px;padding:4px 6px;">
+                <option value="" {% if not t.category and not (sug and sug.category) %}selected{% endif %}>— catégorie —</option>
+                {% for cat in categories %}<option value="{{ cat }}" {% if t.category==cat or (not t.category and sug and sug.category==cat) %}selected{% endif %}>{{ cat }}</option>{% endfor %}
               </select>
+              <input name="account_code" value="{{ sug.account_code if sug and sug.account_code else '' }}" placeholder="Compte PCG" style="font-size:12px;padding:4px 6px;">
+              <input name="vat_rate" value="{{ sug.vat_rate if sug and sug.vat_rate is not none else '' }}" placeholder="TVA %" inputmode="decimal" style="font-size:12px;padding:4px 6px;">
+              <button class="btn btn-secondary" type="submit" style="font-size:12px;padding:5px 8px;">Valider</button>
+              {% if sug %}<small style="grid-column:1/-1;opacity:.75;">Suggestion {{ sug.confidence_score }} % — {{ sug.reason }}. Validation humaine requise.</small>{% endif %}
             </form>
           </td>
         </tr>

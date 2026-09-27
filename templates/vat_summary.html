@@ -2,63 +2,40 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-toolbar">
-  <div>
-    <div class="purchase-eyebrow">COMPTABILITÉ</div>
-    <h1 class="purchase-title">Synthèse TVA</h1>
-    <p class="purchase-subtitle">Calculée à partir des écritures déjà comptabilisées (comptes 445710 et 445660). Ceci est une aide indicative pour préparer ta déclaration — ProfitOS ne télédéclare rien auprès de l'administration ; vérifie toujours avec ton expert-comptable avant de déclarer.</p>
-  </div>
+  <div><div class="purchase-eyebrow">COMPTABILITÉ</div><h1 class="purchase-title">TVA & dossier déclaratif</h1>
+  <p class="purchase-subtitle">Synthèse issue des écritures comptables de l'entité. ProfitOS prépare, contrôle et trace le dossier ; aucune télédéclaration n'est effectuée automatiquement.</p></div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
 </div>
-
-<section class="purchase-panel" style="max-width:480px;margin-bottom:20px;">
-  <form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
-    <label>Du<input type="date" name="date_from" value="{{ date_from }}"></label>
-    <label>Au<input type="date" name="date_to" value="{{ date_to }}"></label>
-    <button type="submit" class="purchase-primary-btn primary">Actualiser</button>
-  </form>
+{% if stale %}<div class="alert alert-warning"><strong>À recontrôler :</strong> des écritures TVA ont changé depuis le verrouillage de cette période.</div>{% endif %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+<form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+<label>Du<input type="date" name="date_from" value="{{ date_from }}"></label><label>Au<input type="date" name="date_to" value="{{ date_to }}"></label>
+<button class="purchase-primary-btn primary">Actualiser</button></form>
 </section>
-
-<div class="purchase-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:24px;">
-  <div class="purchase-stat">
-    <div><div class="purchase-stat-label">TVA COLLECTÉE</div><div class="purchase-stat-value">{{ collected|fr_number(2) }} €</div></div>
-  </div>
-  <div class="purchase-stat">
-    <div><div class="purchase-stat-label">TVA DÉDUCTIBLE</div><div class="purchase-stat-value">{{ deductible|fr_number(2) }} €</div></div>
-  </div>
-  <div class="purchase-stat">
-    <div><div class="purchase-stat-label">{{ 'TVA À DÉCAISSER' if balance >= 0 else 'CRÉDIT DE TVA' }}</div><div class="purchase-stat-value {{ '' if balance>=0 else 'purchase-ok-text' }}">{{ balance|abs|fr_number(2) }} €</div></div>
-  </div>
+<div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:24px;">
+<div class="purchase-stat"><div><div class="purchase-stat-label">TVA COLLECTÉE</div><div class="purchase-stat-value">{{ collected|fr_number(2) }} €</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">TVA DÉDUCTIBLE</div><div class="purchase-stat-value">{{ deductible|fr_number(2) }} €</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">{{ 'TVA À DÉCAISSER' if balance >= 0 else 'CRÉDIT DE TVA' }}</div><div class="purchase-stat-value">{{ balance|abs|fr_number(2) }} €</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">ÉCRITURES TVA</div><div class="purchase-stat-value">{{ entry_count }}</div></div></div>
 </div>
-
-<div class="twocol">
-  <section class="purchase-panel">
-    <div class="purchase-panel-head"><h2>TVA collectée (ventes)</h2></div>
-    <div class="purchase-table-wrap">
-      <table class="purchase-table">
-        <tbody>
-        {% for l in sales_lines %}
-          <tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right;"><strong>{{ l.credit|fr_number(2) }} €</strong></td></tr>
-        {% else %}
-          <tr><td class="purchase-empty">Aucune vente sur cette période.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-  <section class="purchase-panel">
-    <div class="purchase-panel-head"><h2>TVA déductible (achats)</h2></div>
-    <div class="purchase-table-wrap">
-      <table class="purchase-table">
-        <tbody>
-        {% for l in purchase_lines %}
-          <tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right;"><strong>{{ l.debit|fr_number(2) }} €</strong></td></tr>
-        {% else %}
-          <tr><td class="purchase-empty">Aucun achat sur cette période.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-</div>
-</div>
-{% endblock %}
+<section class="purchase-panel" style="margin-bottom:20px;"><div class="purchase-panel-head"><h2>Contrôles de cohérence</h2></div>
+<table class="purchase-table"><tbody>{% for x in checks %}<tr><td>{{ x.label }}</td><td style="text-align:right;"><strong>{{ 'OK' if x.ok else x.count ~ ' anomalie(s)' }}</strong></td></tr>{% endfor %}</tbody></table>
+</section>
+<section class="purchase-panel" style="margin-bottom:20px;"><div class="purchase-panel-head"><h2>Dossier de période</h2></div>
+<p>Statut : <strong>{{ declaration.status if declaration else 'non préparée' }}</strong>{% if declaration and declaration.filing_reference %} — Référence : {{ declaration.filing_reference }}{% endif %}</p>
+<form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+<input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">
+<label>Référence externe<input name="filing_reference" value="{{ declaration.filing_reference if declaration else '' }}" placeholder="Optionnel"></label>
+<label>Note<input name="notes" value="{{ declaration.notes if declaration else '' }}" placeholder="Optionnel"></label>
+<button name="action" value="prepare" class="purchase-nav-btn">Préparer / actualiser</button>
+<button name="action" value="lock" class="purchase-primary-btn primary">Verrouiller pour contrôle</button>
+<button name="action" value="file" class="purchase-primary-btn primary">Marquer déclarée</button>
+{% if declaration %}<button name="action" value="reopen" class="purchase-nav-btn">Rouvrir</button>{% endif %}
+</form></section>
+<div class="twocol"><section class="purchase-panel"><div class="purchase-panel-head"><h2>TVA collectée</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><tbody>
+{% for l in sales_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.credit-l.debit)|fr_number(2) }} €</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
+</tbody></table></div></section><section class="purchase-panel"><div class="purchase-panel-head"><h2>TVA déductible</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><tbody>
+{% for l in purchase_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.debit-l.credit)|fr_number(2) }} €</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
+</tbody></table></div></section></div>
+{% if history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des périodes</h2></div><table class="purchase-table"><tbody>{% for d in history %}<tr><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }} €</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+</div>{% endblock %}

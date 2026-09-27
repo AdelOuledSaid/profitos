@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div>
+      <div class="purchase-eyebrow">COLLABORATION EXPERT-COMPTABLE</div>
+      <h1 class="purchase-title">{{ review.period_label }}</h1>
+      <p class="purchase-subtitle">Demandes de pièces, commentaires et suivi du dossier cabinet.</p>
+    </div>
+    <a class="purchase-nav-btn" href="{{ url_for('review_detail', review_id=review.id) }}">← Révision</a>
+  </div>
+
+  {% if not collab %}
+  <section class="purchase-panel">
+    <h2>Activer la collaboration</h2>
+    <form method="post" action="{{ url_for('accountant_collaboration_create',review_id=review.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Cabinet</label><input name="firm_name" placeholder="Nom du cabinet">
+      <label>Email expert-comptable</label><input name="accountant_email" type="email" placeholder="expert@cabinet.fr">
+      <button class="purchase-primary-btn" type="submit">Activer</button>
+    </form>
+  </section>
+  {% else %}
+  <section class="purchase-panel" style="margin-bottom:18px;">
+    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="purchase-eyebrow">MISSION CABINET</div>
+        <h2>{{ collab.firm_name or 'Cabinet comptable' }}</h2>
+        <div class="purchase-muted">{{ collab.accountant_email or 'Email non renseigné' }} · statut : {{ collab.status }}</div>
+      </div>
+      {% if collab.status=='active' %}
+      <form method="post" action="{{ url_for('accountant_collaboration_close',review_id=review.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="purchase-nav-btn" type="submit">Clôturer la collaboration</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if collab.status=='active' %}
+  <section class="purchase-panel" style="margin-bottom:18px;">
+    <h2>Nouvelle demande</h2>
+    <form method="post" action="{{ url_for('accountant_request_create',review_id=review.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Titre</label><input name="title" required placeholder="Ex. Justificatif facture fournisseur">
+      <label>Description</label><textarea name="description" rows="3"></textarea>
+      <label>Échéance</label><input name="due_date" type="date">
+      <button class="purchase-primary-btn" type="submit">Créer la demande</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% for req in requests %}
+  <section class="purchase-panel" style="margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <strong>#{{ req.id }} · {{ req.title }}</strong>
+        <div class="purchase-muted">{{ req.description or '' }}</div>
+        <div class="purchase-muted">Statut : {{ req.status }}{% if req.due_date %} · échéance {{ req.due_date|fr_date }}{% endif %}</div>
+      </div>
+      {% if collab.status=='active' %}
+      <form method="post" action="{{ url_for('accountant_request_status',review_id=review.id,request_id=req.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="{{ 'open' if req.status=='resolved' else 'resolved' }}">
+        <button class="purchase-nav-btn" type="submit">{{ 'Rouvrir' if req.status=='resolved' else 'Résoudre' }}</button>
+      </form>
+      {% endif %}
+    </div>
+    {% for com in comments.get(req.id,[]) %}
+      <div style="margin-top:10px;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;">
+        <strong>{{ com.created_by }}</strong> <span class="purchase-muted">{{ com.created_at|fr_date(true) }}</span>
+        <div>{{ com.body }}</div>
+      </div>
+    {% endfor %}
+    {% if collab.status=='active' and req.status!='resolved' %}
+    <form method="post" action="{{ url_for('accountant_request_comment',review_id=review.id,request_id=req.id) }}" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="body" rows="2" required placeholder="Ajouter une réponse ou une précision"></textarea>
+      <button class="purchase-nav-btn" type="submit">Commenter</button>
+    </form>
+    {% endif %}
+  </section>
+  {% else %}
+    <section class="purchase-panel"><div class="purchase-muted">Aucune demande pour le moment.</div></section>
+  {% endfor %}
+
+  <section class="purchase-panel" style="margin-top:18px;">
+    <h2>Journal d’activité</h2>
+    {% for ev in activity %}
+      <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <strong>{{ ev.event_type }}</strong> · {{ ev.detail or '' }}
+        <div class="purchase-muted">{{ ev.created_at|fr_date(true) }} · {{ ev.created_by }}</div>
+      </div>
+    {% else %}<div class="purchase-muted">Aucune activité.</div>{% endfor %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -61,7 +61,7 @@
             <td><strong>{{ r.total|fr_number }} €</strong></td>
             <td>
               <span class="purchase-status {{ 'paid' if st=='paid' else ('overdue' if st=='overdue' else '') }}">
-                {{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','paid':'Payée','cancelled':'Annulée'}.get(st, st) }}
+                {{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','partially_paid':'Partiellement payée','paid':'Payée','cancelled':'Annulée'}.get(st, st) }}
               </span>
             </td>
           </tr>

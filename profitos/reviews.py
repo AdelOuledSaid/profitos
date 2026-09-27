@@ -1,14 +1,7 @@
-"""Révision comptable — feuilles de travail structurées, courante
-(mensuelle) et annuelle (clôture), avec liens directs vers les modules
-concernés déjà construits dans ProfitOS quand c'est pertinent.
-
-Ce module ne calcule rien : c'est un outil de suivi/workflow pour
-l'expert-comptable ou le gérant, pas un moteur comptable.
-"""
+"""Révision comptable et diagnostics de clôture."""
 from datetime import datetime
+import json
 
-# (label, route_name_ou_None) — route_name doit être un nom de route
-# paramétrable sans argument obligatoire, sinon laisser None.
 COURANTE_ITEMS = [
     ("Rapprochement bancaire du mois effectué", 'banking'),
     ("Toutes les factures clients du mois sont enregistrées", 'invoicing_list'),
@@ -19,7 +12,6 @@ COURANTE_ITEMS = [
     ("Redevances de crédit-bail du mois réglées", 'finance_leases_list'),
     ("Aucune anomalie détectée sur les imports Recover/Save", None),
 ]
-
 ANNUELLE_ITEMS = [
     ("Rapprochement bancaire au dernier jour de l'exercice", 'banking'),
     ("Toutes les factures clients de l'exercice sont enregistrées", 'invoicing_list'),
@@ -33,77 +25,85 @@ ANNUELLE_ITEMS = [
     ("Lettrage des comptes clients à jour", None),
     ("Lettrage des comptes fournisseurs à jour", None),
     ("TVA de l'exercice réconciliée sur les 12 mois", 'vat_summary'),
-    ("Comptes d'attente (467000) soldés ou justifiés", 'accounting_chart'),
+    ("Comptes d'attente (467000/471) soldés ou justifiés", 'accounting_chart'),
     ("Provisions pour risques et charges revues", None),
     ("Créances douteuses ou litigieuses identifiées", None),
     ("Période clôturée dans ProfitOS une fois tout vérifié", 'accounting_closure'),
 ]
 
-
 def seed_review_items(conn, review_id, review_type):
-    """Copie les items du modèle par défaut (courante ou annuelle) dans une
-    nouvelle instance de révision. Chaque instance a ses propres items,
-    indépendants du modèle — cocher un item sur une révision ne modifie
-    jamais le modèle ni les autres révisions."""
     items = ANNUELLE_ITEMS if review_type == 'annuelle' else COURANTE_ITEMS
-    for i, (label, route_name) in enumerate(items):
-        conn.execute(
-            'INSERT INTO review_items(review_id,item_order,label,linked_route) VALUES(?,?,?,?)',
-            (review_id, i, label, route_name),
-        )
+    for i,(label,route_name) in enumerate(items):
+        conn.execute('INSERT INTO review_items(review_id,item_order,label,linked_route) VALUES(?,?,?,?)',(review_id,i,label,route_name))
     conn.commit()
-
 
 def create_review(conn, review_type, period_label, entity_id=None, created_by=None):
-    """Crée une nouvelle révision (courante ou annuelle) pour une période
-    donnée, avec sa checklist pré-remplie depuis le modèle par défaut."""
-    if review_type not in ('courante', 'annuelle'):
+    if review_type not in ('courante','annuelle'):
         raise ValueError(f"Type de révision inconnu : {review_type!r} (attendu courante ou annuelle).")
-    conn.execute(
-        'INSERT INTO reviews(entity_id,review_type,period_label,status,created_at,created_by) VALUES(?,?,?,?,?,?)',
-        (entity_id, review_type, period_label, 'in_progress', datetime.utcnow().isoformat(), created_by),
-    )
-    conn.commit()
-    review_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    seed_review_items(conn, review_id, review_type)
-    return review_id
+    conn.execute('INSERT INTO reviews(entity_id,review_type,period_label,status,created_at,created_by) VALUES(?,?,?,?,?,?)',(entity_id,review_type,period_label,'in_progress',datetime.utcnow().isoformat(),created_by))
+    conn.commit(); rid=conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    seed_review_items(conn,rid,review_type); return rid
 
-
-def toggle_review_item(conn, item_id, checked, note=None, checked_by=None):
-    """Coche/décoche un item de la checklist, avec une note optionnelle
-    (feuille de travail). Décocher efface aussi qui/quand l'avait coché,
-    pour ne jamais laisser une trace trompeuse d'une validation retirée."""
+def toggle_review_item(conn,item_id,checked,note=None,checked_by=None):
     if checked:
-        conn.execute(
-            'UPDATE review_items SET checked=1,note=?,checked_by=?,checked_at=? WHERE id=?',
-            (note, checked_by, datetime.utcnow().isoformat(), item_id),
-        )
+        conn.execute('UPDATE review_items SET checked=1,note=?,checked_by=?,checked_at=? WHERE id=?',(note,checked_by,datetime.utcnow().isoformat(),item_id))
     else:
-        conn.execute(
-            'UPDATE review_items SET checked=0,note=?,checked_by=NULL,checked_at=NULL WHERE id=?',
-            (note, item_id),
-        )
+        conn.execute('UPDATE review_items SET checked=0,note=?,checked_by=NULL,checked_at=NULL WHERE id=?',(note,item_id))
     conn.commit()
 
+def review_progress(conn,review_id):
+    row=conn.execute('SELECT COUNT(*) total,COALESCE(SUM(checked),0) done FROM review_items WHERE review_id=?',(review_id,)).fetchone()
+    return row['done'],row['total']
 
-def review_progress(conn, review_id):
-    """Renvoie (coché, total) pour une révision donnée."""
-    row = conn.execute(
-        'SELECT COUNT(*) total, COALESCE(SUM(checked),0) done FROM review_items WHERE review_id=?',
-        (review_id,),
-    ).fetchone()
-    return row['done'], row['total']
+def _entity_clause(alias, entity_id):
+    return (f'{alias}.entity_id=?',(entity_id,)) if entity_id is not None else (f'{alias}.entity_id IS NULL',())
 
-
-def complete_review(conn, review_id):
-    """Marque une révision comme terminée. Refuse si des items restent
-    décochés — une révision \"terminée\" avec des cases vides n'a aucun
-    sens et masquerait un oubli."""
-    done, total = review_progress(conn, review_id)
-    if done < total:
-        raise ValueError(f"{total - done} point(s) de la checklist ne sont pas encore validés.")
-    conn.execute(
-        "UPDATE reviews SET status='completed',completed_at=? WHERE id=?",
-        (datetime.utcnow().isoformat(), review_id),
-    )
+def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
+    """Snapshot de contrôles objectifs. Ne crée/modifie aucune écriture comptable."""
+    ef, ep = _entity_clause('e', entity_id)
+    issues=[]
+    unbalanced=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(x.d-x.c)),0) amount FROM (
+        SELECT e.id,COALESCE(SUM(l.debit),0) d,COALESCE(SUM(l.credit),0) c
+        FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
+        WHERE {ef} GROUP BY e.id HAVING ABS(COALESCE(SUM(l.debit),0)-COALESCE(SUM(l.credit),0))>0.005) x''',ep).fetchone()
+    if unbalanced['n']:
+        issues.append(('UNBALANCED_ENTRIES','blocker','Écritures comptables déséquilibrées',unbalanced['n'],unbalanced['amount'],None))
+    suspense=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
+        FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+        WHERE {ef} AND (l.account_code='467000' OR l.account_code LIKE '471%') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
+    if suspense['n']:
+        issues.append(('SUSPENSE_ACCOUNTS','blocker','Comptes d’attente 467000/471 à solder ou justifier',suspense['n'],suspense['amount'],None))
+    unlettered=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
+        FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+        WHERE {ef} AND (l.account_code LIKE '401%' OR l.account_code LIKE '411%')
+          AND (l.lettrage_code IS NULL OR TRIM(l.lettrage_code)='') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
+    if unlettered['n']:
+        issues.append(('UNLETTERED_THIRDPARTY','warning','Lignes clients/fournisseurs non lettrées à revoir',unlettered['n'],unlettered['amount'],None))
+    # Pièces fournisseurs manquantes : contrôle documentaire, limité à l'entité active.
+    pf = 'entity_id=?' if entity_id is not None else 'entity_id IS NULL'; pp=(entity_id,) if entity_id is not None else ()
+    missing=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(total),0) amount FROM purchase_invoices
+        WHERE {pf} AND COALESCE(total,0)>0 AND (document_path IS NULL OR TRIM(document_path)='')''',pp).fetchone()
+    if missing['n']:
+        issues.append(('MISSING_PURCHASE_DOCS','warning','Factures fournisseurs sans justificatif attaché',missing['n'],missing['amount'],None))
+    meta=conn.execute(f'SELECT COUNT(*) n,COALESCE(MAX(e.id),0) mx FROM accounting_entries e WHERE {ef}',ep).fetchone()
+    now=datetime.utcnow().isoformat()
+    conn.execute('INSERT INTO review_diagnostic_runs(review_id,entity_id,run_at,run_by,blocker_count,warning_count,entry_count,snapshot_max_entry_id) VALUES(?,?,?,?,?,?,?,?)',(
+        review_id,entity_id,now,run_by,sum(1 for x in issues if x[1]=='blocker'),sum(1 for x in issues if x[1]=='warning'),meta['n'],meta['mx']))
+    run_id=conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    for code,severity,label,count,amount,details in issues:
+        conn.execute('INSERT INTO review_diagnostic_issues(run_id,issue_code,severity,label,item_count,amount,details) VALUES(?,?,?,?,?,?,?)',(run_id,code,severity,label,count,float(amount or 0),json.dumps(details) if details else None))
     conn.commit()
+    return latest_review_diagnostics(conn,review_id)
+
+def latest_review_diagnostics(conn, review_id):
+    run=conn.execute('SELECT * FROM review_diagnostic_runs WHERE review_id=? ORDER BY id DESC LIMIT 1',(review_id,)).fetchone()
+    if not run: return None,[]
+    issues=conn.execute("SELECT * FROM review_diagnostic_issues WHERE run_id=? ORDER BY CASE severity WHEN 'blocker' THEN 0 ELSE 1 END,id",(run['id'],)).fetchall()
+    return run,issues
+
+def complete_review(conn,review_id,blocker_count=0):
+    done,total=review_progress(conn,review_id)
+    if done<total: raise ValueError(f"{total-done} point(s) de la checklist ne sont pas encore validés.")
+    if blocker_count:
+        raise ValueError(f"{blocker_count} anomalie(s) comptable(s) bloquante(s) doivent être corrigées avant clôture de la révision.")
+    conn.execute("UPDATE reviews SET status='completed',completed_at=? WHERE id=?",(datetime.utcnow().isoformat(),review_id)); conn.commit()

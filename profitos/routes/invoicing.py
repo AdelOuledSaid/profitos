@@ -7,9 +7,9 @@ from pypdf.errors import PyPdfError
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
-from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry,
-    generate_sale_credit_entry, generate_purchase_entry,
-    generate_purchase_payment_entry, AccountingError)
+from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry,
+    generate_sale_credit_entry, generate_customer_deposit_entry, generate_customer_final_entry, generate_purchase_entry,
+    generate_purchase_payment_entry, generate_purchase_partial_payment_entry, AccountingError)
 from profitos.webhooks_outbound import deliver_webhook
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
@@ -308,7 +308,7 @@ def validate_facturx_business_rules(inv, items, company):
 
 def _display_status(inv):
     status=inv['status']
-    if status=='sent' and inv['due_date']:
+    if status in ('sent','partially_paid') and inv['due_date']:
         try:
             if date.fromisoformat(inv['due_date']) < date.today():
                 return 'overdue'
@@ -366,6 +366,39 @@ def _next_delivery_number(c):
 def _credited_total(c, invoice_id, entity_id=None):
     row=c.execute("SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? AND status='issued'",(invoice_id,entity_id)).fetchone()
     return float(row['n'] or 0)
+
+def _invoice_paid_total(c, invoice_id, entity_id=None):
+    row=c.execute("SELECT COALESCE(SUM(amount),0) AS n FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ?",(invoice_id,entity_id)).fetchone()
+    return round(float(row['n'] or 0),2)
+
+def _invoice_balance(c, invoice):
+    return max(0.0, round(float(invoice['total'] or 0)-_invoice_paid_total(c,invoice['id'],invoice['entity_id']),2))
+
+
+def _record_einvoice_event(c, invoice, event_type, *, remote_id=None, status=None, regulatory_code=None, idempotency_key=None, detail=None):
+    """Journal append-only du cycle de vie e-invoicing, isolé par entité."""
+    key=(idempotency_key or '').strip() or None
+    c.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
+                 VALUES(?,?,'weinvoice',?,?,?,?,?,?,?)""",
+              (invoice['entity_id'],invoice['id'],event_type,remote_id,status,
+               str(regulatory_code) if regulatory_code is not None else None,key,(detail or '')[:2000],now()))
+
+
+def _stage_ereporting_record(c, invoice, record_type='transaction'):
+    """Prépare les données à remettre à une plateforme agréée; n'envoie jamais directement à la DGFiP."""
+    c.execute("""INSERT OR IGNORE INTO ereporting_records(entity_id,record_type,source_type,source_id,period_date,amount_ht,vat_amount,amount_ttc,payment_amount,operation_nature,status,created_at,updated_at)
+                 VALUES(?,?,?,?,?,?,?,?,?,?, 'pending',?,?)""",
+              (invoice['entity_id'],record_type,'outgoing_invoice',invoice['id'],invoice['issue_date'] or date.today().isoformat(),
+               float(invoice['subtotal'] or 0),float(invoice['vat_amount'] or 0),float(invoice['total'] or 0),0.0,
+               invoice['operation_nature'] if 'operation_nature' in invoice.keys() else None,now(),now()))
+
+
+def _stage_payment_ereporting(c, invoice, payment):
+    """Prépare un e-reporting de paiement; la plateforme agréée décidera du périmètre réglementaire effectif."""
+    c.execute("""INSERT OR IGNORE INTO ereporting_records(entity_id,record_type,source_type,source_id,period_date,amount_ht,vat_amount,amount_ttc,payment_amount,operation_nature,status,created_at,updated_at)
+                 VALUES(?,'payment','outgoing_invoice_payment',?,?,?,?,?,?,?, 'pending',?,?)""",
+              (invoice['entity_id'],payment['id'],payment['payment_date'],0.0,0.0,0.0,float(payment['amount'] or 0),
+               invoice['operation_nature'] if 'operation_nature' in invoice.keys() else None,now(),now()))
 
 
 def _current_invoice(c, invoice_id):
@@ -1076,6 +1109,76 @@ def register(app):
         flash(f"Devis {q['quote_number']} refusé.")
         return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
 
+    @app.post('/facturation/devis/<int:quote_id>/acompte')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_deposit(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status'] not in ('accepted','converted'):
+            c.close(); flash("Le devis doit être accepté avant de facturer un acompte."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        try: percent=float((request.form.get('deposit_percent') or '0').replace(',','.'))
+        except ValueError: percent=0
+        if percent<=0 or percent>100:
+            c.close(); flash("Le pourcentage d'acompte doit être compris entre 0 et 100."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        existing=c.execute("SELECT COALESCE(SUM(total),0) n FROM outgoing_invoices WHERE source_quote_id=? AND entity_id IS ? AND invoice_kind='deposit' AND status!='cancelled'",(quote_id,eid)).fetchone()['n']
+        target=round(float(q['total'] or 0)*percent/100,2)
+        if round(float(existing)+target,2)>round(float(q['total'] or 0),2):
+            c.close(); flash("Le cumul des acomptes dépasserait le montant du devis."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        src=json.loads(q['line_items'] or '[]'); items=[]
+        for it in src:
+            x=dict(it); x['qty']=float(it.get('qty',1)); x['unit_price']=round(float(it.get('unit_price',0))*percent/100,6); x['line_total']=round(float(it.get('line_total',0))*percent/100,2); items.append(x)
+        subtotal,vat_amount,total=_totals(items); number=_next_invoice_number(c,eid); token=secrets.token_urlsafe(24); due=(date.today()+timedelta(days=30)).isoformat()
+        c.execute("""INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id,invoice_kind,source_quote_id,deposit_percent) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?)""",
+          (number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,f"Facture d'acompte de {percent:g}% sur le devis {q['quote_number']}.",token,now(),eid,'deposit',quote_id,percent))
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]; c.commit(); c.close()
+        log_activity('DEPOSIT_INVOICE_CREATED',f"Acompte {number} créé depuis {q['quote_number']}"); flash(f"Facture d'acompte {number} créée en brouillon.")
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
+    @app.post('/facturation/devis/<int:quote_id>/facture-finale')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_quote_final_invoice(quote_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
+        if not q: c.close(); abort(404)
+        if q['status'] not in ('accepted','converted'):
+            c.close(); flash("Le devis doit être accepté."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        already=c.execute("SELECT id FROM outgoing_invoices WHERE source_quote_id=? AND entity_id IS ? AND invoice_kind='final' AND status!='cancelled'",(quote_id,eid)).fetchone()
+        if already:
+            c.close(); flash("Une facture finale existe déjà pour ce devis."); return redirect(url_for('invoicing_detail',invoice_id=already['id']))
+        draft_dep=c.execute("SELECT id FROM outgoing_invoices WHERE source_quote_id=? AND entity_id IS ? AND invoice_kind='deposit' AND status='draft' LIMIT 1",(quote_id,eid)).fetchone()
+        if draft_dep:
+            c.close(); flash("Émettez ou annulez les factures d'acompte en brouillon avant de créer la facture finale."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        deps=c.execute("SELECT * FROM outgoing_invoices WHERE source_quote_id=? AND entity_id IS ? AND invoice_kind='deposit' AND status NOT IN ('draft','cancelled') ORDER BY id",(quote_id,eid)).fetchall()
+        dep_ht=round(sum(float(r['subtotal'] or 0) for r in deps),2); dep_vat=round(sum(float(r['vat_amount'] or 0) for r in deps),2)
+        net_ht=round(float(q['subtotal'] or 0)-dep_ht,2); net_vat=round(float(q['vat_amount'] or 0)-dep_vat,2); net_total=round(net_ht+net_vat,2)
+        final_items=[dict(it) for it in json.loads(q['line_items'] or '[]')]
+        deposit_by_rate={}
+        for dep in deps:
+            for it in json.loads(dep['line_items'] or '[]'):
+                rate=float(it.get('vat_rate',0)); deposit_by_rate[rate]=deposit_by_rate.get(rate,0.0)+float(it.get('line_total',0))
+        for rate, amount in sorted(deposit_by_rate.items()):
+            if round(amount,2):
+                final_items.append({'label':f'Déduction acomptes déjà facturés — TVA {rate:g}%','qty':1.0,'unit_price':-round(amount,2),'vat_rate':rate,'line_total':-round(amount,2)})
+        if net_total< -0.01:
+            c.close(); flash("Les acomptes dépassent le montant du devis."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        number=_next_invoice_number(c,eid); token=secrets.token_urlsafe(24); due=(date.today()+timedelta(days=30)).isoformat()
+        notes=f"Facture finale du devis {q['quote_number']}. Acomptes déjà facturés : {dep_ht+dep_vat:.2f} € TTC."
+        c.execute("""INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id,invoice_kind,source_quote_id,deposit_applied_subtotal,deposit_applied_vat) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)""",
+          (number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,json.dumps(final_items,ensure_ascii=False),net_ht,net_vat,net_total,notes,token,now(),eid,'final',quote_id,dep_ht,dep_vat))
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+        c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=? AND entity_id IS ?",(invoice_id,quote_id,eid)); c.commit(); c.close()
+        log_activity('FINAL_INVOICE_CREATED',f"Facture finale {number} créée depuis {q['quote_number']}"); flash(f"Facture finale {number} créée en brouillon.")
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
     @app.post('/facturation/devis/<int:quote_id>/convertir')
     @login_required
     @requires_active_plan
@@ -1135,16 +1238,18 @@ def register(app):
     @require_area('invoicing')
     def invoicing_receivables():
         c=cx()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         rows=c.execute("""
             SELECT i.*,
-                   COALESCE((SELECT SUM(cn.total)
-                             FROM outgoing_credit_notes cn
-                             WHERE cn.original_invoice_id=i.id
-                               AND cn.status='issued'),0) AS credited_total
+                   COALESCE((SELECT SUM(cn.total) FROM outgoing_credit_notes cn
+                             WHERE cn.original_invoice_id=i.id AND cn.entity_id IS i.entity_id AND cn.status='issued'),0) AS credited_total,
+                   COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p
+                             WHERE p.invoice_id=i.id AND p.entity_id IS i.entity_id),0) AS paid_total
             FROM outgoing_invoices i
-            WHERE i.status='sent'
+            WHERE i.status IN ('sent','partially_paid') AND i.entity_id IS ?
             ORDER BY i.due_date ASC, i.id DESC
-        """).fetchall()
+        """,(eid,)).fetchall()
 
         today=date.today()
         invoices=[]
@@ -1155,7 +1260,7 @@ def register(app):
         for r in rows:
             total=float(r['total'] or 0)
             credited=float(r['credited_total'] or 0)
-            remaining=max(0.0,total-credited)
+            remaining=max(0.0,total-credited-float(r['paid_total'] or 0))
             if remaining <= 0.01:
                 continue
 
@@ -1245,8 +1350,10 @@ def register(app):
         date_to=request.args.get('date_to','').strip()
 
         c=cx()
-        query="SELECT * FROM purchase_invoices WHERE 1=1"
-        params=[]
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        query="SELECT * FROM purchase_invoices WHERE entity_id IS ?"
+        params=[eid]
         if date_from:
             query+=" AND issue_date>=?"; params.append(date_from)
         if date_to:
@@ -1316,6 +1423,7 @@ def register(app):
         enregistrées dans purchase_invoices. N'agit ni ne dépend de Cash Intelligence,
         Financial Brain ou AI CFO Planner — module Achats uniquement."""
         c=cx()
+        eid=current_entity_id(); ekey=eid or 0
         if request.method=='POST':
             for key,_ in PURCHASE_CATEGORIES:
                 raw=request.form.get(f'budget_{key}','').strip()
@@ -1323,9 +1431,13 @@ def register(app):
                     amount=max(0.0,float(raw)) if raw else 0.0
                 except ValueError:
                     amount=0.0
-                c.execute("""INSERT INTO purchase_budgets(category,monthly_amount,updated_at) VALUES(?,?,?)
-                             ON CONFLICT(category) DO UPDATE SET monthly_amount=excluded.monthly_amount,updated_at=excluded.updated_at""",
-                          (key,amount,now()))
+                c.execute("""INSERT INTO purchase_budgets(category,entity_key,entity_id,monthly_amount,updated_at)
+                             VALUES(?,?,?,?,?)
+                             ON CONFLICT(category,entity_key) DO UPDATE SET
+                               entity_id=excluded.entity_id,
+                               monthly_amount=excluded.monthly_amount,
+                               updated_at=excluded.updated_at""",
+                          (key,ekey,eid,amount,now()))
             c.commit(); c.close()
             flash("Budgets mis à jour.")
             return redirect(url_for('purchase_budgets',month=request.form.get('month','')))
@@ -1334,10 +1446,10 @@ def register(app):
         if not re.fullmatch(r'\d{4}-\d{2}',month or ''):
             month=date.today().strftime('%Y-%m')
 
-        budget_rows=c.execute("SELECT * FROM purchase_budgets").fetchall()
+        budget_rows=c.execute("SELECT * FROM purchase_budgets WHERE entity_key=?",(ekey,)).fetchall()
         budgets={r['category']:r['monthly_amount'] for r in budget_rows}
 
-        spent_rows=c.execute("SELECT category, SUM(total) as spent FROM purchase_invoices WHERE issue_date LIKE ? GROUP BY category",(f'{month}%',)).fetchall()
+        spent_rows=c.execute("SELECT category, SUM(total) as spent FROM purchase_invoices WHERE entity_id IS ? AND issue_date LIKE ? GROUP BY category",(current_entity_id(),f'{month}%')).fetchall()
         spent={(r['category'] or 'autre'):(r['spent'] or 0) for r in spent_rows}
         c.close()
 
@@ -1367,7 +1479,7 @@ def register(app):
         et isolé : aucune écriture, aucune interaction avec Cash Intelligence,
         Financial Brain ou AI CFO Planner."""
         c=cx()
-        rows=c.execute("SELECT * FROM purchase_invoices WHERE issue_date IS NOT NULL").fetchall()
+        rows=c.execute("SELECT * FROM purchase_invoices WHERE entity_id IS ? AND issue_date IS NOT NULL",(current_entity_id(),)).fetchall()
         c.close()
         recurring=_detect_recurring_suppliers(rows)
         total_annual_estimate=sum(r['annual_cost_estimate'] for r in recurring)
@@ -1389,7 +1501,7 @@ def register(app):
             flash(f"Quota mensuel d'exports atteint pour la formule {org['plan']} ({quota['used']}/{quota['limit']}). Passez à une formule supérieure.")
             return redirect(url_for('purchase_list'))
         c=cx()
-        purchases=c.execute("SELECT * FROM purchase_invoices ORDER BY due_date ASC, id DESC").fetchall()
+        purchases=c.execute("SELECT * FROM purchase_invoices WHERE entity_id IS ? ORDER BY due_date ASC, id DESC",(current_entity_id(),)).fetchall()
         c.close()
         data=[{'Fournisseur':p['supplier_name'],'N° facture':p['invoice_number'],
                "Date d'émission":p['issue_date'] or '',"Date d'échéance":p['due_date'] or '',
@@ -1673,7 +1785,7 @@ def register(app):
             except AccountingError as e:
                 log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"achat {new_purchase_id}: {e}")
             deliver_webhook(c,'purchase.created',{'id':new_purchase_id,'invoice_number':number,
-                'supplier_name':supplier_name,'total':total})
+                'supplier_name':supplier_name,'total':total},entity_id=eid)
             c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
@@ -1981,6 +2093,13 @@ def register(app):
         response.headers['X-Content-Type-Options']='nosniff'
         return response
 
+def _purchase_paid_total(conn, purchase_id, entity_id):
+    row=conn.execute("SELECT COALESCE(SUM(amount),0) AS total FROM purchase_invoice_payments WHERE purchase_invoice_id=? AND entity_id IS ?",(purchase_id,entity_id)).fetchone()
+    return round(float(row['total'] or 0),2)
+
+def _purchase_balance(conn, purchase, entity_id):
+    return max(0.0, round(float(purchase['total'] or 0)-_purchase_paid_total(conn,purchase['id'],entity_id),2))
+
     @app.post('/facturation/achats/<int:purchase_id>/payer')
     @login_required
     @requires_active_plan
@@ -1988,37 +2107,24 @@ def register(app):
     @require_area('invoicing')
     def purchase_mark_paid(purchase_id):
         from profitos.entities import current_entity_id
-        eid = current_entity_id()
-        c=cx()
+        eid=current_entity_id(); c=cx()
         p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
-        if not p:
-            c.close()
-            abort(404)
-        if p['status']=='unpaid':
-            if p['validation_status']=='pending':
-                c.close()
-                flash("Cette facture doit d'abord être validée avant d'être marquée comme payée.")
-                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-            if p['validation_status']=='rejected':
-                c.close()
-                flash("Cette facture a été rejetée — elle ne peut pas être marquée comme payée.")
-                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-            c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'",(now(),purchase_id,eid))
-            try:
-                p_updated=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
-                generate_purchase_payment_entry(c,p_updated)
-                c.commit()
-            except AccountingError as e:
-                c.rollback()
-                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement achat {purchase_id}: {e}")
-                c.close()
-                flash(f"Paiement non enregistré : {e}")
-                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-            deliver_webhook(c,'purchase.paid',{'id':purchase_id,'invoice_number':p['invoice_number'],
-                'supplier_name':p['supplier_name'],'total':p['total']})
-            flash("Facture fournisseur marquée comme payée.")
-        c.close()
-        return redirect(url_for('purchase_list'))
+        if not p: c.close(); abort(404)
+        if p['validation_status'] in ('pending','rejected'):
+            c.close(); flash("Cette facture doit être validée avant paiement."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        balance=_purchase_balance(c,p,eid)
+        if balance <= .005:
+            c.close(); flash("Cette facture fournisseur est déjà soldée."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        key=f"manual-full:{eid}:{purchase_id}:{balance:.2f}"
+        try:
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,balance,date.today().isoformat(),'manual','Solde manuel',key,now()))
+            payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
+            generate_purchase_partial_payment_entry(c,p,payment)
+            c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),purchase_id,eid))
+            c.commit()
+        except (AccountingError, sqlite3.IntegrityError) as e:
+            c.rollback(); c.close(); flash(f"Paiement non enregistré : {e}"); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        c.close(); flash("Solde fournisseur enregistré."); return redirect(url_for('purchase_list'))
 
     @app.route('/facturation/achats/virements', methods=['GET', 'POST'])
     @login_required
@@ -2077,19 +2183,35 @@ def register(app):
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
 
             for r in rows:
-                c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status='unpaid'", (now(), r['id'], entity_id))
                 try:
-                    p_updated = c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?', (r['id'], entity_id)).fetchone()
-                    generate_purchase_payment_entry(c, p_updated)
+                    balance=_purchase_balance(c,r,entity_id)
+                    if balance <= .005:
+                        continue
+                    idem=f"sepa:{entity_id}:{msg_id}:{r['id']}"
+                    c.execute("""INSERT INTO purchase_invoice_payments
+                                 (entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                                 VALUES(?,?,?,?,?,?,?,?)""",
+                              (entity_id,r['id'],balance,date.today().isoformat(),'sepa',msg_id,idem,now()))
+                    payment=c.execute("""SELECT * FROM purchase_invoice_payments
+                                         WHERE entity_id IS ? AND idempotency_key=?""",(entity_id,idem)).fetchone()
+                    generate_purchase_partial_payment_entry(c,r,payment)
+                    c.execute("""UPDATE purchase_invoices SET status='paid',paid_at=?
+                                 WHERE id=? AND entity_id IS ? AND status='unpaid'""",
+                              (now(),r['id'],entity_id))
+                    p_updated=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",
+                                        (r['id'],entity_id)).fetchone()
+                    if not p_updated:
+                        raise AccountingError("Facture fournisseur introuvable après mise à jour SEPA.")
                     c.commit()
-                except AccountingError as e:
+                except (AccountingError,sqlite3.IntegrityError) as e:
                     c.rollback()
                     log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement SEPA {r['id']}: {e}")
                     c.close()
                     flash(f"Lot SEPA interrompu : la facture {r['invoice_number']} n'a pas été marquée payée ({e}).")
                     return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
                 deliver_webhook(c, 'purchase.paid', {'id': r['id'], 'invoice_number': r['invoice_number'],
-                                                       'supplier_name': r['supplier_name'], 'total': r['total']})
+                                                       'supplier_name': r['supplier_name'], 'total': r['total']},
+                                entity_id=entity_id)
             c.close()
             log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} ({debtor_identity['name']}) : {len(rows)} virement(s), {fr_number(total, 2)} €")
             filename = f"virements_{date.today().isoformat()}.xml"
@@ -2463,9 +2585,11 @@ def register(app):
     def invoicing_detail(invoice_id):
         c=cx()
         inv=_current_invoice(c,invoice_id)
-        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        if not inv:
+            c.close(); abort(404)
+        from profitos.entities import resolve_entity
+        company_row=resolve_entity(c,inv['entity_id'])
         c.close()
-        if not inv: abort(404)
         items=json.loads(inv['line_items'] or '[]')
         mention_checks,missing_mentions=_check_mandatory_mentions(inv,company_row)
         emitter_missing_count=sum(1 for m in missing_mentions if 'émetteur' in m)
@@ -2473,12 +2597,17 @@ def register(app):
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? ORDER BY id DESC",(invoice_id,inv['entity_id'])).fetchall()
         credited_total=_credited_total(c,invoice_id,inv['entity_id'])
         reminders=c.execute("SELECT * FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ? ORDER BY reminder_number DESC",(invoice_id,inv['entity_id'])).fetchall()
+        payments=c.execute("SELECT * FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ? ORDER BY payment_date,id",(invoice_id,inv['entity_id'])).fetchall()
+        paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
+        balance_due=max(0.0,round(float(inv['total'] or 0)-paid_total,2))
+        einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 20",(invoice_id,inv['entity_id'])).fetchall()
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
-                               credits=credits,credited_total=credited_total,reminders=reminders,
+                               credits=credits,credited_total=credited_total,reminders=reminders,payments=payments,
+                               paid_total=paid_total,balance_due=balance_due,
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total),
                                mention_checks=mention_checks,missing_mentions=missing_mentions,
-                               emitter_missing_count=emitter_missing_count)
+                               emitter_missing_count=emitter_missing_count,einvoice_events=einvoice_events)
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required
@@ -2783,6 +2912,7 @@ def register(app):
                 data = submit_invoice_file(settings['weinvoice_company_id'], pdf_bytes, f"{inv['invoice_number']}_facturx.pdf", idem)
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
                 c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (str(e)[:1500], invoice_id, inv['entity_id']))
+                _record_einvoice_event(c,inv,'submission_failed',idempotency_key=idem,detail=str(e))
                 c.commit(); flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             remote_id = data.get('eInvoicingId') or data.get('generationId') or data.get('id') or ''
@@ -2792,6 +2922,8 @@ def register(app):
                 c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifie les logs avant tout nouvel envoi.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (remote_id, remote_status, now(), invoice_id, inv['entity_id']))
+            _record_einvoice_event(c,inv,'submitted',remote_id=remote_id,status=remote_status,idempotency_key=idem)
+            _stage_ereporting_record(c,inv,'transaction')
             c.commit()
             log_activity('INVOICE_WEINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à WeInvoice ({remote_id}, {remote_status})")
             flash(f"Facture transmise à WeInvoice — identifiant {remote_id}, statut : {remote_status}.")
@@ -2827,6 +2959,8 @@ def register(app):
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             c.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',
                       (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id, inv['entity_id']))
+            _record_einvoice_event(c,inv,'status_sync',remote_id=remote_id,status=status,regulatory_code=regulatory_code,
+                                   idempotency_key=f'sync-{remote_id}-{status}-{regulatory_code}')
             c.commit()
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
@@ -2902,11 +3036,18 @@ def register(app):
             if inv['status']=='draft':
                 try:
                     inv_updated=_current_invoice(c,invoice_id)
-                    generate_sale_entry(c,inv_updated)
+                    invoice_kind=inv_updated['invoice_kind'] if 'invoice_kind' in inv_updated.keys() else 'standard'
+                    if invoice_kind=='deposit':
+                        generate_customer_deposit_entry(c,inv_updated)
+                    elif invoice_kind=='final':
+                        generate_customer_final_entry(c,inv_updated)
+                    else:
+                        generate_sale_entry(c,inv_updated)
                 except AccountingError as e:
                     log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
                 deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
-                    'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']})
+                    'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']},
+                    entity_id=inv['entity_id'])
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Facture envoyée à {inv['client_email']}.")
         else:
@@ -2924,7 +3065,7 @@ def register(app):
         inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        if inv['status']!='sent' or _display_status(inv)!='overdue':
+        if inv['status'] not in ('sent','partially_paid') or _display_status(inv)!='overdue':
             c.close()
             flash("Seule une facture envoyée et échue peut être relancée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
@@ -2965,43 +3106,92 @@ def register(app):
         c.close()
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
+    @app.route('/facturation/<int:invoice_id>/reglement',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_add_payment(invoice_id):
+        c=cx()
+        inv=_current_invoice(c,invoice_id)
+        if not inv:
+            c.close(); abort(404)
+        if inv['status'] not in ('sent','partially_paid'):
+            c.close(); flash("Un règlement ne peut être saisi que sur une facture émise non soldée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        try:
+            amount=round(float((request.form.get('amount') or '0').replace(',','.')),2)
+        except ValueError:
+            amount=0
+        balance=_invoice_balance(c,inv)
+        if amount <= 0 or amount > balance + 0.001:
+            c.close(); flash(f"Montant invalide. Le reste à payer est de {fr_number(balance,2)} €.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        payment_date=(request.form.get('payment_date') or date.today().isoformat()).strip()
+        try: date.fromisoformat(payment_date)
+        except ValueError:
+            c.close(); flash("Date de règlement invalide.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        reference=(request.form.get('reference') or '').strip()[:120]
+        method=(request.form.get('payment_method') or 'bank').strip()[:30]
+        idem=(request.form.get('idempotency_key') or '').strip() or str(uuid.uuid4())
+        try:
+            cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                         VALUES(?,?,?,?,?,?,?,?)""",(inv['entity_id'],invoice_id,amount,payment_date,method,reference,idem,now()))
+            payment_id=cur.lastrowid
+            payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,inv['entity_id'])).fetchone()
+            generate_sale_partial_payment_entry(c,inv,payment)
+            paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
+            new_status='paid' if paid_total >= float(inv['total'] or 0)-0.005 else 'partially_paid'
+            paid_at=now() if new_status=='paid' else None
+            c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(new_status,paid_at,invoice_id,inv['entity_id']))
+            _stage_payment_ereporting(c,inv,payment)
+            c.commit()
+            if new_status=='paid':
+                deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],'client_name':inv['client_name'],'total':inv['total']},entity_id=inv['entity_id'])
+        except sqlite3.IntegrityError:
+            c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        except AccountingError as e:
+            c.rollback(); c.close(); flash(f"Règlement non enregistré : {e}")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        c.close()
+        log_activity('INVOICE_PAYMENT_RECORDED',f"Règlement de {fr_number(amount,2)} € sur {inv['invoice_number']}")
+        flash(f"Règlement de {fr_number(amount,2)} € enregistré.")
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
     @app.route('/facturation/<int:invoice_id>/marquer-payee',methods=['POST'])
     @login_required
     @requires_active_plan
     @require_area('invoicing')
     def invoicing_mark_paid(invoice_id):
-        c=cx()
-        inv=_current_invoice(c,invoice_id)
+        c=cx(); inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        if inv['status']=='cancelled':
-            c.close()
-            flash("Une facture annulée ne peut pas être marquée comme payée.")
+        if inv['status'] not in ('sent','partially_paid'):
+            c.close(); flash("Cette facture ne peut pas être soldée dans son état actuel.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        if inv['status']=='paid':
-            c.close()
-            flash("Cette facture est déjà marquée comme payée.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        cur=c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ? AND status!='paid'",(now(),invoice_id,inv['entity_id']))
-        if cur.rowcount != 1:
-            c.rollback(); c.close()
-            flash("Cette facture a déjà été marquée comme payée.")
+        balance=_invoice_balance(c,inv)
+        if balance <= 0.005:
+            c.close(); flash("Cette facture est déjà soldée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         try:
-            inv_updated=_current_invoice(c,invoice_id)
-            generate_sale_payment_entry(c,inv_updated)
+            idem=f"manual-balance:{invoice_id}:{inv['entity_id']}:{round(balance,2)}"
+            cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                         VALUES(?,?,?,?,?,?,?,?)""",(inv['entity_id'],invoice_id,balance,date.today().isoformat(),'bank','Solde manuel',idem,now()))
+            payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=?",(cur.lastrowid,)).fetchone()
+            generate_sale_partial_payment_entry(c,inv,payment)
+            c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),invoice_id,inv['entity_id']))
+            _stage_payment_ereporting(c,inv,payment)
             c.commit()
-        except AccountingError as e:
-            c.rollback()
-            log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"règlement facture {invoice_id}: {e}")
-            c.close()
-            flash(f"Paiement non enregistré : {e}")
+        except sqlite3.IntegrityError:
+            c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],
-            'client_name':inv['client_name'],'total':inv['total']})
+        except AccountingError as e:
+            c.rollback(); c.close(); flash(f"Paiement non enregistré : {e}")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],'client_name':inv['client_name'],'total':inv['total']},entity_id=inv['entity_id'])
         c.close()
-        log_activity('INVOICE_PAID',f"Facture {inv['invoice_number']} marquée payée")
-        flash(f"Facture {inv['invoice_number']} marquée comme payée.")
+        flash(f"Facture {inv['invoice_number']} soldée.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
 
@@ -3051,7 +3241,7 @@ def register(app):
         inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        if inv['status'] in ('sent','paid'):
+        if inv['status'] in ('sent','partially_paid','paid'):
             c.close()
             flash("Une facture émise ne peut plus être annulée directement.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
@@ -3074,7 +3264,7 @@ def register(app):
         inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        if inv['status'] not in ('sent','paid'):
+        if inv['status'] not in ('sent','partially_paid','paid'):
             c.close()
             flash("Un avoir ne peut être créé que pour une facture émise.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))

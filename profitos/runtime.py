@@ -120,7 +120,35 @@ def init_auth_db():
         created_at TEXT,
         last_used_at TEXT,
         revoked_at TEXT,
-        scope TEXT DEFAULT 'read'
+        scope TEXT DEFAULT 'read',
+        scopes TEXT DEFAULT 'read',
+        entity_id INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS api_audit_log(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        api_key_id INTEGER,
+        organization_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        scope_required TEXT,
+        status_code INTEGER,
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_audit_org ON api_audit_log(organization_id,created_at);
+    CREATE TABLE IF NOT EXISTS api_idempotency(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        api_key_id INTEGER,
+        idempotency_key TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        response_status INTEGER,
+        response_body TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(organization_id,entity_key,idempotency_key,method,path)
     );
     CREATE TABLE IF NOT EXISTS buyer_signals(
         buyer_name_norm TEXT NOT NULL,
@@ -219,6 +247,8 @@ def init_auth_db():
         # (comportement d'origine préservé — jamais d'élévation silencieuse
         # vers l'écriture pour une clé déjà distribuée à un client).
         ('scope',"ALTER TABLE api_keys ADD COLUMN scope TEXT DEFAULT 'read'"),
+        ('scopes',"ALTER TABLE api_keys ADD COLUMN scopes TEXT DEFAULT 'read'"),
+        ('entity_id',"ALTER TABLE api_keys ADD COLUMN entity_id INTEGER"),
     ):
         if col not in api_keys_cols: c.execute(ddl)
     fec_tokens_cols=[r['name'] for r in c.execute('PRAGMA table_info(accounting_fec_tokens)').fetchall()]
@@ -885,10 +915,39 @@ def init_tenant_db(org_id=None):
     );
     CREATE TABLE IF NOT EXISTS bank_categorization_rules(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
         pattern TEXT NOT NULL,
         category TEXT NOT NULL,
         priority INTEGER DEFAULT 0,
         created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS bank_accounting_learning_rules(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        pattern TEXT NOT NULL,
+        category TEXT,
+        account_code TEXT NOT NULL,
+        vat_rate REAL,
+        counterparty_type TEXT,
+        counterparty_id INTEGER,
+        confirmations INTEGER NOT NULL DEFAULT 1,
+        last_confirmed_at TEXT NOT NULL,
+        UNIQUE(entity_id,pattern,account_code,vat_rate,counterparty_type,counterparty_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bank_learning_entity_pattern ON bank_accounting_learning_rules(entity_id,pattern);
+    CREATE TABLE IF NOT EXISTS bank_accounting_validations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        bank_transaction_id INTEGER NOT NULL,
+        category TEXT,
+        account_code TEXT NOT NULL,
+        vat_rate REAL,
+        counterparty_type TEXT,
+        counterparty_id INTEGER,
+        confidence_score INTEGER,
+        suggestion_reason TEXT,
+        validated_at TEXT NOT NULL,
+        UNIQUE(entity_id,bank_transaction_id)
     );
     CREATE TABLE IF NOT EXISTS bank_purchase_reconciliations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -904,6 +963,21 @@ def init_tenant_db(org_id=None):
         matched_amount REAL NOT NULL,
         matched_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS bank_invoice_allocations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        bank_transaction_id INTEGER NOT NULL,
+        invoice_id INTEGER NOT NULL,
+        payment_id INTEGER,
+        matched_amount REAL NOT NULL,
+        match_method TEXT NOT NULL DEFAULT 'manual',
+        confidence_score INTEGER,
+        matched_at TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        UNIQUE(entity_id,idempotency_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bank_invoice_alloc_tx ON bank_invoice_allocations(entity_id,bank_transaction_id);
+    CREATE INDEX IF NOT EXISTS idx_bank_invoice_alloc_inv ON bank_invoice_allocations(entity_id,invoice_id);
     CREATE TABLE IF NOT EXISTS invoice_reminders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -942,11 +1016,87 @@ def init_tenant_db(org_id=None):
         category TEXT DEFAULT 'autre'
     );
     CREATE TABLE IF NOT EXISTS purchase_budgets(
-        category TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        entity_id INTEGER,
         monthly_amount REAL NOT NULL DEFAULT 0,
-        updated_at TEXT
+        updated_at TEXT,
+        PRIMARY KEY(category,entity_key)
     );
-    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT,entity_id INTEGER);
+    CREATE TABLE IF NOT EXISTS purchase_invoice_payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        purchase_invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        payment_method TEXT DEFAULT 'bank',
+        reference TEXT,
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(entity_id,idempotency_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchase_invoice_payments_invoice ON purchase_invoice_payments(entity_id,purchase_invoice_id);
+    CREATE TABLE IF NOT EXISTS bank_purchase_allocations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        bank_transaction_id INTEGER NOT NULL,
+        purchase_invoice_id INTEGER NOT NULL,
+        payment_id INTEGER NOT NULL,
+        matched_amount REAL NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        matched_at TEXT NOT NULL,
+        UNIQUE(entity_id,idempotency_key)
+    );
+    CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT,entity_id INTEGER,invoice_kind TEXT DEFAULT 'standard',source_quote_id INTEGER,deposit_percent REAL,deposit_applied_subtotal REAL DEFAULT 0,deposit_applied_vat REAL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS outgoing_invoice_payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        payment_method TEXT DEFAULT 'bank',
+        reference TEXT,
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(entity_id, idempotency_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_outgoing_invoice_payments_invoice ON outgoing_invoice_payments(entity_id, invoice_id);
+    CREATE TABLE IF NOT EXISTS einvoice_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        invoice_id INTEGER NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'weinvoice',
+        event_type TEXT NOT NULL,
+        remote_id TEXT,
+        status TEXT,
+        regulatory_code TEXT,
+        idempotency_key TEXT,
+        detail TEXT,
+        occurred_at TEXT NOT NULL,
+        UNIQUE(entity_id, provider, idempotency_key, event_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_einvoice_events_invoice ON einvoice_events(entity_id, invoice_id, occurred_at);
+    CREATE TABLE IF NOT EXISTS ereporting_records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        record_type TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id INTEGER NOT NULL,
+        period_date TEXT NOT NULL,
+        amount_ht REAL NOT NULL DEFAULT 0,
+        vat_amount REAL NOT NULL DEFAULT 0,
+        amount_ttc REAL NOT NULL DEFAULT 0,
+        payment_amount REAL NOT NULL DEFAULT 0,
+        operation_nature TEXT,
+        counterparty_country TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        provider_reference TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(entity_id, record_type, source_type, source_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ereporting_pending ON ereporting_records(entity_id, status, period_date);
     CREATE TABLE IF NOT EXISTS recurring_invoice_templates(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -1075,6 +1225,29 @@ def init_tenant_db(org_id=None):
         closed_at TEXT,
         closed_by TEXT
     );
+    CREATE TABLE IF NOT EXISTS vat_declarations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'prepared',
+        collected_amount REAL NOT NULL DEFAULT 0,
+        deductible_amount REAL NOT NULL DEFAULT 0,
+        balance_amount REAL NOT NULL DEFAULT 0,
+        entry_count INTEGER NOT NULL DEFAULT 0,
+        snapshot_max_entry_id INTEGER NOT NULL DEFAULT 0,
+        prepared_at TEXT,
+        prepared_by TEXT,
+        locked_at TEXT,
+        locked_by TEXT,
+        filed_at TEXT,
+        filed_by TEXT,
+        filing_reference TEXT,
+        notes TEXT,
+        updated_at TEXT,
+        UNIQUE(entity_id,period_start,period_end)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vat_declarations_entity_period ON vat_declarations(entity_id,period_start,period_end);
     CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_account ON accounting_entry_lines(account_code);
@@ -1085,7 +1258,8 @@ def init_tenant_db(org_id=None):
         events TEXT NOT NULL,
         is_active INTEGER DEFAULT 1,
         created_at TEXT,
-        created_by TEXT
+        created_by TEXT,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS webhook_deliveries(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1108,6 +1282,7 @@ def init_tenant_db(org_id=None):
         approved_at TEXT,
         rejection_reason TEXT,
         reimbursed_at TEXT,
+        entity_id INTEGER,
         created_at TEXT
     );
     CREATE TABLE IF NOT EXISTS expense_report_lines(
@@ -1318,6 +1493,74 @@ def init_tenant_db(org_id=None):
         checked_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_review_items_review ON review_items(review_id);
+    CREATE TABLE IF NOT EXISTS review_diagnostic_runs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        run_at TEXT NOT NULL,
+        run_by TEXT,
+        blocker_count INTEGER NOT NULL DEFAULT 0,
+        warning_count INTEGER NOT NULL DEFAULT 0,
+        entry_count INTEGER NOT NULL DEFAULT 0,
+        snapshot_max_entry_id INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS review_diagnostic_issues(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        issue_code TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        label TEXT NOT NULL,
+        item_count INTEGER NOT NULL DEFAULT 0,
+        amount REAL NOT NULL DEFAULT 0,
+        details TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_diag_review ON review_diagnostic_runs(review_id,run_at);
+    CREATE INDEX IF NOT EXISTS idx_review_diag_issues_run ON review_diagnostic_issues(run_id,severity);
+    CREATE TABLE IF NOT EXISTS accountant_collaborations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        review_id INTEGER,
+        accountant_email TEXT,
+        firm_name TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        closed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_collab_entity ON accountant_collaborations(entity_id,status);
+    CREATE TABLE IF NOT EXISTS accountant_requests(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collaboration_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        title TEXT NOT NULL,
+        description TEXT,
+        due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        resolved_at TEXT,
+        resolved_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_requests_collab ON accountant_requests(collaboration_id,status);
+    CREATE TABLE IF NOT EXISTS accountant_request_comments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_comments_request ON accountant_request_comments(request_id,created_at);
+    CREATE TABLE IF NOT EXISTS accountant_activity(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collaboration_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        event_type TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_activity_collab ON accountant_activity(collaboration_id,created_at);
     CREATE TABLE IF NOT EXISTS delivery_notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -1384,6 +1627,7 @@ def init_tenant_db(org_id=None):
                        ('purchase_invoices','validation_status'),('purchase_invoices','validated_by'),
                        ('purchase_invoices','validated_at'),('purchase_invoices','rejection_reason'),
                        ('bank_transactions','category'),
+                       ('bank_categorization_rules','entity_id'),
                        ('suppliers','iban'),('suppliers','bic'),
                        ('company','iban'),('company','bic'),
                        ('purchase_invoices','purchase_order_id'),
@@ -1408,13 +1652,47 @@ def init_tenant_db(org_id=None):
                        ('outgoing_quotes','entity_id'),
                        ('gocardless_mandates','entity_id'),
                        ('gocardless_payments','entity_id'),
-                       ('weinvoice_agreements','entity_id')):
+                       ('weinvoice_agreements','entity_id'),
+                       ('webhook_subscriptions','entity_id'), ('expense_reports','entity_id')):
         try:
             cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
             if col not in cols:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+
+    # Pass 24 — migration des anciens budgets achats globaux vers la société
+    # principale, puis clé composite (catégorie, entité). SQLite ne permet pas
+    # de modifier une PK en place : reconstruction transactionnelle si nécessaire.
+    try:
+        bcols=[r['name'] for r in c.execute('PRAGMA table_info(purchase_budgets)').fetchall()]
+        if bcols and ('entity_key' not in bcols or 'entity_id' not in bcols):
+            c.execute("""CREATE TABLE IF NOT EXISTS purchase_budgets_v24(
+                category TEXT NOT NULL, entity_key INTEGER NOT NULL DEFAULT 0,
+                entity_id INTEGER, monthly_amount REAL NOT NULL DEFAULT 0,
+                updated_at TEXT, PRIMARY KEY(category,entity_key))""")
+            c.execute("""INSERT OR REPLACE INTO purchase_budgets_v24
+                         (category,entity_key,entity_id,monthly_amount,updated_at)
+                         SELECT category,0,NULL,monthly_amount,updated_at FROM purchase_budgets""")
+            c.execute("DROP TABLE purchase_budgets")
+            c.execute("ALTER TABLE purchase_budgets_v24 RENAME TO purchase_budgets")
+            c.commit()
+    except Exception as e:
+        c.rollback()
+        print(f"[ProfitOS] ATTENTION : migration purchase_budgets v24 ignorée ({e})")
+
+    # Pass 14 — métadonnées typées des factures d'acompte/finales.
+    for col, decl in (('invoice_kind', "TEXT DEFAULT 'standard'"),
+                      ('source_quote_id', 'INTEGER'),
+                      ('deposit_percent', 'REAL'),
+                      ('deposit_applied_subtotal', 'REAL DEFAULT 0'),
+                      ('deposit_applied_vat', 'REAL DEFAULT 0')):
+        try:
+            cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_invoices)').fetchall()]
+            if col not in cols:
+                c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}'); c.commit()
+        except Exception as e:
+            print(f"[ProfitOS] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
     # WeInvoice multi-entités : entity_key=0 représente la société mère.
     # L'ancienne configuration globale est reprise seulement pour la société mère.
     try:
@@ -1720,44 +1998,67 @@ def generate_api_key():
 def hash_api_key(raw_key):
     return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
 
+def _api_scope_set(value):
+    raw=(value or 'read').replace('read_write','read,write')
+    scopes={x.strip() for x in raw.split(',') if x.strip()}
+    if 'write' in scopes:
+        scopes.add('read')
+    return scopes or {'read'}
+
 def api_key_required(fn):
-    """Authentifie une requête API via 'Authorization: Bearer <clé>'. Résout
-    l'organisation correspondante dans g.api_org_id, sans dépendre de la session
-    (les appels API n'ont pas de cookie de session)."""
+    """Authentification Bearer : clé hachée/révocable, organisation et entité
+    sont fixées par la clé elle-même, jamais par un paramètre fourni par le client."""
     @functools.wraps(fn)
     def wrapped(*args,**kwargs):
         auth_header=request.headers.get('Authorization','')
         if not auth_header.startswith('Bearer '):
             return jsonify({'error':'missing_api_key','message':'En-tête Authorization: Bearer <clé> requis.'}),401
         raw_key=auth_header[7:].strip()
-        key_hash=hash_api_key(raw_key)
         c=auth_cx()
-        row=c.execute('SELECT * FROM api_keys WHERE key_hash=? AND revoked_at IS NULL',(key_hash,)).fetchone()
-        if row:
-            c.execute('UPDATE api_keys SET last_used_at=? WHERE id=?',(now(),row['id'])); c.commit()
-        c.close()
+        row=c.execute('SELECT * FROM api_keys WHERE key_hash=? AND revoked_at IS NULL',
+                      (hash_api_key(raw_key),)).fetchone()
         if not row:
+            c.close()
             return jsonify({'error':'invalid_api_key','message':'Clé API invalide ou révoquée.'}),401
+        c.execute('UPDATE api_keys SET last_used_at=? WHERE id=?',(now(),row['id'])); c.commit(); c.close()
         g.api_org_id=row['organization_id']
-        g.api_key_scope=row['scope'] or 'read'
+        g.api_key_id=row['id']
+        g.api_entity_id=row['entity_id'] if 'entity_id' in row.keys() else None
+        raw_scopes=(row['scopes'] if 'scopes' in row.keys() else None) or row['scope'] or 'read'
+        g.api_scopes=_api_scope_set(raw_scopes)
+        g.api_key_scope='read_write' if 'write' in g.api_scopes else 'read'
         return fn(*args,**kwargs)
     return wrapped
 
+def api_scope_required(*required):
+    """Exige tous les scopes indiqués. 'write' implique toujours 'read'."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapped(*args,**kwargs):
+            granted=getattr(g,'api_scopes',{'read'})
+            missing=[scope for scope in required if scope not in granted]
+            if missing:
+                return jsonify({'error':'insufficient_scope','required':list(required),
+                                'message':'Portée API insuffisante.'}),403
+            return fn(*args,**kwargs)
+        return wrapped
+    return decorator
+
 def api_write_required(fn):
-    """À empiler après @api_key_required sur les routes d'écriture. Exige une
-    clé explicitement créée avec la portée 'read_write' — une clé existante
-    créée avant l'introduction de ce champ reste 'read' par défaut et se
-    voit refuser l'accès, jamais élevée en silence."""
-    @functools.wraps(fn)
-    def wrapped(*args,**kwargs):
-        if getattr(g, 'api_key_scope', 'read') != 'read_write':
-            return jsonify({
-                'error':'insufficient_scope',
-                'message':"Cette clé API est en lecture seule. Crée une clé avec la portée "
-                          "'Lecture + écriture' dans Paramètres > Clés API pour utiliser cet endpoint.",
-            }),403
-        return fn(*args,**kwargs)
-    return wrapped
+    # Compatibilité des routes existantes, désormais adossée au scope fin 'write'.
+    return api_scope_required('write')(fn)
+
+def api_entity_clause(column='entity_id'):
+    eid=getattr(g,'api_entity_id',None)
+    return (f"{column}= ?",(eid,)) if eid is not None else (f"{column} IS NULL",())
+
+def api_require_idempotency():
+    key=(request.headers.get('Idempotency-Key') or '').strip()
+    if not key or len(key)>128:
+        return None, (jsonify({'error':'idempotency_key_required',
+                              'message':'Idempotency-Key (1 à 128 caractères) requis pour cette écriture.'}),400)
+    return key,None
+
 
 def sync_buyer_signals(org_id, invoices_rows):
     """Met à jour les signaux de risque acheteur partagés entre organisations, à partir
