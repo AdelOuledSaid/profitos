@@ -300,3 +300,117 @@ def review_progress_from_items(items):
     total = len(items)
     done = sum(1 for i in items if i['checked'])
     return done, total
+
+    @app.post('/comptabilite/revision/<int:review_id>/collaboration/inviter')
+    @login_required
+    def accountant_invite_create(review_id):
+        import hashlib, secrets
+        from datetime import datetime, timedelta
+        from profitos.entities import current_entity_id
+        if current_role() not in ('OWNER','ADMIN'):
+            abort(403)
+        eid=current_entity_id(); c=cx()
+        ef='r.entity_id=?' if eid else 'r.entity_id IS NULL'
+        ep=(review_id,eid) if eid else (review_id,)
+        collab=c.execute(f"""SELECT ac.* FROM accountant_collaborations ac
+                            JOIN reviews r ON r.id=ac.review_id
+                            WHERE ac.review_id=? AND ac.status='active' AND {ef}
+                            ORDER BY ac.id DESC LIMIT 1""",ep).fetchone()
+        if not collab:
+            c.close(); abort(404)
+        email=(request.form.get('email') or collab['accountant_email'] or '').strip().lower()
+        if not email or '@' not in email:
+            c.close(); flash("Adresse e-mail comptable invalide.")
+            return redirect(url_for('accountant_collaboration',review_id=review_id))
+        raw=secrets.token_urlsafe(32); token_hash=hashlib.sha256(raw.encode()).hexdigest()
+        created=now()
+        expires=(datetime.utcnow()+timedelta(days=7)).replace(microsecond=0).isoformat()
+        c.execute("""UPDATE accountant_invitations SET status='revoked',revoked_at=?
+                     WHERE collaboration_id=? AND entity_id IS ? AND status='pending'""",
+                  (created,collab['id'],eid))
+        c.execute("""INSERT INTO accountant_invitations
+                     (collaboration_id,entity_id,email,token_hash,status,expires_at,created_at,created_by)
+                     VALUES(?,?,?,?, 'pending',?,?,?)""",
+                  (collab['id'],eid,email,token_hash,expires,created,current_user()['email']))
+        c.execute("""INSERT INTO accountant_activity
+                     (collaboration_id,entity_id,event_type,detail,created_at,created_by)
+                     VALUES(?,?, 'INVITATION_CREATED',?,?,?)""",
+                  (collab['id'],eid,f"Invitation créée pour {email}",created,current_user()['email']))
+        c.commit(); c.close()
+        # Token is shown once; no raw invitation token is persisted.
+        flash(f"Invitation créée (valable 7 jours) : {url_for('accountant_invite_accept',token=raw,_external=True)}")
+        return redirect(url_for('accountant_collaboration',review_id=review_id))
+
+    @app.route('/collaboration-comptable/accepter/<token>', methods=['GET','POST'])
+    @login_required
+    def accountant_invite_accept(token):
+        import hashlib
+        from datetime import datetime
+        digest=hashlib.sha256(token.encode()).hexdigest()
+        c=cx()
+        inv=c.execute("""SELECT i.*,ac.review_id,ac.status AS collaboration_status
+                         FROM accountant_invitations i
+                         JOIN accountant_collaborations ac ON ac.id=i.collaboration_id
+                         WHERE i.token_hash=?""",(digest,)).fetchone()
+        if not inv or inv['status']!='pending' or inv['collaboration_status']!='active':
+            c.close(); abort(404)
+        if inv['expires_at'] <= datetime.utcnow().replace(microsecond=0).isoformat():
+            c.execute("UPDATE accountant_invitations SET status='expired' WHERE id=?",(inv['id'],))
+            c.commit(); c.close(); flash("Cette invitation a expiré."); return redirect(url_for('dashboard'))
+        user=current_user()
+        if (user['email'] or '').strip().lower()!=inv['email'].strip().lower():
+            c.close(); abort(403)
+        if request.method=='GET':
+            c.close()
+            return render_template('accountant_invite_accept.html',inv=inv,token=token)
+        # Membership lives in the auth DB; entity restriction lives in tenant DB.
+        ac=auth_cx()
+        m=ac.execute("SELECT * FROM memberships WHERE user_id=? AND organization_id=?",
+                     (user['id'],session.get('org_id'))).fetchone()
+        if not m:
+            ac.execute("""INSERT INTO memberships(user_id,organization_id,role,created_at)
+                          VALUES(?,?, 'COMPTABLE',?)""",(user['id'],session.get('org_id'),now()))
+        elif m['role'] not in ('OWNER','ADMIN'):
+            ac.execute("UPDATE memberships SET role='COMPTABLE' WHERE id=?",(m['id'],))
+        ac.commit(); ac.close()
+        c.execute("DELETE FROM user_entity_access WHERE user_id=?",(user['id'],))
+        c.execute("INSERT INTO user_entity_access(user_id,entity_id) VALUES(?,?)",
+                  (user['id'],inv['entity_id']))
+        c.execute("""UPDATE accountant_invitations
+                     SET status='accepted',accepted_at=?,accepted_by_user_id=?
+                     WHERE id=? AND status='pending'""",(now(),user['id'],inv['id']))
+        c.execute("""INSERT INTO accountant_activity
+                     (collaboration_id,entity_id,event_type,detail,created_at,created_by)
+                     VALUES(?,?, 'INVITATION_ACCEPTED',?,?,?)""",
+                  (inv['collaboration_id'],inv['entity_id'],f"Accès accepté par {inv['email']}",now(),inv['email']))
+        c.commit(); c.close()
+        if hasattr(g,'current_membership'): delattr(g,'current_membership')
+        session['role']='COMPTABLE'
+        flash("Accès comptable activé pour l'entité invitée.")
+        return redirect(url_for('reviews_list'))
+
+    @app.post('/comptabilite/revision/<int:review_id>/collaboration/invitation/<int:invitation_id>/revoquer')
+    @login_required
+    def accountant_invite_revoke(review_id,invitation_id):
+        from profitos.entities import current_entity_id
+        if current_role() not in ('OWNER','ADMIN'):
+            abort(403)
+        eid=current_entity_id(); c=cx()
+        inv=c.execute("""SELECT i.* FROM accountant_invitations i
+                         JOIN accountant_collaborations ac ON ac.id=i.collaboration_id
+                         WHERE i.id=? AND ac.review_id=? AND i.entity_id IS ?""",
+                      (invitation_id,review_id,eid)).fetchone()
+        if not inv:
+            c.close(); abort(404)
+        c.execute("""UPDATE accountant_invitations SET status='revoked',revoked_at=?
+                     WHERE id=? AND status IN ('pending','accepted')""",(now(),invitation_id))
+        if inv['accepted_by_user_id']:
+            c.execute("DELETE FROM user_entity_access WHERE user_id=? AND entity_id IS ?",
+                      (inv['accepted_by_user_id'],eid))
+        c.execute("""INSERT INTO accountant_activity
+                     (collaboration_id,entity_id,event_type,detail,created_at,created_by)
+                     VALUES(?,?, 'INVITATION_REVOKED',?,?,?)""",
+                  (inv['collaboration_id'],eid,f"Accès révoqué pour {inv['email']}",now(),current_user()['email']))
+        c.commit(); c.close()
+        flash("Accès comptable révoqué.")
+        return redirect(url_for('accountant_collaboration',review_id=review_id))

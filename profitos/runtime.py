@@ -1528,6 +1528,23 @@ def init_tenant_db(org_id=None):
         closed_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_accountant_collab_entity ON accountant_collaborations(entity_id,status);
+    CREATE TABLE IF NOT EXISTS accountant_invitations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        collaboration_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        accepted_at TEXT,
+        accepted_by_user_id INTEGER,
+        revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_accountant_invitation_entity
+      ON accountant_invitations(entity_id,status,expires_at);
+
     CREATE TABLE IF NOT EXISTS accountant_requests(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         collaboration_id INTEGER NOT NULL,

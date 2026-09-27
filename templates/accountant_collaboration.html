@@ -95,4 +95,17 @@
   </section>
   {% endif %}
 </div>
+
+{% if current_role() in ['OWNER','ADMIN'] and collab and collab.status == 'active' %}
+<div class="card mt-4"><div class="card-body">
+<h2 class="h5">Accès externe expert-comptable</h2>
+<form method="post" action="{{ url_for('accountant_invite_create', review_id=review.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input class="form-control mb-2" type="email" name="email" value="{{ collab.accountant_email or '' }}" required>
+<button class="btn btn-outline-primary" type="submit">Créer une invitation sécurisée</button>
+</form>
+<small class="text-muted">Invitation valable 7 jours. Une nouvelle invitation révoque l'invitation en attente précédente.</small>
+</div></div>
+{% endif %}
+
 {% endblock %}

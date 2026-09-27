@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:720px">
+  <h1 class="h3">Invitation expert-comptable</h1>
+  <p>Vous avez été invité avec l'adresse <strong>{{ inv.email }}</strong> à collaborer sur une entité ProfitOS.</p>
+  <p class="text-muted">L'accès est limité à l'entité concernée et peut être révoqué par un administrateur.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-primary" type="submit">Accepter l'accès comptable</button>
+  </form>
+</div>
+{% endblock %}

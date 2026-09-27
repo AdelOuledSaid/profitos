@@ -157,11 +157,14 @@ def _sync_powens(c, row):
     )).get("accounts", [])
 
     now = datetime.utcnow().replace(microsecond=0).isoformat()
+    entity_id = row['entity_id']
+    synced_account_ids = set()
     active_balances = []
     for a in accounts:
         aid = str(a.get("id") or "")
         if not aid:
             continue
+        synced_account_ids.add(aid)
         balance = a.get("balance")
         try:
             balance = float(balance) if balance is not None else None
@@ -201,6 +204,10 @@ def _sync_powens(c, row):
         except (TypeError, ValueError):
             amount = 0.0
         account_id = str(t.get("id_account") or t.get("account_id") or "")
+        if not account_id or account_id not in synced_account_ids:
+            # Never attach a provider transaction to an account that was not
+            # returned for this exact Powens user/entity during this sync.
+            continue
         label = t.get("simplified_wording") or t.get("wording") or t.get("original_wording") or ""
         tx_date = str(t.get("date") or t.get("application_date") or "")[:10]
         auto_category = apply_categorization_rule(c, label, entity_id)
@@ -216,13 +223,25 @@ def _sync_powens(c, row):
         )
 
     c.execute(
-        "UPDATE bank_connections SET status='CONNECTED',last_synced_at=?,updated_at=? WHERE id=?",
-        (now, now, row["id"]),
+        "UPDATE bank_connections SET status='CONNECTED',last_synced_at=?,updated_at=? WHERE id=? AND entity_id IS ?",
+        (now, now, row["id"], entity_id),
     )
     c.commit()
     return len(accounts), len(txs)
 
 
+
+
+def _mark_powens_sync_error(c, row):
+    """Persist a reconnectable state without storing provider secrets or raw errors."""
+    if not row:
+        return
+    ts = datetime.utcnow().replace(microsecond=0).isoformat()
+    c.execute(
+        "UPDATE bank_connections SET status='SYNC_ERROR',updated_at=? WHERE id=? AND entity_id IS ?",
+        (ts, row["id"], row["entity_id"]),
+    )
+    c.commit()
 
 def _norm_text(value):
     value = (value or "").strip().lower()
@@ -506,6 +525,7 @@ def register(app):
         callback_code = request.args.get("code")
 
         c = cx()
+        row = None
         try:
             from profitos.entities import user_can_access_entity
             if not user_can_access_entity(c, session.get("user_id"), connect_entity_id):
@@ -595,6 +615,10 @@ def register(app):
             )
 
         except Exception as exc:
+            try:
+                _mark_powens_sync_error(c, row)
+            except Exception:
+                c.rollback()
             app.logger.exception("Échec callback/synchronisation Powens")
             flash("Connexion bancaire terminée, mais la synchronisation doit être finalisée.")
         finally:
@@ -663,8 +687,12 @@ def register(app):
             a, t = _sync_powens(c, row)
             flash(f"Synchronisation terminée : {a} compte(s), {t} transaction(s).")
         except Exception as exc:
+            try:
+                _mark_powens_sync_error(c, row)
+            except Exception:
+                c.rollback()
             app.logger.exception("Échec synchronisation Powens")
-            flash(f"Synchronisation bancaire impossible : {exc}")
+            flash("Synchronisation bancaire impossible. Reconnectez la banque si le consentement a expiré.")
         finally:
             c.close()
         return redirect(url_for("banking"))

@@ -97,6 +97,10 @@ def register(app):
     @api_key_required
     @api_write_required
     def api_create_purchase_invoice():
+        key,err=api_require_idempotency()
+        if err: return err
+        replay=_idempotency_lookup(key)
+        if replay is not None: return replay
         from profitos.routes.invoicing import PURCHASE_CATEGORY_LABELS
         from profitos.accounting import generate_purchase_entry, AccountingError
         payload = request.get_json(silent=True) or {}
@@ -128,21 +132,22 @@ def register(app):
             (supplier_name, invoice_number, payload.get('issue_date'), payload.get('due_date'),
              subtotal, vat_amount, total, 'unpaid', 'Créée via API', now(), category, 'pending', _api_eid()),
         )
-        tc.commit()
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
-        try:
-            row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
-            generate_purchase_entry(tc, row)
-        except AccountingError as e:
-            log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat API {new_id}: {e}")
-        tc.close()
+        # Pending purchases are not posted to accounting before human approval.
+        tc.commit(); tc.close()
         log_activity('API_PURCHASE_CREATED', f"Facture fournisseur {invoice_number} créée via API")
-        return jsonify({'id': new_id, 'invoice_number': invoice_number, 'total': total, 'validation_status': 'pending'}), 201
+        result={'id': new_id, 'invoice_number': invoice_number, 'total': total, 'validation_status': 'pending'}
+        _idempotency_store(key,201,result); _api_audit('POST',request.path,'write',201,key)
+        return jsonify(result), 201
 
     @app.route('/api/v1/expense-reports', methods=['POST'])
     @api_key_required
     @api_write_required
     def api_create_expense_report():
+        key,err=api_require_idempotency()
+        if err: return err
+        replay=_idempotency_lookup(key)
+        if replay is not None: return replay
         from profitos.expenses import EXPENSE_REPORT_CATEGORY_LABELS
         payload = request.get_json(silent=True) or {}
         employee_email = (payload.get('employee_email') or '').strip()
@@ -169,8 +174,8 @@ def register(app):
 
         tc = tenant_cx_direct(g.api_org_id)
         tc.execute(
-            "INSERT INTO expense_reports(employee_email,period_label,status,created_at) VALUES(?,?,'draft',?)",
-            (employee_email, payload.get('period_label'), now()),
+            "INSERT INTO expense_reports(employee_email,period_label,status,created_at,entity_id) VALUES(?,?,'draft',?,?)",
+            (employee_email, payload.get('period_label'), now(), _api_eid()),
         )
         tc.commit()
         report_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -181,13 +186,19 @@ def register(app):
             )
         tc.commit(); tc.close()
         log_activity('API_EXPENSE_REPORT_CREATED', f"Note de frais #{report_id} créée via API pour {employee_email}")
-        return jsonify({'id': report_id, 'employee_email': employee_email, 'status': 'draft',
-                         'lines_count': len(clean_lines)}), 201
+        result={'id': report_id, 'employee_email': employee_email, 'status': 'draft',
+                'lines_count': len(clean_lines)}
+        _idempotency_store(key,201,result); _api_audit('POST',request.path,'write',201,key)
+        return jsonify(result), 201
 
     @app.route('/api/v1/invoices', methods=['POST'])
     @api_key_required
     @api_write_required
     def api_create_invoice():
+        key,err=api_require_idempotency()
+        if err: return err
+        replay=_idempotency_lookup(key)
+        if replay is not None: return replay
         payload = request.get_json(silent=True) or {}
         client_name = (payload.get('client_name') or '').strip()
         lines = payload.get('lines') or []
@@ -214,8 +225,19 @@ def register(app):
         total = round(subtotal + vat_amount, 2)
 
         tc = tenant_cx_direct(g.api_org_id)
-        seq = tc.execute("SELECT COUNT(*) n FROM outgoing_invoices").fetchone()['n'] + 1
-        invoice_number = f"FA-API-{date.today().year}-{seq:04d}"
+        try:
+            tc.execute('BEGIN IMMEDIATE')
+        except Exception:
+            pass
+        ef,ep=_entity_where()
+        prefix=f"FA-API-{date.today().year}-"
+        rows=tc.execute(f"SELECT invoice_number FROM outgoing_invoices WHERE {ef} AND invoice_number LIKE ?",
+                        (*ep,prefix+'%')).fetchall()
+        highest=0
+        for r in rows:
+            try: highest=max(highest,int((r['invoice_number'] or '').rsplit('-',1)[1]))
+            except (ValueError,IndexError): pass
+        invoice_number=f"{prefix}{highest+1:04d}"
         tc.execute(
             """INSERT INTO outgoing_invoices
                (invoice_number,client_name,client_address,client_email,issue_date,due_date,
@@ -229,7 +251,9 @@ def register(app):
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
         tc.close()
         log_activity('API_INVOICE_CREATED', f"Facture {invoice_number} créée via API (brouillon)")
-        return jsonify({'id': new_id, 'invoice_number': invoice_number, 'total': total, 'status': 'draft'}), 201
+        result={'id': new_id, 'invoice_number': invoice_number, 'total': total, 'status': 'draft'}
+        _idempotency_store(key,201,result); _api_audit('POST',request.path,'write',201,key)
+        return jsonify(result), 201
 
     # ------------------------------------------------------------------
     # API en lecture étendue — relire ce que l'API en écriture permet de
@@ -374,6 +398,10 @@ def register(app):
     @api_key_required
     @api_write_required
     def api_create_supplier():
+        key,err=api_require_idempotency()
+        if err: return err
+        replay=_idempotency_lookup(key)
+        if replay is not None: return replay
         from profitos.sepa import validate_iban
         payload = request.get_json(silent=True) or {}
         name = (payload.get('name') or '').strip()
@@ -395,7 +423,9 @@ def register(app):
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
         tc.close()
         log_activity('API_SUPPLIER_CREATED', f"Fournisseur « {name} » créé via API")
-        return jsonify({'id': new_id, 'name': name}), 201
+        result={'id': new_id, 'name': name}
+        _idempotency_store(key,201,result); _api_audit('POST',request.path,'write',201,key)
+        return jsonify(result), 201
 
     @app.route('/api/v1/entities', methods=['GET'])
     @api_key_required
@@ -403,7 +433,11 @@ def register(app):
     def api_list_entities():
         from profitos.entities import list_all_entities
         tc = tenant_cx_direct(g.api_org_id)
-        entities = list_all_entities(tc)
+        if _api_eid() is not None:
+            from profitos.entities import resolve_entity
+            entities=[resolve_entity(tc,_api_eid())]
+        else:
+            entities=list_all_entities(tc)
         tc.close()
         return jsonify({'entities': entities})
 
