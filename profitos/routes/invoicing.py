@@ -2093,12 +2093,12 @@ def register(app):
         response.headers['X-Content-Type-Options']='nosniff'
         return response
 
-def _purchase_paid_total(conn, purchase_id, entity_id):
-    row=conn.execute("SELECT COALESCE(SUM(amount),0) AS total FROM purchase_invoice_payments WHERE purchase_invoice_id=? AND entity_id IS ?",(purchase_id,entity_id)).fetchone()
-    return round(float(row['total'] or 0),2)
+    def _purchase_paid_total(conn, purchase_id, entity_id):
+        row=conn.execute("SELECT COALESCE(SUM(amount),0) AS total FROM purchase_invoice_payments WHERE purchase_invoice_id=? AND entity_id IS ?",(purchase_id,entity_id)).fetchone()
+        return round(float(row['total'] or 0),2)
 
-def _purchase_balance(conn, purchase, entity_id):
-    return max(0.0, round(float(purchase['total'] or 0)-_purchase_paid_total(conn,purchase['id'],entity_id),2))
+    def _purchase_balance(conn, purchase, entity_id):
+        return max(0.0, round(float(purchase['total'] or 0)-_purchase_paid_total(conn,purchase['id'],entity_id),2))
 
     @app.post('/facturation/achats/<int:purchase_id>/payer')
     @login_required

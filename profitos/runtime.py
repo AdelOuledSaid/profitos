@@ -1688,9 +1688,13 @@ def init_tenant_db(org_id=None):
                 category TEXT NOT NULL, entity_key INTEGER NOT NULL DEFAULT 0,
                 entity_id INTEGER, monthly_amount REAL NOT NULL DEFAULT 0,
                 updated_at TEXT, PRIMARY KEY(category,entity_key))""")
-            c.execute("""INSERT OR REPLACE INTO purchase_budgets_v24
+            c.execute("""INSERT INTO purchase_budgets_v24
                          (category,entity_key,entity_id,monthly_amount,updated_at)
-                         SELECT category,0,NULL,monthly_amount,updated_at FROM purchase_budgets""")
+                         SELECT category,0,NULL,monthly_amount,updated_at FROM purchase_budgets
+                         ON CONFLICT(category,entity_key) DO UPDATE SET
+                           entity_id=excluded.entity_id,
+                           monthly_amount=excluded.monthly_amount,
+                           updated_at=excluded.updated_at""")
             c.execute("DROP TABLE purchase_budgets")
             c.execute("ALTER TABLE purchase_budgets_v24 RENAME TO purchase_budgets")
             c.commit()
