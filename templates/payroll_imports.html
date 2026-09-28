@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Paie — Silae / PayFit</h1>
+<p class="muted">Import d'OD de paie uniquement. ProfitOS ne calcule ni bulletins, ni cotisations, ni DSN. Aucune écriture n'est comptabilisée avant validation explicite.</p>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Source <select name="provider" required><option value="SILAE">Silae</option><option value="PAYFIT">PayFit</option></select></label>
+  <label>Période <input name="period_label" placeholder="2026-09" required></label>
+  <label>Date d'écriture <input type="date" name="entry_date" value="{{ today }}" required></label>
+  <label>OD CSV/XLSX <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required></label>
+  <button type="submit">Préparer l'import</button>
+</form>
+<table><thead><tr><th>ID</th><th>Source</th><th>Période</th><th>Fichier</th><th>Débit</th><th>Crédit</th><th>Statut</th><th>Action</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.id }}</td><td>{{ r.provider }}</td><td>{{ r.period_label }}</td><td>{{ r.original_filename }}</td><td>{{ '%.2f'|format(r.total_debit) }}</td><td>{{ '%.2f'|format(r.total_credit) }}</td><td>{{ r.status }}</td><td>{% if r.status == 'pending' %}<form method="post" action="{{ url_for('payroll_import_validate', import_id=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Valider et comptabiliser</button></form>{% elif r.error_message %}{{ r.error_message }}{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

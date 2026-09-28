@@ -1205,6 +1205,27 @@ def init_tenant_db(org_id=None):
         created_by TEXT,
         created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS payroll_imports(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        provider TEXT NOT NULL,
+        period_label TEXT NOT NULL,
+        entry_date TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        file_sha256 TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        total_debit REAL NOT NULL DEFAULT 0,
+        total_credit REAL NOT NULL DEFAULT 0,
+        lines_json TEXT NOT NULL,
+        error_message TEXT,
+        accounting_entry_id INTEGER,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        validated_by TEXT,
+        validated_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payroll_import_entity_hash
+        ON payroll_imports(entity_id,file_sha256);
     CREATE TABLE IF NOT EXISTS accounting_entry_lines(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entry_id INTEGER NOT NULL,
