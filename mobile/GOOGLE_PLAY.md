@@ -1,5 +1,14 @@
 # Google Play — éléments de préparation
 
+## État technique Android
+
+Le workflow GitHub Actions produit systématiquement un **APK Debug**. Un
+**AAB Release signé** est produit uniquement lorsque les quatre secrets de
+signature Android sont présents et que le keystore/alias passent la
+vérification `keytool`. L'AAB doit encore être testé puis téléversé dans
+Google Play Console : sa génération ne vaut ni publication ni validation par
+Google.
+
 Brouillon à adapter et faire relire par un juriste avant publication —
 je ne suis pas juriste, et une politique de confidentialité qui gère des
 données bancaires (via Powens) et comptables a de vrais enjeux légaux

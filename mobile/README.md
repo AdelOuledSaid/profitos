@@ -2,10 +2,11 @@
 
 Ce dossier `mobile/` contient le point de départ d'une vraie application
 native (iOS + Android), construite avec Capacitor autour de l'application
-web ProfitOS déjà en ligne. **Rien de tout cela n'a pu être exécuté ni
-testé dans mon environnement** — pas d'accès réseau pour installer les
-paquets npm, pas de Xcode, pas d'Android Studio. Ce qui suit est la marche
-à suivre précise pour terminer chez toi.
+web ProfitOS déjà en ligne. Pour Android, le chemin recommandé est désormais
+le workflow GitHub Actions `.github/workflows/android-capacitor.yml` : il
+génère le projet natif dans le cloud et produit un APK Debug sans imposer
+Node.js ni Android Studio sur le PC de l'utilisateur. La publication Play
+Store reste une étape séparée, après test réel de l'APK.
 
 ## Ce que fait cette approche
 
@@ -22,14 +23,34 @@ réécrire l'application en React Native ou Flutter.
 immédiatement dans l'app, sans repasser par une validation Apple/Google —
 sauf si tu changes du code natif lui-même (icônes, plugins, permissions).
 
-## Prérequis, une seule fois
+## Prérequis
 
-- **Node.js** (déjà présent chez toi si tu utilises `npm` ailleurs)
+- **Android via GitHub Actions (recommandé)** : aucun Node.js ni Android Studio
+  requis sur le PC. Il faut seulement déposer le projet sur GitHub et lancer
+  l'action `Build ProfitOS Android`.
+- **Développement Android local (facultatif)** : Node.js + Android Studio.
 - **Pour iOS** : un Mac avec Xcode installé (obligatoire — Apple ne permet
   pas de compiler une app iOS ailleurs que sur macOS), et un compte
   développeur Apple (99 $/an) pour publier sur l'App Store
 - **Pour Android** : Android Studio (disponible sur Windows/Mac/Linux), et
   un compte développeur Google Play (25 $, paiement unique)
+
+
+## Build Android dans GitHub (recommandé)
+
+1. Pousser le projet sur la branche `main`.
+2. Ouvrir **Actions > Build ProfitOS Android > Run workflow**.
+3. Sans secret de signature, le workflow produit `ProfitOS-Android-Debug-APK`,
+   à installer sur un vrai téléphone Android pour les tests.
+4. Pour produire l'AAB Release, configurer ensemble les quatre secrets GitHub :
+   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+5. Le workflow refuse une configuration partielle, vérifie le keystore et
+   l'alias avec `keytool`, puis produit `ProfitOS-Android-Release-AAB`.
+
+La génération d'un AAB ne signifie pas que l'application est publiée. Avant
+Google Play, tester au minimum l'authentification, les écrans principaux, la
+photo de justificatif, Powens, les téléchargements PDF et les liens externes.
 
 ## Étapes
 

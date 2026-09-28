@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar"><div><div class="purchase-eyebrow">COMPTABILITÉ</div><h1 class="purchase-title">Dossiers fiscaux de travail</h1>
+<p class="purchase-subtitle">Préparation interne des données pour liasse fiscale, IS, CVAE et DAS2. Aucun EDI-TDFC ni dépôt DGFiP n'est produit par cet écran.</p></div></div>
+<div class="alert alert-warning"><strong>Important :</strong> ces dossiers sont des snapshots comptables destinés à la revue. ProfitOS ne détermine pas ici l'éligibilité fiscale, ne calcule pas une déclaration officielle et ne remplace pas la validation d'un professionnel ou d'un partenaire EDI habilité.</div>
+<section class="purchase-panel" style="margin-bottom:20px"><form method="get" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+<label>Dossier<select name="workpaper_type">{% for x in ['LIASSE','IS','CVAE','DAS2'] %}<option value="{{x}}" {% if workpaper_type==x %}selected{% endif %}>{{x}}</option>{% endfor %}</select></label>
+<label>Du<input type="date" name="date_from" value="{{date_from}}"></label><label>Au<input type="date" name="date_to" value="{{date_to}}"></label><button class="purchase-primary-btn primary">Actualiser</button></form></section>
+<section class="purchase-panel" style="margin-bottom:20px"><div class="purchase-panel-head"><h2>Contrôles préalables</h2></div>
+<table class="purchase-table"><tbody>{% for x in checks %}<tr><td>{{x.label}}</td><td style="text-align:right"><strong>{{'OK' if x.ok else 'À corriger'}}</strong></td></tr>{% endfor %}</tbody></table>
+<p>Clôture comptable actuelle : <strong>{{ closed_until or 'non clôturée' }}</strong></p></section>
+<section class="purchase-panel" style="margin-bottom:20px"><div class="purchase-panel-head"><h2>Snapshot {{workpaper_type}}</h2></div>
+<p>Statut : <strong>{{existing.status if existing else 'non préparé'}}</strong>{% if existing and existing.validated_at %} — validé le {{existing.validated_at}}{% endif %}</p>
+<form method="post" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap"><input type="hidden" name="workpaper_type" value="{{workpaper_type}}"><input type="hidden" name="date_from" value="{{date_from}}"><input type="hidden" name="date_to" value="{{date_to}}">
+<label>Note de revue<input name="notes" value="{{existing.notes if existing else ''}}" placeholder="Optionnel"></label><button name="action" value="prepare" class="purchase-nav-btn">Enregistrer le brouillon</button><button name="action" value="validate" class="purchase-primary-btn primary">Valider et verrouiller</button></form></section>
+<section class="purchase-panel"><div class="purchase-panel-head"><h2>Balance générale source</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>Compte</th><th>Libellé</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th></tr></thead><tbody>
+{% for r in trial %}<tr><td>{{r.account_code}}</td><td>{{r.account_label}}</td><td style="text-align:right">{{r.debit|fr_number(2)}} €</td><td style="text-align:right">{{r.credit|fr_number(2)}} €</td></tr>{% else %}<tr><td colspan="4" class="purchase-empty">Aucune écriture sur la période.</td></tr>{% endfor %}
+<tr><td colspan="2"><strong>Total</strong></td><td style="text-align:right"><strong>{{debit_total|fr_number(2)}} €</strong></td><td style="text-align:right"><strong>{{credit_total|fr_number(2)}} €</strong></td></tr></tbody></table></div></section>
+{% if history %}<section class="purchase-panel" style="margin-top:20px"><div class="purchase-panel-head"><h2>Historique</h2></div><table class="purchase-table"><tbody>{% for d in history %}<tr><td><strong>{{d.workpaper_type}}</strong></td><td>{{d.period_start|fr_date}} → {{d.period_end|fr_date}}</td><td>{{d.status}}</td><td>{{d.prepared_by or ''}}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+</div>{% endblock %}

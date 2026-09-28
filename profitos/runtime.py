@@ -1326,6 +1326,15 @@ def init_tenant_db(org_id=None):
         UNIQUE(entity_id,declaration_type,period_start,period_end)
     );
     CREATE INDEX IF NOT EXISTS idx_tax_decl_prep_entity_period ON tax_declaration_preparations(entity_id,declaration_type,period_start,period_end);
+    CREATE TABLE IF NOT EXISTS fiscal_workpapers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, entity_id INTEGER, workpaper_type TEXT NOT NULL,
+        period_start TEXT NOT NULL, period_end TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft',
+        trial_balance_json TEXT NOT NULL, checks_json TEXT NOT NULL, snapshot_max_entry_id INTEGER NOT NULL DEFAULT 0,
+        debit_total REAL NOT NULL DEFAULT 0, credit_total REAL NOT NULL DEFAULT 0, prepared_at TEXT, prepared_by TEXT,
+        validated_at TEXT, validated_by TEXT, notes TEXT, updated_at TEXT,
+        UNIQUE(entity_id,workpaper_type,period_start,period_end)
+    );
+    CREATE INDEX IF NOT EXISTS idx_fiscal_workpapers_entity_period ON fiscal_workpapers(entity_id,workpaper_type,period_start,period_end);
     CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_account ON accounting_entry_lines(account_code);

@@ -761,6 +761,64 @@ def register(app):
                                 declaration_type=declaration_type, fiscal_preparation=fiscal_preparation,
                                 fiscal_history=fiscal_history)
 
+    @app.route('/comptabilite/fiscalite', methods=['GET', 'POST'])
+    @login_required
+    def fiscal_workpapers():
+        """Dossier de travail fiscal interne. Ne produit ni EDI-TDFC ni dépôt DGFiP."""
+        from profitos.entities import current_entity_id
+        eid = current_entity_id(); c = cx()
+        date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
+        date_to = request.values.get('date_to') or date.today().isoformat()
+        if date_from > date_to:
+            c.close(); flash("Période fiscale invalide."); return redirect(url_for('fiscal_workpapers'))
+        workpaper_type = (request.values.get('workpaper_type') or 'LIASSE').upper()
+        allowed = ('LIASSE','IS','CVAE','DAS2')
+        if workpaper_type not in allowed: workpaper_type = 'LIASSE'
+        ef = 'e.entity_id=?' if eid else 'e.entity_id IS NULL'; ep = (eid,) if eid else ()
+        rows = c.execute(f"""SELECT l.account_code,COALESCE(a.label,l.account_code) account_label,
+                         CAST(SUM(l.debit) AS NUMERIC) debit,CAST(SUM(l.credit) AS NUMERIC) credit
+                         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+                         LEFT JOIN accounting_chart_of_accounts a ON a.code=l.account_code
+                         WHERE e.entry_date BETWEEN ? AND ? AND {ef}
+                         GROUP BY l.account_code,a.label ORDER BY l.account_code""", (date_from,date_to)+ep).fetchall()
+        trial = [{'account_code':r['account_code'],'account_label':r['account_label'],
+                  'debit':round(float(r['debit'] or 0),2),'credit':round(float(r['credit'] or 0),2)} for r in rows]
+        debit_total = round(sum(x['debit'] for x in trial),2); credit_total = round(sum(x['credit'] for x in trial),2)
+        maxrow = c.execute(f"SELECT COALESCE(MAX(e.id),0) m FROM accounting_entries e WHERE e.entry_date BETWEEN ? AND ? AND {ef}", (date_from,date_to)+ep).fetchone()
+        max_entry_id = int(maxrow['m'] or 0); entity_key = int(eid) if eid is not None else 0
+        closure = c.execute('SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',(entity_key,)).fetchone()
+        closed_until = closure['closed_until'] if closure else None
+        unbalanced = c.execute(f"""SELECT COUNT(*) n FROM (SELECT e.id FROM accounting_entries e
+                       JOIN accounting_entry_lines l ON l.entry_id=e.id
+                       WHERE e.entry_date BETWEEN ? AND ? AND {ef} GROUP BY e.id
+                       HAVING ABS(CAST(SUM(l.debit)-SUM(l.credit) AS NUMERIC))>=0.005) q""", (date_from,date_to)+ep).fetchone()['n']
+        checks = [
+            {'code':'balanced','label':'Écritures de la période équilibrées','ok':int(unbalanced or 0)==0,'count':int(unbalanced or 0)},
+            {'code':'closed','label':'Comptabilité clôturée jusqu’à la fin de période','ok':bool(closed_until and closed_until>=date_to),'count':0 if (closed_until and closed_until>=date_to) else 1},
+            {'code':'trial_balance','label':'Balance générale débit = crédit','ok':abs(debit_total-credit_total)<0.01,'count':0 if abs(debit_total-credit_total)<0.01 else 1},
+        ]
+        existing = c.execute("SELECT * FROM fiscal_workpapers WHERE workpaper_type=? AND period_start=? AND period_end=? AND " + ('entity_id=?' if eid else 'entity_id IS NULL'), (workpaper_type,date_from,date_to,eid) if eid else (workpaper_type,date_from,date_to)).fetchone()
+        if request.method == 'POST':
+            action = request.form.get('action') or 'prepare'
+            if existing and existing['status'] == 'validated':
+                c.close(); flash("Ce dossier fiscal est validé et verrouillé. Il ne peut plus être écrasé.")
+                return redirect(url_for('fiscal_workpapers',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type))
+            if action == 'validate' and not all(x['ok'] for x in checks):
+                c.close(); flash("Validation impossible : les contrôles comptables ne sont pas tous satisfaits.")
+                return redirect(url_for('fiscal_workpapers',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type))
+            user = session.get('email') or session.get('user_email') or 'utilisateur'
+            status = 'validated' if action == 'validate' else 'draft'
+            vals = (json.dumps(trial,ensure_ascii=False),json.dumps(checks,ensure_ascii=False),max_entry_id,debit_total,credit_total,now(),user,status,now() if status=='validated' else None,user if status=='validated' else None,(request.form.get('notes') or '').strip() or None,now())
+            if existing:
+                c.execute("UPDATE fiscal_workpapers SET trial_balance_json=?,checks_json=?,snapshot_max_entry_id=?,debit_total=?,credit_total=?,prepared_at=?,prepared_by=?,status=?,validated_at=?,validated_by=?,notes=?,updated_at=? WHERE id=?", vals+(existing['id'],))
+            else:
+                c.execute("INSERT INTO fiscal_workpapers(entity_id,workpaper_type,period_start,period_end,trial_balance_json,checks_json,snapshot_max_entry_id,debit_total,credit_total,prepared_at,prepared_by,status,validated_at,validated_by,notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (eid,workpaper_type,date_from,date_to)+vals)
+            c.commit(); c.close(); flash("Dossier fiscal interne enregistré. Aucun formulaire EDI-TDFC et aucune transmission DGFiP n'ont été générés.")
+            return redirect(url_for('fiscal_workpapers',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type))
+        history = c.execute("SELECT * FROM fiscal_workpapers WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC,id DESC LIMIT 20", ep).fetchall()
+        c.close()
+        return render_template('fiscal_workpapers.html',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type,trial=trial,debit_total=debit_total,credit_total=credit_total,checks=checks,existing=existing,history=history,closed_until=closed_until)
+
     @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
     @login_required
     def plaquette():
