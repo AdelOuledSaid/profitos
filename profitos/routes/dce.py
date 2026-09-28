@@ -12,7 +12,9 @@ def register(app):
     @rate_limit(20,3600)
     def dce_upload(opportunity_id):
         if not PHASE2_ENABLED: abort(404)
-        c=cx(); opp=c.execute("SELECT * FROM opportunities WHERE id=? AND type='GROW'",(opportunity_id,)).fetchone()
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx(); opp=c.execute("SELECT * FROM opportunities WHERE id=? AND type='GROW' AND entity_id IS ?",(opportunity_id,eid)).fetchone()
         if not opp: c.close(); abort(404)
         f=request.files.get('file')
         if not f or not f.filename:

@@ -807,9 +807,13 @@ def ensure_tenant_schema():
             init_tenant_db()
             _tenant_schema_checked.add(org_id)
         except Exception as e:
-            # Affiché dans la console pour diagnostic — ne bloque jamais la requête,
-            # mais on ne veut plus jamais avaler une vraie erreur en silence.
-            print(f"[ProfitOS] ATTENTION : échec de la migration du schéma pour l'organisation {org_id} : {e}")
+            # Fail closed : ne jamais servir une organisation avec un schéma
+            # potentiellement partiellement migré. Les détails restent côté logs.
+            current_app.logger.exception(
+                "Tenant schema migration failed org_id=%s request_id=%s",
+                org_id, getattr(g, 'request_id', '-'),
+            )
+            abort(503, description='Schéma de données temporairement indisponible.')
 
 def init_tenant_db(org_id=None):
     org_id = org_id or session.get('org_id')

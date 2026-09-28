@@ -1644,6 +1644,16 @@ def register(app):
         manuel (texte natif d'abord, IA en repli), puis enregistrée en facture
         fournisseur EN ATTENTE DE VALIDATION — toujours, quel que soit le réglage de
         l'organisation, puisqu'aucun humain n'a encore vu ce document."""
+        # Désactivé par défaut tant que le fournisseur d'email entrant n'est pas
+        # explicitement configuré. Ce secret est une barrière ProfitOS additionnelle ;
+        # il ne remplace pas la signature native du fournisseur (Resend/Mailgun/etc.).
+        if os.environ.get('SUPPLIER_INBOX_WEBHOOK_ENABLED', '').strip().lower() not in ('1','true','yes','on'):
+            return jsonify({'error': 'supplier inbox disabled'}), 503
+        expected_secret = os.environ.get('SUPPLIER_INBOX_WEBHOOK_SECRET', '')
+        supplied_secret = request.headers.get('X-ProfitOS-Inbox-Secret', '')
+        if len(expected_secret) < 32 or not supplied_secret or not secrets.compare_digest(expected_secret, supplied_secret):
+            return jsonify({'error': 'webhook authentication failed'}), 401
+
         payload = request.get_json(silent=True) or {}
         to_field = str(payload.get('to') or '')
         m = re.search(r'achats\+([a-z0-9]+)@', to_field, re.I)
