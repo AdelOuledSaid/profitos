@@ -93,13 +93,35 @@ npx cap sync
 - Le mode hors-ligne du service worker existant continue de fonctionner
   dans le WebView.
 
+## Ce qui est déjà réglé dans la configuration
+
+- **Icône, splash screen, nom de l'app** — `capacitor.config.json` a déjà
+  `appName: "ProfitOS"` et les couleurs du splash screen configurées.
+  Lance `npx capacitor-assets generate` (voir plus haut) pour générer
+  toutes les tailles d'icônes à partir de `static/icons/icon-512.png`.
+- **Navigation vers les domaines externes** — Powens (connexion bancaire),
+  WeInvoice, Swan, GoCardless, Dropbox, Google sont explicitement
+  autorisés dans `server.allowNavigation`. Sans ça, la WebView bloque
+  silencieusement toute redirection vers un domaine non listé — un clic
+  sur "Connecter ma banque" n'aurait rien fait, sans message d'erreur.
+- **Stockage sécurisé** — rien de spécifique n'a été ajouté : l'app ne
+  stocke aujourd'hui aucune donnée sensible en local (la session
+  d'authentification est gérée par les cookies sécurisés du WebView
+  lui-même, comme sur le web). Si tu ajoutes plus tard un cache local de
+  données financières, revois ce point avec `@capacitor/preferences` ou
+  un plugin de stockage chiffré dédié.
+
 ## Ce qui reste à construire si tu veux aller plus loin
 
-- **Notifications push réelles** : le paquet `@capacitor/push-notifications`
-  est déjà dans `package.json`, mais le câblage complet demande un projet
-  Firebase (Android) et un certificat APNs (iOS), plus une route côté
-  serveur ProfitOS pour enregistrer les jetons d'appareil et déclencher les
-  envois — rien de tout ça n'est construit pour l'instant.
+- **Notifications push réelles** : côté serveur, l'enregistrement du jeton
+  est fait et testé (`POST /api/mobile/register-push-token`, protégé par
+  CSRF via un en-tête `X-CSRF-Token` — récupère-le d'abord via
+  `GET /api/mobile/csrf-token`). Il manque encore : le code client dans
+  l'app (appeler `PushNotifications.register()` du plugin
+  `@capacitor/push-notifications`, envoyer le jeton reçu à cette route), un
+  projet Firebase (Android) et un certificat APNs (iOS), et le code serveur
+  qui déclenche réellement l'envoi d'une notification (aucune notification
+  n'est envoyée pour l'instant, seulement enregistrée).
 - **Revue avant publication** : Apple et Google examinent chaque
   soumission manuellement. Prévois quelques jours de délai, et assure-toi
   que les mentions légales/CGU sont accessibles depuis l'app.

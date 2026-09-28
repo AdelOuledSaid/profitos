@@ -4,7 +4,15 @@
   "webDir": "www",
   "server": {
     "url": "https://app.profitos.fr",
-    "cleartext": false
+    "cleartext": false,
+    "allowNavigation": [
+      "*.powens.com",
+      "*.weinvoice.fr",
+      "*.swan.io",
+      "*.gocardless.com",
+      "*.dropbox.com",
+      "accounts.google.com"
+    ]
   },
   "plugins": {
     "SplashScreen": {
