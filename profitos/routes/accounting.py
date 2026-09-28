@@ -649,7 +649,7 @@ def register(app):
         # Achats validés de la période sans écriture fournisseur.
         row=c.execute(
             f"""SELECT COUNT(*) n FROM purchase_invoices p
-                WHERE p.invoice_date BETWEEN ? AND ? AND COALESCE(p.validation_status,'APPROVED') NOT IN ('REJECTED','PENDING') AND {ef}
+                WHERE p.issue_date BETWEEN ? AND ? AND COALESCE(p.validation_status,'APPROVED') NOT IN ('REJECTED','PENDING') AND {ef}
                 AND NOT EXISTS(SELECT 1 FROM accounting_entries e WHERE e.source_type='purchase_invoice' AND e.source_id=p.id AND {('e.entity_id=p.entity_id' if eid else 'e.entity_id IS NULL')})""",
             (date_from,date_to)+ep).fetchone()
         checks.append({'code':'purchases_posted','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
