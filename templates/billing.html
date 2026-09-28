@@ -116,9 +116,9 @@
         <div class="billing-feature-group">
           <div class="billing-feature-title">PILOTAGE FINANCIER</div>
           <div class="billing-feature"><span class="tick">✓</span><span>Money Hunter, Recover & Save</span></div>
-          <div class="billing-feature"><span class="tick">✓</span><span>Financial Brain & Cash Intelligence</span></div>
-          <div class="billing-feature"><span class="tick">✓</span><span>AI CFO Planner & Cash Forecast</span></div>
-          <div class="billing-feature"><span class="tick">✓</span><span>Margin Watch, Calendar & GROW</span></div>
+          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>Financial Brain & Cash Intelligence</span></div>
+          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>AI CFO Planner</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Cash Forecast, Margin Watch, Calendar & GROW</span></div>
           <div class="billing-feature"><span class="tick">✓</span><span>Action Center et imports de données</span></div>
         </div>
 
