@@ -1,5 +1,5 @@
 from profitos.runtime import *
-from profitos.feature_access import requires_paid_plan
+from profitos.feature_access import requires_paid_plan, requires_feature
 from .cash_intelligence import build_cash_intelligence
 
 
@@ -488,6 +488,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @requires_feature('advanced_ai')
     def decision_simulator():
         cash=build_cash_intelligence()
         kind=(request.args.get('kind') or 'investment').strip().lower()

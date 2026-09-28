@@ -1,5 +1,6 @@
 import json
 from profitos.runtime import *
+from profitos.feature_access import requires_feature
 from profitos.accounting import (AccountingError, generate_fec, fec_filename,
                                    compute_depreciation_for_year, generate_depreciation_entry,
                                    create_cutoff_entry, reverse_cutoff_entry, CUTOFF_ACCOUNTS, CUTOFF_LABELS,
@@ -10,6 +11,7 @@ import io
 def register(app):
     @app.route('/comptabilite/cutoff')
     @login_required
+    @requires_feature('accounting_core')
     def cutoff_list():
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -27,6 +29,7 @@ def register(app):
 
     @app.route('/comptabilite/cutoff/nouveau', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def cutoff_new():
         from profitos.entities import current_entity_id
         c = cx()
@@ -66,6 +69,7 @@ def register(app):
 
     @app.route('/comptabilite/cutoff/<int:cutoff_id>/extourner', methods=['POST'])
     @login_required
+    @requires_feature('accounting_core')
     def cutoff_reverse(cutoff_id):
         from profitos.entities import current_entity_id
         reversal_date = request.form.get('reversal_date') or date.today().isoformat()
@@ -83,6 +87,7 @@ def register(app):
 
     @app.route('/comptabilite/plan-comptable', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_chart():
         from profitos.entities import current_entity_id
         c = cx()
@@ -144,6 +149,7 @@ def register(app):
 
     @app.route('/comptabilite/plan-comptable/<code>/desactiver', methods=['POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_chart_deactivate(code):
         c = cx()
         row = c.execute(
@@ -159,6 +165,7 @@ def register(app):
 
     @app.route('/comptabilite/journaux', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_journals_view():
         c = cx()
         error = None
@@ -196,6 +203,7 @@ def register(app):
 
     @app.route('/comptabilite/journaux/<code>')
     @login_required
+    @requires_feature('accounting_core')
     def accounting_journal_detail(code):
         c = cx()
         journal = c.execute('SELECT * FROM accounting_journals WHERE code=?', (code,)).fetchone()
@@ -224,6 +232,7 @@ def register(app):
 
     @app.route('/comptabilite/lettrage/<account_code>', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_lettrage(account_code):
         from profitos.entities import current_entity_id
         c = cx()
@@ -286,6 +295,7 @@ def register(app):
 
     @app.route('/comptabilite/export-fec', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_fec_export():
         from profitos.entities import resolve_entity, list_all_entities
         c = cx()
@@ -330,6 +340,7 @@ def register(app):
 
     @app.route('/comptabilite/export-fec/envoyer-comptable', methods=['POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_fec_send_accountant():
         c = cx()
         settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
@@ -415,6 +426,7 @@ def register(app):
 
     @app.route('/comptabilite/cloture', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def accounting_closure():
         from profitos.entities import current_entity_id
         c = cx()
@@ -471,6 +483,7 @@ def register(app):
 
     @app.route('/comptabilite/immobilisations', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def fixed_assets_list():
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -531,6 +544,7 @@ def register(app):
 
     @app.route('/comptabilite/immobilisations/<int:asset_id>')
     @login_required
+    @requires_feature('accounting_core')
     def fixed_asset_detail(asset_id):
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -560,6 +574,7 @@ def register(app):
 
     @app.route('/comptabilite/immobilisations/<int:asset_id>/amortir', methods=['POST'])
     @login_required
+    @requires_feature('accounting_core')
     def fixed_asset_depreciate(asset_id):
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -587,6 +602,7 @@ def register(app):
 
     @app.route('/comptabilite/immobilisations/<int:asset_id>/ceder', methods=['POST'])
     @login_required
+    @requires_feature('accounting_core')
     def fixed_asset_dispose(asset_id):
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -661,6 +677,7 @@ def register(app):
 
     @app.route('/comptabilite/tva', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def vat_summary():
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -765,6 +782,7 @@ def register(app):
 
     @app.route('/comptabilite/fiscalite', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def fiscal_workpapers():
         """Dossier de travail fiscal interne. Ne produit ni EDI-TDFC ni dépôt DGFiP."""
         from profitos.entities import current_entity_id
@@ -823,6 +841,7 @@ def register(app):
 
     @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('accounting_core')
     def plaquette():
         from profitos.entities import current_entity_id, resolve_entity
         from profitos.plaquette import render_plaquette_pdf

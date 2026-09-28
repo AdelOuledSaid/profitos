@@ -32,13 +32,14 @@
       <div class="billing-plan-head">
         <div class="billing-plan-code">{{ key }}</div><h2>{{ plan.name }}</h2>
         <div class="billing-price">{{ plan.price_eur }} € <small>/ mois</small></div>
-        {% if key=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent centraliser leur pilotage financier.</p>{% elif key=='PRO' %}<p class="billing-for">Pour les PME qui veulent plus de capacité et automatiser leurs workflows.</p>{% else %}<p class="billing-for">Pour les structures multi-équipes et multi-organisations avec des volumes importants.</p>{% endif %}
+        {% if key=='STARTER' %}<p class="billing-for">Facturation, achats et gestion essentielle pour indépendants et micro-entreprises.</p>{% elif key=='PRO' %}<p class="billing-for">Comptabilité, TVA, banque et trésorerie pour les TPE.</p>{% elif key=='BUSINESS' %}<p class="billing-for">Pilotage avancé et intelligence financière pour les PME.</p>{% else %}<p class="billing-for">Multi-entités, groupes, holdings et cabinets.</p>{% endif %}
       </div>
       <div class="billing-feature-group"><div class="billing-feature-title">INCLUS</div>
-        <div class="billing-feature"><span class="tick">✓</span><span>Recover, Save & Money Hunter</span></div>
-        <div class="billing-feature"><span class="tick">✓</span><span>Financial Brain & Cash Intelligence</span></div>
-        <div class="billing-feature"><span class="tick">✓</span><span>AI CFO Planner & Cash Forecast</span></div>
-        <div class="billing-feature"><span class="tick">✓</span><span>Margin Watch, GROW & Action Center</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>Facturation, achats et gestion</span></div>
+        {% if plan_limits[key].accounting_core %}<div class="billing-feature"><span class="tick">✓</span><span>Comptabilité, TVA et FEC</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>Comptabilité, TVA et FEC</span></div>{% endif %}
+        {% if plan_limits[key].banking %}<div class="billing-feature"><span class="tick">✓</span><span>Banque et rapprochement</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>Banque et rapprochement</span></div>{% endif %}
+        {% if plan_limits[key].advanced_ai %}<div class="billing-feature"><span class="tick">✓</span><span>Financial Brain, Cash Intelligence et simulateur</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>IA financière avancée</span></div>{% endif %}
+        {% if plan_limits[key].multi_entity %}<div class="billing-feature"><span class="tick">✓</span><span>Pilotage multi-entités</span></div>{% endif %}
       </div>
       <div class="billing-feature-group"><div class="billing-feature-title">CAPACITÉ</div>
         <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[key].team_members }} utilisateurs</span></div>
@@ -58,9 +59,14 @@
     {% endfor %}
   </div>
 
-  <section class="billing-section"><div class="eyebrow">COMPARAISON</div><h2>Les différences essentielles</h2><div class="billing-matrix"><table><thead><tr><th>Fonction / limite</th><th>Starter</th><th>Pro</th><th>Business</th></tr></thead><tbody>
-  <tr><td>Cœur financier ProfitOS</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-  <tr><td>Imports / mois</td><td>20</td><td>200</td><td>Illimités</td></tr><tr><td>Rapports / mois</td><td>10</td><td>100</td><td>Illimités</td></tr><tr><td>Utilisateurs</td><td>2</td><td>10</td><td>50</td></tr><tr><td>Organisations</td><td>1</td><td>3</td><td>10</td></tr><tr><td>BOAMP, email automatique, DCE</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <section class="billing-section"><div class="eyebrow">COMPARAISON</div><h2>Les différences essentielles</h2><div class="billing-matrix"><table><thead><tr><th>Fonction</th><th>Starter<br>9 €</th><th>Pro<br>19 €</th><th>Business<br>49 €</th><th>Multi-Entity<br>199 €</th></tr></thead><tbody>
+  <tr><td>Facturation, achats et gestion</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <tr><td>Comptabilité, TVA, FEC</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <tr><td>Banque et rapprochement</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <tr><td>IA financière avancée</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  <tr><td>Multi-entités</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-yes">✓</td></tr>
+  <tr><td>Utilisateurs</td><td>2</td><td>5</td><td>20</td><td>100</td></tr>
+  <tr><td>Organisations</td><td>1</td><td>1</td><td>1</td><td>25</td></tr>
   </tbody></table></div></section>
 
   <section class="pricing-cta"><h2>Vous préférez voir ProfitOS sur un cas concret ?</h2><p>Réservez une démonstration personnalisée ou commencez directement votre essai gratuit.</p><a class="button" href="{{ url_for('request_demo') }}">Demander une démo</a></section>

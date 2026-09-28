@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from profitos.runtime import *
-from profitos.feature_access import requires_paid_plan
+from profitos.feature_access import requires_paid_plan, requires_feature
 from .money_hunter import _safe_float, _confidence
 
 
@@ -170,6 +170,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @requires_feature('advanced_ai')
     def cash_intelligence():
         if request.method=='POST':
             raw=(request.form.get('cash_balance') or '').strip().replace(' ','').replace(',','.')

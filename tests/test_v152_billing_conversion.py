@@ -13,7 +13,7 @@ def test_billing_has_clear_plan_comparison():
 
 def test_billing_lists_real_plan_limits():
     t=(ROOT/'templates'/'billing.html').read_text(encoding='utf-8')
-    for s in ['20 imports / mois','10 rapports / mois','200 imports / mois','100 rapports / mois','Imports illimités','Rapports illimités']:
+    for s in ['plan_limits[code].imports_per_month','plan_limits[code].reports_per_month','Imports illimités','Rapports illimités']:
         assert s in t
 
 

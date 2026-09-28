@@ -15,8 +15,8 @@ def _load_limits():
 def test_plan_limits_values():
     m=_load_limits()
     assert m.plan_limit("STARTER","team_members")==2
-    assert m.plan_limit("PRO","team_members")==10
-    assert m.plan_limit("BUSINESS","team_members")==50
+    assert m.plan_limit("PRO","team_members")==5
+    assert m.plan_limit("BUSINESS","team_members")==20
     assert m.plan_limit("STARTER","imports_per_month")==20
     assert m.plan_limit("PRO","imports_per_month")==200
     assert m.plan_limit("BUSINESS","imports_per_month") is None
@@ -37,6 +37,7 @@ def test_advanced_features():
     assert not m.feature_enabled("STARTER","advanced_features")
     assert m.feature_enabled("PRO","advanced_features")
     assert m.feature_enabled("BUSINESS","advanced_features")
+    assert m.feature_enabled("MULTI","advanced_features")
 
 
 def test_account_enforces_team_and_org_limits():

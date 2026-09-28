@@ -1,4 +1,5 @@
 from profitos.runtime import *
+from profitos.feature_access import requires_feature
 from profitos.entities import resolve_entity, list_all_entities
 from profitos.sepa import validate_iban
 
@@ -45,6 +46,7 @@ def register(app):
 
     @app.route('/entites/nouvelle', methods=['GET', 'POST'])
     @login_required
+    @requires_feature('multi_entity')
     @require_area('settings')
     def entity_new():
         if request.method == 'POST':
@@ -106,6 +108,7 @@ def register(app):
 
     @app.route('/entites/consolide')
     @login_required
+    @requires_feature('multi_entity')
     @require_area('settings')
     def entities_consolidated():
         c = cx()

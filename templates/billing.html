@@ -52,7 +52,7 @@
     {% endif %}
   </section>
 
-  {% if quota_usage and org.plan in ('STARTER','PRO','BUSINESS') %}
+  {% if quota_usage and org.plan in ('STARTER','PRO','BUSINESS','MULTI') %}
   <section class="billing-section">
     <div class="eyebrow">UTILISATION CE MOIS-CI</div>
     <h2>Votre consommation {{ org.plan|title }}</h2>
@@ -95,9 +95,9 @@
 
   {% if org.status not in ('ACTIVE_PAID','PAST_DUE') or not org.stripe_customer_id %}
   <section class="billing-section">
-    <div class="eyebrow green">3 FORMULES</div>
+    <div class="eyebrow green">4 FORMULES</div>
     <h2>Un même cœur financier. Plus de capacité et d'automatisation à chaque niveau.</h2>
-    <p class="billing-section-lead">Starter couvre le pilotage financier opérationnel. Pro ajoute les automatisations avancées. Business augmente fortement les volumes et la capacité multi-organisation.</p>
+    <p class="billing-section-lead">Starter couvre la gestion essentielle. Pro ajoute comptabilité et banque. Business ajoute l’IA financière avancée. Multi-Entity est réservé au pilotage de plusieurs structures.</p>
 
     <div class="billing-plan-grid">
       {% for code,p in plans.items() %}
@@ -110,7 +110,7 @@
           <div class="billing-price">{{ p.price_eur }} € <small>/ mois</small></div>
           {% if code=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent piloter cash, impayés, dépenses et décisions au quotidien.</p>
           {% elif code=='PRO' %}<p class="billing-for">Pour les PME qui utilisent ProfitOS régulièrement et veulent automatiser davantage leurs workflows.</p>
-          {% else %}<p class="billing-for">Pour les structures avec plusieurs équipes, plusieurs entités et des volumes importants.</p>{% endif %}
+          {% elif code=='BUSINESS' %}<p class="billing-for">Pour les PME qui veulent l’IA financière et le pilotage avancé.</p>{% else %}<p class="billing-for">Pour groupes, holdings, cabinets et structures multi-entités.</p>{% endif %}
         </div>
 
         <div class="billing-feature-group">
@@ -124,19 +124,18 @@
 
         <div class="billing-feature-group">
           <div class="billing-feature-title">CAPACITÉ</div>
-          {% if code=='STARTER' %}
-            <div class="billing-feature"><span class="tick">✓</span><span>20 imports / mois</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>10 rapports / mois</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>2 utilisateurs · 1 organisation</span></div>
-          {% elif code=='PRO' %}
-            <div class="billing-feature"><span class="tick">✓</span><span>200 imports / mois</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>100 rapports / mois</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>10 utilisateurs · 3 organisations</span></div>
-          {% else %}
-            <div class="billing-feature"><span class="tick">✓</span><span>Imports illimités</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>Rapports illimités</span></div>
-            <div class="billing-feature"><span class="tick">✓</span><span>50 utilisateurs · 10 organisations</span></div>
-          {% endif %}
+          <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[code].imports_per_month %}{{ plan_limits[code].imports_per_month }} imports / mois{% else %}Imports illimités{% endif %}</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[code].reports_per_month %}{{ plan_limits[code].reports_per_month }} rapports / mois{% else %}Rapports illimités{% endif %}</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[code].team_members }} utilisateurs · {{ plan_limits[code].organizations }} organisation(s)</span></div>
+        </div>
+
+        <div class="billing-feature-group">
+          <div class="billing-feature-title">FONCTIONS DU PLAN</div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Facturation, achats et gestion</span></div>
+          <div class="billing-feature {% if not plan_limits[code].accounting_core %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].accounting_core else '—' }}</span><span>Comptabilité, TVA et FEC</span></div>
+          <div class="billing-feature {% if not plan_limits[code].banking %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].banking else '—' }}</span><span>Banque et rapprochement</span></div>
+          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>IA financière avancée</span></div>
+          <div class="billing-feature {% if not plan_limits[code].multi_entity %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].multi_entity else '—' }}</span><span>Multi-entités</span></div>
         </div>
 
         <div class="billing-feature-group">
@@ -166,25 +165,14 @@
   {% endif %}
 
   <section class="billing-section">
-    <div class="eyebrow">COMPARAISON</div>
-    <h2>Comparez les formules en un coup d'œil</h2>
-    <div class="billing-matrix">
-      <table>
-        <thead><tr><th>Fonction / limite</th><th>Starter</th><th>Pro</th><th>Business</th></tr></thead>
-        <tbody>
-          <tr><td>Pilotage financier : Recover, Save, Money Hunter, Financial Brain</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-          <tr><td>Cash Intelligence, AI CFO Planner, Cash Forecast</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-          <tr><td>Margin Watch, GROW, Calendar, Action Center</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-          <tr><td>Imports / mois</td><td>20</td><td>200</td><td>Illimités</td></tr>
-          <tr><td>Rapports / mois</td><td>10</td><td>100</td><td>Illimités</td></tr>
-          <tr><td>Utilisateurs</td><td>2</td><td>10</td><td>50</td></tr>
-          <tr><td>Organisations</td><td>1</td><td>3</td><td>10</td></tr>
-          <tr><td>Actualisation BOAMP</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-          <tr><td>Envoi email automatique</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-          <tr><td>Analyse DCE</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <div class="eyebrow">COMPARAISON</div><h2>Comparez les formules en un coup d'œil</h2>
+    <div class="billing-matrix"><table><thead><tr><th>Fonction</th><th>Starter 9 €</th><th>Pro 19 €</th><th>Business 49 €</th><th>Multi-Entity 199 €</th></tr></thead><tbody>
+      <tr><td>Facturation, achats, gestion</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+      <tr><td>Comptabilité, TVA, FEC</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+      <tr><td>Banque et rapprochement</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+      <tr><td>IA financière avancée</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+      <tr><td>Multi-entités</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-no">—</td><td class="billing-yes">✓</td></tr>
+    </tbody></table></div>
   </section>
 
   <section class="billing-trust">
@@ -197,10 +185,10 @@
     <div class="eyebrow">QUESTIONS FRÉQUENTES</div>
     <h2>Avant de choisir</h2>
     <div class="billing-faq">
-      <details><summary>Quelle formule choisir pour commencer ?</summary><p>Starter convient lorsque vous voulez utiliser le cœur de ProfitOS avec une petite équipe et des volumes modérés. Pro devient pertinent dès que vous avez besoin de plus de capacité ou des fonctions avancées BOAMP, email et DCE.</p></details>
+      <details><summary>Quelle formule choisir pour commencer ?</summary><p>Starter convient lorsque vous voulez utiliser le cœur de ProfitOS avec une petite équipe et des volumes modérés. Pro devient pertinent dès que vous avez besoin de la comptabilité et de la connexion bancaire. Business ajoute l’IA financière avancée, et Multi-Entity le pilotage de plusieurs structures.</p></details>
       <details><summary>Les fonctions financières principales sont-elles réservées à Pro ?</summary><p>Non. Les plans payants incluent le cœur de pilotage financier. La différence principale entre Starter, Pro et Business porte sur les quotas, la taille d'équipe, le nombre d'organisations et les fonctions avancées actuellement contrôlées par le plan.</p></details>
       <details><summary>Puis-je gérer mon abonnement moi-même ?</summary><p>Oui. Une fois un abonnement Stripe associé à l'organisation, le portail client permet de gérer le moyen de paiement et l'abonnement.</p></details>
-      <details><summary>Business est-il illimité partout ?</summary><p>Les imports et rapports sont illimités dans la configuration actuelle. Business autorise jusqu'à 50 utilisateurs et 10 organisations.</p></details>
+      <details><summary>Quelle formule permet plusieurs organisations ?</summary><p>Multi-Entity est la formule prévue pour plusieurs organisations, jusqu’à 25 dans la configuration actuelle.</p></details>
     </div>
   </section>
 

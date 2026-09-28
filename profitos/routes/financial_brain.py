@@ -1,5 +1,5 @@
 from profitos.runtime import *
-from profitos.feature_access import requires_paid_plan
+from profitos.feature_access import requires_paid_plan, requires_feature
 from .money_hunter import build_money_brief, _safe_float, _confidence, _clamp
 
 
@@ -113,6 +113,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @requires_feature('advanced_ai')
     def financial_brain():
         brain=build_financial_brain()
         log_activity('FINANCIAL_BRAIN_VIEW','Consultation du Financial Brain')

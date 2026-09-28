@@ -609,6 +609,7 @@ STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
 STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID')
 STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or os.environ.get('STRIPE_PRICE_ID')
 STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
+STRIPE_PRICE_MULTI_ID=os.environ.get('STRIPE_PRICE_MULTI_ID')
 
 # ---------------------------------------------------------------------------
 # Lot 23 — connexion à la Plateforme Agréée WeInvoice/Weproc (facturation
@@ -641,9 +642,10 @@ ANTHROPIC_API_KEY=os.environ.get('ANTHROPIC_API_KEY')
 ANTHROPIC_MODEL=os.environ.get('ANTHROPIC_MODEL','claude-sonnet-5')
 WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
 STRIPE_PLANS={
-    'STARTER': {'name':'Starter','price_eur':49,'price_id':STRIPE_PRICE_STARTER_ID},
-    'PRO': {'name':'Pro','price_eur':99,'price_id':STRIPE_PRICE_PRO_ID},
-    'BUSINESS': {'name':'Business','price_eur':249,'price_id':STRIPE_PRICE_BUSINESS_ID},
+    'STARTER': {'name':'Starter','price_eur':9,'price_id':STRIPE_PRICE_STARTER_ID},
+    'PRO': {'name':'Pro','price_eur':19,'price_id':STRIPE_PRICE_PRO_ID},
+    'BUSINESS': {'name':'Business','price_eur':49,'price_id':STRIPE_PRICE_BUSINESS_ID},
+    'MULTI': {'name':'Multi-Entity','price_eur':199,'price_id':STRIPE_PRICE_MULTI_ID},
 }
 STRIPE_PRICE_TO_PLAN={v['price_id']:k for k,v in STRIPE_PLANS.items() if v.get('price_id')}
 # Un abonnement ne doit jamais être activé sans webhook signé : c'est Stripe,
@@ -2667,6 +2669,8 @@ def init_runtime(app):
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.jinja_env.globals['current_role'] = current_role
     app.jinja_env.globals['asset_url'] = asset_url
+    from profitos.plan_limits import feature_enabled
+    app.jinja_env.globals['plan_feature_enabled'] = feature_enabled
     app.jinja_env.filters['fr_number'] = fr_number
     app.jinja_env.filters['fr_date'] = fr_date
     from profitos.sepa import format_iban

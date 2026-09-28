@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import requests
 from flask import flash, redirect, render_template, request, session, url_for
 
-from profitos.feature_access import requires_paid_plan
+from profitos.feature_access import requires_paid_plan, requires_feature
 from profitos.runtime import *
 from profitos.accounting import generate_purchase_payment_entry, generate_purchase_partial_payment_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
 
@@ -382,6 +382,7 @@ def register(app):
     @app.route("/banking/comptes/<int:account_id>/entite", methods=["POST"])
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def bank_account_set_entity(account_id):
         from profitos.entities import resolve_entity, current_entity_id, user_can_access_entity
         c = cx()
@@ -408,6 +409,7 @@ def register(app):
     @app.route("/banking")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking():
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -467,6 +469,7 @@ def register(app):
     @app.get("/banking/connect")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_connect():
         if not _configured():
             flash("Connexion bancaire non configurée.")
@@ -501,6 +504,7 @@ def register(app):
     @app.get("/banking/callback")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_callback():
         expected = session.pop("powens_connect_state", None)
         connect_entity_id = session.pop("powens_connect_entity_id", None)
@@ -629,6 +633,7 @@ def register(app):
     @app.post("/banking/reconcile/<int:transaction_id>/<int:invoice_id>")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_reconcile(transaction_id, invoice_id):
         c=cx()
         try:
@@ -675,6 +680,7 @@ def register(app):
     @app.post("/banking/sync")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_sync():
         c = cx()
         try:
@@ -700,6 +706,7 @@ def register(app):
     @app.post("/banking/use-balance")
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_use_balance():
         from profitos.entities import set_cash_balance, current_entity_id
         eid = current_entity_id()
@@ -730,6 +737,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @requires_feature('banking')
     @require_area('invoicing')
     def confirm_purchase_reconciliation():
         tx_id=int(request.form.get('bank_transaction_id') or 0); purchase_id=int(request.form.get('purchase_invoice_id') or 0)
@@ -762,6 +770,7 @@ def register(app):
     @app.route('/banking/regles', methods=['GET', 'POST'])
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_rules():
         from profitos.entities import current_entity_id
         eid=current_entity_id()
@@ -800,6 +809,7 @@ def register(app):
     @app.route('/banking/regles/<int:rule_id>/supprimer', methods=['POST'])
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_rule_delete(rule_id):
         from profitos.entities import current_entity_id
         eid=current_entity_id()
@@ -812,6 +822,7 @@ def register(app):
     @app.route('/banking/regles/appliquer', methods=['POST'])
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_rules_apply():
         from profitos.entities import current_entity_id
         eid=current_entity_id()
@@ -833,6 +844,7 @@ def register(app):
     @app.route('/banking/transactions/<int:tx_id>/categoriser', methods=['POST'])
     @login_required
     @requires_paid_plan
+    @requires_feature('banking')
     def banking_transaction_categorize(tx_id):
         from profitos.entities import current_entity_id
         eid=current_entity_id()

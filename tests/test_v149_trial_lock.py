@@ -9,7 +9,7 @@ def _read(*parts):
 
 def test_paid_plan_helper_only_accepts_paid_plans():
     t=_read("profitos","feature_access.py")
-    assert 'PAID_PLANS = {"STARTER", "PRO", "BUSINESS"}' in t
+    assert 'PAID_PLANS = {"STARTER", "PRO", "BUSINESS", "MULTI"}' in t
     assert 'def requires_paid_plan(fn):' in t
     assert 'TRIAL/FREE sont bloqués' in t
 

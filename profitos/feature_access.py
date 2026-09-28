@@ -6,7 +6,7 @@ from profitos.runtime import current_org, log_security_event
 from profitos.plan_limits import feature_enabled
 
 
-PAID_PLANS = {"STARTER", "PRO", "BUSINESS"}
+PAID_PLANS = {"STARTER", "PRO", "BUSINESS", "MULTI"}
 
 
 def is_paid_plan(plan):
@@ -31,14 +31,14 @@ def _deny_paid_feature(target="paid_plan"):
         target=target,
     )
     flash(
-        "Cette fonctionnalité nécessite un abonnement Starter, Pro ou Business. "
+        "Cette fonctionnalité nécessite un abonnement Starter, Pro, Business ou Multi-Entity. "
         "Choisissez une formule depuis la page Facturation."
     )
     return redirect(url_for("billing"))
 
 
 def requires_paid_plan(fn):
-    """Autorise uniquement STARTER, PRO et BUSINESS. TRIAL/FREE sont bloqués."""
+    """Autorise uniquement STARTER, PRO, BUSINESS et MULTI. TRIAL/FREE sont bloqués."""
     @wraps(fn)
     def wrapped(*args, **kwargs):
         if not current_plan_is_paid():
@@ -63,7 +63,7 @@ def requires_feature(feature_name):
                     target=feature_name,
                 )
                 flash(
-                    "Cette fonctionnalité est disponible avec les formules Pro et Business. "
+                    "Cette fonctionnalité n’est pas incluse dans votre formule actuelle. "
                     "Vous pouvez changer de formule depuis la page Facturation."
                 )
                 return redirect(url_for("billing"))

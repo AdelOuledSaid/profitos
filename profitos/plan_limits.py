@@ -6,32 +6,29 @@ Les contrôles doivent toujours être faits côté serveur.
 
 PLAN_LIMITS = {
     "TRIAL": {
-        "team_members": 2,
-        "organizations": 1,
-        "imports_per_month": 20,
-        "reports_per_month": 10,
-        "advanced_features": False,
+        "team_members": 2, "organizations": 1, "imports_per_month": 20,
+        "reports_per_month": 10, "advanced_features": False,
+        "accounting_core": False, "banking": False, "advanced_ai": False, "multi_entity": False,
     },
     "STARTER": {
-        "team_members": 2,
-        "organizations": 1,
-        "imports_per_month": 20,
-        "reports_per_month": 10,
-        "advanced_features": False,
+        "team_members": 2, "organizations": 1, "imports_per_month": 20,
+        "reports_per_month": 10, "advanced_features": False,
+        "accounting_core": False, "banking": False, "advanced_ai": False, "multi_entity": False,
     },
     "PRO": {
-        "team_members": 10,
-        "organizations": 3,
-        "imports_per_month": 200,
-        "reports_per_month": 100,
-        "advanced_features": True,
+        "team_members": 5, "organizations": 1, "imports_per_month": 200,
+        "reports_per_month": 100, "advanced_features": True,
+        "accounting_core": True, "banking": True, "advanced_ai": False, "multi_entity": False,
     },
     "BUSINESS": {
-        "team_members": 50,
-        "organizations": 10,
-        "imports_per_month": None,
-        "reports_per_month": None,
-        "advanced_features": True,
+        "team_members": 20, "organizations": 1, "imports_per_month": None,
+        "reports_per_month": None, "advanced_features": True,
+        "accounting_core": True, "banking": True, "advanced_ai": True, "multi_entity": False,
+    },
+    "MULTI": {
+        "team_members": 100, "organizations": 25, "imports_per_month": None,
+        "reports_per_month": None, "advanced_features": True,
+        "accounting_core": True, "banking": True, "advanced_ai": True, "multi_entity": True,
     },
 }
 
