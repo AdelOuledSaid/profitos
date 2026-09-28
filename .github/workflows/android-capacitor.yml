@@ -1,0 +1,130 @@
+name: Build ProfitOS Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/android-capacitor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install JavaScript dependencies
+        run: npm install
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfitOS-Android-Debug-APK
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # --- Version release signée (.aab), pour publication sur Google Play ---
+      # Nécessite 4 secrets GitHub à créer une seule fois (Settings > Secrets
+      # and variables > Actions) : ANDROID_KEYSTORE_BASE64 (ton fichier .jks
+      # ou .keystore encodé en base64 — génère-le d'abord en local avec
+      # `keytool -genkeypair -v -keystore profitos-release.keystore -alias
+      # profitos -keyalg RSA -keysize 2048 -validity 10000`, puis
+      # `base64 -i profitos-release.keystore | pbcopy` (Mac) ou
+      # `base64 -w0 profitos-release.keystore` (Linux) pour obtenir la
+      # valeur à coller dans le secret), ANDROID_KEYSTORE_PASSWORD,
+      # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+      #
+      # Cette étape n'a jamais été exécutée — le bloc signingConfig injecté
+      # dans build.gradle suit la structure standard du plugin Android
+      # Gradle, mais n'a pas pu être vérifié contre un vrai projet généré
+      # par `cap add android` faute d'accès réseau dans mon environnement.
+      # Se déclenche uniquement si les secrets existent, pour ne jamais
+      # faire échouer la build debug si tu n'as pas encore configuré la
+      # signature.
+      - name: Check release signing secrets are configured
+        id: check_signing
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode release keystore
+        if: steps.check_signing.outputs.configured == 'true'
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/profitos-release.keystore
+
+      - name: Inject release signing config
+        if: steps.check_signing.outputs.configured == 'true'
+        working-directory: mobile/android/app
+        run: |
+          cat >> build.gradle << 'GRADLE_EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("profitos-release.keystore")
+                      storePassword System.getenv("PROFITOS_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("PROFITOS_KEY_ALIAS")
+                      keyPassword System.getenv("PROFITOS_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          GRADLE_EOF
+
+      - name: Build signed release AAB
+        if: steps.check_signing.outputs.configured == 'true'
+        working-directory: mobile/android
+        env:
+          PROFITOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PROFITOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PROFITOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Upload signed release AAB
+        if: steps.check_signing.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfitOS-Android-Release-AAB
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">INTÉGRATIONS</div>
+    <h1 class="purchase-title">Shopify &amp; WooCommerce</h1>
+    <p class="purchase-subtitle">Importe tes commandes en factures brouillon — jamais testé contre de vraies boutiques, à valider avec un compte réel avant usage en production. La TVA n'est pas calculée automatiquement, à vérifier avant envoi de chaque facture.</p>
+  </div>
+</div>
+
+{% for key, label in platforms.items() %}
+{% set conn = connections.get(key) %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div>
+      <h2 style="color:#fff;margin:0 0 6px;">{{ label }}</h2>
+      {% if conn %}
+      <p class="purchase-ok-text" style="font-size:13px;">Connecté à {{ conn.shop_domain }} le {{ conn.connected_at|fr_date(true) }}.</p>
+      {% else %}
+      <p class="purchase-muted" style="font-size:13px;">Non connecté.</p>
+      {% endif %}
+    </div>
+    {% if conn %}
+    <div style="display:flex;gap:8px;">
+      <form method="post" action="{{ url_for('ecommerce_sync',platform=key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn primary">Synchroniser les commandes</button>
+      </form>
+      <form method="post" action="{{ url_for('ecommerce_disconnect',platform=key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="purchase-primary-btn secondary">Déconnecter</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <form method="post" action="{{ url_for('ecommerce_connect',platform=key) }}" style="margin-top:16px;" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">{{ 'Domaine de la boutique (ex: ma-boutique.myshopify.com)' if key=='shopify' else 'Domaine du site (ex: ma-boutique.fr)' }}
+      <input name="shop_domain" value="{{ conn.shop_domain if conn else '' }}" placeholder="{{ 'ma-boutique.myshopify.com' if key=='shopify' else 'ma-boutique.fr' }}">
+    </label>
+    <label class="wide">{{ 'Jeton d\'accès Admin API (app personnalisée)' if key=='shopify' else 'Clé consommateur (Consumer Key)' }}
+      <input name="credential_1" placeholder="{{ 'shpat_...' if key=='shopify' else 'ck_...' }}">
+    </label>
+    {% if key=='woocommerce' %}
+    <label class="wide">Secret consommateur (Consumer Secret)<input name="credential_2" placeholder="cs_..."></label>
+    {% endif %}
+    <div class="wide"><button type="submit" class="purchase-primary-btn secondary">{{ 'Reconnecter' if conn else 'Connecter' }}</button></div>
+  </form>
+</section>
+{% endfor %}
+</div>
+{% endblock %}

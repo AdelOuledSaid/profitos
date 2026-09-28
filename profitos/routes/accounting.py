@@ -430,7 +430,7 @@ def register(app):
                      JOIN accounting_entry_lines l ON l.entry_id=e.id
                      WHERE e.entity_id IS ?
                      GROUP BY e.id
-                     HAVING ROUND(SUM(l.debit) - SUM(l.credit), 2) != 0
+                     HAVING ABS(CAST(SUM(l.debit) - SUM(l.credit) AS NUMERIC)) >= 0.005
                    )''',
                 (entity_id,),
             ).fetchone()['n']
@@ -631,10 +631,11 @@ def register(app):
         # Toute écriture doit rester équilibrée.
         row=c.execute(
             f"""SELECT COUNT(*) n FROM (
-                SELECT e.id,ROUND(SUM(l.debit)-SUM(l.credit),2) diff
+                SELECT e.id
                 FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
                 WHERE e.entry_date BETWEEN ? AND ? AND {('e.entity_id=?' if eid else 'e.entity_id IS NULL')}
-                GROUP BY e.id HAVING ABS(diff)>0.01)""", (date_from,date_to)+ep).fetchone()
+                GROUP BY e.id
+                HAVING ABS(CAST(SUM(l.debit)-SUM(l.credit) AS NUMERIC))>0.01)""", (date_from,date_to)+ep).fetchone()
         checks.append({'code':'balanced_entries','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
                        'label':'Écritures comptables équilibrées'})
         # Factures émises de la période sans écriture de vente.

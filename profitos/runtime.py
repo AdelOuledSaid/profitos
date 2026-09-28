@@ -43,6 +43,15 @@ def init_auth_db():
     CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,slug TEXT UNIQUE,plan TEXT DEFAULT 'TRIAL',status TEXT DEFAULT 'ACTIVE',trial_ends_at TEXT,stripe_customer_id TEXT,stripe_subscription_id TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,theme_preference TEXT DEFAULT 'dark',last_seen_changelog TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
+    CREATE TABLE IF NOT EXISTS push_device_tokens(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        token TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT,
+        UNIQUE(user_id,token)
+    );
     CREATE TABLE IF NOT EXISTS cabinet_time_entries(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -1614,6 +1623,24 @@ def init_tenant_db(org_id=None):
         amount REAL NOT NULL,
         status TEXT DEFAULT 'pending',
         created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ecommerce_connections(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL UNIQUE,
+        shop_domain TEXT NOT NULL,
+        credential_1 TEXT,
+        credential_2 TEXT,
+        connected_at TEXT,
+        connected_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS ecommerce_imported_orders(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        entity_id INTEGER,
+        external_order_id TEXT NOT NULL,
+        invoice_id INTEGER,
+        imported_at TEXT NOT NULL,
+        UNIQUE(platform,external_order_id)
     );
 
     '''); c.commit()
