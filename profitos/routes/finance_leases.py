@@ -96,6 +96,7 @@ def register(app):
         try:
             pay_lease_payment(c, payment_id, entity_id=current_entity_id(), created_by=current_user()['email'])
         except AccountingError as e:
+            c.rollback()
             c.close()
             flash(f"Règlement impossible : {e}")
             return redirect(url_for('finance_lease_detail', lease_id=payment['lease_id']))
@@ -135,6 +136,7 @@ def register(app):
                 entity_id=current_entity_id(),
             )
         except AccountingError as e:
+            c.rollback()
             c.close()
             flash(f"Levée d'option impossible : {e}")
             return redirect(url_for('finance_lease_detail', lease_id=lease_id))

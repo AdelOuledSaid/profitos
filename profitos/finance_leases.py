@@ -81,20 +81,18 @@ def pay_lease_payment(conn, payment_id, entity_id=None, created_by=None):
             {'account_code': BANK_ACCOUNT, 'credit': payment['amount']},
         ],
         source_type='finance_lease_payment', source_id=payment_id,
-        entity_id=entity_id, created_by=created_by,
+        entity_id=entity_id, created_by=created_by, commit=False,
     )
     conn.execute(
         "UPDATE finance_lease_payments SET paid=1,entry_id=?,paid_at=? WHERE id=?",
         (entry_id, datetime.utcnow().isoformat(), payment_id),
     )
-    conn.commit()
-
     remaining = conn.execute(
         "SELECT COUNT(*) n FROM finance_lease_payments WHERE lease_id=? AND paid=0", (lease['id'],)
     ).fetchone()['n']
     if remaining == 0 and lease['status'] == 'active':
         conn.execute("UPDATE finance_leases SET status='completed' WHERE id=?", (lease['id'],))
-        conn.commit()
+    conn.commit()
     return entry_id
 
 

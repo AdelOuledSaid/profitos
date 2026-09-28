@@ -93,15 +93,16 @@ def register(app):
             c.close(); abort(404)
         try:
             if not c.execute("SELECT code FROM accounting_journals WHERE code='PA'").fetchone():
-                c.execute("INSERT INTO accounting_journals(code,label,journal_type,is_default,created_at) VALUES('PA','Paie','OD',0,?)",(datetime.utcnow().isoformat(),)); c.commit()
+                c.execute("INSERT INTO accounting_journals(code,label,journal_type,is_default,created_at) VALUES('PA','Paie','OD',0,?)",(datetime.utcnow().isoformat(),))
             lines=json.loads(row['lines_json'])
             entry_id=create_entry(c,'PA',row['entry_date'],f"Paie {row['provider']} — {row['period_label']}",lines,
-                                  source_type='payroll_import',source_id=row['id'],created_by=current_user()['email'],entity_id=eid)
+                                  source_type='payroll_import',source_id=row['id'],created_by=current_user()['email'],entity_id=eid,commit=False)
             c.execute("UPDATE payroll_imports SET status='posted',accounting_entry_id=?,validated_by=?,validated_at=? WHERE id=? AND entity_id IS ? AND status='pending'",
                       (entry_id,current_user()['email'],datetime.utcnow().isoformat(),import_id,eid)); c.commit()
             log_activity('PAYROLL_IMPORT_POSTED',f"Import paie #{import_id} comptabilisé dans PA")
             flash('OD de paie validée et comptabilisée dans le journal PA.')
         except AccountingError as exc:
+            c.rollback()
             flash(f'Validation impossible : {exc}')
         finally: c.close()
         return redirect(url_for('payroll_imports_list'))

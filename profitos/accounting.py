@@ -458,7 +458,8 @@ def _next_piece_number(conn, journal_code, entry_date, entity_id=None):
 
 
 def create_entry(conn, journal_code, entry_date, label, lines,
-                  source_type=None, source_id=None, created_by=None, entity_id=None):
+                  source_type=None, source_id=None, created_by=None, entity_id=None,
+                  commit=True):
     """Crée une écriture comptable en partie double, avec ses lignes.
 
     lines : liste de dicts {account_code, debit=0, credit=0, label=None,
@@ -585,7 +586,8 @@ def create_entry(conn, journal_code, entry_date, label, lines,
             (entry_id, ln['account_code'], ln['auxiliary_name'], ln['label'],
              ln['debit'], ln['credit'], order),
         )
-    conn.commit()
+    if commit:
+        conn.commit()
     return entry_id
 
 

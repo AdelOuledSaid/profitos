@@ -86,6 +86,7 @@ def register(app):
         try:
             pay_installment(c, installment_id, entity_id=current_entity_id(), created_by=current_user()['email'])
         except AccountingError as e:
+            c.rollback()
             c.close()
             flash(f"Règlement impossible : {e}")
             return redirect(url_for('loan_detail', loan_id=installment['loan_id']))

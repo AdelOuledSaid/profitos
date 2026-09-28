@@ -135,18 +135,16 @@ def pay_installment(conn, installment_id, entity_id=None, created_by=None):
         conn, 'BQ', date.today(),
         f"Échéance {installment['installment_number']}/{loan['duration_months']} — {loan['lender_name']}",
         lines, source_type='loan_installment', source_id=installment_id,
-        entity_id=entity_id, created_by=created_by,
+        entity_id=entity_id, created_by=created_by, commit=False,
     )
     conn.execute(
         "UPDATE loan_installments SET paid=1,entry_id=?,paid_at=? WHERE id=?",
         (entry_id, __import__('datetime').datetime.utcnow().isoformat(), installment_id),
     )
-    conn.commit()
-
     remaining_unpaid = conn.execute(
         "SELECT COUNT(*) n FROM loan_installments WHERE loan_id=? AND paid=0", (loan['id'],)
     ).fetchone()['n']
     if remaining_unpaid == 0:
         conn.execute("UPDATE loans SET status='paid_off' WHERE id=?", (loan['id'],))
-        conn.commit()
+    conn.commit()
     return entry_id

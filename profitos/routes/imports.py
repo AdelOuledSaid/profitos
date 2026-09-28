@@ -602,10 +602,13 @@ def register(app):
             try: iid=int(iid)
             except ValueError: continue
             c=cx()
-            row=c.execute('SELECT * FROM invoices WHERE id=?',(iid,)).fetchone()
+            
+            from profitos.entities import current_entity_id
+            eid=current_entity_id()
+            row=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(iid,eid)).fetchone()
             if not row or norm(row['status'] or '')=='paid': c.close(); continue
             old=row['status']
-            c.execute("UPDATE invoices SET status='paid' WHERE id=?",(iid,))
+            c.execute("UPDATE invoices SET status='paid' WHERE id=? AND entity_id IS ?",(iid,eid))
             c.commit(); c.close()  # commité avant log_status_change : évite un verrou SQLite
                                      # entre cette connexion et celle ouverte par log_status_change.
             count+=1
