@@ -1045,6 +1045,32 @@ def init_tenant_db(org_id=None):
         UNIQUE(entity_id,idempotency_key)
     );
     CREATE INDEX IF NOT EXISTS idx_purchase_invoice_payments_invoice ON purchase_invoice_payments(entity_id,purchase_invoice_id);
+    CREATE TABLE IF NOT EXISTS sepa_export_batches(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        message_id TEXT NOT NULL,
+        execution_date TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        payment_count INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'exported',
+        file_sha256 TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        UNIQUE(entity_id,message_id),
+        UNIQUE(entity_id,file_sha256)
+    );
+    CREATE TABLE IF NOT EXISTS sepa_export_items(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        purchase_invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        supplier_name TEXT,
+        invoice_number TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(batch_id,purchase_invoice_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sepa_export_items_invoice ON sepa_export_items(entity_id,purchase_invoice_id);
     CREATE TABLE IF NOT EXISTS bank_purchase_allocations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -1278,6 +1304,28 @@ def init_tenant_db(org_id=None):
         UNIQUE(entity_id,period_start,period_end)
     );
     CREATE INDEX IF NOT EXISTS idx_vat_declarations_entity_period ON vat_declarations(entity_id,period_start,period_end);
+    CREATE TABLE IF NOT EXISTS tax_declaration_preparations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        declaration_type TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        collected_amount REAL NOT NULL DEFAULT 0,
+        deductible_amount REAL NOT NULL DEFAULT 0,
+        balance_amount REAL NOT NULL DEFAULT 0,
+        entry_count INTEGER NOT NULL DEFAULT 0,
+        snapshot_max_entry_id INTEGER NOT NULL DEFAULT 0,
+        checks_json TEXT,
+        prepared_at TEXT,
+        prepared_by TEXT,
+        validated_at TEXT,
+        validated_by TEXT,
+        notes TEXT,
+        updated_at TEXT,
+        UNIQUE(entity_id,declaration_type,period_start,period_end)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tax_decl_prep_entity_period ON tax_declaration_preparations(entity_id,declaration_type,period_start,period_end);
     CREATE INDEX IF NOT EXISTS idx_accounting_entries_journal_date ON accounting_entries(journal_code, entry_date);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_entry ON accounting_entry_lines(entry_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_entry_lines_account ON accounting_entry_lines(account_code);

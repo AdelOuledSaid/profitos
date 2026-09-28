@@ -14,13 +14,14 @@ def test_v205_purchase_budgets_are_entity_scoped_with_legacy_migration():
     assert "WHERE entity_key=?" in block
     assert "ON CONFLICT(category,entity_key)" in block
 
-def test_v205_sepa_supplier_payments_use_pass18_ledger_not_legacy_generator():
+def test_v205_sepa_export_does_not_pretend_bank_execution():
     start=INV.index("def purchase_sepa_batch")
     end=INV.find("\n    @app.route(",start+10)
     block=INV[start:end if end>0 else len(INV)]
-    assert "INSERT INTO purchase_invoice_payments" in block
-    assert "generate_purchase_partial_payment_entry" in block
-    assert "idempotency_key" in block
+    assert "INSERT INTO sepa_export_batches" in block
+    assert "INSERT INTO sepa_export_items" in block
+    assert "INSERT INTO purchase_invoice_payments" not in block
+    assert "generate_purchase_partial_payment_entry" not in block
     assert "generate_purchase_payment_entry(c, p_updated)" not in block
 
 def test_v205_bank_supplier_suggestions_use_remaining_balance_and_entity():

@@ -18,6 +18,20 @@
 <div class="purchase-stat"><div><div class="purchase-stat-label">{{ 'TVA À DÉCAISSER' if balance >= 0 else 'CRÉDIT DE TVA' }}</div><div class="purchase-stat-value">{{ balance|abs|fr_number(2) }} €</div></div></div>
 <div class="purchase-stat"><div><div class="purchase-stat-label">ÉCRITURES TVA</div><div class="purchase-stat-value">{{ entry_count }}</div></div></div>
 </div>
+<section class="purchase-panel" style="margin-bottom:20px;">
+<div class="purchase-panel-head"><h2>Préparation fiscale CA3 / CA12</h2></div>
+<p><strong>Préparation interne uniquement :</strong> ProfitOS calcule, contrôle et fige un dossier de travail. La validation ci-dessous ne constitue ni un dépôt, ni une télédéclaration, ni un accusé de réception DGFiP.</p>
+<form method="get" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:12px;">
+<input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">
+<label>Formulaire<select name="declaration_type"><option value="CA3" {% if declaration_type=='CA3' %}selected{% endif %}>CA3</option><option value="CA12" {% if declaration_type=='CA12' %}selected{% endif %}>CA12</option></select></label>
+<button class="purchase-nav-btn">Afficher</button></form>
+<p>Statut interne : <strong>{{ fiscal_preparation.status if fiscal_preparation else 'non préparée' }}</strong>{% if fiscal_preparation and fiscal_preparation.validated_at %} — validée le {{ fiscal_preparation.validated_at }}{% endif %}</p>
+<form method="post" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+<input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}"><input type="hidden" name="declaration_type" value="{{ declaration_type }}">
+<label>Note interne<input name="fiscal_notes" value="{{ fiscal_preparation.notes if fiscal_preparation else '' }}" placeholder="Optionnel"></label>
+<button name="action" value="fiscal_prepare" class="purchase-nav-btn">Enregistrer le brouillon</button>
+<button name="action" value="fiscal_validate" class="purchase-primary-btn primary">Valider et verrouiller le snapshot</button>
+</form></section>
 <section class="purchase-panel" style="margin-bottom:20px;"><div class="purchase-panel-head"><h2>Contrôles de cohérence</h2></div>
 <table class="purchase-table"><tbody>{% for x in checks %}<tr><td>{{ x.label }}</td><td style="text-align:right;"><strong>{{ 'OK' if x.ok else x.count ~ ' anomalie(s)' }}</strong></td></tr>{% endfor %}</tbody></table>
 </section>
@@ -37,5 +51,6 @@
 </tbody></table></div></section><section class="purchase-panel"><div class="purchase-panel-head"><h2>TVA déductible</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><tbody>
 {% for l in purchase_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.debit-l.credit)|fr_number(2) }} €</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
 </tbody></table></div></section></div>
+{% if fiscal_history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des préparations fiscales</h2></div><table class="purchase-table"><tbody>{% for d in fiscal_history %}<tr><td><strong>{{ d.declaration_type }}</strong></td><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }} €</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 {% if history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des périodes</h2></div><table class="purchase-table"><tbody>{% for d in history %}<tr><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }} €</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 </div>{% endblock %}

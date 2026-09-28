@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">ACHATS · VIREMENTS GROUPÉS</div>
     <h1 class="purchase-title">Export SEPA</h1>
-    <p class="purchase-subtitle">Génère un fichier de virements groupés (norme SEPA, pain.001) à uploader dans l'espace banque en ligne de {{ company.name }}. Aucun virement n'est exécuté automatiquement — l'exécution reste entièrement de ton côté, via ta banque.</p>
+    <p class="purchase-subtitle">Génère un fichier de virements groupés (norme SEPA, pain.001) à uploader dans l'espace banque en ligne de {{ company.name }}. Aucun virement n'est exécuté automatiquement. L'export ne marque pas les factures comme payées : le paiement est confirmé séparément, notamment par rapprochement bancaire.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a>
 </div>
@@ -51,7 +51,7 @@
       </table>
     </div>
     <button type="submit" class="purchase-primary-btn primary" style="margin-top:16px;" {% if not company_ready %}disabled{% endif %}>
-      Générer le fichier SEPA et marquer payées
+      Générer le fichier SEPA
     </button>
   </section>
 </form>

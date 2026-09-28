@@ -58,14 +58,13 @@ def test_bank_supplier_reconciliation_is_atomic_with_accounting():
     assert block.index("generate_purchase_partial_payment_entry(c,p,payment)") < block.index("c.commit()")
 
 
-def test_sepa_payment_updates_are_entity_scoped_and_rollback_on_accounting_failure():
+def test_sepa_export_is_traced_but_does_not_create_unconfirmed_payment():
     block = INVOICING[INVOICING.index('def purchase_sepa_batch'):INVOICING.index("@app.route('/facturation/commandes')")]
-    assert "WHERE id=? AND entity_id IS ? AND status='unpaid'" in block
-    assert "SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?" in block
-    # Pass 24+: SEPA uses the supplier payment ledger and its dedicated
-    # partial-payment accounting source rather than the legacy full-payment generator.
-    assert "INSERT INTO purchase_invoice_payments" in block
-    assert "generate_purchase_partial_payment_entry(c,r,payment)" in block
-    assert "generate_purchase_payment_entry(c, p_updated)" not in block
+    # Pass 33: producing a pain.001 file is not proof that the bank executed it.
+    assert "INSERT INTO sepa_export_batches" in block
+    assert "INSERT INTO sepa_export_items" in block
+    assert "INSERT INTO purchase_invoice_payments" not in block
+    assert "generate_purchase_partial_payment_entry(c,r,payment)" not in block
+    assert "UPDATE purchase_invoices SET status='paid'" not in block
     assert "c.rollback()" in block
-    assert "Lot SEPA interrompu" in block
+    assert "Export SEPA interrompu" in block

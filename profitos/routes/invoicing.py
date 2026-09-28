@@ -2171,10 +2171,19 @@ def register(app):
                       AND (p.validation_status IS NULL OR p.validation_status='approved')""",
                 selected_ids + ([entity_id] if entity_id else []),
             ).fetchall()
-            payments = [{
-                'supplier_name': r['supplier_name'], 'iban': r['supplier_iban'], 'bic': r['supplier_bic'],
-                'amount': r['total'], 'reference': r['invoice_number'],
-            } for r in rows]
+            # Le virement porte sur le solde restant, jamais sur le total historique
+            # de la facture (une facture peut déjà avoir reçu un paiement partiel).
+            payable_rows = []
+            payments = []
+            for r in rows:
+                balance = _purchase_balance(c, r, entity_id)
+                if balance <= .005:
+                    continue
+                payable_rows.append((r, balance))
+                payments.append({
+                    'supplier_name': r['supplier_name'], 'iban': r['supplier_iban'], 'bic': r['supplier_bic'],
+                    'amount': balance, 'reference': r['invoice_number'],
+                })
             try:
                 xml_content, msg_id, total = generate_sepa_xml(debtor_identity, payments)
             except ValueError as e:
@@ -2182,38 +2191,33 @@ def register(app):
                 flash(f"Impossible de générer le fichier SEPA : {e}")
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
 
-            for r in rows:
-                try:
-                    balance=_purchase_balance(c,r,entity_id)
-                    if balance <= .005:
-                        continue
-                    idem=f"sepa:{entity_id}:{msg_id}:{r['id']}"
-                    c.execute("""INSERT INTO purchase_invoice_payments
-                                 (entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
-                                 VALUES(?,?,?,?,?,?,?,?)""",
-                              (entity_id,r['id'],balance,date.today().isoformat(),'sepa',msg_id,idem,now()))
-                    payment=c.execute("""SELECT * FROM purchase_invoice_payments
-                                         WHERE entity_id IS ? AND idempotency_key=?""",(entity_id,idem)).fetchone()
-                    generate_purchase_partial_payment_entry(c,r,payment)
-                    c.execute("""UPDATE purchase_invoices SET status='paid',paid_at=?
-                                 WHERE id=? AND entity_id IS ? AND status='unpaid'""",
-                              (now(),r['id'],entity_id))
-                    p_updated=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",
-                                        (r['id'],entity_id)).fetchone()
-                    if not p_updated:
-                        raise AccountingError("Facture fournisseur introuvable après mise à jour SEPA.")
-                    c.commit()
-                except (AccountingError,sqlite3.IntegrityError) as e:
-                    c.rollback()
-                    log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"règlement SEPA {r['id']}: {e}")
-                    c.close()
-                    flash(f"Lot SEPA interrompu : la facture {r['invoice_number']} n'a pas été marquée payée ({e}).")
-                    return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
-                deliver_webhook(c, 'purchase.paid', {'id': r['id'], 'invoice_number': r['invoice_number'],
-                                                       'supplier_name': r['supplier_name'], 'total': r['total']},
-                                entity_id=entity_id)
+            # Un export pain.001 est une instruction préparée, pas la preuve qu'un
+            # virement a été accepté/exécuté par la banque. On trace donc le lot
+            # sans créer de paiement ni d'écriture comptable.
+            import hashlib
+            file_sha256 = hashlib.sha256(xml_content.encode('utf-8')).hexdigest()
+            try:
+                c.execute("""INSERT INTO sepa_export_batches
+                             (entity_id,message_id,execution_date,total_amount,payment_count,status,file_sha256,created_at,created_by)
+                             VALUES(?,?,?,?,?,'exported',?,?,?)""",
+                          (entity_id,msg_id,date.today().isoformat(),total,len(payable_rows),file_sha256,now(),session.get('user_email')))
+                batch = c.execute("SELECT id FROM sepa_export_batches WHERE entity_id IS ? AND message_id=?",
+                                  (entity_id,msg_id)).fetchone()
+                if not batch:
+                    raise AccountingError("Lot SEPA introuvable après création.")
+                for r, balance in payable_rows:
+                    c.execute("""INSERT INTO sepa_export_items
+                                 (batch_id,entity_id,purchase_invoice_id,amount,supplier_name,invoice_number,created_at)
+                                 VALUES(?,?,?,?,?,?,?)""",
+                              (batch['id'],entity_id,r['id'],balance,r['supplier_name'],r['invoice_number'],now()))
+                c.commit()
+            except (AccountingError, sqlite3.IntegrityError) as e:
+                c.rollback(); c.close()
+                log_ops_event('SEPA_EXPORT_FAILED', outcome='ERROR', detail=f"lot {msg_id}: {e}")
+                flash(f"Export SEPA interrompu : {e}")
+                return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
             c.close()
-            log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} ({debtor_identity['name']}) : {len(rows)} virement(s), {fr_number(total, 2)} €")
+            log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} ({debtor_identity['name']}) : {len(payable_rows)} virement(s), {fr_number(total, 2)} €")
             filename = f"virements_{date.today().isoformat()}.xml"
             return Response(
                 xml_content.encode('utf-8'), mimetype='application/xml',

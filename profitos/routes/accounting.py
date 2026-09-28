@@ -1,3 +1,4 @@
+import json
 from profitos.runtime import *
 from profitos.accounting import (AccountingError, generate_fec, fec_filename,
                                    compute_depreciation_for_year, generate_depreciation_entry,
@@ -676,6 +677,12 @@ def register(app):
         c.execute(f"SELECT COUNT(*) FROM accounting_entries e WHERE e.entry_date BETWEEN ? AND ? AND {ef}", (date_from,date_to)+ep).fetchone()
         c.execute(f"SELECT COUNT(*) FROM accounting_entries e WHERE e.entry_date BETWEEN ? AND ? AND {ef}", (date_from,date_to)+ep).fetchone()
         checks=_vat_consistency_checks(c,eid,date_from,date_to)
+        declaration_type=(request.values.get('declaration_type') or 'CA3').upper()
+        if declaration_type not in ('CA3','CA12'):
+            declaration_type='CA3'
+        fiscal_preparation=c.execute(
+            "SELECT * FROM tax_declaration_preparations WHERE declaration_type=? AND period_start=? AND period_end=? AND " + ('entity_id=?' if eid else 'entity_id IS NULL'),
+            (declaration_type,date_from,date_to,eid) if eid else (declaration_type,date_from,date_to)).fetchone()
         declaration=c.execute(
             "SELECT * FROM vat_declarations WHERE period_start=? AND period_end=? AND " + ('entity_id=?' if eid else 'entity_id IS NULL'),
             (date_from,date_to,eid) if eid else (date_from,date_to)).fetchone()
@@ -683,6 +690,26 @@ def register(app):
         if request.method == 'POST':
             action=request.form.get('action') or 'prepare'
             user=session.get('email') or session.get('user_email') or 'utilisateur'
+            if action in ('fiscal_prepare','fiscal_validate'):
+                if action=='fiscal_validate' and not all(x['ok'] for x in checks):
+                    c.close(); flash("Validation fiscale impossible : des contrôles restent en anomalie.")
+                    return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to,declaration_type=declaration_type))
+                status='validated' if action=='fiscal_validate' else 'draft'
+                checks_json=json.dumps(checks,ensure_ascii=False)
+                validated_at=now() if status=='validated' else None
+                validated_by=user if status=='validated' else None
+                notes=(request.form.get('fiscal_notes') or '').strip() or None
+                values=(collected,deductible,balance,entry_count,max_entry_id,checks_json,now(),user,status,validated_at,validated_by,notes,now())
+                if fiscal_preparation:
+                    if fiscal_preparation['status']=='validated' and action=='fiscal_prepare':
+                        c.close(); flash("Cette préparation fiscale est verrouillée. Créez une autre période pour la modifier.")
+                        return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to,declaration_type=declaration_type))
+                    c.execute("""UPDATE tax_declaration_preparations SET collected_amount=?,deductible_amount=?,balance_amount=?,entry_count=?,snapshot_max_entry_id=?,checks_json=?,prepared_at=?,prepared_by=?,status=?,validated_at=?,validated_by=?,notes=?,updated_at=? WHERE id=?""",values+(fiscal_preparation['id'],))
+                else:
+                    c.execute("""INSERT INTO tax_declaration_preparations(entity_id,declaration_type,period_start,period_end,collected_amount,deductible_amount,balance_amount,entry_count,snapshot_max_entry_id,checks_json,prepared_at,prepared_by,status,validated_at,validated_by,notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(eid,declaration_type,date_from,date_to)+values)
+                c.commit(); c.close()
+                flash("Préparation fiscale enregistrée dans ProfitOS. Aucune télédéclaration DGFiP n'a été effectuée.")
+                return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to,declaration_type=declaration_type))
             if action in ('lock','file') and not all(x['ok'] for x in checks):
                 c.close(); flash("Impossible de verrouiller/déclarer : des contrôles TVA restent en anomalie.")
                 return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
@@ -724,12 +751,15 @@ def register(app):
                    abs(collected-float(declaration['collected_amount'] or 0))>0.01 or
                    abs(deductible-float(declaration['deductible_amount'] or 0))>0.01)
         history=c.execute("SELECT * FROM vat_declarations WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC LIMIT 12", ep).fetchall()
+        fiscal_history=c.execute("SELECT * FROM tax_declaration_preparations WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC,id DESC LIMIT 12", ep).fetchall()
         c.close()
         return render_template('vat_summary.html', date_from=date_from, date_to=date_to,
                                 collected=collected, deductible=deductible, balance=balance,
                                 sales_lines=sales_lines, purchase_lines=purchase_lines,
                                 declaration=declaration, checks=checks, stale=stale,
-                                entry_count=entry_count, history=history)
+                                entry_count=entry_count, history=history,
+                                declaration_type=declaration_type, fiscal_preparation=fiscal_preparation,
+                                fiscal_history=fiscal_history)
 
     @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
     @login_required
