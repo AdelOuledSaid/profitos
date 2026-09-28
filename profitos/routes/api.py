@@ -53,7 +53,8 @@ def register(app):
     @api_scope_required('read')
     def api_recover():
         tc=tenant_cx_direct(g.api_org_id)
-        rows=tc.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,days_overdue,status,score,kind FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC").fetchall()
+        ef,ep=_entity_where()
+        rows=tc.execute(f"SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,days_overdue,status,score,kind FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} ORDER BY score DESC", ep).fetchall()
         tc.close()
         return jsonify({'data':[dict(r) for r in rows],'count':len(rows)})
 
@@ -62,7 +63,8 @@ def register(app):
     @api_scope_required('read')
     def api_save():
         tc=tenant_cx_direct(g.api_org_id)
-        rows=tc.execute("SELECT id,title,value,score,details FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC").fetchall()
+        ef,ep=_entity_where()
+        rows=tc.execute(f"SELECT id,title,value,score,details FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC", ep).fetchall()
         tc.close()
         return jsonify({'data':[dict(r) for r in rows],'count':len(rows)})
 
@@ -71,7 +73,8 @@ def register(app):
     @api_scope_required('read')
     def api_grow():
         tc=tenant_cx_direct(g.api_org_id)
-        rows=tc.execute("SELECT id,title,buyer,score,departments,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall()
+        ef,ep=_entity_where()
+        rows=tc.execute(f"SELECT id,title,buyer,score,departments,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' AND {ef} ORDER BY score DESC", ep).fetchall()
         tc.close()
         return jsonify({'data':[dict(r) for r in rows],'count':len(rows)})
 
@@ -80,9 +83,10 @@ def register(app):
     @api_scope_required('read')
     def api_summary():
         tc=tenant_cx_direct(g.api_org_id)
-        recover=tc.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']
-        save=tc.execute("SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()['t']
-        grow_n=tc.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']
+        ef,ep=_entity_where()
+        recover=tc.execute(f"SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef}", ep).fetchone()['t']
+        save=tc.execute(f"SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef}", ep).fetchone()['t']
+        grow_n=tc.execute(f"SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN' AND {ef}", ep).fetchone()['c']
         tc.close()
         return jsonify({'recover':recover,'save':save,'grow_opportunities':grow_n})
 
@@ -466,6 +470,14 @@ def register(app):
                 if 'write' in scopes and 'read' not in scopes: scopes.append('read')
                 entity_raw=(request.form.get('entity_id') or '').strip()
                 entity_id=int(entity_raw) if entity_raw.isdigit() else None
+                if entity_id is not None:
+                    tc = cx()
+                    entity_exists = tc.execute('SELECT id FROM entities WHERE id=?', (entity_id,)).fetchone()
+                    tc.close()
+                    if not entity_exists:
+                        c.close()
+                        flash("Entité invalide : la clé API doit être liée à une entité de cette organisation.")
+                        return redirect(url_for('api_keys'))
                 scope_legacy='read_write' if 'write' in scopes else 'read'
                 c.execute('''INSERT INTO api_keys
                              (organization_id,key_hash,key_prefix,created_by,created_at,scope,scopes,entity_id)

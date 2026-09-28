@@ -122,6 +122,8 @@ def pay_installment(conn, installment_id, entity_id=None, created_by=None):
     if installment['paid']:
         raise AccountingError("Cette échéance a déjà été réglée.")
     loan = conn.execute('SELECT * FROM loans WHERE id=?', (installment['loan_id'],)).fetchone()
+    if not loan or str(loan['entity_id'] or '') != str(entity_id or ''):
+        raise AccountingError("Cette échéance n'appartient pas à l'entité active.")
 
     lines = [{'account_code': LOAN_ACCOUNT, 'debit': installment['capital_amount']}]
     if installment['interest_amount']:

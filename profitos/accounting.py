@@ -422,23 +422,39 @@ class AccountingError(ValueError):
 
 
 def _next_piece_number(conn, journal_code, entry_date, entity_id=None):
-    """Numéro de pièce séquentiel par journal et par année civile, au format
-    {JOURNAL}-{ANNÉE}-{SÉQUENCE sur 5 chiffres}, ex. VE-2026-00001."""
+    """Réserve atomiquement le prochain numéro par entité/journal/année.
+
+    L'UPSERT est sérialisé par PostgreSQL sur la clé primaire et évite le
+    classique SELECT MAX()+1, vulnérable à deux créations simultanées.
+    SQLite récent supporte le même INSERT ... ON CONFLICT ... RETURNING.
+    """
     year = str(entry_date)[:4]
+    entity_key = int(entity_id) if entity_id is not None else 0
+    # Amorçage compatible avec les bases existantes : si la table de
+    # séquence est encore vide après migration, repartir du plus grand numéro
+    # déjà comptabilisé au lieu de recommencer à 00001.
     prefix = f'{journal_code}-{year}-'
-    row = conn.execute(
-        "SELECT piece_number FROM accounting_entries"
-        " WHERE journal_code=? AND piece_number LIKE ? AND entity_id IS ? ORDER BY id DESC LIMIT 1",
+    legacy = conn.execute(
+        """SELECT piece_number FROM accounting_entries
+           WHERE journal_code=? AND piece_number LIKE ? AND entity_id IS ?
+           ORDER BY piece_number DESC LIMIT 1""",
         (journal_code, prefix + '%', entity_id),
     ).fetchone()
-    if row:
+    seed = 0
+    if legacy:
         try:
-            last_seq = int(row['piece_number'].rsplit('-', 1)[-1])
+            seed = int(str(legacy['piece_number']).rsplit('-', 1)[-1])
         except (ValueError, IndexError):
-            last_seq = 0
-    else:
-        last_seq = 0
-    return f'{prefix}{last_seq + 1:05d}'
+            seed = 0
+    row = conn.execute(
+        """INSERT INTO accounting_piece_sequences(entity_key,journal_code,fiscal_year,last_sequence)
+           VALUES(?,?,?,?)
+           ON CONFLICT(entity_key,journal_code,fiscal_year) DO UPDATE SET
+             last_sequence=accounting_piece_sequences.last_sequence+1
+           RETURNING last_sequence""",
+        (entity_key, journal_code, year, seed + 1),
+    ).fetchone()
+    return f'{journal_code}-{year}-{int(row["last_sequence"]):05d}'
 
 
 def create_entry(conn, journal_code, entry_date, label, lines,
@@ -522,6 +538,31 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         )
 
     now = datetime.utcnow().isoformat()
+
+    # Idempotence DB : une source métier ne peut produire qu'une seule OD
+    # pour une même entité, même si deux requêtes arrivent simultanément.
+    claim_key = None
+    if source_type is not None and source_id is not None:
+        claim_key = (entity_key, str(source_type), int(source_id))
+        existing = conn.execute(
+            '''SELECT id FROM accounting_entries
+               WHERE source_type=? AND source_id=? AND entity_id IS ? LIMIT 1''',
+            (str(source_type), int(source_id), entity_id),
+        ).fetchone()
+        if existing:
+            raise AccountingError(
+                f"Une écriture existe déjà pour la source {source_type} #{source_id}."
+            )
+        claim = conn.execute(
+            '''INSERT OR IGNORE INTO accounting_source_claims
+               (entity_key,source_type,source_id,entry_id,created_at) VALUES(?,?,?,?,?)''',
+            (*claim_key, None, now),
+        )
+        if claim.rowcount == 0:
+            raise AccountingError(
+                f"Une écriture est déjà en cours ou existe pour la source {source_type} #{source_id}."
+            )
+
     piece_number = _next_piece_number(conn, journal_code, entry_date_str, entity_id)
 
     cur = conn.execute(
@@ -531,6 +572,11 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         (journal_code, piece_number, entry_date_str, label, source_type, source_id, created_by, now, entity_id),
     )
     entry_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    if claim_key is not None:
+        conn.execute(
+            'UPDATE accounting_source_claims SET entry_id=? WHERE entity_key=? AND source_type=? AND source_id=?',
+            (entry_id, *claim_key),
+        )
     for order, ln in enumerate(clean_lines):
         conn.execute(
             'INSERT INTO accounting_entry_lines'

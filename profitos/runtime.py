@@ -811,9 +811,9 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,price_index_name TEXT DEFAULT 'INDICE',weinvoice_status TEXT DEFAULT 'disconnected',weinvoice_last_check_at TEXT,weinvoice_last_error TEXT,weinvoice_company_id TEXT,weinvoice_kyb_status TEXT DEFAULT 'not_started',weinvoice_onboarded_at TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,siret TEXT,address TEXT,vat_number TEXT,postal_code TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT);
+    CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT,entity_id INTEGER);
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);
-    CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT);
+    CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT,entity_id INTEGER);
     CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,kind TEXT,title TEXT,draft TEXT,status TEXT DEFAULT 'PENDING',expected_value REAL DEFAULT 0,created_at TEXT,sent_at TEXT,sent_to TEXT);
     CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT,action_id INTEGER,outcome_type TEXT,amount REAL,verified INTEGER DEFAULT 0,note TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS audit_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_type TEXT,rows_processed INTEGER,signals_found INTEGER,created_at TEXT);
@@ -1218,6 +1218,21 @@ def init_tenant_db(org_id=None):
         journal_type TEXT NOT NULL,
         is_default INTEGER DEFAULT 0,
         created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS accounting_piece_sequences(
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        journal_code TEXT NOT NULL,
+        fiscal_year TEXT NOT NULL,
+        last_sequence INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(entity_key,journal_code,fiscal_year)
+    );
+    CREATE TABLE IF NOT EXISTS accounting_source_claims(
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        source_type TEXT NOT NULL,
+        source_id INTEGER NOT NULL,
+        entry_id INTEGER,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(entity_key,source_type,source_id)
     );
     CREATE TABLE IF NOT EXISTS accounting_entries(
         id INTEGER PRIMARY KEY AUTOINCREMENT,

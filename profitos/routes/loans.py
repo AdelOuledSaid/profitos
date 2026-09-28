@@ -57,8 +57,10 @@ def register(app):
     @app.route('/comptabilite/emprunts/<int:loan_id>')
     @login_required
     def loan_detail(loan_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        loan = c.execute('SELECT * FROM loans WHERE id=?', (loan_id,)).fetchone()
+        loan = c.execute('SELECT * FROM loans WHERE id=? AND entity_id IS ?', (loan_id, eid)).fetchone()
         if not loan:
             c.close(); abort(404)
         installments = c.execute(
@@ -75,7 +77,10 @@ def register(app):
     def loan_installment_pay(installment_id):
         from profitos.entities import current_entity_id
         c = cx()
-        installment = c.execute('SELECT loan_id FROM loan_installments WHERE id=?', (installment_id,)).fetchone()
+        installment = c.execute(
+            '''SELECT i.loan_id FROM loan_installments i JOIN loans l ON l.id=i.loan_id
+               WHERE i.id=? AND l.entity_id IS ?''', (installment_id, current_entity_id())
+        ).fetchone()
         if not installment:
             c.close(); abort(404)
         try:

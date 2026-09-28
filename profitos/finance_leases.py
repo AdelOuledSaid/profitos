@@ -70,6 +70,8 @@ def pay_lease_payment(conn, payment_id, entity_id=None, created_by=None):
     if payment['paid']:
         raise AccountingError("Cette redevance a déjà été réglée.")
     lease = conn.execute('SELECT * FROM finance_leases WHERE id=?', (payment['lease_id'],)).fetchone()
+    if not lease or str(lease['entity_id'] or '') != str(entity_id or ''):
+        raise AccountingError("Cette redevance n'appartient pas à l'entité active.")
 
     entry_id = create_entry(
         conn, 'BQ', datetime.utcnow().date(),
@@ -132,6 +134,8 @@ def exercise_purchase_option(conn, lease_id, exercise_date, useful_life_years,
     lease = conn.execute('SELECT * FROM finance_leases WHERE id=?', (lease_id,)).fetchone()
     if not lease:
         raise AccountingError(f"Contrat de crédit-bail introuvable : id={lease_id!r}.")
+    if str(lease['entity_id'] or '') != str(entity_id or ''):
+        raise AccountingError("Ce contrat de crédit-bail n'appartient pas à l'entité active.")
     if lease['status'] == 'option_exercised':
         raise AccountingError("L'option d'achat a déjà été levée sur ce contrat.")
     unpaid = conn.execute(

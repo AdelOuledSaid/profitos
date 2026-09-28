@@ -65,8 +65,10 @@ def register(app):
     @app.route('/comptabilite/credit-bail/<int:lease_id>')
     @login_required
     def finance_lease_detail(lease_id):
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         c = cx()
-        lease = c.execute('SELECT * FROM finance_leases WHERE id=?', (lease_id,)).fetchone()
+        lease = c.execute('SELECT * FROM finance_leases WHERE id=? AND entity_id IS ?', (lease_id, eid)).fetchone()
         if not lease:
             c.close(); abort(404)
         payments = c.execute(
@@ -85,7 +87,10 @@ def register(app):
     def finance_lease_payment_pay(payment_id):
         from profitos.entities import current_entity_id
         c = cx()
-        payment = c.execute('SELECT lease_id FROM finance_lease_payments WHERE id=?', (payment_id,)).fetchone()
+        payment = c.execute(
+            '''SELECT p.lease_id FROM finance_lease_payments p JOIN finance_leases l ON l.id=p.lease_id
+               WHERE p.id=? AND l.entity_id IS ?''', (payment_id, current_entity_id())
+        ).fetchone()
         if not payment:
             c.close(); abort(404)
         try:
@@ -103,6 +108,14 @@ def register(app):
     @login_required
     def finance_lease_exercise_option(lease_id):
         from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        ownership_c = cx()
+        owned = ownership_c.execute(
+            'SELECT id FROM finance_leases WHERE id=? AND entity_id IS ?', (lease_id, eid)
+        ).fetchone()
+        ownership_c.close()
+        if not owned:
+            abort(404)
         exercise_date = request.form.get('exercise_date') or date.today().isoformat()
         asset_account = request.form.get('asset_account')
         depreciation_account = request.form.get('depreciation_account')
