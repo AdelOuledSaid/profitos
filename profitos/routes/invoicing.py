@@ -643,25 +643,26 @@ def _purchase_pdf_dir_for_org(org_id):
     root.mkdir(parents=True, exist_ok=True)
     return root
 
-def get_or_create_supplier_inbox_token(org_id):
-    """Retourne le jeton d'adresse email dédiée de l'organisation pour la boîte
-    mail fournisseurs, le créant s'il n'existe pas encore. Stocké dans la base
-    auth (partagée) pour pouvoir être résolu par le webhook sans connaître
-    l'organisation à l'avance — même principe que export_tokens."""
+def get_or_create_supplier_inbox_token(org_id, entity_id):
+    """Jeton de boîte fournisseurs propre à une entité juridique.
+
+    Le token ne remplace pas la signature cryptographique du fournisseur
+    d'email entrant ; il sert uniquement au routage organisation + entité.
+    """
     ac = auth_cx()
+    entity_key = int(entity_id) if entity_id is not None else 0
     row = ac.execute(
-        'SELECT token FROM supplier_inbox_tokens WHERE organization_id=?', (org_id,)
+        'SELECT token FROM supplier_inbox_entity_tokens WHERE organization_id=? AND entity_key=?',
+        (org_id, entity_key),
     ).fetchone()
     if row:
-        ac.close()
-        return row['token']
-    token = secrets.token_urlsafe(12).lower().replace('-', '').replace('_', '')
+        ac.close(); return row['token']
+    token = secrets.token_urlsafe(18).lower().replace('-', '').replace('_', '')
     ac.execute(
-        'INSERT INTO supplier_inbox_tokens(token,organization_id,created_at) VALUES(?,?,?)',
-        (token, org_id, now()),
+        'INSERT INTO supplier_inbox_entity_tokens(token,organization_id,entity_id,entity_key,created_at) VALUES(?,?,?,?,?)',
+        (token, org_id, entity_id, entity_key, now()),
     )
-    ac.commit(); ac.close()
-    return token
+    ac.commit(); ac.close(); return token
 
 def _save_purchase_document(uploaded):
     """Enregistre un justificatif d'achat — PDF ou photo (JPEG/PNG/WEBP). Retourne
@@ -1619,11 +1620,14 @@ def register(app):
     @requires_active_plan
     @require_area('invoicing')
     def purchase_inbox_settings():
-        token = get_or_create_supplier_inbox_token(session['org_id'])
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        token = get_or_create_supplier_inbox_token(session['org_id'], eid)
         domain = os.environ.get('SUPPLIER_INBOX_DOMAIN', 'achats.profitos.fr')
         c = cx()
         recent = c.execute(
-            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' ORDER BY id DESC LIMIT 20"
+            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' AND entity_id IS ? ORDER BY id DESC LIMIT 20",
+            (eid,),
         ).fetchall()
         c.close()
         return render_template('purchase_inbox_settings.html',
@@ -1649,12 +1653,13 @@ def register(app):
 
         ac = auth_cx()
         mapping = ac.execute(
-            'SELECT organization_id FROM supplier_inbox_tokens WHERE token=?', (token,)
+            'SELECT organization_id,entity_id FROM supplier_inbox_entity_tokens WHERE token=?', (token,)
         ).fetchone()
         ac.close()
         if not mapping:
             return jsonify({'error': 'jeton inconnu'}), 404
         org_id = mapping['organization_id']
+        entity_id = mapping['entity_id']
 
         attachments = payload.get('attachments') or []
         created, failed = [], []
@@ -1704,13 +1709,13 @@ def register(app):
             tc.execute(
                 """INSERT INTO purchase_invoices(
                      supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,
-                     status,notes,created_at,document_path,category,validation_status)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     status,notes,created_at,document_path,category,validation_status,entity_id)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (detected['supplier_name'], detected['invoice_number'],
                  detected['issue_date'] or None, detected['due_date'] or None,
                  detected['subtotal'], detected['vat_amount'], detected['total'],
                  'unpaid', f"Reçu par email de {sender}" if sender else 'Reçu par email',
-                 now(), stored, 'autre', 'pending'),
+                 now(), stored, 'autre', 'pending', entity_id),
             )
             tc.commit()
             new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -1723,7 +1728,7 @@ def register(app):
             created.append(detected['invoice_number'])
 
         log_ops_event('SUPPLIER_INBOX_RECEIVED', outcome='INFO' if created else 'WARNING',
-                       detail=f"org={org_id} créées={created} échecs={failed}")
+                       detail=f"org={org_id} entity={entity_id} créées={created} échecs={failed}")
         return jsonify({'created': created, 'failed': failed}), 200
 
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])

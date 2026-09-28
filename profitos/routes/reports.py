@@ -213,17 +213,20 @@ def register(app):
     @login_required
     @require_area('impact')
     def impact():
-        c=cx()
+        from profitos.entities import current_entity_id
+        c=cx(); eid=current_entity_id()
         if request.method=='POST':
             aid=int(request.form['action_id']); typ=request.form['outcome_type']; amount=float(request.form['amount']); ver=1 if request.form.get('verified') else 0; note=request.form.get('note','')
+            a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,eid)).fetchone()
+            if not a:
+                c.close(); abort(404)
             c.execute('INSERT INTO outcomes(action_id,outcome_type,amount,verified,note,created_at) VALUES(?,?,?,?,?,?)',(aid,typ,amount,ver,note,now()))
-            a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
-            c.execute("UPDATE actions SET status='DONE' WHERE id=?",(aid,))
+            c.execute("UPDATE actions SET status='DONE' WHERE id=? AND entity_id IS ?",(aid,eid))
             c.commit()
             if a:log_status_change('ACTION',a['opportunity_id'],a['kind'],a['status'],'DONE',note=f'{typ} — {fr_number(amount)} €')
             flash('Résultat enregistré.')
-        rows=c.execute('SELECT outcomes.*,actions.title action_title FROM outcomes LEFT JOIN actions ON actions.id=outcomes.action_id ORDER BY outcomes.id DESC').fetchall()
-        eligible=c.execute("SELECT * FROM actions WHERE status IN ('APPROVED','DONE') ORDER BY id DESC").fetchall()
-        verified=c.execute('SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1').fetchone()['t']
+        rows=c.execute('SELECT outcomes.*,actions.title action_title FROM outcomes JOIN actions ON actions.id=outcomes.action_id WHERE actions.entity_id IS ? ORDER BY outcomes.id DESC',(eid,)).fetchall()
+        eligible=c.execute("SELECT * FROM actions WHERE entity_id IS ? AND status IN ('APPROVED','DONE') ORDER BY id DESC",(eid,)).fetchall()
+        verified=c.execute('SELECT COALESCE(SUM(o.amount),0) t FROM outcomes o JOIN actions a ON a.id=o.action_id WHERE o.verified=1 AND a.entity_id IS ?',(eid,)).fetchone()['t']
         c.close()
         return render_template('impact.html',rows=rows,eligible=eligible,verified=verified)

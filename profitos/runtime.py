@@ -208,6 +208,14 @@ def init_auth_db():
         organization_id INTEGER NOT NULL UNIQUE,
         created_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS supplier_inbox_entity_tokens(
+        token TEXT PRIMARY KEY,
+        organization_id INTEGER NOT NULL,
+        entity_id INTEGER,
+        entity_key INTEGER NOT NULL,
+        created_at TEXT,
+        UNIQUE(organization_id,entity_key)
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoice_tokens(
         token TEXT PRIMARY KEY,
         organization_id INTEGER NOT NULL,
@@ -814,7 +822,7 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT,entity_id INTEGER);
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);
     CREATE TABLE IF NOT EXISTS opportunities(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT,title TEXT,value REAL DEFAULT 0,score INTEGER,details TEXT,source TEXT,source_url TEXT,buyer TEXT,departments TEXT,deadline TEXT,reasons TEXT,warnings TEXT,raw_json TEXT,status TEXT DEFAULT 'OPEN',created_at TEXT,entity_id INTEGER);
-    CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,kind TEXT,title TEXT,draft TEXT,status TEXT DEFAULT 'PENDING',expected_value REAL DEFAULT 0,created_at TEXT,sent_at TEXT,sent_to TEXT);
+    CREATE TABLE IF NOT EXISTS actions(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,kind TEXT,title TEXT,draft TEXT,status TEXT DEFAULT 'PENDING',expected_value REAL DEFAULT 0,created_at TEXT,sent_at TEXT,sent_to TEXT,entity_id INTEGER);
     CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT,action_id INTEGER,outcome_type TEXT,amount REAL,verified INTEGER DEFAULT 0,note TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS audit_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_type TEXT,rows_processed INTEGER,signals_found INTEGER,created_at TEXT);
     CREATE TABLE IF NOT EXISTS dce_documents(id INTEGER PRIMARY KEY AUTOINCREMENT,opportunity_id INTEGER,filename TEXT,filetype TEXT,text_content TEXT,analysis_json TEXT,go_score INTEGER,recommendation TEXT,created_at TEXT);
@@ -1496,13 +1504,15 @@ def init_tenant_db(org_id=None):
     CREATE TABLE IF NOT EXISTS analytical_axes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        entity_id INTEGER
     );
     CREATE TABLE IF NOT EXISTS analytical_tags(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         axis_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        entity_id INTEGER,
         UNIQUE(axis_id,name)
     );
     CREATE INDEX IF NOT EXISTS idx_analytical_tags_axis ON analytical_tags(axis_id);
@@ -1778,6 +1788,9 @@ def init_tenant_db(org_id=None):
                        ('accounting_chart_of_accounts','entity_id'),
                        ('invoices','entity_id'),
                        ('opportunities','entity_id'),
+                       ('actions','entity_id'),
+                       ('analytical_axes','entity_id'),
+                       ('analytical_tags','entity_id'),
                        ('expenses','entity_id'),
                        ('bank_connections','entity_id'),
                        ('bank_accounts','entity_id'),
@@ -1797,6 +1810,19 @@ def init_tenant_db(org_id=None):
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+
+    # V220 — rattache les actions historiques à l'entité de leur source quand elle est connue.
+    try:
+        c.execute("""UPDATE actions SET entity_id=(
+            CASE WHEN kind='RECOVER' THEN (SELECT i.entity_id FROM invoices i WHERE i.id=actions.opportunity_id)
+                 ELSE (SELECT o.entity_id FROM opportunities o WHERE o.id=actions.opportunity_id) END
+        ) WHERE entity_id IS NULL""")
+        c.execute('CREATE INDEX IF NOT EXISTS idx_actions_entity_status ON actions(entity_id,status)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_analytical_axes_entity ON analytical_axes(entity_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_analytical_tags_entity ON analytical_tags(entity_id)')
+        c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : migration multi-entités V220 ignorée ({e})")
 
     # Pass 24 — migration des anciens budgets achats globaux vers la société
     # principale, puis clé composite (catégorie, entité). SQLite ne permet pas

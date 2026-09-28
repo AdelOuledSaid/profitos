@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.feature_access import requires_feature, requires_paid_plan
+from profitos.entities import current_entity_id
 
 
 def register(app):
@@ -24,13 +25,13 @@ def register(app):
     @requires_paid_plan
     @require_area('actions')
     def actions():
-        c=cx()
+        c=cx(); eid=current_entity_id()
         active_rows=c.execute(
-            "SELECT * FROM actions WHERE status IN ('PENDING','APPROVED') "
-            "ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END,id DESC"
+            "SELECT * FROM actions WHERE entity_id IS ? AND status IN ('PENDING','APPROVED') "
+            "ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END,id DESC", (eid,)
         ).fetchall()
         history_rows=c.execute(
-            "SELECT * FROM actions WHERE status NOT IN ('PENDING','APPROVED') ORDER BY id DESC"
+            "SELECT * FROM actions WHERE entity_id IS ? AND status NOT IN ('PENDING','APPROVED') ORDER BY id DESC", (eid,)
         ).fetchall()
         c.close()
         active_rows=[present_action(r) for r in active_rows]
@@ -47,12 +48,12 @@ def register(app):
             return redirect(url_for('actions'))
 
         force_new=request.form.get('force_new')=='1'
-        c=cx()
+        c=cx(); eid=current_entity_id()
 
         active_action=c.execute(
-            "SELECT * FROM actions WHERE opportunity_id=? AND kind=? "
+            "SELECT * FROM actions WHERE opportunity_id=? AND kind=? AND entity_id IS ? "
             "AND status IN ('PENDING','APPROVED') ORDER BY id DESC LIMIT 1",
-            (item_id,kind)
+            (item_id,kind,eid)
         ).fetchone()
         if active_action:
             c.close()
@@ -61,9 +62,9 @@ def register(app):
 
         if kind=='RECOVER' and not force_new:
             last_sent=c.execute(
-                "SELECT * FROM actions WHERE opportunity_id=? AND kind='RECOVER' "
+                "SELECT * FROM actions WHERE opportunity_id=? AND kind='RECOVER' AND entity_id IS ? "
                 "AND status='SENT' ORDER BY COALESCE(sent_at,created_at) DESC,id DESC LIMIT 1",
-                (item_id,)
+                (item_id,eid)
             ).fetchone()
             if last_sent:
                 c.close()
@@ -74,8 +75,8 @@ def register(app):
 
         if kind=='RECOVER':
             o=c.execute(
-                'SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=?',
-                (item_id,)
+                'SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=? AND entity_id IS ?',
+                (item_id,eid)
             ).fetchone()
             if not o:
                 c.close()
@@ -101,7 +102,7 @@ def register(app):
                 )
             expected=o['outstanding']
         else:
-            o=c.execute('SELECT * FROM opportunities WHERE id=? AND type=?',(item_id,kind)).fetchone()
+            o=c.execute('SELECT * FROM opportunities WHERE id=? AND type=? AND entity_id IS ?',(item_id,kind,eid)).fetchone()
             if not o:
                 c.close()
                 abort(404)
@@ -126,9 +127,9 @@ def register(app):
                 expected=0
 
         c.execute(
-            "INSERT INTO actions(opportunity_id,kind,title,draft,status,expected_value,created_at) "
-            "VALUES(?,?,?,?, 'PENDING',?,?)",
-            (item_id,kind,title,draft,expected,now())
+            "INSERT INTO actions(opportunity_id,kind,title,draft,status,expected_value,created_at,entity_id) "
+            "VALUES(?,?,?,?, 'PENDING',?,?,?)",
+            (item_id,kind,title,draft,expected,now(),eid)
         )
         c.commit()
         c.close()
@@ -140,7 +141,7 @@ def register(app):
     @requires_paid_plan
     def action_edit(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
         if not a:
             c.close()
             abort(404)
@@ -168,7 +169,7 @@ def register(app):
     @requires_paid_plan
     def action_delete(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
         if not a:
             c.close()
             return redirect(url_for('actions'))
@@ -195,16 +196,16 @@ def register(app):
             return redirect(url_for('actions'))
 
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
         if not a:
             c.close()
             return redirect(url_for('actions'))
 
         if st=='PENDING' and a['status']=='CANCELLED':
             duplicate=c.execute(
-                "SELECT id FROM actions WHERE opportunity_id=? AND kind=? AND id<>? "
+                "SELECT id FROM actions WHERE opportunity_id=? AND kind=? AND id<>? AND entity_id IS ? "
                 "AND status IN ('PENDING','APPROVED') LIMIT 1",
-                (a['opportunity_id'],a['kind'],aid)
+                (a['opportunity_id'],a['kind'],aid,current_entity_id())
             ).fetchone()
             if duplicate:
                 c.close()
@@ -237,7 +238,7 @@ def register(app):
     @requires_feature('advanced_features')
     def action_send(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
         if not a:
             c.close()
             abort(404)
@@ -250,7 +251,7 @@ def register(app):
             flash("L'envoi par email n'est disponible que pour les actions RECOVER.")
             return redirect(url_for('actions'))
 
-        inv=c.execute('SELECT * FROM invoices WHERE id=?',(a['opportunity_id'],)).fetchone()
+        inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
         c.close()
         if not inv or not inv['customer_email']:
             flash(
@@ -290,7 +291,7 @@ def register(app):
     @requires_feature('advanced_features')
     def action_send_sms(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
         if not a:
             c.close(); abort(404)
         if a['status']!='APPROVED':
@@ -298,7 +299,7 @@ def register(app):
         if a['kind']!='RECOVER':
             c.close(); flash("L'envoi par SMS n'est disponible que pour les actions RECOVER."); return redirect(url_for('actions'))
 
-        inv=c.execute('SELECT * FROM invoices WHERE id=?',(a['opportunity_id'],)).fetchone()
+        inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
         c.close()
         if not inv or not inv['customer_phone']:
             flash(

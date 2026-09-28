@@ -214,7 +214,9 @@ def register(app):
             ).fetchall()
         all_tags = c.execute(
             """SELECT t.id,t.name,ax.name AS axis_name FROM analytical_tags t
-               JOIN analytical_axes ax ON ax.id=t.axis_id ORDER BY ax.name,t.name"""
+               JOIN analytical_axes ax ON ax.id=t.axis_id
+               WHERE t.entity_id IS ? AND ax.entity_id IS ? ORDER BY ax.name,t.name""",
+            (eid, eid),
         ).fetchall()
         c.close()
         return render_template('accounting_journal_detail.html', journal=journal,

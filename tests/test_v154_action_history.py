@@ -5,8 +5,8 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_actions_route_separates_active_and_history():
     t=(ROOT/'profitos'/'routes'/'actions.py').read_text(encoding='utf-8')
-    assert "WHERE status IN ('PENDING','APPROVED')" in t
-    assert "WHERE status NOT IN ('PENDING','APPROVED')" in t
+    assert "WHERE entity_id IS ? AND status IN ('PENDING','APPROVED')" in t
+    assert "WHERE entity_id IS ? AND status NOT IN ('PENDING','APPROVED')" in t
     assert "history_rows=history_rows" in t
 
 

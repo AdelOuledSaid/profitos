@@ -758,9 +758,10 @@ def register(app):
             return _deny_paid_feature('grow')
         if not can_access(KIND_TO_AREA.get(kind,'')):
             flash("Votre rôle ne donne pas accès à cette section."); return redirect(url_for('home'))
-        c=cx()
+        from profitos.entities import current_entity_id
+        c=cx(); eid=current_entity_id()
         if kind=='RECOVER':
-            r=c.execute('SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=?',(item_id,)).fetchone()
+            r=c.execute('SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE id=? AND entity_id IS ?',(item_id,eid)).fetchone()
             if not r:abort(404)
             if r['kind']=='RETENTION':
                 release=r['retention_release_date']
@@ -794,10 +795,10 @@ def register(app):
             o['customer_tag']=tag_row['tag'] if tag_row else None
             o['customer_tag_note']=tag_row['note'] if tag_row else ''
         else:
-            r=c.execute('SELECT * FROM opportunities WHERE id=? AND type=?',(item_id,kind)).fetchone()
+            r=c.execute('SELECT * FROM opportunities WHERE id=? AND type=? AND entity_id IS ?',(item_id,kind,eid)).fetchone()
             if not r:abort(404)
             o=dict(r); o.update(kind=kind,reasons=json.loads(r['reasons'] or '[]'),warnings=json.loads(r['warnings'] or '[]'),departments=jlist(r['departments']),deadline_human=fmt_deadline(r['deadline']),days_remaining=days_left(r['deadline']))
-        acts=c.execute('SELECT * FROM actions WHERE opportunity_id=? AND kind=? ORDER BY id DESC',(item_id,kind)).fetchall()
+        acts=c.execute('SELECT * FROM actions WHERE opportunity_id=? AND kind=? AND entity_id IS ? ORDER BY id DESC',(item_id,kind,eid)).fetchall()
         org=current_org()
         can_use_advanced=bool(org and feature_enabled(org['plan'],'advanced_features'))
         dce=c.execute('SELECT * FROM dce_documents WHERE opportunity_id=? ORDER BY id DESC',(item_id,)).fetchall() if kind=='GROW' and can_use_advanced else []
@@ -817,16 +818,17 @@ def register(app):
             flash("Votre rôle ne donne pas accès à cette section."); return redirect(url_for('home'))
         new_status=request.form.get('status','').strip()
         if not new_status: return redirect(url_for('detail',kind=kind,item_id=item_id))
-        c=cx()
+        from profitos.entities import current_entity_id
+        c=cx(); eid=current_entity_id()
         if kind=='RECOVER':
-            row=c.execute('SELECT * FROM invoices WHERE id=?',(item_id,)).fetchone()
+            row=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(item_id,eid)).fetchone()
             if not row: c.close(); abort(404)
-            old=row['status']; c.execute('UPDATE invoices SET status=? WHERE id=?',(new_status,item_id)); c.commit()
+            old=row['status']; c.execute('UPDATE invoices SET status=? WHERE id=? AND entity_id IS ?',(new_status,item_id,eid)); c.commit()
             entity_type='INVOICE'
         else:
-            row=c.execute('SELECT * FROM opportunities WHERE id=? AND type=?',(item_id,kind)).fetchone()
+            row=c.execute('SELECT * FROM opportunities WHERE id=? AND type=? AND entity_id IS ?',(item_id,kind,eid)).fetchone()
             if not row: c.close(); abort(404)
-            old=row['status']; c.execute('UPDATE opportunities SET status=? WHERE id=?',(new_status,item_id)); c.commit()
+            old=row['status']; c.execute('UPDATE opportunities SET status=? WHERE id=? AND entity_id IS ?',(new_status,item_id,eid)); c.commit()
             entity_type='OPPORTUNITY'
         c.close()
         log_status_change(entity_type,item_id,kind,old,new_status)
