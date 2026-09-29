@@ -1,8 +1,15 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card,
+    request_new_account, request_card, write_operations_enabled,
 )
+
+
+def _swan_webhook_secret_ok(req):
+    import os, secrets
+    expected = (os.environ.get('SWAN_WEBHOOK_SECRET') or '').strip()
+    supplied = (req.headers.get('x-swan-secret') or '').strip()
+    return bool(expected and len(expected) >= 32 and supplied and secrets.compare_digest(expected, supplied))
 
 
 def register(app):
@@ -41,12 +48,16 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
+            write_operations_enabled=write_operations_enabled(),
         )
 
     @app.route('/settings/swan/compte/nouveau', methods=['POST'])
     @login_required
     @require_area('settings')
     def swan_account_request():
+        if not write_operations_enabled():
+            flash("Demandes de compte/carte Swan désactivées tant que le flux n'a pas été validé en Sandbox.")
+            return redirect(url_for('swan_settings'))
         if not is_configured():
             flash("Swan n'est pas configuré côté serveur (SWAN_CLIENT_ID / SWAN_CLIENT_SECRET manquants).")
             return redirect(url_for('swan_settings'))
@@ -92,6 +103,9 @@ def register(app):
     @login_required
     @require_area('settings')
     def swan_card_request(account_row_id):
+        if not write_operations_enabled():
+            flash("Demandes de compte/carte Swan désactivées tant que le flux n'a pas été validé en Sandbox.")
+            return redirect(url_for('swan_settings'))
         if not is_configured():
             flash("Swan n'est pas configuré côté serveur.")
             return redirect(url_for('swan_settings'))
@@ -128,3 +142,28 @@ def register(app):
         else:
             flash("Carte demandée, mais Swan n'a renvoyé aucun lien de validation — vérifie manuellement sur ton tableau de bord Swan.")
         return redirect(url_for('swan_settings'))
+
+    @app.route('/webhooks/swan', methods=['POST'])
+    def swan_webhook():
+        if not _swan_webhook_secret_ok(request):
+            abort(401)
+        payload = request.get_json(silent=True) or {}
+        event_id = str(payload.get('eventId') or '').strip()
+        event_type = str(payload.get('eventType') or '').strip()
+        resource_id = str(payload.get('resourceId') or '').strip()
+        if not event_id or not event_type or not resource_id:
+            return jsonify({'ok': False, 'error': 'invalid_event'}), 400
+        c = cx()
+        if c.execute('SELECT id FROM swan_webhook_events WHERE event_id=?', (event_id,)).fetchone():
+            c.close()
+            return jsonify({'ok': True, 'duplicate': True}), 200
+        c.execute(
+            """INSERT INTO swan_webhook_events(event_id,event_type,resource_id,project_id,event_date,processed_at)
+               VALUES(?,?,?,?,?,?)""",
+            (event_id, event_type, resource_id, str(payload.get('projectId') or ''),
+             str(payload.get('eventDate') or ''), now()),
+        )
+        # Notification minimale : les données sensibles sont relues via l'API Swan.
+        c.commit(); c.close()
+        return jsonify({'ok': True}), 200
+

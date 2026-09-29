@@ -2960,8 +2960,8 @@ def register(app):
         c = cx()
         try:
             inv = _current_invoice(c,invoice_id)
-            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             if not inv: abort(404)
+            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
                 flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
@@ -2998,8 +2998,8 @@ def register(app):
         c = cx()
         try:
             inv = _current_invoice(c,invoice_id)
-            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             if not inv: abort(404)
+            settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
                 flash("Cette facture n'a pas encore d'identifiant WeInvoice.")

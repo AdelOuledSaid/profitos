@@ -33,7 +33,7 @@ import os
 
 import requests
 
-TOKEN_URL = 'https://oauth.swan.io/oauth2'
+TOKEN_URL = 'https://oauth.swan.io/oauth2/token'
 
 GRAPHQL_URLS = {
     'sandbox': 'https://api.swan.io/sandbox-partner/graphql',
@@ -43,6 +43,12 @@ GRAPHQL_URLS = {
 
 def is_configured():
     return bool(os.environ.get('SWAN_CLIENT_ID') and os.environ.get('SWAN_CLIENT_SECRET'))
+
+
+def write_operations_enabled():
+    # Les mutations compte/carte de cette base n'ont pas encore été validées
+    # contre un projet Swan Sandbox. Fail-closed jusqu'à validation explicite.
+    return (os.environ.get('SWAN_ENABLE_ACCOUNT_CARD_REQUESTS') or '').strip().lower() in ('1','true','yes','on')
 
 
 def current_environment():
@@ -73,7 +79,7 @@ def get_server_token():
     return token
 
 
-def graphql_query(token, query, variables=None, environment=None):
+def graphql_query(token, query, variables=None, environment=None, user_id=None):
     """Exécute une requête ou mutation GraphQL contre l'API partenaire Swan.
     Lève ValueError en cas d'erreur réseau, HTTP, ou d'erreurs GraphQL
     renvoyées dans le corps de la réponse (jamais ignorées silencieusement)."""
@@ -82,7 +88,7 @@ def graphql_query(token, query, variables=None, environment=None):
     try:
         resp = requests.post(
             url,
-            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            headers={**{'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}, **({'x-swan-user-id': str(user_id)} if user_id else {})},
             json={'query': query, 'variables': variables or {}},
             timeout=30,
         )

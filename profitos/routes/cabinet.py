@@ -12,46 +12,96 @@ def register(app):
     @app.route('/cabinet/portefeuille')
     @login_required
     def cabinet_portfolio():
-        """Vue d'ensemble multi-clients — un comptable/gérant qui appartient
-        à plusieurs organisations (memberships) voit ici un résumé de
-        chacune : révisions en cours, temps passé ce mois-ci. Ouvre
-        brièvement chaque base tenant l'une après l'autre (chaque
-        organisation a son propre fichier SQLite séparé — impossible de
-        tout lire en une seule requête), toujours refermée immédiatement
-        après lecture."""
+        """Cockpit de production cabinet multi-dossiers.
+
+        Chaque organisation est ouverte isolément via sa connexion tenant. Les
+        indicateurs sont volontairement agrégés au niveau du dossier : aucune
+        donnée comptable d'un client n'est jointe à celle d'un autre client.
+        """
         orgs = user_organizations()
-        uid = session.get('user_id')
         month_start = date.today().replace(day=1).isoformat()
 
         ac = auth_cx()
         rows = []
         for org in orgs:
-            reviews_pending = 0
-            reviews_total = 0
+            metrics = {
+                'reviews_pending': 0, 'reviews_total': 0, 'blockers': 0,
+                'open_requests': 0, 'entries_count': 0, 'last_entry_date': None,
+                'closed_until': None, 'entities_count': 0, 'health': 'À initialiser',
+                'health_level': 'neutral',
+            }
             try:
                 tc = tenant_cx_direct(org['id'])
-                reviews_pending = tc.execute(
+                metrics['reviews_pending'] = tc.execute(
                     "SELECT COUNT(*) n FROM reviews WHERE status='in_progress'"
                 ).fetchone()['n']
-                reviews_total = tc.execute("SELECT COUNT(*) n FROM reviews").fetchone()['n']
+                metrics['reviews_total'] = tc.execute(
+                    "SELECT COUNT(*) n FROM reviews"
+                ).fetchone()['n']
+                metrics['open_requests'] = tc.execute(
+                    "SELECT COUNT(*) n FROM accountant_requests WHERE status='open'"
+                ).fetchone()['n']
+                metrics['entities_count'] = tc.execute(
+                    "SELECT COUNT(*) n FROM entities"
+                ).fetchone()['n']
+                erow = tc.execute(
+                    "SELECT COUNT(*) n, MAX(entry_date) last_date FROM accounting_entries"
+                ).fetchone()
+                metrics['entries_count'] = erow['n']
+                metrics['last_entry_date'] = erow['last_date']
+                crow = tc.execute(
+                    "SELECT MAX(closed_until) closed_until FROM accounting_entity_closure"
+                ).fetchone()
+                metrics['closed_until'] = crow['closed_until'] if crow else None
+                brow = tc.execute(
+                    """SELECT COALESCE(SUM(d.blocker_count),0) n
+                       FROM review_diagnostic_runs d
+                       JOIN reviews r ON r.id=d.review_id
+                       WHERE r.status='in_progress'
+                         AND d.id=(SELECT MAX(d2.id) FROM review_diagnostic_runs d2
+                                  WHERE d2.review_id=d.review_id)"""
+                ).fetchone()
+                metrics['blockers'] = int(brow['n'] or 0)
                 tc.close()
+
+                if metrics['blockers'] or metrics['open_requests']:
+                    metrics['health'], metrics['health_level'] = 'À traiter', 'danger'
+                elif metrics['reviews_pending']:
+                    metrics['health'], metrics['health_level'] = 'En révision', 'warning'
+                elif metrics['entries_count']:
+                    metrics['health'], metrics['health_level'] = 'À jour', 'success'
             except Exception:
-                # Une organisation dont la base tenant n'est pas encore
-                # initialisée (jamais connectée) ne doit jamais faire
-                # planter tout le portefeuille — elle apparaît juste sans
-                # données de révision.
+                # Un tenant ancien/non initialisé reste visible sans exposer
+                # d'exception ni bloquer le portefeuille des autres clients.
                 pass
+
             minutes_month = ac.execute(
                 "SELECT COALESCE(SUM(duration_minutes),0) t FROM cabinet_time_entries "
                 "WHERE organization_id=? AND entry_date>=?",
                 (org['id'], month_start),
             ).fetchone()['t']
-            rows.append({
-                'org': org, 'reviews_pending': reviews_pending, 'reviews_total': reviews_total,
-                'minutes_month': minutes_month,
-            })
+            rows.append({'org': org, 'minutes_month': minutes_month, **metrics})
         ac.close()
-        return render_template('cabinet_portfolio.html', rows=rows, month_label=date.today().strftime('%B %Y'))
+        return render_template('cabinet_portfolio.html', rows=rows,
+                               month_label=date.today().strftime('%B %Y'))
+
+    @app.route('/cabinet/client/<int:organization_id>/ouvrir', methods=['POST'])
+    @login_required
+    def cabinet_open_client(organization_id):
+        """Bascule explicitement vers un dossier autorisé puis ouvre sa révision."""
+        ac = auth_cx()
+        membership = ac.execute(
+            'SELECT role FROM memberships WHERE user_id=? AND organization_id=?',
+            (session.get('user_id'), organization_id),
+        ).fetchone()
+        ac.close()
+        if not membership:
+            abort(404)
+        session['org_id'] = organization_id
+        session['role'] = membership['role']
+        init_tenant_db()
+        log_activity('CABINET_CLIENT_OPENED', 'Ouverture du dossier depuis le portefeuille cabinet')
+        return redirect(url_for('reviews_list'))
 
     @app.route('/cabinet/temps', methods=['GET', 'POST'])
     @login_required

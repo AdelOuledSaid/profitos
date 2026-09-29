@@ -609,7 +609,7 @@ STRIPE_WEBHOOK_SECRET=os.environ.get('STRIPE_WEBHOOK_SECRET')
 STRIPE_PRICE_STARTER_ID=os.environ.get('STRIPE_PRICE_STARTER_ID')
 STRIPE_PRICE_PRO_ID=os.environ.get('STRIPE_PRICE_PRO_ID') or os.environ.get('STRIPE_PRICE_ID')
 STRIPE_PRICE_BUSINESS_ID=os.environ.get('STRIPE_PRICE_BUSINESS_ID')
-STRIPE_PRICE_MULTI_ID=os.environ.get('STRIPE_PRICE_MULTI_ID')
+STRIPE_PRICE_MULTI_ID = os.environ.get('STRIPE_PRICE_MULTI_ID','')
 
 # ---------------------------------------------------------------------------
 # Lot 23 — connexion à la Plateforme Agréée WeInvoice/Weproc (facturation
@@ -771,7 +771,7 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox'):
+        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox','/webhooks/swan'):
             return
         # Les routes /api/v1/* s'authentifient par clé API (Authorization: Bearer),
         # jamais par cookie de session — un navigateur ne rejoue jamais un en-tête
@@ -874,6 +874,15 @@ def init_tenant_db(org_id=None):
         consent_url TEXT,
         requested_at TEXT,
         activated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS swan_webhook_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        event_type TEXT,
+        resource_id TEXT,
+        project_id TEXT,
+        event_date TEXT,
+        processed_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS weinvoice_agreements(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2669,8 +2678,6 @@ def init_runtime(app):
     app.jinja_env.globals['trial_days_left'] = trial_days_left
     app.jinja_env.globals['current_role'] = current_role
     app.jinja_env.globals['asset_url'] = asset_url
-    from profitos.plan_limits import feature_enabled
-    app.jinja_env.globals['plan_feature_enabled'] = feature_enabled
     app.jinja_env.filters['fr_number'] = fr_number
     app.jinja_env.filters['fr_date'] = fr_date
     from profitos.sepa import format_iban

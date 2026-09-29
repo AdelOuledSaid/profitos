@@ -3,9 +3,9 @@
 <div class="purchase-page">
 <div class="purchase-toolbar">
   <div>
-    <div class="purchase-eyebrow">CABINET</div>
+    <div class="purchase-eyebrow">CABINET · PRODUCTION</div>
     <h1 class="purchase-title">Portefeuille clients</h1>
-    <p class="purchase-subtitle">Temps de {{ month_label }}, révisions en cours, sur toutes les organisations auxquelles tu as accès.</p>
+    <p class="purchase-subtitle">Cockpit multi-dossiers : révision, blocages, demandes cabinet, clôture et temps de {{ month_label }}.</p>
   </div>
   <a class="purchase-primary-btn primary" href="{{ url_for('cabinet_time_new') }}">+ Saisir du temps</a>
 </div>
@@ -13,20 +13,35 @@
 <section class="purchase-panel">
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Client</th><th style="text-align:right;">Révisions en cours</th><th style="text-align:right;">Temps ce mois</th><th></th></tr></thead>
+      <thead><tr>
+        <th>Client</th><th>État</th><th style="text-align:right;">Révisions</th>
+        <th style="text-align:right;">Blocages</th><th style="text-align:right;">Demandes</th>
+        <th>Dernière écriture</th><th>Clôturé jusqu'au</th><th style="text-align:right;">Temps</th><th></th>
+      </tr></thead>
       <tbody>
       {% for r in rows %}
         <tr>
-          <td><strong>{{ r.org.name }}</strong></td>
+          <td><strong>{{ r.org.name }}</strong>{% if r.entities_count %}<br><small>{{ r.entities_count }} entité(s)</small>{% endif %}</td>
+          <td><strong>{{ r.health }}</strong></td>
           <td style="text-align:right;">{{ r.reviews_pending }} / {{ r.reviews_total }}</td>
+          <td style="text-align:right;">{{ r.blockers }}</td>
+          <td style="text-align:right;">{{ r.open_requests }}</td>
+          <td>{{ r.last_entry_date or '—' }}</td>
+          <td>{{ r.closed_until or '—' }}</td>
           <td style="text-align:right;">{{ (r.minutes_month / 60)|round(1) }} h</td>
-          <td style="display:flex;gap:8px;">
-            <a class="purchase-detail-link" href="{{ url_for('cabinet_time_list',organization_id=r.org.id) }}">Temps →</a>
-            <a class="purchase-detail-link" href="{{ url_for('cabinet_documents',organization_id=r.org.id) }}">Documents →</a>
+          <td>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <form method="post" action="{{ url_for('cabinet_open_client',organization_id=r.org.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="purchase-detail-link" type="submit">Ouvrir →</button>
+              </form>
+              <a class="purchase-detail-link" href="{{ url_for('cabinet_time_list',organization_id=r.org.id) }}">Temps</a>
+              <a class="purchase-detail-link" href="{{ url_for('cabinet_documents',organization_id=r.org.id) }}">Documents</a>
+            </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="4" class="purchase-empty">Aucune organisation accessible.</td></tr>
+        <tr><td colspan="9" class="purchase-empty">Aucune organisation accessible.</td></tr>
       {% endfor %}
       </tbody>
     </table>

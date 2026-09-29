@@ -1,0 +1,60 @@
+name: Build ProfitOS iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/ios-capacitor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: profitos-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install JavaScript dependencies
+        run: npm install --no-audit --no-fund
+      - name: Generate iOS project
+        run: npx cap add ios
+      - name: Sync Capacitor
+        run: npx cap sync ios
+      - name: Build unsigned iOS Simulator app
+        working-directory: mobile/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Verify simulator app
+        run: test -d ios/App/build/Build/Products/Debug-iphonesimulator/App.app
+      - name: Package simulator app
+        run: ditto -c -k --sequesterRsrc --keepParent ios/App/build/Build/Products/Debug-iphonesimulator/App.app ProfitOS-iOS-Simulator.zip
+      - name: Upload iOS Simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfitOS-iOS-Simulator
+          path: mobile/ProfitOS-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 14

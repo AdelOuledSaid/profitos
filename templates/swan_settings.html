@@ -15,6 +15,7 @@
   <p class="purchase-alert-text" style="margin:0;">Non configuré — renseigne <code>SWAN_CLIENT_ID</code> et <code>SWAN_CLIENT_SECRET</code> (obtenus depuis ton tableau de bord Swan, rubrique Developers &gt; API) dans les variables d'environnement du serveur.</p>
 </section>
 {% else %}
+{% if not write_operations_enabled %}<section class="purchase-panel" style="margin-bottom:20px;"><p class="purchase-alert-text" style="margin:0;">Lecture Swan disponible. Les demandes de compte et de carte restent volontairement désactivées jusqu’à validation du flux dans Swan Sandbox.</p></section>{% endif %}
 
 {% if remote_error %}
 <section class="purchase-panel" style="margin-bottom:20px;">
@@ -48,7 +49,7 @@
       </select>
     </label>
     {% endif %}
-    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Demander l'ouverture</button></div>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary" {% if not write_operations_enabled %}disabled{% endif %}>Demander l'ouverture</button></div>
   </form>
 </section>
 
@@ -84,7 +85,7 @@
     <form method="post" action="{{ url_for('swan_card_request',account_row_id=a.id) }}" style="display:flex;gap:10px;margin-top:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="holder_name" placeholder="Nom du porteur de la carte" style="flex:1;">
-      <button type="submit" class="purchase-primary-btn secondary">Demander une carte</button>
+      <button type="submit" class="purchase-primary-btn secondary" {% if not write_operations_enabled %}disabled{% endif %}>Demander une carte</button>
     </form>
   </div>
   {% else %}

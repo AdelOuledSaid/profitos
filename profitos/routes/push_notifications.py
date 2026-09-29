@@ -21,7 +21,7 @@ def register(app):
         l'en-tête X-CSRF-Token pour les appels POST suivants depuis l'app
         mobile — une requête GET n'est jamais soumise à la protection CSRF,
         donc sans risque d'exposer ce jeton via cette route précise."""
-        return jsonify({'csrf_token': session.get('csrf_token')})
+        return jsonify({'csrf_token': csrf_token()})
 
     @app.route('/api/mobile/register-push-token', methods=['POST'])
     @login_required

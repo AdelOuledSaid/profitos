@@ -23,7 +23,7 @@ from pathlib import Path
 from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
     WEINVOICE_INVOICE_CLIENT_ID, WEINVOICE_INVOICE_CLIENT_SECRET,
-    WEINVOICE_WEBHOOK_SECRET,
+    WEINVOICE_WEBHOOK_SECRET, WEINVOICE_INVOICE_WEBHOOK_SECRET,
     cx, now, log_ops_event, TENANTS, tenant_db,
 )
 
@@ -540,9 +540,17 @@ class WeInvoiceWebhookError(Exception):
     """Levée quand un webhook WeInvoice ne peut pas être authentifié."""
 
 
-def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_header, tolerance_seconds=300):
-    if not WEINVOICE_WEBHOOK_SECRET:
-        raise WeInvoiceWebhookError("WEINVOICE_WEBHOOK_SECRET n'est pas configuré côté serveur.")
+def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_header, tolerance_seconds=300, secret_name='management'):
+    """Vérifie une signature Standard Webhooks.
+
+    WeInvoice peut attribuer un secret distinct à chaque endpoint. L'endpoint
+    invoice.status.* utilise donc WEINVOICE_INVOICE_WEBHOOK_SECRET lorsqu'il est
+    configuré, avec repli explicite sur le secret historique pour compatibilité.
+    """
+    webhook_secret = (WEINVOICE_INVOICE_WEBHOOK_SECRET or WEINVOICE_WEBHOOK_SECRET) if secret_name == 'invoice' else WEINVOICE_WEBHOOK_SECRET
+    if not webhook_secret:
+        env_name = 'WEINVOICE_INVOICE_WEBHOOK_SECRET/WEINVOICE_WEBHOOK_SECRET' if secret_name == 'invoice' else 'WEINVOICE_WEBHOOK_SECRET'
+        raise WeInvoiceWebhookError(f"{env_name} n'est pas configuré côté serveur.")
     if not webhook_id or not webhook_timestamp or not signature_header:
         raise WeInvoiceWebhookError("En-têtes Standard Webhooks manquants.")
     try:
@@ -551,7 +559,7 @@ def verify_webhook_signature(webhook_id, webhook_timestamp, raw_body, signature_
         raise WeInvoiceWebhookError("Horodatage webhook invalide.")
     if abs(int(time.time()) - ts) > int(tolerance_seconds):
         raise WeInvoiceWebhookError("Webhook hors fenêtre temporelle autorisée.")
-    secret = WEINVOICE_WEBHOOK_SECRET
+    secret = webhook_secret
     if secret.startswith('whsec_'):
         secret = secret[len('whsec_'):]
     try:
