@@ -19,6 +19,7 @@ import requests
 from pypdf import PdfReader
 from docx import Document
 from . import db as dbmod
+from .plan_limits import feature_enabled as plan_feature_enabled
 
 BASE=Path(__file__).resolve().parent.parent
 AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=Path(os.environ.get('PROFITOS_UPLOAD_DIR') or (BASE/'uploads')); UP.mkdir(parents=True,exist_ok=True)
@@ -2672,6 +2673,7 @@ def fr_date(value, with_time=False):
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
+    app.jinja_env.globals['plan_feature_enabled'] = plan_feature_enabled
     app.jinja_env.globals['ROLE_LABELS'] = ROLE_LABELS
     app.jinja_env.globals['ROLES'] = ROLES
     app.jinja_env.globals['csrf_token'] = csrf_token
