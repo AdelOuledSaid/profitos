@@ -1,7 +1,7 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card, write_operations_enabled,
+    request_new_account, request_card, write_operations_enabled, graphql_query,
 )
 
 
@@ -50,6 +50,23 @@ def register(app):
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
             write_operations_enabled=write_operations_enabled(),
         )
+
+    @app.route('/settings/swan/test-connection', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_test_connection():
+        try:
+            token = get_server_token()
+            # Read-only GraphQL call: no account/card/payment mutation.
+            data = graphql_query(token, 'query ProfitOSConnectionTest { __typename }')
+            if not data:
+                raise ValueError("Swan a répondu sans données GraphQL.")
+            log_activity('SWAN_CONNECTION_TEST_OK', f"Connexion Swan {current_environment()} validée")
+            flash(f"Connexion Swan {current_environment()} réussie : OAuth + GraphQL sont opérationnels.")
+        except ValueError as e:
+            log_activity('SWAN_CONNECTION_TEST_FAILED', f"Échec connexion Swan : {str(e)[:180]}")
+            flash(f"Connexion Swan impossible : {e}")
+        return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/compte/nouveau', methods=['POST'])
     @login_required

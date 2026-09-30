@@ -52,7 +52,7 @@ def write_operations_enabled():
 
 
 def current_environment():
-    env = (os.environ.get('SWAN_ENVIRONMENT') or 'sandbox').strip().lower()
+    env = (os.environ.get('SWAN_ENVIRONMENT') or os.environ.get('SWAN_ENV') or 'sandbox').strip().lower()
     return env if env in ('sandbox', 'live') else 'sandbox'
 
 
@@ -84,7 +84,7 @@ def graphql_query(token, query, variables=None, environment=None, user_id=None):
     Lève ValueError en cas d'erreur réseau, HTTP, ou d'erreurs GraphQL
     renvoyées dans le corps de la réponse (jamais ignorées silencieusement)."""
     env = environment or current_environment()
-    url = GRAPHQL_URLS[env]
+    url = (os.environ.get('SWAN_GRAPHQL_URL') or '').strip() or GRAPHQL_URLS[env]
     try:
         resp = requests.post(
             url,

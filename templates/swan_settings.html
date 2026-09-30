@@ -4,7 +4,7 @@
 <div class="purchase-toolbar">
   <div>
     <div class="purchase-eyebrow">COMPTE PRO · CARTES</div>
-    <h1 class="purchase-title">Swan (Banking-as-a-Service)</h1>
+    <h1 class="purchase-title">Compte Pro</h1>
     <p class="purchase-subtitle">Intégration expérimentale, jamais testée contre les vrais serveurs Swan — à valider en sandbox avant tout usage réel. Toute demande de compte ou de carte doit être validée par un humain sur une page hébergée par Swan avant de devenir active.</p>
   </div>
   <span class="purchase-status">{{ 'Sandbox' if environment=='sandbox' else 'PRODUCTION' }}</span>
@@ -15,6 +15,14 @@
   <p class="purchase-alert-text" style="margin:0;">Non configuré — renseigne <code>SWAN_CLIENT_ID</code> et <code>SWAN_CLIENT_SECRET</code> (obtenus depuis ton tableau de bord Swan, rubrique Developers &gt; API) dans les variables d'environnement du serveur.</p>
 </section>
 {% else %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Connexion Swan</h2>
+  <p class="purchase-muted">Environnement : <strong>{{ environment }}</strong>. Ce test vérifie uniquement OAuth + GraphQL en lecture, sans créer de compte, carte ou paiement.</p>
+  <form method="post" action="{{ url_for('swan_test_connection') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Tester la connexion Swan Sandbox</button>
+  </form>
+</section>
 {% if not write_operations_enabled %}<section class="purchase-panel" style="margin-bottom:20px;"><p class="purchase-alert-text" style="margin:0;">Lecture Swan disponible. Les demandes de compte et de carte restent volontairement désactivées jusqu’à validation du flux dans Swan Sandbox.</p></section>{% endif %}
 
 {% if remote_error %}
