@@ -16,6 +16,29 @@
 </section>
 {% else %}
 <section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Préremplissage entreprise française (RNE)</h2>
+  <p class="purchase-muted">Étape lecture seule : ProfitOS interroge le registre national des entreprises via Swan. Aucune ouverture de compte n'est déclenchée.</p>
+  <form method="post" action="{{ url_for('swan_company_registry') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="swan-siren">SIREN (9 chiffres)</label>
+    <input id="swan-siren" name="siren" inputmode="numeric" pattern="[0-9]{9}" maxlength="9" required placeholder="123456789">
+    <button type="submit" class="purchase-primary-btn primary" style="margin-top:12px;">Rechercher dans le RNE via Swan</button>
+  </form>
+  {% if registry_preview %}
+  <div style="margin-top:18px;">
+    <strong>Entreprise trouvée :</strong> {{ registry_preview.get('name') or '—' }}<br>
+    <span class="purchase-muted">
+      Forme juridique : {{ registry_preview.get('legalForm') or '—' }} ·
+      Date d'immatriculation : {{ registry_preview.get('registrationDate') or '—' }}
+    </span>
+    {% set a = registry_preview.get('address') or {} %}
+    {% if a %}<div class="purchase-muted">{{ a.get('addressLine1','') }} {{ a.get('postalCode','') }} {{ a.get('city','') }}</div>{% endif %}
+    <p class="purchase-muted" style="margin-bottom:0;">Aucune donnée n'est encore envoyée à une mutation d'ouverture. Le Pass suivant utilisera ce préremplissage pour construire l'onboarding v2.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
   <h2 style="color:#fff;margin-top:0;">Connexion Swan</h2>
   <p class="purchase-muted">Environnement : <strong>{{ environment }}</strong>. Ce test vérifie uniquement OAuth + GraphQL en lecture, sans créer de compte, carte ou paiement.</p>
   <form method="post" action="{{ url_for('swan_test_connection') }}">

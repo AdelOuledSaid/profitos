@@ -131,6 +131,60 @@ def list_accounts(token, environment=None):
     return accounts
 
 
+
+def company_registry_data_fr(registration_number):
+    """Read-only French RNE prefill through Swan's current onboarding API."""
+    siren = ''.join(ch for ch in str(registration_number or '') if ch.isdigit())
+    if len(siren) != 9:
+        raise ValueError("Le SIREN doit contenir exactement 9 chiffres.")
+    token = get_server_token()
+    query = """
+    query ProfitOSCompanyRegistry($input: CompanyInfoRegistryDataInput!) {
+      companyInfoRegistryData(input: $input) {
+        __typename
+        ... on CompanyInfoRegistryDataSuccessPayload {
+          companyInfo {
+            name
+            legalForm
+            registrationDate
+            address {
+              addressLine1
+              city
+              postalCode
+              country
+            }
+            ultimateBeneficialOwners {
+              firstName
+              lastName
+            }
+            representatives {
+              ... on OnboardingIndividualRepresentative {
+                firstName
+                lastName
+                roles
+              }
+            }
+          }
+        }
+        ... on CompanyRegistryNotFoundRejection {
+          message
+          registrationNumber
+          country
+        }
+      }
+    }
+    """
+    data = graphql_query(
+        token,
+        query,
+        {"input": {"registrationNumber": siren, "residencyAddressCountry": "FRA"}},
+    )
+    payload = data.get("companyInfoRegistryData") or {}
+    if payload.get("__typename") != "CompanyInfoRegistryDataSuccessPayload":
+        raise ValueError(payload.get("message") or "Entreprise introuvable dans le registre Swan/RNE.")
+    return payload.get("companyInfo") or {}
+
+
 def request_new_account(token, name, environment=None):
     """Demande l'ouverture d'un nouveau compte. Renvoie {account_id,
     consent_url} — le compte n'est PAS actif tant que le consentement

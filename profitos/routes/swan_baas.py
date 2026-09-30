@@ -1,7 +1,7 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card, write_operations_enabled, graphql_query,
+    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr,
 )
 
 
@@ -48,8 +48,24 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(),
+            write_operations_enabled=write_operations_enabled(), registry_preview=session.pop('swan_registry_preview', None),
         )
+
+    @app.route('/settings/swan/company-registry', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_company_registry():
+        siren = (request.form.get('siren') or '').strip()
+        try:
+            info = company_registry_data_fr(siren)
+            session['swan_registry_preview'] = info
+            log_activity('SWAN_RNE_LOOKUP_OK', 'Préremplissage RNE Swan réussi')
+            flash("Entreprise trouvée dans le registre RNE via Swan. Vérifiez les informations avant l'onboarding.")
+        except ValueError as e:
+            session.pop('swan_registry_preview', None)
+            log_activity('SWAN_RNE_LOOKUP_FAILED', f"Échec RNE Swan : {str(e)[:180]}")
+            flash(f"Recherche RNE impossible : {e}")
+        return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/test-connection', methods=['POST'])
     @login_required
