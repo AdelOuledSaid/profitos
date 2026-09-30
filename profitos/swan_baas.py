@@ -318,6 +318,52 @@ def create_company_onboarding_v2_sandbox(input_data):
         "errors": status_info.get("errors") or [],
     }
 
+
+def create_individual_onboarding_v2_sandbox(input_data):
+    """Create a Swan individual onboarding using the current API, Sandbox only."""
+    if current_environment() != "sandbox":
+        raise ValueError("Création d'onboarding individuel bloquée hors Sandbox.")
+    if not isinstance(input_data, dict):
+        raise ValueError("Données d'onboarding individuel invalides.")
+
+    token = get_server_token()
+    mutation = """
+    mutation ProfitOSCreateIndividualOnboardingV2($input: CreateIndividualAccountHolderOnboardingInput!) {
+      createIndividualAccountHolderOnboarding(input: $input) {
+        __typename
+        ... on CreateIndividualAccountHolderOnboardingSuccessPayload {
+          onboarding {
+            id
+            onboardingUrl
+            statusInfo {
+              status
+              ... on OnboardingInvalidStatusInfo {
+                errors { field errors }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, mutation, {"input": input_data}, environment="sandbox")
+    result = data.get("createIndividualAccountHolderOnboarding") or {}
+    typename = result.get("__typename") or ""
+    onboarding = result.get("onboarding") or {}
+    if typename != "CreateIndividualAccountHolderOnboardingSuccessPayload":
+        raise ValueError(f"Swan a refusé l'onboarding individuel (type: {typename or 'inconnu'}).")
+    if not onboarding.get("id"):
+        raise ValueError("Swan n'a renvoyé aucun identifiant d'onboarding individuel.")
+    status_info = onboarding.get("statusInfo") or {}
+    return {
+        "id": onboarding.get("id"),
+        "onboarding_url": onboarding.get("onboardingUrl"),
+        "status": status_info.get("status"),
+        "errors": status_info.get("errors") or [],
+        "kind": "individual",
+    }
+
+
 def request_card(token, swan_account_id, holder_name, environment=None):
     """Demande l'émission d'une carte pour un compte existant. Renvoie
     {card_id, consent_url} — la carte n'est PAS active tant que le

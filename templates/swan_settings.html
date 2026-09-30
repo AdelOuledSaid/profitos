@@ -16,6 +16,55 @@
 </section>
 {% else %}
 <section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Onboarding individuel Swan — Sandbox</h2>
+  <p class="purchase-muted">Premier E2E sans SIREN : utilisez votre utilisateur de test Swan. ProfitOS crée uniquement un onboarding individuel dans le Sandbox ; aucune opération Live n'est possible depuis ce formulaire.</p>
+  <form method="post" action="{{ url_for('swan_individual_onboarding_v2_create') }}" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Email du Sandbox user<input type="email" name="individual_email" required></label>
+    <label>Adresse de résidence<input name="individual_address_line1" required placeholder="Ex. 10 rue de Test"></label>
+    <label>Ville<input name="individual_city" value="Paris" required></label>
+    <label>Code postal<input name="individual_postal_code" value="75001" required></label>
+    <label>Situation professionnelle
+      <select name="employment_status" required>
+        <option value="Employee">Salarié</option>
+        <option value="SelfEmployed">Indépendant</option>
+        <option value="Student">Étudiant</option>
+        <option value="Retired">Retraité</option>
+        <option value="Unemployed">Sans emploi</option>
+      </select>
+    </label>
+    <label>Revenu mensuel
+      <select name="monthly_income" required>
+        <option value="LessThan1500">&lt; 1 500 €</option>
+        <option value="Between1500And3000">1 500–3 000 €</option>
+        <option value="Between3000And4500">3 000–4 500 €</option>
+        <option value="MoreThan4500">&gt; 4 500 €</option>
+      </select>
+    </label>
+    <label class="wide" style="display:flex;gap:8px;align-items:flex-start;">
+      <input type="checkbox" name="confirm_individual_sandbox" value="yes" required style="width:auto;margin-top:4px;">
+      Je confirme la création d'un onboarding individuel uniquement dans Swan Sandbox.
+    </label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer l'onboarding individuel Sandbox</button></div>
+  </form>
+</section>
+
+{% if individual_onboarding_result %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Onboarding individuel Sandbox créé</h2>
+  <p class="purchase-muted">ID : <code>{{ individual_onboarding_result.get('id') }}</code> · Statut : <strong>{{ individual_onboarding_result.get('status') or '—' }}</strong></p>
+  {% if individual_onboarding_result.get('errors') %}
+    <p class="purchase-muted">Swan demande encore : {{ individual_onboarding_result.get('errors') }}</p>
+  {% endif %}
+  {% if individual_onboarding_result.get('onboarding_url') %}
+    <a class="purchase-primary-btn primary" href="{{ individual_onboarding_result.get('onboarding_url') }}" target="_blank" rel="noopener">Continuer sur Swan →</a>
+  {% else %}
+    <p class="purchase-alert-text">Aucune URL retournée. Vérifiez que Public links est activé dans Swan Sandbox.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="purchase-panel" style="margin-bottom:20px;">
   <h2 style="color:#fff;margin-top:0;">Onboarding Swan v2 — pré-vérification</h2>
   <p class="purchase-muted">Avant la première mutation Sandbox, ProfitOS vérifie le schéma réellement exposé par Swan : mutation v2, accountInfo, accountAdmin, company et relatedIndividuals. Cette étape ne crée aucun onboarding.</p>
   <form method="post" action="{{ url_for('swan_onboarding_v2_preflight') }}">

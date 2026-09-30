@@ -1,7 +1,7 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight, create_company_onboarding_v2_sandbox,
+    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight, create_company_onboarding_v2_sandbox, create_individual_onboarding_v2_sandbox,
 )
 
 
@@ -48,7 +48,7 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None),
+            write_operations_enabled=write_operations_enabled(), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
         )
 
     @app.route('/settings/swan/onboarding-v2/preflight', methods=['POST'])
@@ -185,6 +185,60 @@ def register(app):
         except ValueError as e:
             log_activity('SWAN_ONBOARDING_V2_CREATE_FAILED', str(e)[:180])
             flash(f"Création onboarding Swan Sandbox impossible : {e}")
+        return redirect(url_for('swan_settings'))
+
+
+    @app.route('/settings/swan/individual-onboarding-v2/create', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_individual_onboarding_v2_create():
+        if current_environment() != 'sandbox':
+            flash("Création d'onboarding individuel bloquée hors Sandbox.")
+            return redirect(url_for('swan_settings'))
+        if request.form.get('confirm_individual_sandbox') != 'yes':
+            flash("Confirmez explicitement la création de l'onboarding individuel Sandbox.")
+            return redirect(url_for('swan_settings'))
+
+        email = (request.form.get('individual_email') or '').strip()
+        address_line1 = (request.form.get('individual_address_line1') or '').strip()
+        city = (request.form.get('individual_city') or '').strip()
+        postal_code = (request.form.get('individual_postal_code') or '').strip()
+        employment_status = (request.form.get('employment_status') or '').strip()
+        monthly_income = (request.form.get('monthly_income') or '').strip()
+
+        if not email or '@' not in email or not address_line1 or not city or not postal_code:
+            flash("Complétez l'email et l'adresse de l'utilisateur Sandbox.")
+            return redirect(url_for('swan_settings'))
+        allowed_employment = {'Employee', 'SelfEmployed', 'Student', 'Retired', 'Unemployed'}
+        allowed_income = {'LessThan1500', 'Between1500And3000', 'Between3000And4500', 'MoreThan4500'}
+        if employment_status not in allowed_employment or monthly_income not in allowed_income:
+            flash("Valeurs emploi/revenu non autorisées.")
+            return redirect(url_for('swan_settings'))
+
+        input_data = {
+            'accountInfo': {'country': 'FRA'},
+            'accountAdmin': {
+                'email': email,
+                'employmentStatus': employment_status,
+                'preferredLanguage': 'fr',
+                'monthlyIncome': monthly_income,
+                'address': {
+                    'addressLine1': address_line1,
+                    'city': city,
+                    'country': 'FRA',
+                    'postalCode': postal_code,
+                },
+                'unitedStatesTaxInfo': {'isUnitedStatesPerson': False},
+            },
+        }
+        try:
+            result = create_individual_onboarding_v2_sandbox(input_data)
+            session['swan_individual_onboarding_result'] = result
+            log_activity('SWAN_INDIVIDUAL_ONBOARDING_V2_CREATED', f"Sandbox onboarding {result.get('id')}")
+            flash("Onboarding individuel Swan Sandbox créé.")
+        except ValueError as e:
+            flash(f"Création onboarding individuel Swan Sandbox impossible : {e}")
+            log_activity('SWAN_INDIVIDUAL_ONBOARDING_V2_ERROR', str(e)[:180])
         return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/test-connection', methods=['POST'])
