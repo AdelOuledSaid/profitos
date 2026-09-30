@@ -210,7 +210,7 @@ def register(app):
             flash("Complétez l'email et l'adresse de l'utilisateur Sandbox.")
             return redirect(url_for('swan_settings'))
         allowed_employment = {'Employee', 'SelfEmployed', 'Student', 'Retired', 'Unemployed'}
-        allowed_income = {'LessThan1500', 'Between1500And3000', 'Between3000And4500', 'MoreThan4500'}
+        allowed_income = {'LessThan500', 'Between500And1500', 'Between1500And3000', 'Between3000And4500', 'MoreThan4500'}
         if employment_status not in allowed_employment or monthly_income not in allowed_income:
             flash("Valeurs emploi/revenu non autorisées.")
             return redirect(url_for('swan_settings'))
