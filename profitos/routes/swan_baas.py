@@ -76,6 +76,7 @@ def register(app):
         siren = (request.form.get('siren') or '').strip()
         try:
             info = company_registry_data_fr(siren)
+            info['registrationNumber'] = siren
             session['swan_registry_preview'] = info
             log_activity('SWAN_RNE_LOOKUP_OK', 'Préremplissage RNE Swan réussi')
             flash("Entreprise trouvée dans le registre RNE via Swan. Vérifiez les informations avant l'onboarding.")
@@ -97,13 +98,10 @@ def register(app):
 
         preview = session.get('swan_registry_preview') or {}
         address = preview.get('address') or {}
-        siren = ''.join(ch for ch in (request.form.get('registration_number') or '') if ch.isdigit())
-        if len(siren) != 9 or siren != ''.join(ch for ch in str(preview.get('registrationNumber') or siren) if ch.isdigit()):
-            # The preview returned by older passes did not persist registrationNumber;
-            # hidden form value is still strictly validated.
-            if len(siren) != 9:
-                flash("SIREN invalide.")
-                return redirect(url_for('swan_settings'))
+        siren = ''.join(ch for ch in str(preview.get('registrationNumber') or '') if ch.isdigit())
+        if len(siren) != 9:
+            flash("SIREN RNE validé absent. Relancez d'abord la recherche RNE.")
+            return redirect(url_for('swan_settings'))
 
         required = [
             'email','business_activity','business_activity_description','monthly_payment_volume',

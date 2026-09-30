@@ -51,7 +51,10 @@
       <input type="hidden" name="company_city" value="{{ a.get('city','') }}">
       <input type="hidden" name="company_postal_code" value="{{ a.get('postalCode','') }}">
 
-      <label>SIREN<input name="registration_number" pattern="[0-9]{9}" maxlength="9" required></label>
+      <label>SIREN validé par le RNE
+        <input value="{{ registry_preview.get('registrationNumber','') }}" readonly aria-readonly="true">
+        <small class="purchase-muted">Verrouillé : relancez la recherche RNE pour changer d'entreprise.</small>
+      </label>
       <label>Email administrateur<input type="email" name="email" required></label>
 
       <label>Activité
