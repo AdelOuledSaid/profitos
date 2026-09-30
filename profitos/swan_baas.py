@@ -113,7 +113,9 @@ def list_accounts(token, environment=None):
             id
             IBAN
             name
-            status
+            statusInfo {
+              status
+            }
           }
         }
       }
@@ -121,7 +123,12 @@ def list_accounts(token, environment=None):
     """
     data = graphql_query(token, query, environment=environment)
     edges = (data.get('accounts') or {}).get('edges') or []
-    return [e['node'] for e in edges]
+    accounts = []
+    for edge in edges:
+        node = dict(edge.get('node') or {})
+        node['status'] = (node.get('statusInfo') or {}).get('status')
+        accounts.append(node)
+    return accounts
 
 
 def request_new_account(token, name, environment=None):
