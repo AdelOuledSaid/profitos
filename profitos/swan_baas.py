@@ -168,7 +168,7 @@ def company_registry_data_fr(registration_number):
       companyInfoRegistryData(input: $input) {
         ... on CompanyInfo {
           name
-          legalForm
+          legalFormCode
           registrationDate
           address {
             addressLine1
@@ -186,6 +186,7 @@ def company_registry_data_fr(registration_number):
         raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
     if not info.get("name"):
         raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
+    info["legalForm"] = info.get("legalFormCode")
     return info
 
 
