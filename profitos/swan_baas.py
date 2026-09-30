@@ -270,6 +270,54 @@ def company_onboarding_v2_preflight():
         "company_fields": sorted(x for x in company_fields if x),
     }
 
+
+def create_company_onboarding_v2_sandbox(input_data):
+    """Create one Swan v2 company onboarding in Sandbox.
+
+    This is deliberately sandbox-only. It creates an onboarding record/link,
+    not a live production bank account. Completion/verification remains on Swan.
+    """
+    if current_environment() != "sandbox":
+        raise ValueError("Création d'onboarding bloquée hors Sandbox.")
+    if not isinstance(input_data, dict):
+        raise ValueError("Données d'onboarding invalides.")
+
+    token = get_server_token()
+    mutation = """
+    mutation ProfitOSCreateCompanyOnboardingV2($input: CreateCompanyAccountHolderOnboardingInput!) {
+      createCompanyAccountHolderOnboarding(input: $input) {
+        __typename
+        ... on CreateCompanyAccountHolderOnboardingSuccessPayload {
+          onboarding {
+            id
+            onboardingUrl
+            statusInfo {
+              status
+              ... on OnboardingInvalidStatusInfo {
+                errors { field errors }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, mutation, {"input": input_data}, environment="sandbox")
+    result = data.get("createCompanyAccountHolderOnboarding") or {}
+    typename = result.get("__typename") or ""
+    onboarding = result.get("onboarding") or {}
+    if typename != "CreateCompanyAccountHolderOnboardingSuccessPayload":
+        raise ValueError(f"Swan a refusé l'onboarding (type: {typename or 'inconnu'}).")
+    if not onboarding.get("id"):
+        raise ValueError("Swan n'a renvoyé aucun identifiant d'onboarding.")
+    status_info = onboarding.get("statusInfo") or {}
+    return {
+        "id": onboarding.get("id"),
+        "onboarding_url": onboarding.get("onboardingUrl"),
+        "status": status_info.get("status"),
+        "errors": status_info.get("errors") or [],
+    }
+
 def request_card(token, swan_account_id, holder_name, environment=None):
     """Demande l'émission d'une carte pour un compte existant. Renvoie
     {card_id, consent_url} — la carte n'est PAS active tant que le

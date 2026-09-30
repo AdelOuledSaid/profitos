@@ -1,7 +1,7 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight,
+    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight, create_company_onboarding_v2_sandbox,
 )
 
 
@@ -48,7 +48,7 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(), registry_preview=session.pop('swan_registry_preview', None),
+            write_operations_enabled=write_operations_enabled(), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None),
         )
 
     @app.route('/settings/swan/onboarding-v2/preflight', methods=['POST'])
@@ -83,6 +83,110 @@ def register(app):
             session.pop('swan_registry_preview', None)
             log_activity('SWAN_RNE_LOOKUP_FAILED', f"Échec RNE Swan : {str(e)[:180]}")
             flash(f"Recherche RNE impossible : {e}")
+        return redirect(url_for('swan_settings'))
+
+    @app.route('/settings/swan/onboarding-v2/create', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_onboarding_v2_create():
+        if current_environment() != 'sandbox':
+            abort(403)
+        if request.form.get('confirm_sandbox') != 'yes':
+            flash("Confirmez explicitement la création de l'onboarding Sandbox.")
+            return redirect(url_for('swan_settings'))
+
+        preview = session.get('swan_registry_preview') or {}
+        address = preview.get('address') or {}
+        siren = ''.join(ch for ch in (request.form.get('registration_number') or '') if ch.isdigit())
+        if len(siren) != 9 or siren != ''.join(ch for ch in str(preview.get('registrationNumber') or siren) if ch.isdigit()):
+            # The preview returned by older passes did not persist registrationNumber;
+            # hidden form value is still strictly validated.
+            if len(siren) != 9:
+                flash("SIREN invalide.")
+                return redirect(url_for('swan_settings'))
+
+        required = [
+            'email','business_activity','business_activity_description','monthly_payment_volume',
+            'regulatory_classification','first_name','last_name','sex','birth_date','birth_city',
+            'birth_postal_code','nationality','person_address_line1','person_city','person_postal_code'
+        ]
+        missing = [k for k in required if not (request.form.get(k) or '').strip()]
+        if missing:
+            flash("Onboarding incomplet : " + ", ".join(missing))
+            return redirect(url_for('swan_settings'))
+
+        try:
+            ownership = int(request.form.get('ownership_percentage') or '100')
+        except ValueError:
+            ownership = 0
+        if ownership < 1 or ownership > 100:
+            flash("Le pourcentage de détention doit être compris entre 1 et 100.")
+            return redirect(url_for('swan_settings'))
+
+        input_data = {
+            'accountInfo': {'country': 'FRA'},
+            'accountAdmin': {
+                'email': request.form['email'].strip(),
+                'preferredLanguage': 'fr',
+                'typeOfRepresentation': 'LegalRepresentative',
+            },
+            'company': {
+                'name': (request.form.get('company_name') or preview.get('name') or '').strip(),
+                'registrationNumber': siren,
+                'legalFormCode': (request.form.get('legal_form_code') or preview.get('legalFormCode') or preview.get('legalForm') or '').strip(),
+                'businessActivity': request.form['business_activity'].strip(),
+                'businessActivityDescription': request.form['business_activity_description'].strip(),
+                'monthlyPaymentVolume': request.form['monthly_payment_volume'].strip(),
+                'regulatoryClassification': request.form['regulatory_classification'].strip(),
+                'address': {
+                    'addressLine1': (request.form.get('company_address_line1') or address.get('addressLine1') or '').strip(),
+                    'city': (request.form.get('company_city') or address.get('city') or '').strip(),
+                    'postalCode': (request.form.get('company_postal_code') or address.get('postalCode') or '').strip(),
+                    'country': 'FRA',
+                },
+                'relatedIndividuals': [{
+                    'type': 'LegalRepresentativeAndUltimateBeneficialOwner',
+                    'firstName': request.form['first_name'].strip(),
+                    'lastName': request.form['last_name'].strip(),
+                    'sex': request.form['sex'].strip(),
+                    'birthInfo': {
+                        'birthDate': request.form['birth_date'].strip(),
+                        'country': 'FRA',
+                        'city': request.form['birth_city'].strip(),
+                        'postalCode': request.form['birth_postal_code'].strip(),
+                    },
+                    'address': {
+                        'addressLine1': request.form['person_address_line1'].strip(),
+                        'city': request.form['person_city'].strip(),
+                        'country': 'FRA',
+                        'postalCode': request.form['person_postal_code'].strip(),
+                    },
+                    'nationality': request.form['nationality'].strip().upper(),
+                    'unitedStatesTaxInfo': {'isUnitedStatesPerson': False},
+                    'legalRepresentative': {'roles': (request.form.get('representative_role') or 'Dirigeant').strip()},
+                    'ultimateBeneficialOwner': {
+                        'qualificationType': 'Ownership',
+                        'ownership': {'type': 'Direct', 'totalPercentage': ownership},
+                    },
+                }],
+            },
+        }
+        if not all([
+            input_data['company']['name'], input_data['company']['legalFormCode'],
+            input_data['company']['address']['addressLine1'], input_data['company']['address']['city'],
+            input_data['company']['address']['postalCode']
+        ]):
+            flash("Les données RNE nécessaires sont incomplètes. Relancez d'abord la recherche RNE.")
+            return redirect(url_for('swan_settings'))
+
+        try:
+            result = create_company_onboarding_v2_sandbox(input_data)
+            session['swan_onboarding_result'] = result
+            log_activity('SWAN_ONBOARDING_V2_CREATED_SANDBOX', f"Onboarding Swan Sandbox {result.get('id')}")
+            flash("Onboarding Swan v2 créé dans le Sandbox. Aucune activation Live n'a été effectuée.")
+        except ValueError as e:
+            log_activity('SWAN_ONBOARDING_V2_CREATE_FAILED', str(e)[:180])
+            flash(f"Création onboarding Swan Sandbox impossible : {e}")
         return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/test-connection', methods=['POST'])
