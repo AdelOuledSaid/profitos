@@ -190,6 +190,7 @@ def company_registry_data_fr(registration_number):
     return info
 
 
+
 def request_new_account(token, name, environment=None):
     """Demande l'ouverture d'un nouveau compte. Renvoie {account_id,
     consent_url} — le compte n'est PAS actif tant que le consentement
@@ -221,6 +222,53 @@ def request_new_account(token, name, environment=None):
         'consent_url': consent.get('consentUrl'),
     }
 
+
+def company_onboarding_v2_preflight():
+    """Validate Swan's current v2 company-onboarding schema without creating anything."""
+    token = get_server_token()
+    query = """
+    query ProfitOSCompanyOnboardingV2Preflight {
+      mutationType: __type(name: "Mutation") {
+        fields { name }
+      }
+      createInput: __type(name: "CreateCompanyAccountHolderOnboardingInput") {
+        inputFields { name }
+      }
+      companyInput: __type(name: "CompanyInfoInput") {
+        inputFields { name }
+      }
+    }
+    """
+    data = graphql_query(token, query)
+    mutation_names = {
+        f.get("name") for f in ((data.get("mutationType") or {}).get("fields") or [])
+    }
+    create_fields = {
+        f.get("name") for f in ((data.get("createInput") or {}).get("inputFields") or [])
+    }
+    company_fields = {
+        f.get("name") for f in ((data.get("companyInput") or {}).get("inputFields") or [])
+    }
+    required_mutation = "createCompanyAccountHolderOnboarding"
+    required_create = {"accountInfo", "accountAdmin", "company"}
+    required_company = {
+        "name", "registrationNumber", "legalFormCode",
+        "businessActivity", "businessActivityDescription",
+        "monthlyPaymentVolume", "regulatoryClassification",
+        "relatedIndividuals",
+    }
+    missing = []
+    if required_mutation not in mutation_names:
+        missing.append(required_mutation)
+    missing += sorted(required_create - create_fields)
+    missing += sorted(required_company - company_fields)
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "mutation": required_mutation,
+        "create_fields": sorted(x for x in create_fields if x),
+        "company_fields": sorted(x for x in company_fields if x),
+    }
 
 def request_card(token, swan_account_id, holder_name, environment=None):
     """Demande l'émission d'une carte pour un compte existant. Renvoie

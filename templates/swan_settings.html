@@ -16,6 +16,15 @@
 </section>
 {% else %}
 <section class="purchase-panel" style="margin-bottom:20px;">
+  <h2 style="color:#fff;margin-top:0;">Onboarding Swan v2 — pré-vérification</h2>
+  <p class="purchase-muted">Avant la première mutation Sandbox, ProfitOS vérifie le schéma réellement exposé par Swan : mutation v2, accountInfo, accountAdmin, company et relatedIndividuals. Cette étape ne crée aucun onboarding.</p>
+  <form method="post" action="{{ url_for('swan_onboarding_v2_preflight') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="purchase-primary-btn primary">Vérifier l'onboarding Swan v2</button>
+  </form>
+</section>
+
+<section class="purchase-panel" style="margin-bottom:20px;">
   <h2 style="color:#fff;margin-top:0;">Préremplissage entreprise française (RNE)</h2>
   <p class="purchase-muted">Étape lecture seule : ProfitOS interroge le registre national des entreprises via Swan. Aucune ouverture de compte n'est déclenchée.</p>
   <form method="post" action="{{ url_for('swan_company_registry') }}">
