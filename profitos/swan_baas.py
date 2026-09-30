@@ -133,7 +133,7 @@ def list_accounts(token, environment=None):
 
 
 def company_registry_data_fr(registration_number):
-    """Read-only French RNE prefill, adapting to the schema exposed by Swan Sandbox."""
+    """Read-only French RNE prefill using the concrete CompanyInfo object returned by Swan."""
     siren = ''.join(ch for ch in str(registration_number or '') if ch.isdigit())
     if len(siren) != 9:
         raise ValueError("Le SIREN doit contenir exactement 9 chiffres.")
@@ -141,8 +141,8 @@ def company_registry_data_fr(registration_number):
     token = get_server_token()
     variables = {"input": {"registrationNumber": siren, "residencyAddressCountry": "FRA"}}
 
-    # Do not hard-code union member names from documentation: first ask the
-    # Sandbox schema which concrete payload type is actually returned.
+    # Swan Sandbox currently returns CompanyInfo directly on success.
+    # Probe first so a rejection can be handled without hard-coding rejection type names.
     probe = """
     query ProfitOSCompanyRegistryProbe($input: CompanyInfoRegistryDataInput!) {
       companyInfoRegistryData(input: $input) {
@@ -155,54 +155,36 @@ def company_registry_data_fr(registration_number):
     payload_type = payload.get("__typename")
     if not payload_type:
         raise ValueError("Swan n'a retourné aucun type de réponse pour la recherche RNE.")
-
-    # Introspect that concrete type. Swan documents GraphQL introspection as
-    # the always-current source of truth for the schema.
-    schema_query = """
-    query ProfitOSRegistryPayloadType($name: String!) {
-      __type(name: $name) {
-        fields { name }
-      }
-    }
-    """
-    schema_data = graphql_query(token, schema_query, {"name": payload_type})
-    fields = {
-        f.get("name")
-        for f in ((schema_data.get("__type") or {}).get("fields") or [])
-        if f.get("name")
-    }
-    if "companyInfo" not in fields:
+    if payload_type != "CompanyInfo":
         raise ValueError(
             "Entreprise non trouvée ou réponse Swan non exploitable "
             f"(type: {payload_type})."
         )
 
-    # Fetch only stable company fields here. Representative/UBO structures
-    # are intentionally left to the onboarding step because their concrete
-    # types differ between Swan schema versions.
-    query = f"""
-    query ProfitOSCompanyRegistry($input: CompanyInfoRegistryDataInput!) {{
-      companyInfoRegistryData(input: $input) {{
-        ... on {payload_type} {{
-          companyInfo {{
-            name
-            legalForm
-            registrationDate
-            address {{
-              addressLine1
-              city
-              postalCode
-              country
-            }}
-          }}
-        }}
-      }}
-    }}
+    # Query fields directly on CompanyInfo. Keep this first production read
+    # deliberately minimal; representatives/UBOs are handled during onboarding.
+    query = """
+    query ProfitOSCompanyRegistry($input: CompanyInfoRegistryDataInput!) {
+      companyInfoRegistryData(input: $input) {
+        ... on CompanyInfo {
+          name
+          legalForm
+          registrationDate
+          address {
+            addressLine1
+            city
+            postalCode
+            country
+          }
+        }
+      }
+    }
     """
     data = graphql_query(token, query, variables)
-    result = data.get("companyInfoRegistryData") or {}
-    info = result.get("companyInfo")
-    if not info:
+    info = data.get("companyInfoRegistryData") or {}
+    if info.get("__typename") and info.get("__typename") != "CompanyInfo":
+        raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
+    if not info.get("name"):
         raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
     return info
 
