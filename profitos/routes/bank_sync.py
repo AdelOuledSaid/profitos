@@ -419,13 +419,14 @@ def register(app):
         try:
             connection = _connection_row(c, eid)
             accounts = c.execute(
-                f"SELECT * FROM bank_accounts WHERE provider='powens' AND {ef} ORDER BY disabled,balance DESC",
+                f"SELECT * FROM bank_accounts WHERE provider IN ('powens','swan') AND {ef} ORDER BY disabled,balance DESC",
                 ep,
             ).fetchall()
             transactions = c.execute(
                 f"""SELECT t.* FROM bank_transactions t
                     JOIN bank_accounts a ON a.provider_account_id=t.provider_account_id AND a.provider=t.provider
-                    WHERE t.provider='powens' AND a.{ef}
+                    WHERE t.provider IN ('powens','swan') AND a.{ef}
+                      AND (t.provider!='swan' OR COALESCE(t.raw_status,'')='Booked')
                     ORDER BY t.transaction_date DESC,t.id DESC LIMIT 50""",
                 ep,
             ).fetchall()
@@ -463,8 +464,78 @@ def register(app):
             purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
             powens_configured=_configured(),
+            swan_configured=__import__('profitos.swan_baas', fromlist=['is_configured']).is_configured(),
+            swan_environment=__import__('profitos.swan_baas', fromlist=['current_environment']).current_environment(),
             categories=categories,
         )
+
+    @app.post("/banking/swan/sync")
+    @login_required
+    @requires_paid_plan
+    @requires_feature('banking')
+    def banking_swan_sync():
+        """Importe le read-model Swan dans le moteur de rapprochement bancaire.
+
+        Sécurité: cette passerelle est volontairement limitée au Sandbox tant
+        que le rattachement Live compte<->entité n'est pas explicitement validé.
+        Les transactions Pending restent visibles côté Swan mais ne sont pas
+        proposées au rapprochement; seules les Booked sont importées ici.
+        """
+        from profitos.entities import current_entity_id
+        from profitos.swan_baas import is_configured as swan_is_configured, current_environment as swan_environment, get_server_token, list_accounts
+        if not swan_is_configured() or swan_environment() != 'sandbox':
+            flash("Synchronisation Swan disponible uniquement dans le Sandbox pour ce test.")
+            return redirect(url_for('banking'))
+        eid=current_entity_id()
+        c=cx()
+        try:
+            token=get_server_token()
+            accounts=list_accounts(token, environment='sandbox')
+            now_ts=datetime.utcnow().replace(microsecond=0).isoformat()
+            imported=0
+            for a in accounts:
+                aid=str(a.get('id') or '')
+                if not aid: continue
+                booked=a.get('booked_balance') or {}
+                try: balance=float(booked.get('value') or 0)
+                except (TypeError,ValueError): balance=0.0
+                currency=booked.get('currency') or 'EUR'
+                c.execute("""INSERT INTO bank_accounts(provider,provider_account_id,name,iban,account_type,currency,balance,disabled,last_synced_at,entity_id)
+                             VALUES('swan',?,?,?,?,?,?,0,?,?)
+                             ON CONFLICT(provider,provider_account_id) DO UPDATE SET
+                               name=excluded.name,iban=excluded.iban,account_type=excluded.account_type,
+                               currency=excluded.currency,balance=excluded.balance,disabled=0,
+                               last_synced_at=excluded.last_synced_at,entity_id=excluded.entity_id""",
+                          (aid,a.get('name') or 'Compte Swan',a.get('IBAN'),'Payment services',currency,balance,now_ts,eid))
+                for t in a.get('recent_transactions') or []:
+                    if (t.get('status') or '') != 'Booked':
+                        continue
+                    tid=str(t.get('id') or '')
+                    if not tid: continue
+                    amt=t.get('amount') or {}
+                    try: value=abs(float(amt.get('value') or 0))
+                    except (TypeError,ValueError): value=0.0
+                    side=(t.get('side') or '').lower()
+                    signed=-value if side in ('debit','debited','out') or 'out' in str(t.get('type') or '').lower() else value
+                    label=t.get('label') or t.get('reference') or str(t.get('type') or 'Transaction Swan')
+                    tx_date=str(t.get('createdAt') or t.get('updatedAt') or '')[:10]
+                    category=apply_categorization_rule(c,label,eid)
+                    c.execute("""INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at,category)
+                                 VALUES('swan',?,?,?,?,?,'Booked',?,?)
+                                 ON CONFLICT(provider,provider_transaction_id) DO UPDATE SET
+                                   provider_account_id=excluded.provider_account_id,transaction_date=excluded.transaction_date,
+                                   label=excluded.label,amount=excluded.amount,raw_status=excluded.raw_status,last_synced_at=excluded.last_synced_at""",
+                              (tid,aid,tx_date,label,signed,now_ts,category))
+                    imported += 1
+            c.commit()
+            flash(f"Swan synchronisé : {len(accounts)} compte(s), {imported} transaction(s) comptabilisée(s).")
+        except Exception:
+            c.rollback()
+            app.logger.exception("Échec synchronisation Swan vers rapprochement bancaire")
+            flash("Synchronisation Swan impossible pour le moment.")
+        finally:
+            c.close()
+        return redirect(url_for('banking'))
 
     @app.get("/banking/connect")
     @login_required
@@ -715,7 +786,7 @@ def register(app):
         c = cx()
         try:
             rows = c.execute(
-                f"SELECT balance FROM bank_accounts WHERE provider='powens' AND disabled=0 AND balance IS NOT NULL AND {ef}",
+                f"SELECT balance FROM bank_accounts WHERE provider IN ('powens','swan') AND disabled=0 AND balance IS NOT NULL AND {ef}",
                 ep,
             ).fetchall()
             if not rows:
