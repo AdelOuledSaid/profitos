@@ -128,7 +128,21 @@ def _translate_statement(sql):
         rewritten = re.sub(r'^INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', stripped, flags=re.I)
         return rewritten + ' ON CONFLICT DO NOTHING'
 
-    return _translate_scalar_minmax(stripped)
+    rewritten = _translate_scalar_minmax(stripped)
+
+    # SQLite uses `IS` as a null-safe equality operator not only with NULL,
+    # but also with bound parameters and identifiers. PostgreSQL only accepts
+    # `IS` with predicates such as NULL/TRUE/FALSE; its null-safe equality is
+    # `IS NOT DISTINCT FROM` (and the negation is `IS DISTINCT FROM`).
+    # Keep the application SQL portable and translate these SQLite forms here.
+    rewritten = re.sub(r'\bIS\s+NOT\s+\?(?=\s|$|[),])', 'IS DISTINCT FROM ?', rewritten, flags=re.I)
+    rewritten = re.sub(r'\bIS\s+\?(?=\s|$|[),])', 'IS NOT DISTINCT FROM ?', rewritten, flags=re.I)
+    rewritten = re.sub(
+        r'\b([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\s+IS\s+'
+        r'([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\b',
+        r'\1 IS NOT DISTINCT FROM \2', rewritten, flags=re.I
+    )
+    return rewritten
 
 
 def _translate_ddl(script):
