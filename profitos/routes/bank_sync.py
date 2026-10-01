@@ -291,12 +291,12 @@ def _purchase_reconciliation_suggestions(c, tx):
     rows=c.execute("""
         SELECT p.*,
                COALESCE((SELECT SUM(pp.amount) FROM purchase_invoice_payments pp
-                         WHERE pp.purchase_invoice_id=p.id AND pp.entity_id IS p.entity_id),0) AS paid_total
+                         WHERE pp.purchase_invoice_id=p.id AND pp.entity_id IS ?),0) AS paid_total
         FROM purchase_invoices p
         WHERE p.entity_id IS ?
           AND COALESCE(p.status,'unpaid')!='paid'
         ORDER BY p.due_date ASC, p.id ASC
-    """,(eid,)).fetchall()
+    """,(eid,eid)).fetchall()
 
     tx_label=_norm_text(tx['label'] or '')
     out=[]
