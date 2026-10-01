@@ -175,6 +175,18 @@ class PGCursorResult:
         self._cur.close()
         return [self._wrap(r) for r in raw]
 
+    @property
+    def lastrowid(self):
+        """Compatibilité sqlite3.Cursor.lastrowid pour PostgreSQL.
+
+        Les tables ProfitOS à identifiant auto-incrémenté utilisent des séquences
+        PostgreSQL. Juste après l'INSERT, lastval() renvoie l'identifiant produit
+        par la dernière séquence utilisée dans cette session.
+        """
+        self._cur.execute('SELECT lastval()')
+        raw = self._cur.fetchone()
+        return raw[0] if raw else None
+
 
 class PGConnection:
     def __init__(self, dsn, schema=None):
