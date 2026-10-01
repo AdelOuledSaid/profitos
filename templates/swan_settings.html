@@ -212,8 +212,14 @@
         <p class="purchase-muted">Une connexion utilisateur Swan est requise une seule fois avant une opération sensible.</p>
         <form method="post" action="{{ url_for('swan_user_connect') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="purchase-primary-btn primary" type="submit">Connecter l'utilisateur Swan Sandbox</button>
+          <button class="purchase-primary-btn primary" type="submit">Préparer la connexion Swan Sandbox</button>
         </form>
+        {% if swan_oauth_open_url %}
+        <div style="margin-top:12px;">
+          <a class="purchase-primary-btn primary" href="{{ swan_oauth_open_url }}" target="_blank" rel="noopener noreferrer">Ouvrir Swan Sandbox ↗</a>
+          <p class="purchase-muted" style="margin-top:8px;">Le lien est généré côté serveur et contient un état OAuth temporaire. Ne le partagez pas.</p>
+        </div>
+        {% endif %}
       {% else %}
         <p class="purchase-muted">Utilisateur Swan connecté. Le virement restera soumis au consentement/SCA hébergé par Swan.</p>
         <form method="post" action="{{ url_for('swan_sepa_transfer') }}" class="formgrid">

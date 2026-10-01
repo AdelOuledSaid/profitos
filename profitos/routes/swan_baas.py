@@ -55,7 +55,7 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
+            write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), swan_oauth_open_url=session.get('swan_oauth_open_url'), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
         )
 
     @app.route('/settings/swan/onboarding-v2/preflight', methods=['POST'])
@@ -259,8 +259,14 @@ def register(app):
         state = secrets.token_urlsafe(32)
         session['swan_oauth_state'] = state
         try:
-            return redirect(build_user_authorization_url(state))
+            # Some installed/PWA browser contexts can swallow a cross-origin 302
+            # after a POST. Generate the exact OAuth URL server-side, then expose
+            # it as an explicit GET link on the settings page.
+            session['swan_oauth_open_url'] = build_user_authorization_url(state)
+            flash("Autorisation Swan prête. Cliquez sur « Ouvrir Swan Sandbox » ci-dessous.")
+            return redirect(url_for('swan_settings'))
         except ValueError as e:
+            session.pop('swan_oauth_open_url', None)
             flash(str(e))
             return redirect(url_for('swan_settings'))
 
@@ -270,6 +276,7 @@ def register(app):
     def swan_oauth_callback():
         import secrets
         expected = session.pop('swan_oauth_state', '')
+        session.pop('swan_oauth_open_url', None)
         supplied = (request.args.get('state') or '').strip()
         code = (request.args.get('code') or '').strip()
         if not expected or not supplied or not secrets.compare_digest(expected, supplied):
