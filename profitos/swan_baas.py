@@ -30,6 +30,8 @@ Configuration requise (variables d'environnement) :
   défaut sandbox)
 """
 import os
+import secrets
+from urllib.parse import urlencode
 
 import requests
 
@@ -101,6 +103,119 @@ def graphql_query(token, query, variables=None, environment=None, user_id=None):
         messages = '; '.join(e.get('message', str(e)) for e in payload['errors'])
         raise ValueError(f"Erreur GraphQL Swan : {messages}")
     return payload.get('data', {})
+
+
+
+def swan_oauth_redirect_uri():
+    return (os.environ.get('SWAN_OAUTH_REDIRECT_URI') or '').strip()
+
+
+def build_user_authorization_url(state):
+    """Construit l'URL OAuth Swan pour lier explicitement un utilisateur final."""
+    redirect_uri = swan_oauth_redirect_uri()
+    client_id = (os.environ.get('SWAN_CLIENT_ID') or '').strip()
+    if not client_id or not redirect_uri:
+        raise ValueError("SWAN_CLIENT_ID et SWAN_OAUTH_REDIRECT_URI sont requis pour connecter l'utilisateur Swan.")
+    params = {
+        'response_type': 'code',
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': 'openid offline',
+        'state': state,
+    }
+    return 'https://oauth.swan.io/oauth2/auth?' + urlencode(params)
+
+
+def exchange_user_authorization_code(code):
+    redirect_uri = swan_oauth_redirect_uri()
+    try:
+        resp = requests.post(TOKEN_URL, data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'client_id': os.environ.get('SWAN_CLIENT_ID'),
+            'client_secret': os.environ.get('SWAN_CLIENT_SECRET'),
+            'redirect_uri': redirect_uri,
+        }, timeout=20)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion OAuth Swan impossible : {e}") from e
+    if resp.status_code != 200:
+        raise ValueError(f"Échange du code OAuth Swan refusé ({resp.status_code}) : {resp.text[:200]}")
+    payload = resp.json()
+    if not payload.get('access_token'):
+        raise ValueError("Swan n'a renvoyé aucun jeton utilisateur.")
+    return payload
+
+
+def current_swan_user_id(user_token, environment=None):
+    data = graphql_query(user_token, 'query ProfitOSCurrentSwanUser { user { id } }', environment=environment)
+    user_id = ((data.get('user') or {}).get('id') or '').strip()
+    if not user_id:
+        raise ValueError("Impossible d'identifier l'utilisateur Swan connecté.")
+    return user_id
+
+
+def initiate_sepa_credit_transfer_sandbox(project_token, user_id, account_id, beneficiary_name, iban, amount, consent_redirect_url, idempotency_key=None):
+    """Initie un SCT unique en Sandbox en impersonant un utilisateur déjà lié au projet.
+
+    Swan conserve le consentement/SCA : cette fonction renvoie l'URL de consentement
+    et ne considère jamais le paiement comme exécuté avant validation Swan.
+    """
+    if current_environment() != 'sandbox':
+        raise ValueError("Les virements ProfitOS sont bloqués hors Swan Sandbox.")
+    import re
+    beneficiary_name = (beneficiary_name or '').strip()
+    iban = re.sub(r'\s+', '', (iban or '')).upper()
+    try:
+        value = float(amount)
+    except (TypeError, ValueError):
+        raise ValueError("Montant de virement invalide.")
+    if not beneficiary_name or len(beneficiary_name) > 70:
+        raise ValueError("Le nom du bénéficiaire est obligatoire (70 caractères maximum).")
+    if not re.fullmatch(r'[A-Z]{2}[0-9A-Z]{13,32}', iban):
+        raise ValueError("IBAN bénéficiaire invalide.")
+    if value <= 0 or value > 100000:
+        raise ValueError("Le montant doit être supérieur à 0 et inférieur ou égal à 100 000 EUR.")
+    mutation = """
+    mutation ProfitOSInitiateSepa($input: InitiateCreditTransfersInput!) {
+      initiateCreditTransfers(input: $input) {
+        __typename
+        ... on InitiateCreditTransfersSuccessPayload {
+          payment {
+            id
+            createdAt
+            statusInfo {
+              status
+              ... on PaymentConsentPending {
+                consent { consentUrl }
+              }
+            }
+          }
+        }
+        ... on ValidationRejection { message fields { code message path } }
+        ... on ForbiddenRejection { message }
+        ... on AccountNotFoundRejection { message }
+        ... on InternalErrorRejection { message }
+      }
+    }
+    """
+    variables = {'input': {
+        'idempotencyKey': idempotency_key or secrets.token_hex(16),
+        'consentRedirectUrl': consent_redirect_url,
+        'accountId': account_id,
+        'creditTransfers': {
+            'amount': {'value': f'{value:.2f}', 'currency': 'EUR'},
+            'sepaBeneficiary': {'iban': iban, 'name': beneficiary_name, 'isMyOwnIban': False, 'save': False},
+            'mode': 'Regular',
+        },
+    }}
+    data = graphql_query(project_token, mutation, variables, environment='sandbox', user_id=user_id)
+    result = data.get('initiateCreditTransfers') or {}
+    if result.get('__typename') != 'InitiateCreditTransfersSuccessPayload':
+        raise ValueError(result.get('message') or f"Virement Swan refusé ({result.get('__typename') or 'réponse inconnue'}).")
+    payment = result.get('payment') or {}
+    status_info = payment.get('statusInfo') or {}
+    consent = status_info.get('consent') or {}
+    return {'payment_id': payment.get('id'), 'status': status_info.get('status'), 'consent_url': consent.get('consentUrl')}
 
 
 def list_accounts(token, environment=None):

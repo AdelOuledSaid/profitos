@@ -205,6 +205,29 @@
       <div><div class="purchase-muted">Solde disponible</div><strong style="color:#fff;font-size:22px;">{{ a.available_balance.get('value','—') }} {{ a.available_balance.get('currency','') }}</strong></div>
       <div><div class="purchase-muted">Solde comptabilisé</div><strong style="color:#fff;">{{ a.booked_balance.get('value','—') }} {{ a.booked_balance.get('currency','') }}</strong></div>
     </div>
+    {% if environment == 'sandbox' %}
+    <div style="margin-top:20px;padding:16px;border:1px solid rgba(255,255,255,.10);border-radius:14px;">
+      <h3 style="color:#fff;margin:0 0 8px;">Virement SEPA — Sandbox</h3>
+      {% if not swan_user_connected %}
+        <p class="purchase-muted">Une connexion utilisateur Swan est requise une seule fois avant une opération sensible.</p>
+        <form method="post" action="{{ url_for('swan_user_connect') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="purchase-primary-btn primary" type="submit">Connecter l'utilisateur Swan Sandbox</button>
+        </form>
+      {% else %}
+        <p class="purchase-muted">Utilisateur Swan connecté. Le virement restera soumis au consentement/SCA hébergé par Swan.</p>
+        <form method="post" action="{{ url_for('swan_sepa_transfer') }}" class="formgrid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="account_id" value="{{ a.id or a.account_id }}">
+          <label>Bénéficiaire<input name="beneficiary_name" maxlength="70" required placeholder="Ex. Client test"></label>
+          <label>IBAN bénéficiaire<input name="beneficiary_iban" required autocomplete="off" placeholder="FR76..."></label>
+          <label>Montant EUR<input name="amount" type="number" min="0.01" max="100000" step="0.01" required value="100.00"></label>
+          <label class="wide" style="display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="confirm_sandbox_transfer" value="yes" required style="width:auto;margin-top:3px;"> Je confirme qu'il s'agit d'un virement de test dans Swan Sandbox.</label>
+          <div class="wide"><button class="purchase-primary-btn primary" type="submit">Continuer vers la validation Swan</button></div>
+        </form>
+      {% endif %}
+    </div>
+    {% endif %}
     <h3 style="color:#fff;margin:20px 0 8px;">Dernières transactions</h3>
     {% if a.recent_transactions %}
     <div class="purchase-table-wrap">

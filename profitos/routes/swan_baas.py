@@ -1,7 +1,7 @@
 from profitos.runtime import *
 from profitos.swan_baas import (
     is_configured, current_environment, get_server_token, list_accounts,
-    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight, create_company_onboarding_v2_sandbox, create_individual_onboarding_v2_sandbox,
+    request_new_account, request_card, write_operations_enabled, graphql_query, company_registry_data_fr, company_onboarding_v2_preflight, create_company_onboarding_v2_sandbox, create_individual_onboarding_v2_sandbox, build_user_authorization_url, exchange_user_authorization_code, current_swan_user_id, initiate_sepa_credit_transfer_sandbox,
 )
 
 
@@ -55,7 +55,7 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
+            write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
         )
 
     @app.route('/settings/swan/onboarding-v2/preflight', methods=['POST'])
@@ -246,6 +246,84 @@ def register(app):
         except ValueError as e:
             flash(f"Création onboarding individuel Swan Sandbox impossible : {e}")
             log_activity('SWAN_INDIVIDUAL_ONBOARDING_V2_ERROR', str(e)[:180])
+        return redirect(url_for('swan_settings'))
+
+    @app.route('/settings/swan/user/connect', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_user_connect():
+        if current_environment() != 'sandbox':
+            flash("Connexion utilisateur Swan bloquée hors Sandbox.")
+            return redirect(url_for('swan_settings'))
+        import secrets
+        state = secrets.token_urlsafe(32)
+        session['swan_oauth_state'] = state
+        try:
+            return redirect(build_user_authorization_url(state))
+        except ValueError as e:
+            flash(str(e))
+            return redirect(url_for('swan_settings'))
+
+    @app.route('/settings/swan/oauth/callback', methods=['GET'])
+    @login_required
+    @require_area('settings')
+    def swan_oauth_callback():
+        import secrets
+        expected = session.pop('swan_oauth_state', '')
+        supplied = (request.args.get('state') or '').strip()
+        code = (request.args.get('code') or '').strip()
+        if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+            abort(400)
+        if not code:
+            flash("Swan n'a renvoyé aucun code d'autorisation.")
+            return redirect(url_for('swan_settings'))
+        try:
+            payload = exchange_user_authorization_code(code)
+            user_id = current_swan_user_id(payload['access_token'], environment='sandbox')
+            # Ne jamais stocker le token utilisateur dans la session navigateur.
+            # Seul l'identifiant Swan non secret est conservé ; les opérations
+            # sensibles utilisent ensuite l'impersonation avec le project token.
+            session['swan_user_id'] = user_id
+            log_activity('SWAN_USER_CONNECTED_SANDBOX', f'Utilisateur Swan Sandbox lié {user_id}')
+            flash("Utilisateur Swan Sandbox connecté à ProfitOS.")
+        except ValueError as e:
+            flash(f"Connexion utilisateur Swan impossible : {e}")
+        return redirect(url_for('swan_settings'))
+
+    @app.route('/settings/swan/transfer/sepa', methods=['POST'])
+    @login_required
+    @require_area('settings')
+    def swan_sepa_transfer():
+        if current_environment() != 'sandbox':
+            flash("Virements Swan bloqués hors Sandbox.")
+            return redirect(url_for('swan_settings'))
+        user_id = session.get('swan_user_id')
+        if not user_id:
+            flash("Connectez d'abord l'utilisateur Swan Sandbox avant d'initier un virement.")
+            return redirect(url_for('swan_settings'))
+        account_id = (request.form.get('account_id') or '').strip()
+        beneficiary_name = (request.form.get('beneficiary_name') or '').strip()
+        beneficiary_iban = (request.form.get('beneficiary_iban') or '').strip()
+        amount = (request.form.get('amount') or '').strip()
+        if request.form.get('confirm_sandbox_transfer') != 'yes':
+            flash("Confirmez explicitement le virement Sandbox.")
+            return redirect(url_for('swan_settings'))
+        try:
+            token = get_server_token()
+            # Vérifie que l'accountId appartient réellement au projet Sandbox affiché.
+            allowed = {str(a.get('id') or a.get('account_id') or '') for a in list_accounts(token, environment='sandbox')}
+            if account_id not in allowed:
+                abort(403)
+            result = initiate_sepa_credit_transfer_sandbox(
+                token, user_id, account_id, beneficiary_name, beneficiary_iban, amount,
+                url_for('swan_settings', _external=True),
+            )
+            log_activity('SWAN_SEPA_TRANSFER_INITIATED_SANDBOX', f"Paiement Swan {result.get('payment_id')}")
+            if result.get('consent_url'):
+                return redirect(result['consent_url'])
+            flash(f"Virement Swan créé (statut : {result.get('status') or 'inconnu'}). Actualisez le compte pour suivre son exécution.")
+        except ValueError as e:
+            flash(f"Virement Swan impossible : {e}")
         return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/test-connection', methods=['POST'])
