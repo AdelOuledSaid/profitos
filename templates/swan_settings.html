@@ -10,6 +10,52 @@
   <span class="purchase-status">{{ 'Sandbox' if environment=='sandbox' else 'PRODUCTION' }}</span>
 </div>
 
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
+    <div>
+      <div class="purchase-eyebrow">VUE D’ENSEMBLE</div>
+      <h2 style="color:#fff;margin:6px 0 4px;">{{ company.name or 'Entreprise' }}</h2>
+      <p class="purchase-muted" style="margin:0;">SIRET {{ company.siret or '—' }} · TVA {{ company.vat_number or '—' }}</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <a class="purchase-primary-btn" href="{{ url_for('company') }}">Profil entreprise</a>
+      <a class="purchase-primary-btn" href="{{ url_for('banking') }}">Banques & rapprochement</a>
+      <a class="purchase-primary-btn" href="{{ url_for('invoicing_list') }}">Factures</a>
+    </div>
+  </div>
+
+  <div class="formgrid" style="margin-top:22px;">
+    <div><span class="purchase-muted">Environnement Swan</span><strong style="display:block;margin-top:5px;">{{ 'SANDBOX · TEST UNIQUEMENT' if environment=='sandbox' else 'PRODUCTION' }}</strong></div>
+    <div><span class="purchase-muted">Connexion API</span><strong style="display:block;margin-top:5px;">{{ 'Configurée' if configured else 'Non configurée' }}</strong></div>
+    <div><span class="purchase-muted">Comptes Swan visibles</span><strong style="display:block;margin-top:5px;">{{ remote_accounts|length }}</strong></div>
+    <div><span class="purchase-muted">Utilisateur Swan</span><strong style="display:block;margin-top:5px;">{{ 'Connecté' if swan_user_connected else 'Non connecté' }}</strong></div>
+  </div>
+
+  {% if remote_accounts %}
+  <div style="overflow-x:auto;margin-top:22px;">
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th style="text-align:left;padding:10px;">Compte</th><th style="text-align:left;padding:10px;">IBAN</th><th style="text-align:left;padding:10px;">Statut</th><th style="text-align:right;padding:10px;">Disponible</th><th style="text-align:right;padding:10px;">Comptabilisé</th>
+      </tr></thead>
+      <tbody>
+      {% for a in remote_accounts %}
+        {% set av = a.get('available_balance') or {} %}{% set bk = a.get('booked_balance') or {} %}
+        <tr style="border-top:1px solid rgba(255,255,255,.08);">
+          <td style="padding:12px 10px;"><strong>{{ a.get('name') or 'Compte Swan' }}</strong></td>
+          <td style="padding:12px 10px;"><code>{{ a.get('IBAN') or '—' }}</code></td>
+          <td style="padding:12px 10px;">{{ a.get('status') or '—' }}</td>
+          <td style="padding:12px 10px;text-align:right;"><strong>{{ av.get('value','0') }} {{ av.get('currency','EUR') }}</strong></td>
+          <td style="padding:12px 10px;text-align:right;">{{ bk.get('value','0') }} {{ bk.get('currency','EUR') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif remote_error %}
+    <p class="purchase-alert-text" style="margin-top:18px;">Comptes Swan indisponibles : {{ remote_error }}</p>
+  {% endif %}
+</section>
+
 {% if not configured %}
 <section class="purchase-panel" style="margin-bottom:20px;">
   <p class="purchase-alert-text" style="margin:0;">Non configuré — renseigne <code>SWAN_CLIENT_ID</code> et <code>SWAN_CLIENT_SECRET</code> (obtenus depuis ton tableau de bord Swan, rubrique Developers &gt; API) dans les variables d'environnement du serveur.</p>

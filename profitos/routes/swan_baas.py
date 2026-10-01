@@ -17,7 +17,7 @@ def register(app):
     @login_required
     @require_area('settings')
     def swan_settings():
-        from profitos.entities import current_entity_id, accessible_entities
+        from profitos.entities import current_entity_id, accessible_entities, current_entity
         c = cx()
         eid = current_entity_id()
         ef = 'entity_id=?' if eid else 'entity_id IS NULL'
@@ -31,6 +31,7 @@ def register(app):
                 'SELECT * FROM swan_cards WHERE swan_account_row_id=? ORDER BY requested_at DESC', (a['id'],)
             ).fetchall()
         entities = accessible_entities(c, session.get('user_id'))
+        company = current_entity(c)
         c.close()
 
         remote_error = None
@@ -54,7 +55,7 @@ def register(app):
         return render_template(
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
-            current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
+            current_entity_id=current_entity_id(), company=company, remote_accounts=remote_accounts, remote_error=remote_error,
             write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), swan_oauth_open_url=session.get('swan_oauth_open_url'), swan_transfer_consent_url=session.get('swan_transfer_consent_url'), swan_transfer_payment_id=session.get('swan_transfer_payment_id'), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
         )
 
