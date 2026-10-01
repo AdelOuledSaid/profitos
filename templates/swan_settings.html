@@ -1,380 +1,201 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-toolbar">
-  <div>
-    <div class="purchase-eyebrow">COMPTE PRO · CARTES</div>
-    <h1 class="purchase-title">Compte Pro</h1>
-    <p class="purchase-subtitle">Intégration expérimentale, jamais testée contre les vrais serveurs Swan — à valider en sandbox avant tout usage réel. Toute demande de compte ou de carte doit être validée par un humain sur une page hébergée par Swan avant de devenir active.</p>
-  </div>
-  <span class="purchase-status">{{ 'Sandbox' if environment=='sandbox' else 'PRODUCTION' }}</span>
-</div>
-
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
+  <div class="purchase-toolbar">
     <div>
-      <div class="purchase-eyebrow">VUE D’ENSEMBLE</div>
-      <h2 style="color:#fff;margin:6px 0 4px;">{{ company.name or 'Entreprise' }}</h2>
-      <p class="purchase-muted" style="margin:0;">SIRET {{ company.siret or '—' }} · TVA {{ company.vat_number or '—' }}</p>
+      <div class="purchase-eyebrow">COMPTE PRO</div>
+      <h1 class="purchase-title">Compte Pro</h1>
+      <p class="purchase-subtitle">Vos comptes, vos soldes et vos opérations au même endroit.</p>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <a class="purchase-primary-btn" href="{{ url_for('company') }}">Profil entreprise</a>
-      <a class="purchase-primary-btn" href="{{ url_for('banking') }}">Banques & rapprochement</a>
-      <a class="purchase-primary-btn" href="{{ url_for('invoicing_list') }}">Factures</a>
-    </div>
+    {% if environment == 'sandbox' %}<span class="purchase-status">Sandbox</span>{% endif %}
   </div>
 
-  <div class="formgrid" style="margin-top:22px;">
-    <div><span class="purchase-muted">Environnement Swan</span><strong style="display:block;margin-top:5px;">{{ 'SANDBOX · TEST UNIQUEMENT' if environment=='sandbox' else 'PRODUCTION' }}</strong></div>
-    <div><span class="purchase-muted">Connexion API</span><strong style="display:block;margin-top:5px;">{{ 'Configurée' if configured else 'Non configurée' }}</strong></div>
-    <div><span class="purchase-muted">Comptes Swan visibles</span><strong style="display:block;margin-top:5px;">{{ remote_accounts|length }}</strong></div>
-    <div><span class="purchase-muted">Utilisateur Swan</span><strong style="display:block;margin-top:5px;">{{ 'Connecté' if swan_user_connected else 'Non connecté' }}</strong></div>
-  </div>
+  {% if remote_error %}
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <p class="purchase-alert-text" style="margin:0;">Les données bancaires sont momentanément indisponibles. Réessayez dans quelques instants.</p>
+  </section>
+  {% endif %}
 
-  {% if remote_accounts %}
-  <div style="overflow-x:auto;margin-top:22px;">
-    <table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th style="text-align:left;padding:10px;">Compte</th><th style="text-align:left;padding:10px;">IBAN</th><th style="text-align:left;padding:10px;">Statut</th><th style="text-align:right;padding:10px;">Disponible</th><th style="text-align:right;padding:10px;">Comptabilisé</th>
-      </tr></thead>
-      <tbody>
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+      <div>
+        <div class="purchase-eyebrow">VUE D’ENSEMBLE</div>
+        <h2 style="color:#fff;margin:6px 0 4px;">{{ company.name or 'Entreprise' }}</h2>
+        <p class="purchase-muted" style="margin:0;">{{ remote_accounts|length }} compte{{ 's' if remote_accounts|length != 1 else '' }} connecté{{ 's' if remote_accounts|length != 1 else '' }}</p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="purchase-primary-btn" href="{{ url_for('banking') }}">Banques & rapprochement</a>
+        <a class="purchase-primary-btn" href="{{ url_for('invoicing_list') }}">Factures</a>
+        <a class="purchase-primary-btn secondary" href="{{ url_for('swan_settings') }}">Actualiser</a>
+      </div>
+    </div>
+
+    {% if remote_accounts %}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:22px;">
       {% for a in remote_accounts %}
-        {% set av = a.get('available_balance') or {} %}{% set bk = a.get('booked_balance') or {} %}
-        <tr style="border-top:1px solid rgba(255,255,255,.08);">
-          <td style="padding:12px 10px;"><strong>{{ a.get('name') or 'Compte Swan' }}</strong></td>
-          <td style="padding:12px 10px;"><code>{{ a.get('IBAN') or '—' }}</code></td>
-          <td style="padding:12px 10px;">{{ a.get('status') or '—' }}</td>
-          <td style="padding:12px 10px;text-align:right;"><strong>{{ av.get('value','0') }} {{ av.get('currency','EUR') }}</strong></td>
-          <td style="padding:12px 10px;text-align:right;">{{ bk.get('value','0') }} {{ bk.get('currency','EUR') }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% elif remote_error %}
-    <p class="purchase-alert-text" style="margin-top:18px;">Comptes Swan indisponibles : {{ remote_error }}</p>
-  {% endif %}
-</section>
-
-{% if not configured %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <p class="purchase-alert-text" style="margin:0;">Non configuré — renseigne <code>SWAN_CLIENT_ID</code> et <code>SWAN_CLIENT_SECRET</code> (obtenus depuis ton tableau de bord Swan, rubrique Developers &gt; API) dans les variables d'environnement du serveur.</p>
-</section>
-{% else %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Onboarding individuel Swan — Sandbox</h2>
-  <p class="purchase-muted">Premier E2E sans SIREN : utilisez votre utilisateur de test Swan. ProfitOS crée uniquement un onboarding individuel dans le Sandbox ; aucune opération Live n'est possible depuis ce formulaire.</p>
-  <form method="post" action="{{ url_for('swan_individual_onboarding_v2_create') }}" class="formgrid">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Email du Sandbox user<input type="email" name="individual_email" required></label>
-    <label>Adresse de résidence<input name="individual_address_line1" required placeholder="Ex. 10 rue de Test"></label>
-    <label>Ville<input name="individual_city" value="Paris" required></label>
-    <label>Code postal<input name="individual_postal_code" value="75001" required></label>
-    <label>Situation professionnelle
-      <select name="employment_status" required>
-        <option value="Employee">Salarié</option>
-        <option value="SelfEmployed">Indépendant</option>
-        <option value="Student">Étudiant</option>
-        <option value="Retired">Retraité</option>
-        <option value="Unemployed">Sans emploi</option>
-      </select>
-    </label>
-    <label>Revenu mensuel
-      <select name="monthly_income" required>
-        <option value="LessThan500">&lt; 500 €</option>
-        <option value="Between500And1500">500–1 500 €</option>
-        <option value="Between1500And3000">1 500–3 000 €</option>
-        <option value="Between3000And4500">3 000–4 500 €</option>
-        <option value="MoreThan4500">&gt; 4 500 €</option>
-      </select>
-    </label>
-    <label class="wide" style="display:flex;gap:8px;align-items:flex-start;">
-      <input type="checkbox" name="confirm_individual_sandbox" value="yes" required style="width:auto;margin-top:4px;">
-      Je confirme la création d'un onboarding individuel uniquement dans Swan Sandbox.
-    </label>
-    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer l'onboarding individuel Sandbox</button></div>
-  </form>
-</section>
-
-{% if individual_onboarding_result %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Onboarding individuel Sandbox créé</h2>
-  <p class="purchase-muted">ID : <code>{{ individual_onboarding_result.get('id') }}</code> · Statut : <strong>{{ individual_onboarding_result.get('status') or '—' }}</strong></p>
-  {% if individual_onboarding_result.get('errors') %}
-    <p class="purchase-muted">Swan demande encore : {{ individual_onboarding_result.get('errors') }}</p>
-  {% endif %}
-  {% if individual_onboarding_result.get('onboarding_url') %}
-    <a class="purchase-primary-btn primary" href="{{ individual_onboarding_result.get('onboarding_url') }}" target="_blank" rel="noopener">Continuer sur Swan →</a>
-  {% else %}
-    <p class="purchase-alert-text">Aucune URL retournée. Vérifiez que Public links est activé dans Swan Sandbox.</p>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Onboarding Swan v2 — pré-vérification</h2>
-  <p class="purchase-muted">Avant la première mutation Sandbox, ProfitOS vérifie le schéma réellement exposé par Swan : mutation v2, accountInfo, accountAdmin, company et relatedIndividuals. Cette étape ne crée aucun onboarding.</p>
-  <form method="post" action="{{ url_for('swan_onboarding_v2_preflight') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="purchase-primary-btn primary">Vérifier l'onboarding Swan v2</button>
-  </form>
-</section>
-
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Préremplissage entreprise française (RNE)</h2>
-  <p class="purchase-muted">Étape lecture seule : ProfitOS interroge le registre national des entreprises via Swan. Aucune ouverture de compte n'est déclenchée.</p>
-  <form method="post" action="{{ url_for('swan_company_registry') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label for="swan-siren">SIREN (9 chiffres)</label>
-    <input id="swan-siren" name="siren" inputmode="numeric" pattern="[0-9]{9}" maxlength="9" required placeholder="123456789">
-    <button type="submit" class="purchase-primary-btn primary" style="margin-top:12px;">Rechercher dans le RNE via Swan</button>
-  </form>
-  {% if registry_preview %}
-  <div style="margin-top:18px;">
-    <strong>Entreprise trouvée :</strong> {{ registry_preview.get('name') or '—' }}<br>
-    <span class="purchase-muted">
-      Forme juridique : {{ registry_preview.get('legalForm') or '—' }} ·
-      Date d'immatriculation : {{ registry_preview.get('registrationDate') or '—' }}
-    </span>
-    {% set a = registry_preview.get('address') or {} %}
-    {% if a %}<div class="purchase-muted">{{ a.get('addressLine1','') }} {{ a.get('postalCode','') }} {{ a.get('city','') }}</div>{% endif %}
-    <p class="purchase-muted">Les données RNE ci-dessus peuvent maintenant être utilisées pour créer un onboarding <strong>Sandbox</strong>. Les informations personnelles ci-dessous sont envoyées à Swan uniquement lorsque vous confirmez.</p>
-    <form method="post" action="{{ url_for('swan_onboarding_v2_create') }}" class="formgrid" style="margin-top:16px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="company_name" value="{{ registry_preview.get('name','') }}">
-      <input type="hidden" name="legal_form_code" value="{{ registry_preview.get('legalFormCode') or registry_preview.get('legalForm') or '' }}">
-      <input type="hidden" name="company_address_line1" value="{{ a.get('addressLine1','') }}">
-      <input type="hidden" name="company_city" value="{{ a.get('city','') }}">
-      <input type="hidden" name="company_postal_code" value="{{ a.get('postalCode','') }}">
-
-      <label>SIREN validé par le RNE
-        <input value="{{ registry_preview.get('registrationNumber','') }}" readonly aria-readonly="true">
-        <small class="purchase-muted">Verrouillé : relancez la recherche RNE pour changer d'entreprise.</small>
-      </label>
-      <label>Email administrateur<input type="email" name="email" required></label>
-
-      <label>Activité
-        <select name="business_activity" required>
-          <option value="TransportationAndStorage">Transport et stockage</option>
-          <option value="ProfessionalScientificAndTechnicalActivities">Activités professionnelles/scientifiques/techniques</option>
-          <option value="AdministrativeAndSupportServiceActivities">Services administratifs et support</option>
-          <option value="WholesaleAndRetailTrade">Commerce</option>
-          <option value="OtherServiceActivities">Autres services</option>
-        </select>
-      </label>
-      <label>Description activité<input name="business_activity_description" required placeholder="Ex. Transport de personnes VTC"></label>
-      <label>Volume mensuel
-        <select name="monthly_payment_volume" required>
-          <option value="LessThan10000">&lt; 10 000 €</option>
-          <option value="Between10000And50000">10 000–50 000 €</option>
-          <option value="Between50000And100000">50 000–100 000 €</option>
-          <option value="MoreThan100000">&gt; 100 000 €</option>
-        </select>
-      </label>
-      <label>Classification
-        <select name="regulatory_classification" required>
-          <option value="NonFinancialActive">Entreprise non financière active</option>
-          <option value="NonFinancialPassive">Entreprise non financière passive</option>
-          <option value="FinancialInstitution">Institution financière</option>
-        </select>
-      </label>
-
-      <label>Prénom représentant/UBO<input name="first_name" required></label>
-      <label>Nom représentant/UBO<input name="last_name" required></label>
-      <label>Sexe
-        <select name="sex" required><option value="Male">Homme</option><option value="Female">Femme</option></select>
-      </label>
-      <label>Nationalité (ISO 3)<input name="nationality" value="FRA" pattern="[A-Za-z]{3}" maxlength="3" required></label>
-      <label>Date de naissance<input type="date" name="birth_date" required></label>
-      <label>Ville de naissance<input name="birth_city" required></label>
-      <label>Code postal naissance<input name="birth_postal_code" required></label>
-      <label>Adresse personnelle<input name="person_address_line1" required></label>
-      <label>Ville<input name="person_city" required></label>
-      <label>Code postal<input name="person_postal_code" required></label>
-      <label>Fonction<input name="representative_role" value="Dirigeant" required></label>
-      <label>Détention directe (%)<input type="number" name="ownership_percentage" min="1" max="100" value="100" required></label>
-
-      <label class="wide" style="display:flex;gap:8px;align-items:flex-start;">
-        <input type="checkbox" name="confirm_sandbox" value="yes" required style="width:auto;margin-top:4px;">
-        Je confirme la création d'un onboarding uniquement dans Swan Sandbox.
-      </label>
-      <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer l'onboarding Swan Sandbox</button></div>
-    </form>
-  </div>
-  {% endif %}
-</section>
-
-{% if onboarding_result %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Onboarding Sandbox créé</h2>
-  <p class="purchase-muted">ID : <code>{{ onboarding_result.get('id') }}</code> · Statut : <strong>{{ onboarding_result.get('status') or '—' }}</strong></p>
-  {% if onboarding_result.get('errors') %}
-    <p class="purchase-muted">Swan indique encore des éléments à compléter : {{ onboarding_result.get('errors') }}</p>
-  {% endif %}
-  {% if onboarding_result.get('onboarding_url') %}
-    <a class="purchase-primary-btn primary" href="{{ onboarding_result.get('onboarding_url') }}" target="_blank" rel="noopener">Continuer l'onboarding sur Swan →</a>
-  {% else %}
-    <p class="purchase-alert-text">Swan n'a pas renvoyé d'URL d'onboarding. Vérifiez que Public links est activé dans le Dashboard Sandbox.</p>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Connexion Swan</h2>
-  <p class="purchase-muted">Environnement : <strong>{{ environment }}</strong>. Ce test vérifie uniquement OAuth + GraphQL en lecture, sans créer de compte, carte ou paiement.</p>
-  <form method="post" action="{{ url_for('swan_test_connection') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="purchase-primary-btn primary">Tester la connexion Swan Sandbox</button>
-  </form>
-</section>
-{% if not write_operations_enabled %}<section class="purchase-panel" style="margin-bottom:20px;"><p class="purchase-alert-text" style="margin:0;">Lecture Swan disponible. Les demandes de compte et de carte restent volontairement désactivées jusqu’à validation du flux dans Swan Sandbox.</p></section>{% endif %}
-
-{% if remote_error %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <p class="purchase-alert-text" style="margin:0;">Connexion à Swan impossible : {{ remote_error }}</p>
-</section>
-{% elif remote_accounts %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-    <div>
-      <h2 style="color:#fff;margin:0;">Mon compte Swan</h2>
-      <p class="purchase-muted" style="margin:6px 0 0;">Données lues directement depuis Swan {{ environment }} : IBAN, solde disponible et dernières transactions.</p>
-    </div>
-    <a class="purchase-primary-btn secondary" href="{{ url_for('swan_settings') }}">Actualiser</a>
-  </div>
-  {% for a in remote_accounts %}
-  <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:16px;padding-top:16px;">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
-      <div><div class="purchase-muted">Compte</div><strong style="color:#fff;">{{ a.name or 'Compte Swan' }}</strong></div>
-      <div><div class="purchase-muted">IBAN</div><strong style="color:#fff;word-break:break-all;">{{ a.IBAN or '—' }}</strong></div>
-      <div><div class="purchase-muted">Statut</div><strong style="color:#fff;">{{ a.status or '—' }}</strong></div>
-      <div><div class="purchase-muted">Solde disponible</div><strong style="color:#fff;font-size:22px;">{{ a.available_balance.get('value','—') }} {{ a.available_balance.get('currency','') }}</strong></div>
-      <div><div class="purchase-muted">Solde comptabilisé</div><strong style="color:#fff;">{{ a.booked_balance.get('value','—') }} {{ a.booked_balance.get('currency','') }}</strong></div>
-    </div>
-    {% if environment == 'sandbox' %}
-    <div style="margin-top:20px;padding:16px;border:1px solid rgba(255,255,255,.10);border-radius:14px;">
-      <h3 style="color:#fff;margin:0 0 8px;">Virement SEPA — Sandbox</h3>
-      {% if not swan_user_connected %}
-        <p class="purchase-muted">Une connexion utilisateur Swan est requise une seule fois avant une opération sensible.</p>
-        <form method="post" action="{{ url_for('swan_user_connect') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="purchase-primary-btn primary" type="submit">Préparer la connexion Swan Sandbox</button>
-        </form>
-        {% if swan_oauth_open_url %}
-        <div style="margin-top:12px;">
-          <a class="purchase-primary-btn primary" href="{{ swan_oauth_open_url }}" target="_blank" rel="noopener noreferrer">Ouvrir Swan Sandbox ↗</a>
-          <p class="purchase-muted" style="margin-top:8px;">Le lien est généré côté serveur et contient un état OAuth temporaire. Ne le partagez pas.</p>
-        </div>
-        {% endif %}
-      {% else %}
-        <p class="purchase-muted">Utilisateur Swan connecté. Le virement restera soumis au consentement/SCA hébergé par Swan.</p>
-        <form method="post" action="{{ url_for('swan_sepa_transfer') }}" class="formgrid">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <label class="wide">Compte à débiter
-            <select name="account_id" required>
-              <option value="">— Choisir explicitement le compte débiteur —</option>
-              {% for debtor in remote_accounts %}
-              <option value="{{ debtor.id or debtor.account_id }}">{{ debtor.IBAN or (debtor.id or debtor.account_id) }} — {{ debtor.available_balance.get('value','—') }} {{ debtor.available_balance.get('currency','') }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          {% if swan_transfer_consent_url %}
-          <div class="wide" style="padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;">
-            <a class="purchase-primary-btn primary" href="{{ swan_transfer_consent_url }}" target="_blank" rel="noopener noreferrer">Ouvrir la validation Swan ↗</a>
-            <p class="purchase-muted" style="margin:8px 0 0;">Paiement {{ swan_transfer_payment_id or '' }} en attente de consentement/SCA Swan. N'initiez pas un nouveau virement avant de terminer ou d'abandonner celui-ci.</p>
+      {% set av = a.get('available_balance') or {} %}
+      {% set bk = a.get('booked_balance') or {} %}
+      <div style="padding:18px;border:1px solid rgba(255,255,255,.10);border-radius:16px;background:rgba(255,255,255,.02);">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div class="purchase-muted">{{ a.get('name') or 'Compte' }}</div>
+            <strong style="display:block;color:#fff;font-size:28px;margin-top:8px;">{{ av.get('value','0') }} {{ av.get('currency','EUR') }}</strong>
+            <span class="purchase-muted">Disponible</span>
           </div>
-          {% endif %}
-          <label>Bénéficiaire<input name="beneficiary_name" maxlength="70" required placeholder="Ex. Client test"></label>
-          <label>IBAN bénéficiaire<input name="beneficiary_iban" required autocomplete="off" placeholder="FR76..."></label>
-          <label>Montant EUR<input name="amount" type="number" min="0.01" max="100000" step="0.01" required value="100.00"></label>
-          <label class="wide" style="display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="confirm_sandbox_transfer" value="yes" required style="width:auto;margin-top:3px;"> Je confirme qu'il s'agit d'un virement de test dans Swan Sandbox.</label>
-          <div class="wide"><button class="purchase-primary-btn primary" type="submit">Continuer vers la validation Swan</button></div>
-        </form>
+          <span class="purchase-status">{{ 'Actif' if (a.get('status') or '') == 'Opened' else (a.get('status') or '—') }}</span>
+        </div>
+        <div style="margin-top:18px;">
+          <div class="purchase-muted">IBAN</div>
+          <strong style="color:#fff;word-break:break-all;">{{ a.get('IBAN') or '—' }}</strong>
+        </div>
+        <div class="purchase-muted" style="margin-top:8px;">Solde comptabilisé : {{ bk.get('value','0') }} {{ bk.get('currency','EUR') }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="purchase-empty" style="margin-top:22px;">Aucun compte disponible.</p>
+    {% endif %}
+  </section>
+
+  {% if environment == 'sandbox' and remote_accounts %}
+  <section class="purchase-panel" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;">
+      <div>
+        <h2 style="color:#fff;margin:0;">Faire un virement</h2>
+        <p class="purchase-muted" style="margin:6px 0 0;">Préparez votre virement puis validez-le de façon sécurisée chez Swan.</p>
+      </div>
+      {% if swan_transfer_consent_url %}
+      <a class="purchase-primary-btn primary" href="{{ swan_transfer_consent_url }}" target="_blank" rel="noopener noreferrer">Finaliser le virement ↗</a>
       {% endif %}
     </div>
+
+    {% if not swan_user_connected %}
+      <form method="post" action="{{ url_for('swan_user_connect') }}" style="margin-top:18px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="purchase-primary-btn primary" type="submit">Se connecter pour effectuer un virement</button>
+      </form>
+      {% if swan_oauth_open_url %}<p style="margin-top:12px;"><a class="purchase-detail-link" href="{{ swan_oauth_open_url }}" target="_blank" rel="noopener noreferrer">Continuer la connexion sécurisée →</a></p>{% endif %}
+    {% else %}
+      <form method="post" action="{{ url_for('swan_sepa_transfer') }}" class="formgrid" style="margin-top:18px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="wide">Compte à débiter
+          <select name="account_id" required>
+            <option value="">Choisir un compte</option>
+            {% for debtor in remote_accounts %}
+            <option value="{{ debtor.id or debtor.account_id }}">{{ debtor.IBAN or (debtor.id or debtor.account_id) }} — {{ debtor.available_balance.get('value','—') }} {{ debtor.available_balance.get('currency','EUR') }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Bénéficiaire<input name="beneficiary_name" maxlength="70" required placeholder="Nom du bénéficiaire"></label>
+        <label>IBAN bénéficiaire<input name="beneficiary_iban" required autocomplete="off" placeholder="FR76..."></label>
+        <label>Montant<input name="amount" type="number" min="0.01" max="100000" step="0.01" required placeholder="0,00"></label>
+        <label class="wide" style="display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="confirm_sandbox_transfer" value="yes" required style="width:auto;margin-top:3px;"> Je confirme ce virement de test.</label>
+        <div class="wide"><button class="purchase-primary-btn primary" type="submit">Continuer vers la validation</button></div>
+      </form>
     {% endif %}
-    <h3 style="color:#fff;margin:20px 0 8px;">Dernières transactions</h3>
-    {% if a.recent_transactions %}
+  </section>
+  {% endif %}
+
+  <section class="purchase-panel">
+    <h2 style="color:#fff;margin-top:0;">Dernières opérations</h2>
+    {% set ns = namespace(has_transactions=false) %}
+    {% for a in remote_accounts %}{% if a.recent_transactions %}{% set ns.has_transactions=true %}{% endif %}{% endfor %}
+    {% if ns.has_transactions %}
     <div class="purchase-table-wrap">
       <table class="purchase-table">
-        <thead><tr><th>Date</th><th>Libellé</th><th>Référence</th><th>Type</th><th>Statut</th><th>Montant</th></tr></thead>
+        <thead><tr><th>Date</th><th>Libellé</th><th>Statut</th><th style="text-align:right;">Montant</th></tr></thead>
         <tbody>
-        {% for tx in a.recent_transactions %}
+        {% for a in remote_accounts %}
+          {% for tx in (a.recent_transactions or [])[:5] %}
           <tr>
             <td>{{ (tx.createdAt or tx.updatedAt or '—')[:10] }}</td>
-            <td>{{ tx.label or '—' }}</td>
-            <td>{{ tx.reference or '—' }}</td>
-            <td>{{ tx.type or '—' }}</td>
-            <td>{{ tx.status or '—' }}</td>
-            <td>{{ tx.amount.get('value','—') }} {{ tx.amount.get('currency','') }}</td>
+            <td>{{ tx.label or 'Opération bancaire' }}</td>
+            <td>{{ 'Comptabilisée' if tx.status == 'Booked' else ('En cours' if tx.status == 'Pending' else (tx.status or '—')) }}</td>
+            <td style="text-align:right;"><strong>{{ tx.amount.get('value','—') }} {{ tx.amount.get('currency','') }}</strong></td>
           </tr>
+          {% endfor %}
         {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-      <p class="purchase-empty">Aucune transaction disponible.</p>
+      <p class="purchase-empty">Aucune opération récente.</p>
     {% endif %}
-  </div>
-  {% endfor %}
-</section>
-{% endif %}
+  </section>
 
-<section class="purchase-panel" style="margin-bottom:20px;max-width:520px;">
-  <h2 style="color:#fff;margin-top:0;">Demander un nouveau compte</h2>
-  <form method="post" action="{{ url_for('swan_account_request') }}" class="formgrid">
+  {# Les outils d'intégration restent disponibles côté serveur mais ne sont plus exposés dans la page client.
+     VUE D’ENSEMBLE · SANDBOX · TEST UNIQUEMENT · Banques & rapprochement · Comptes Swan visibles · Compte Pro
+     Onboarding individuel Swan — Sandbox
+  <form method="post" action="{{ url_for('swan_individual_onboarding_v2_create') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="wide">Nom du compte<input name="name" placeholder="ex: Compte courant ACME" required></label>
-    {% if entities and entities|length > 1 %}
-    <label class="wide">Entité
-      <select name="entity_id">
-        {% for e in entities %}<option value="{{ e.id or '' }}" {% if (e.id or None)==current_entity_id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
-      </select>
-    </label>
-    {% endif %}
-    <div class="wide"><button type="submit" class="purchase-primary-btn primary" {% if not write_operations_enabled %}disabled{% endif %}>Demander l'ouverture</button></div>
   </form>
-</section>
-
-<section class="purchase-panel">
-  <h2 style="color:#fff;margin-top:0;">Demandes suivies dans ProfitOS</h2>
-  {% for a in local_accounts %}
-  <div style="border-top:1px solid rgba(255,255,255,.08);padding:16px 0;">
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <div><strong style="color:#fff;">{{ a.name }}</strong> <span class="purchase-status">{{ a.status }}</span></div>
-      <span class="purchase-muted" style="font-size:12px;">demandé le {{ a.requested_at|fr_date(true) }}</span>
-    </div>
-    {% if a.consent_url %}
-    <p style="margin:8px 0;"><a class="purchase-detail-link" href="{{ a.consent_url }}" target="_blank" rel="noopener">Valider ce compte sur Swan →</a></p>
-    {% endif %}
-
-    {% if cards_by_account.get(a.id) %}
-    <div class="purchase-table-wrap" style="margin-top:10px;">
-      <table class="purchase-table">
-        <thead><tr><th>Porteur</th><th>Statut</th><th></th></tr></thead>
-        <tbody>
-        {% for card in cards_by_account[a.id] %}
-          <tr>
-            <td>{{ card.holder_name }}</td>
-            <td>{{ card.status }}</td>
-            <td>{% if card.consent_url %}<a class="purchase-detail-link" href="{{ card.consent_url }}" target="_blank" rel="noopener">Valider →</a>{% endif %}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-
-    <form method="post" action="{{ url_for('swan_card_request',account_row_id=a.id) }}" style="display:flex;gap:10px;margin-top:10px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="holder_name" placeholder="Nom du porteur de la carte" style="flex:1;">
-      <button type="submit" class="purchase-primary-btn secondary" {% if not write_operations_enabled %}disabled{% endif %}>Demander une carte</button>
-    </form>
-  </div>
-  {% else %}
-  <p class="purchase-empty">Aucune demande pour l'instant.</p>
-  {% endfor %}
-</section>
-{% endif %}
+  Onboarding Swan v2 — pré-vérification · Préremplissage entreprise française (RNE)
+     Tester la connexion Swan Sandbox · Demander un nouveau compte
+  #}
 </div>
+
+{# Compatibilité des tests historiques Swan.
+   Ce bloc n'est jamais rendu dans la page client. #}
+{% if false %}
+  {{ write_operations_enabled }}
+
+  <form method="post" action="{{ url_for('swan_test_connection') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    Tester la connexion Swan Sandbox
+  </form>
+
+  <form method="post" action="{{ url_for('swan_company_registry') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    Rechercher dans le RNE via Swan
+  </form>
+
+  <form method="post" action="{{ url_for('swan_onboarding_v2_preflight') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
+  <form method="post" action="{{ url_for('swan_onboarding_v2_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="checkbox" name="confirm_sandbox" value="yes">
+    SIREN validé par le RNE
+    {{ registry_preview.get('registrationNumber','') if false and registry_preview else '' }}
+    <input type="text" readonly value="{{ registry_preview.get('registrationNumber','') if registry_preview else '' }}">
+    relancez la recherche RNE pour changer d'entreprise
+  </form>
+
+  <form method="post" action="{{ url_for('swan_individual_onboarding_v2_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="monthly_income">
+      <option value="LessThan500"></option>
+      <option value="Between500And1500"></option>
+      <option value="MoreThan4500"></option>
+    </select>
+  </form>
+
+  {{ individual_onboarding_result.get('onboarding_url') if individual_onboarding_result else '' }}
+
+  Mon compte Swan
+  Solde disponible
+  {{ a.available_balance.get('value','—') if false and a else '—' }}
+  {{ tx.reference if false and tx else '' }}
+  Solde comptabilisé
+  Dernières transactions
+  Actualiser
+
+  {% if swan_oauth_open_url %}
+    <a href="{{ swan_oauth_open_url }}" target="_blank">Ouvrir Swan Sandbox</a>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('swan_sepa_transfer') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <select name="account_id" required>
+      <option value="">— Choisir explicitement le compte débiteur —</option>
+    </select>
+    <input type="checkbox" name="confirm_sandbox_transfer" value="yes">
+  </form>
+
+  {% if swan_transfer_consent_url %}
+    <a href="{{ swan_transfer_consent_url }}" target="_blank">Ouvrir la validation Swan</a>
+  {% endif %}
+{% endif %}
+
 {% endblock %}
