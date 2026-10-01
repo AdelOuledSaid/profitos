@@ -10,8 +10,17 @@ def test_suggestion_never_posts_accounting_entry():
     body=BANK[BANK.index('def _accounting_suggestion'):BANK.index('def _cfg')]
     assert 'generate_' not in body and 'INSERT INTO accounting_entries' not in body and 'confidence_score' in body
 def test_learning_is_entity_scoped_and_human_validated():
-    assert "WHERE entity_id IS ? AND ? LIKE" in BANK and "a.entity_id IS ?" in BANK
+    body=BANK[BANK.index('def _accounting_suggestion'):BANK.index('def _cfg')]
+    # PostgreSQL-safe implementation: learning rules are fetched only for the
+    # current entity, then the substring/pattern comparison is performed in
+    # Python. Do not require the legacy SQL ``? LIKE '%' ...`` expression.
+    assert 'bank_accounting_learning_rules' in body
+    assert 'WHERE entity_id IS ?' in body
+    assert "(entity_id,)" in body
+    assert "in signature" in body
+    # Human validation and transaction ownership remain entity-scoped.
     assert 'bank_accounting_validations' in BANK and 'bank_accounting_learning_rules' in BANK
+    assert 'a.entity_id IS ?' in BANK
 def test_account_code_is_checked_before_learning():
     assert 'accounting_chart_of_accounts WHERE code=?' in BANK and 'Compte comptable invalide pour cette entité.' in BANK
 def test_ui_shows_score_and_requires_explicit_validation():

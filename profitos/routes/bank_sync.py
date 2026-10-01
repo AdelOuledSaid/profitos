@@ -53,12 +53,18 @@ def _accounting_suggestion(conn, tx, entity_id):
     signature=_learning_pattern(label)
     learned=None
     if signature:
-        learned=conn.execute(
+        # Keep wildcard matching out of SQL. Our DB compatibility layer converts
+        # qmark placeholders to psycopg placeholders; literal percent signs in a
+        # LIKE expression can then be interpreted by psycopg and raise
+        # ``IndexError: tuple index out of range`` on PostgreSQL. Fetch the small
+        # per-entity rule set and perform the substring match in Python instead.
+        rules=conn.execute(
             """SELECT * FROM bank_accounting_learning_rules
-               WHERE entity_id IS ? AND ? LIKE '%' || pattern || '%'
-               ORDER BY confirmations DESC, length(pattern) DESC, id DESC LIMIT 1""",
-            (entity_id, signature),
-        ).fetchone()
+               WHERE entity_id IS ?
+               ORDER BY confirmations DESC, length(pattern) DESC, id DESC""",
+            (entity_id,),
+        ).fetchall()
+        learned=next((r for r in rules if (r['pattern'] or '') in signature), None)
     if learned:
         score=min(95, 70 + min(int(learned['confirmations'] or 1), 5)*5)
         return dict(category=learned['category'], account_code=learned['account_code'],
