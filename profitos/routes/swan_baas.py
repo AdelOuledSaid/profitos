@@ -55,7 +55,7 @@ def register(app):
             'swan_settings.html', configured=is_configured(), environment=current_environment(),
             local_accounts=local_accounts, cards_by_account=cards_by_account, entities=entities,
             current_entity_id=current_entity_id(), remote_accounts=remote_accounts, remote_error=remote_error,
-            write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), swan_oauth_open_url=session.get('swan_oauth_open_url'), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
+            write_operations_enabled=write_operations_enabled(), swan_user_connected=bool(session.get('swan_user_id')), swan_oauth_open_url=session.get('swan_oauth_open_url'), swan_transfer_consent_url=session.get('swan_transfer_consent_url'), swan_transfer_payment_id=session.get('swan_transfer_payment_id'), registry_preview=session.get('swan_registry_preview'), onboarding_result=session.pop('swan_onboarding_result', None), individual_onboarding_result=session.pop('swan_individual_onboarding_result', None),
         )
 
     @app.route('/settings/swan/onboarding-v2/preflight', methods=['POST'])
@@ -326,9 +326,16 @@ def register(app):
                 url_for('swan_settings', _external=True),
             )
             log_activity('SWAN_SEPA_TRANSFER_INITIATED_SANDBOX', f"Paiement Swan {result.get('payment_id')}")
+            # Do not rely on a cross-origin 302 after POST: installed/PWA browser
+            # contexts can swallow it. Expose Swan's exact consentUrl as a GET link.
             if result.get('consent_url'):
-                return redirect(result['consent_url'])
-            flash(f"Virement Swan créé (statut : {result.get('status') or 'inconnu'}). Actualisez le compte pour suivre son exécution.")
+                session['swan_transfer_consent_url'] = result['consent_url']
+                session['swan_transfer_payment_id'] = result.get('payment_id') or ''
+                flash("Virement Swan créé et en attente de consentement. Cliquez sur « Ouvrir la validation Swan » ci-dessous.")
+                return redirect(url_for('swan_settings'))
+            session.pop('swan_transfer_consent_url', None)
+            session.pop('swan_transfer_payment_id', None)
+            flash(f"Virement Swan créé (statut : {result.get('status') or 'inconnu'}), mais Swan n'a renvoyé aucune URL de consentement.")
         except ValueError as e:
             flash(f"Virement Swan impossible : {e}")
         return redirect(url_for('swan_settings'))

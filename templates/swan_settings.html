@@ -224,7 +224,20 @@
         <p class="purchase-muted">Utilisateur Swan connecté. Le virement restera soumis au consentement/SCA hébergé par Swan.</p>
         <form method="post" action="{{ url_for('swan_sepa_transfer') }}" class="formgrid">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="account_id" value="{{ a.id or a.account_id }}">
+          <label class="wide">Compte à débiter
+            <select name="account_id" required>
+              <option value="">— Choisir explicitement le compte débiteur —</option>
+              {% for debtor in remote_accounts %}
+              <option value="{{ debtor.id or debtor.account_id }}">{{ debtor.IBAN or (debtor.id or debtor.account_id) }} — {{ debtor.available_balance.get('value','—') }} {{ debtor.available_balance.get('currency','') }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% if swan_transfer_consent_url %}
+          <div class="wide" style="padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;">
+            <a class="purchase-primary-btn primary" href="{{ swan_transfer_consent_url }}" target="_blank" rel="noopener noreferrer">Ouvrir la validation Swan ↗</a>
+            <p class="purchase-muted" style="margin:8px 0 0;">Paiement {{ swan_transfer_payment_id or '' }} en attente de consentement/SCA Swan. N'initiez pas un nouveau virement avant de terminer ou d'abandonner celui-ci.</p>
+          </div>
+          {% endif %}
           <label>Bénéficiaire<input name="beneficiary_name" maxlength="70" required placeholder="Ex. Client test"></label>
           <label>IBAN bénéficiaire<input name="beneficiary_iban" required autocomplete="off" placeholder="FR76..."></label>
           <label>Montant EUR<input name="amount" type="number" min="0.01" max="100000" step="0.01" required value="100.00"></label>
