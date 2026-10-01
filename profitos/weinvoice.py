@@ -651,11 +651,19 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
         cdv=data.get('cdvCode')
-        conn.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',(str(status),str(cdv) if cdv is not None else None,now(),row['id'],row['entity_id']))
+        # Le nom d'événement est une information de transport fiable : WeInvoice
+        # nous a confirmé l'événement invoice.status.rejected. On ne suppose pas
+        # de nomenclature supplémentaire : seul ce cas confirmé alimente
+        # weinvoice_last_error, les autres statuts restant conservés tels quels.
+        is_rejected=(event_name == 'invoice.status.rejected')
+        rejection_detail=(data.get('reason') or data.get('message') or data.get('detail') or '').strip() if is_rejected else ''
+        last_error=(f"Facture électronique rejetée par WeInvoice{': ' + rejection_detail if rejection_detail else '.'}" if is_rejected else None)
+        conn.execute('UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=? WHERE id=? AND entity_id IS ?',(str(status),str(cdv) if cdv is not None else None,now(),last_error,row['id'],row['entity_id']))
         conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
                      VALUES(?,?,'weinvoice','webhook_status',?,?,?,?,?,?,?)""",
                      (row['entity_id'],row['id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
-                      event_id or f'webhook-{remote_id}-{status}-{cdv}',event_name,now()))
+                      event_id or f'webhook-{remote_id}-{status}-{cdv}',
+                      (event_name + (f' — {rejection_detail}' if rejection_detail else ''))[:2000],now()))
         if event_id:
             conn.execute('INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',(event_id,str(webhook_id or ''),event_name,now()))
         conn.commit()

@@ -218,6 +218,17 @@ def register(app):
             abort(401)
         payload=request.get_json(silent=True) or {}
         applied=weinvoice_handle_invoice_status_webhook(payload,webhook_id=webhook_id)
+        # Un événement invoice.status.* signé mais non appliqué ne doit pas être
+        # acquitté en 2xx : WeInvoice considérerait alors la livraison comme
+        # définitive et ne la retenterait pas. Un 503 demande une relivraison,
+        # utile notamment si la facture locale n'est pas encore visible au moment
+        # où le webhook arrive. Les doublons déjà traités renvoient True et restent
+        # donc acquittés en 2xx grâce à l'idempotence côté weinvoice.py.
+        event_name=str(payload.get('event_name') or '') if isinstance(payload,dict) else ''
+        if event_name.startswith('invoice.status.') and not applied:
+            log_ops_event('WEINVOICE_INVOICE_WEBHOOK_RETRY','WARNING',
+                          detail=f'webhook_id={webhook_id} event={event_name}')
+            return jsonify(received=True,applied=False,retry=True),503
         return jsonify(received=True,applied=bool(applied))
 
     @app.route('/margin-watch',methods=['GET','POST'])

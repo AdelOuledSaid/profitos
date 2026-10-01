@@ -115,7 +115,9 @@
     <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
     {% if inv.weinvoice_invoice_id %}
-    <p class="purchase-ok-text" style="font-size:13px;margin:0 0 8px;">✓ WeInvoice : <strong>{{ inv.weinvoice_status or 'transmise' }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+    {% set wi_rejected = (inv.weinvoice_status or '')|lower == 'rejected' or (inv.weinvoice_last_error and 'rejetée par WeInvoice' in inv.weinvoice_last_error) %}
+    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} WeInvoice : <strong>{{ 'Rejetée' if wi_rejected else (inv.weinvoice_status or 'transmise') }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+    {% if wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">La facture a été rejetée. Corrigez les informations signalées puis utilisez la synchronisation WeInvoice après correction.</p>{% endif %}
     {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
