@@ -204,7 +204,7 @@ def initiate_sepa_credit_transfer_sandbox(project_token, user_id, account_id, be
         'accountId': account_id,
         'creditTransfers': {
             'amount': {'value': f'{value:.2f}', 'currency': 'EUR'},
-            'sepaBeneficiary': {'iban': iban, 'name': beneficiary_name, 'isMyOwnIban': False, 'save': False},
+            'sepaBeneficiary': {'iban': iban, 'name': beneficiary_name, 'save': False},
             'mode': 'Regular',
         },
     }}
