@@ -104,7 +104,12 @@ def graphql_query(token, query, variables=None, environment=None, user_id=None):
 
 
 def list_accounts(token, environment=None):
-    """Liste les comptes existants (lecture seule) — id et IBAN."""
+    """Liste les comptes Swan avec IBAN, soldes et dernières transactions.
+
+    Lecture seule avec un project access token. Les transactions sont limitées
+    aux 10 plus récentes par compte pour garder la page légère.
+    """
+    # GraphQL field shape: statusInfo { status }
     query = """
     query ProfitOSListAccounts {
       accounts {
@@ -115,6 +120,29 @@ def list_accounts(token, environment=None):
             name
             statusInfo {
               status
+            }
+            balances {
+              available { value currency }
+              booked { value currency }
+              pending { value currency }
+              reserved { value currency }
+            }
+            transactions(first: 10) {
+              edges {
+                node {
+                  id
+                  type
+                  label
+                  reference
+                  side
+                  createdAt
+                  updatedAt
+                  amount { value currency }
+                  statusInfo {
+                    status
+                  }
+                }
+              }
             }
           }
         }
@@ -127,6 +155,16 @@ def list_accounts(token, environment=None):
     for edge in edges:
         node = dict(edge.get('node') or {})
         node['status'] = (node.get('statusInfo') or {}).get('status')
+        balances = node.get('balances') or {}
+        node['available_balance'] = balances.get('available') or {}
+        node['booked_balance'] = balances.get('booked') or {}
+        tx_edges = ((node.get('transactions') or {}).get('edges') or [])
+        transactions = []
+        for tx_edge in tx_edges:
+            tx = dict(tx_edge.get('node') or {})
+            tx['status'] = (tx.get('statusInfo') or {}).get('status')
+            transactions.append(tx)
+        node['recent_transactions'] = transactions
         accounts.append(node)
     return accounts
 

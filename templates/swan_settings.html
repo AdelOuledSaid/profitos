@@ -189,17 +189,46 @@
 </section>
 {% elif remote_accounts %}
 <section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="color:#fff;margin-top:0;">Comptes existants chez Swan</h2>
-  <div class="purchase-table-wrap">
-    <table class="purchase-table">
-      <thead><tr><th>Nom</th><th>IBAN</th><th>Statut</th></tr></thead>
-      <tbody>
-      {% for a in remote_accounts %}
-        <tr><td>{{ a.name or '—' }}</td><td>{{ a.IBAN or '—' }}</td><td>{{ a.status or '—' }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <h2 style="color:#fff;margin:0;">Mon compte Swan</h2>
+      <p class="purchase-muted" style="margin:6px 0 0;">Données lues directement depuis Swan {{ environment }} : IBAN, solde disponible et dernières transactions.</p>
+    </div>
+    <a class="purchase-primary-btn secondary" href="{{ url_for('swan_settings') }}">Actualiser</a>
   </div>
+  {% for a in remote_accounts %}
+  <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:16px;padding-top:16px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
+      <div><div class="purchase-muted">Compte</div><strong style="color:#fff;">{{ a.name or 'Compte Swan' }}</strong></div>
+      <div><div class="purchase-muted">IBAN</div><strong style="color:#fff;word-break:break-all;">{{ a.IBAN or '—' }}</strong></div>
+      <div><div class="purchase-muted">Statut</div><strong style="color:#fff;">{{ a.status or '—' }}</strong></div>
+      <div><div class="purchase-muted">Solde disponible</div><strong style="color:#fff;font-size:22px;">{{ a.available_balance.get('value','—') }} {{ a.available_balance.get('currency','') }}</strong></div>
+      <div><div class="purchase-muted">Solde comptabilisé</div><strong style="color:#fff;">{{ a.booked_balance.get('value','—') }} {{ a.booked_balance.get('currency','') }}</strong></div>
+    </div>
+    <h3 style="color:#fff;margin:20px 0 8px;">Dernières transactions</h3>
+    {% if a.recent_transactions %}
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Date</th><th>Libellé</th><th>Référence</th><th>Type</th><th>Statut</th><th>Montant</th></tr></thead>
+        <tbody>
+        {% for tx in a.recent_transactions %}
+          <tr>
+            <td>{{ (tx.createdAt or tx.updatedAt or '—')[:10] }}</td>
+            <td>{{ tx.label or '—' }}</td>
+            <td>{{ tx.reference or '—' }}</td>
+            <td>{{ tx.type or '—' }}</td>
+            <td>{{ tx.status or '—' }}</td>
+            <td>{{ tx.amount.get('value','—') }} {{ tx.amount.get('currency','') }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="purchase-empty">Aucune transaction disponible.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
 </section>
 {% endif %}
 

@@ -39,8 +39,15 @@ def register(app):
             try:
                 token = get_server_token()
                 all_remote_accounts = list_accounts(token)
-                allowed_remote_ids = {str(a['swan_account_id']) for a in local_accounts}
-                remote_accounts = [a for a in all_remote_accounts if str(a.get('id') or a.get('account_id') or '') in allowed_remote_ids]
+                # Sandbox is a dedicated test project: show its accounts so an
+                # onboarding created by ProfitOS becomes visible immediately, even
+                # before it has a local swan_accounts tracking row. Never broaden
+                # visibility this way in Live.
+                if current_environment() == 'sandbox':
+                    remote_accounts = all_remote_accounts
+                else:
+                    allowed_remote_ids = {str(a['swan_account_id']) for a in local_accounts}
+                    remote_accounts = [a for a in all_remote_accounts if str(a.get('id') or a.get('account_id') or '') in allowed_remote_ids]
             except ValueError as e:
                 remote_error = str(e)
 
