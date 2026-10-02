@@ -667,8 +667,23 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         if event_id:
             conn.execute('INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',(event_id,str(webhook_id or ''),event_name,now()))
         conn.commit()
-        log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED','INFO',detail=f'eInvoicingId={remote_id} status={status} cdv={cdv}')
+        log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED','INFO',detail=f'eInvoicingId={remote_id} status={status} cdv={cdv} webhook_id={webhook_id or ""}')
         return True
+    except Exception as exc:
+        # Ne jamais acquitter implicitement un traitement partiel. Toutes les
+        # écritures du statut + historique + marqueur d'idempotence forment une
+        # seule transaction : en cas d'erreur, rollback puis propagation jusqu'à
+        # la route webhook, qui répondra hors 2xx afin que WeInvoice relivre.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        log_ops_event(
+            'WEINVOICE_INVOICE_WEBHOOK_PROCESSING_FAILED',
+            'ERROR',
+            detail=f'eInvoicingId={remote_id} event={event_name} webhook_id={webhook_id or ""} error={type(exc).__name__}',
+        )
+        raise
     finally:
         conn.close()
 
