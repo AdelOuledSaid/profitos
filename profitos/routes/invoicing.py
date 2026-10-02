@@ -3008,12 +3008,12 @@ def register(app):
                 flash("Organisation WeInvoice absente — test impossible.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             try:
-                sandbox_force_invoice_status(settings['weinvoice_company_id'], remote_id, status=213)
+                sandbox_force_invoice_status(remote_id, status=request.form.get('sandbox_status','213'))
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
                 flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            log_activity('INVOICE_WEINVOICE_SANDBOX_WEBHOOK_TEST', f"Test webhook sandbox demandé pour {inv['invoice_number']} ({remote_id}, CDV 213)")
-            flash("Test sandbox envoyé à WeInvoice (CDV 213). Attends quelques secondes puis recharge cette page. Ne clique pas sur « Actualiser le statut WeInvoice ».")
+            log_activity('INVOICE_WEINVOICE_SANDBOX_WEBHOOK_TEST', f"Test webhook sandbox demandé pour {inv['invoice_number']} ({remote_id}, CDV {request.form.get('sandbox_status','213')})")
+            flash("Test Sandbox envoyé à WeInvoice. Attendez quelques secondes : le webhook doit mettre à jour ProfitOS automatiquement. N'utilisez « Actualiser le statut WeInvoice » qu'en diagnostic.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()

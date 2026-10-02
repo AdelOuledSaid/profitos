@@ -510,18 +510,31 @@ def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_ke
 # ---------------------------------------------------------------------------
 # Lot 23.6 — test E2E sandbox du webhook de statut.
 # ---------------------------------------------------------------------------
-def sandbox_force_invoice_status(organization_id, e_invoicing_id, status=213, timeout=20):
-    """Force une transition CDV dans le sandbox WeInvoice uniquement."""
+def sandbox_force_invoice_status(e_invoicing_id, status=213, occurred_at=None, timeout=20):
+    """Force une transition CDV via l'API de contrôle WeInvoice Sandbox.
+
+    Contrat Sandbox documenté: POST /v1/_sandbox/einvoicing/{id}/force-status
+    avec {status, occurredAt?}. Aucun en-tête d'organisation non documenté n'est ajouté.
+    """
     if WEINVOICE_ENV != 'sandbox':
         raise WeInvoiceConfigError("Le test force-status est strictement réservé au sandbox WeInvoice.")
-    if not organization_id or not e_invoicing_id:
-        raise WeInvoiceConfigError("Organisation ou identifiant WeInvoice de facture absent.")
+    if not e_invoicing_id:
+        raise WeInvoiceConfigError("Identifiant WeInvoice de facture absent.")
+    allowed = {200,202,203,204,205,206,207,208,209,210,211,212,213,220}
+    try:
+        status = int(status)
+    except (TypeError, ValueError):
+        raise WeInvoiceConfigError("Statut CDV Sandbox invalide.")
+    if status not in allowed:
+        raise WeInvoiceConfigError(f"Statut CDV Sandbox non autorisé: {status}.")
     token = fetch_access_token(credential_set='invoicing')
     url = f"{WEINVOICE_BASE_URL}/v1/_sandbox/einvoicing/{e_invoicing_id}/force-status"
-    headers = {'Authorization': f'Bearer {token}', 'X-Org-Id': str(organization_id),
-               'Accept': 'application/json', 'Content-Type': 'application/json'}
+    headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+    payload = {'status': status}
+    if occurred_at:
+        payload['occurredAt'] = occurred_at
     try:
-        resp = requests.post(url, headers=headers, json={'status': int(status)}, timeout=timeout)
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as e:
         raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible pendant le test sandbox : {e}") from e
     try:
