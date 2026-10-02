@@ -2619,7 +2619,7 @@ def register(app):
         payments=c.execute("SELECT * FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ? ORDER BY payment_date,id",(invoice_id,inv['entity_id'])).fetchall()
         paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
         balance_due=max(0.0,round(float(inv['total'] or 0)-paid_total,2))
-        einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 20",(invoice_id,inv['entity_id'])).fetchall()
+        einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 50",(invoice_id,inv['entity_id'])).fetchall()
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,payments=payments,

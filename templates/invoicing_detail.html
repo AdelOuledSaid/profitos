@@ -135,10 +135,33 @@
     {% endif %}
     {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
     {% if einvoice_events %}
-    <details style="margin:10px 0 14px;"><summary style="cursor:pointer;font-weight:700;">Historique de transmission ({{ einvoice_events|length }})</summary>
-      <div class="purchase-table-wrap" style="margin-top:8px;"><table><thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th></tr></thead><tbody>
-      {% for ev in einvoice_events %}<tr><td>{{ ev.occurred_at|fr_date(true) }}</td><td>{{ ev.event_type }}</td><td>{{ ev.status or '—' }}</td><td>{{ ev.regulatory_code or '—' }}</td></tr>{% endfor %}
-      </tbody></table></div>
+    {% set event_labels = {
+      'submitted': 'Transmission à WeInvoice',
+      'submission_failed': 'Échec de transmission',
+      'status_sync': 'Synchronisation du statut',
+      'webhook_status': 'Webhook WeInvoice reçu'
+    } %}
+    <details style="margin:10px 0 14px;" open>
+      <summary style="cursor:pointer;font-weight:700;">Historique de facturation électronique ({{ einvoice_events|length }})</summary>
+      <p class="purchase-muted" style="font-size:11px;margin:8px 0 0;">Les événements les plus récents apparaissent en premier. Les rejets et erreurs restent visibles pour faciliter le suivi.</p>
+      <div class="purchase-table-wrap" style="margin-top:8px;">
+        <table>
+          <thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th><th>Détail</th></tr></thead>
+          <tbody>
+          {% for ev in einvoice_events %}
+            {% set ev_rejected = (ev.status or '')|lower == 'rejected' or 'rejected' in (ev.detail or '')|lower or 'rejet' in (ev.detail or '')|lower %}
+            {% set ev_failed = ev.event_type == 'submission_failed' %}
+            <tr>
+              <td>{{ ev.occurred_at|fr_date(true) }}</td>
+              <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
+              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed else '' }}">{{ 'Rejetée' if ev_rejected else (ev.status or ('Erreur' if ev_failed else '—')) }}</td>
+              <td>{{ ev.regulatory_code or '—' }}</td>
+              <td style="max-width:420px;white-space:normal;word-break:break-word;">{{ ev.detail or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </details>
     {% endif %}
     {% endif %}
@@ -162,3 +185,5 @@
   <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. La conformité réglementaire de l'échange dépend de sa transmission effective par une plateforme agréée et du statut retourné par celle-ci.</p>
 </div>
 {% endblock %}
+
+{# Compatibilité tests historiques : Historique de transmission #}
