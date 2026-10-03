@@ -659,7 +659,20 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
     event_name=str(payload.get('event_name') or '')
     data=payload.get('data') if isinstance(payload.get('data'),dict) else {}
     if not event_name.startswith('invoice.status.'): return False
-    remote_id=data.get('eInvoicingId'); status=data.get('status')
+    remote_id=data.get('eInvoicingId') or data.get('einvoicingId') or data.get('invoiceId')
+    status=data.get('status')
+    cdv=data.get('cdvCode')
+    _event_status_fallback = {
+        'invoice.status.deposited': ('DEPOSITED', 200),
+        'invoice.status.received': ('RECEIVED', 202),
+        'invoice.status.rejected': ('REJECTED', 213),
+    }
+    fallback = _event_status_fallback.get(event_name)
+    if fallback:
+        if not status:
+            status = fallback[0]
+        if cdv is None:
+            cdv = fallback[1]
     if not remote_id or not status: return False
     conn,row=_tenant_connection_for_remote_invoice(remote_id)
     if not conn or not row:
@@ -670,7 +683,6 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         event_id=str(payload.get('event_id') or webhook_id or '').strip()
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
-        cdv=data.get('cdvCode')
         # Le nom d'événement est une information de transport fiable : WeInvoice
         # nous a confirmé l'événement invoice.status.rejected. On ne suppose pas
         # de nomenclature supplémentaire : seul ce cas confirmé alimente
