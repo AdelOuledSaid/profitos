@@ -121,24 +121,15 @@
     {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut WeInvoice</button>
+      <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut</button>
     </form>
-    <form method="post" action="{{ url_for('invoicing_test_weinvoice_webhook_sandbox',invoice_id=inv.id) }}" style="display:inline-flex;gap:8px;align-items:center;margin-bottom:14px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="sandbox_status" required aria-label="Statut CDV Sandbox">
-        <option value="202">202 — Reçue</option>
-        <option value="213">213 — Rejetée</option>
-      </select>
-      <button type="submit" class="purchase-primary-btn secondary">Simuler le statut Sandbox</button>
-    </form>
-    <p class="purchase-muted" style="font-size:11px;margin-top:-6px;margin-bottom:14px;">Sandbox uniquement · API de contrôle WeInvoice /v1/_sandbox/einvoicing/&lt;id&gt;/force-status. Le statut local doit ensuite arriver par webhook.</p>
     {% else %}
     <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="purchase-primary-btn secondary">Transmettre à WeInvoice</button>
     </form>
     {% endif %}
-    {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Dernière erreur WeInvoice : {{ inv.weinvoice_last_error }}</p>{% endif %}
+    {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Information de transmission : {{ inv.weinvoice_last_error }}</p>{% endif %}
     {% if einvoice_events %}
     {% set event_labels = {
       'submitted': 'Transmission à WeInvoice',
