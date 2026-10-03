@@ -2545,6 +2545,17 @@ def register(app):
             due_date=request.form.get('due_date','').strip()
             notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
+            issue_date=date.today().isoformat()
+            if due_date:
+                try:
+                    if date.fromisoformat(due_date) < date.fromisoformat(issue_date):
+                        c.close()
+                        flash("La date d'échéance ne peut pas être antérieure à la date d'émission.")
+                        return redirect(url_for('invoicing_new'))
+                except ValueError:
+                    c.close()
+                    flash("Date d'échéance invalide.")
+                    return redirect(url_for('invoicing_new'))
 
             entity_id_raw=request.form.get('entity_id')
             entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
@@ -2571,7 +2582,6 @@ def register(app):
 
             subtotal,vat_amount,total=_totals(items)
             invoice_number=_next_invoice_number(c,entity_id)
-            issue_date=date.today().isoformat()
             token=secrets.token_urlsafe(20)
 
             c.execute('''INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,
@@ -3235,6 +3245,16 @@ def register(app):
             due_date=request.form.get('due_date','').strip()
             notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
+            if due_date:
+                try:
+                    if date.fromisoformat(due_date) < date.fromisoformat(inv['issue_date']):
+                        c.close()
+                        flash("La date d'échéance ne peut pas être antérieure à la date d'émission.")
+                        return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
+                except (ValueError, TypeError):
+                    c.close()
+                    flash("Date d'échéance invalide.")
+                    return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
             if not client_name or not items:
                 c.close()
                 flash('Nom du client et au moins une ligne de facture requis.')

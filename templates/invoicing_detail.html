@@ -116,8 +116,8 @@
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
     {% if inv.weinvoice_invoice_id %}
     {% set wi_rejected = (inv.weinvoice_status or '')|lower == 'rejected' or (inv.weinvoice_last_error and 'rejetée par WeInvoice' in inv.weinvoice_last_error) %}
-    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} WeInvoice : <strong>{{ 'Rejetée' if wi_rejected else (inv.weinvoice_status or 'transmise') }}</strong> · <code>{{ inv.weinvoice_invoice_id }}</code>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
-    {% if wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">La facture a été rejetée. Corrigez les informations signalées puis utilisez la synchronisation WeInvoice après correction.</p>{% endif %}
+    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} Facturation électronique : <strong>{{ 'Rejetée' if wi_rejected else (inv.weinvoice_status or 'transmise') }}</strong>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+    {% if wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">La facture a été rejetée. Corrigez les informations signalées puis actualisez le statut après correction.</p>{% endif %}
     {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -142,7 +142,7 @@
       <p class="purchase-muted" style="font-size:11px;margin:8px 0 0;">Les événements les plus récents apparaissent en premier. Les rejets et erreurs restent visibles pour faciliter le suivi.</p>
       <div class="purchase-table-wrap" style="margin-top:8px;">
         <table>
-          <thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th><th>Détail</th></tr></thead>
+          <thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th></tr></thead>
           <tbody>
           {% for ev in einvoice_events %}
             {% set ev_rejected = (ev.status or '')|lower == 'rejected' or 'rejected' in (ev.detail or '')|lower or 'rejet' in (ev.detail or '')|lower %}
@@ -152,7 +152,6 @@
               <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
               <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed else '' }}">{{ 'Rejetée' if ev_rejected else (ev.status or ('Erreur' if ev_failed else '—')) }}</td>
               <td>{{ ev.regulatory_code or '—' }}</td>
-              <td style="max-width:420px;white-space:normal;word-break:break-word;">{{ ev.detail or '—' }}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -168,7 +167,7 @@
       </div>
       {% endfor %}
     </div>
-    <p class="purchase-muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. La transmission à WeInvoice n'a lieu qu'après action explicite sur le bouton dédié.</p>
+    <p class="purchase-muted" style="font-size:11px;margin-top:12px;">Vérification indicative des mentions les plus courantes (Code de commerce, CGI) — ne remplace pas l'avis de ton expert-comptable et ne constitue pas une certification de conformité Factur-X. La transmission électronique n'a lieu qu'après action explicite sur le bouton dédié.</p>
   </section>
 
   <section class="purchase-panel" style="margin-top:20px;">
