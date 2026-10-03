@@ -1063,8 +1063,6 @@ def init_tenant_db(org_id=None):
         weinvoice_regulatory_code TEXT,
         weinvoice_last_sync_at TEXT
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote
-        ON purchase_invoices(entity_id,weinvoice_invoice_id);
     CREATE TABLE IF NOT EXISTS purchase_credit_notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -1864,6 +1862,10 @@ def init_tenant_db(org_id=None):
                        ('bank_categorization_rules','entity_id'),
                        ('suppliers','iban'),('suppliers','bic'),
                        ('company','iban'),('company','bic'),
+                       ('purchase_invoices','weinvoice_invoice_id'),
+                       ('purchase_invoices','weinvoice_status'),
+                       ('purchase_invoices','weinvoice_regulatory_code'),
+                       ('purchase_invoices','weinvoice_last_sync_at'),
                        ('purchase_invoices','purchase_order_id'),
                        ('purchase_invoices','entity_id'),
                        ('outgoing_invoices','entity_id'),
@@ -2014,6 +2016,13 @@ def init_tenant_db(org_id=None):
     except Exception as e:
         print(f"[ProfitOS] ATTENTION : index facturation récurrente ignoré ({e})")
 
+    # Lot F production — l'index dépend de colonnes absentes des anciens tenants.
+    # Il doit donc être créé APRES la migration douce ci-dessus.
+    try:
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
+        c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : index WeInvoice achats non créé ({e})")
     from profitos.accounting import seed_accounting_defaults
     seed_accounting_defaults(c)
     from profitos.expenses import seed_mileage_rate_table
