@@ -825,6 +825,17 @@ def init_tenant_db(org_id=None):
     c=dbmod.connect_tenant(org_id, tenant_db(org_id)); c.executescript('''
     CREATE TABLE IF NOT EXISTS app_settings(id INTEGER PRIMARY KEY CHECK(id=1),onboarding_complete INTEGER DEFAULT 0,currency TEXT DEFAULT 'EUR',locale TEXT DEFAULT 'fr-FR',notifications_enabled INTEGER DEFAULT 1,slack_webhook_url TEXT,teams_webhook_url TEXT,accountant_email TEXT,weekly_export_enabled INTEGER DEFAULT 0,logo_url TEXT,accent_color TEXT,price_index_name TEXT DEFAULT 'INDICE',weinvoice_status TEXT DEFAULT 'disconnected',weinvoice_last_check_at TEXT,weinvoice_last_error TEXT,weinvoice_company_id TEXT,weinvoice_kyb_status TEXT DEFAULT 'not_started',weinvoice_onboarded_at TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS dso_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT UNIQUE,avg_days_overdue REAL,total_outstanding REAL,invoice_count INTEGER,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS dso_entity_snapshots(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_date TEXT NOT NULL,
+        entity_key TEXT NOT NULL,
+        entity_id INTEGER,
+        avg_days_overdue REAL,
+        total_outstanding REAL,
+        invoice_count INTEGER,
+        created_at TEXT,
+        UNIQUE(snapshot_date, entity_key)
+    );
     CREATE TABLE IF NOT EXISTS company(id INTEGER PRIMARY KEY CHECK(id=1),name TEXT,city TEXT,department TEXT,allowed_departments TEXT,activities TEXT,certifications TEXT,siret TEXT,address TEXT,vat_number TEXT,postal_code TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,customer TEXT,amount REAL,paid_amount REAL DEFAULT 0,issue_date TEXT,due_date TEXT,status TEXT,days_overdue INTEGER,score INTEGER,created_at TEXT,kind TEXT DEFAULT 'STANDARD',retention_release_date TEXT,retention_pct REAL,customer_email TEXT,customer_phone TEXT,public_token TEXT,entity_id INTEGER);
     CREATE TABLE IF NOT EXISTS expenses(id INTEGER PRIMARY KEY AUTOINCREMENT,vendor TEXT,description TEXT,amount REAL,expense_date TEXT,category TEXT);

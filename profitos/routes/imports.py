@@ -705,13 +705,23 @@ def register(app):
 
             snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
             today_iso=today.isoformat()
+            # Historique DSO isolé par entité. entity_key évite les particularités
+            # SQL des contraintes UNIQUE contenant NULL pour la société mère.
+            entity_key=str(entity_id) if entity_id else '__ROOT__'
+            c.execute('''INSERT INTO dso_entity_snapshots(
+                           snapshot_date,entity_key,entity_id,avg_days_overdue,
+                           total_outstanding,invoice_count,created_at)
+                         VALUES(?,?,?,?,?,?,?)
+                         ON CONFLICT(snapshot_date,entity_key) DO UPDATE SET
+                           entity_id=excluded.entity_id,
+                           avg_days_overdue=excluded.avg_days_overdue,
+                           total_outstanding=excluded.total_outstanding,
+                           invoice_count=excluded.invoice_count,
+                           created_at=excluded.created_at''',
+                (today_iso,entity_key,entity_id,snap['avg_d'] or 0,
+                 snap['total'] or 0,snap['n'] or 0,now()))
+            # Compatibilité avec l'historique racine existant pendant la transition.
             if not entity_id:
-                # L'historique DSO (dso_snapshots) n'est pas encore scopé par entité —
-                # une contrainte unique porte sur la seule date, ce qui ferait qu'une
-                # filiale écraserait l'instantané d'une autre pour le même jour. En
-                # attendant une vraie séparation de cette table, seul l'import de la
-                # société mère alimente cet historique, pour ne jamais le corrompre
-                # avec des données mélangées entre entités.
                 c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
                              VALUES(?,?,?,?,?)
                              ON CONFLICT(snapshot_date) DO UPDATE SET
@@ -720,7 +730,7 @@ def register(app):
                                invoice_count=excluded.invoice_count,
                                created_at=excluded.created_at''',
                     (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
-                c.commit()
+            c.commit()
 
             urgent=c.execute(f"SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 AND {entity_filter}",entity_params).fetchone()
             overdue_rows=c.execute(f"SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchall()

@@ -49,7 +49,13 @@ def register(app):
         ep=(eid,) if eid else ()
         c=cx(); recover=c.execute(f"SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef}",ep).fetchone()['t']; save=c.execute(f"SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef}",ep).fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
         top=list(c.execute(f"SELECT id,invoice_number title,customer subtitle,MAX(amount-paid_amount,0) value,score,'RECOVER' type FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} ORDER BY score DESC LIMIT 3",ep).fetchall())+list(c.execute(f"SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC LIMIT 2",ep).fetchall())+list(c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall())
-        snaps=c.execute('SELECT * FROM dso_snapshots ORDER BY snapshot_date ASC LIMIT 30').fetchall(); c.close(); top.sort(key=lambda x:x['score'],reverse=True)
+        entity_key=str(eid) if eid else '__ROOT__'
+        snaps=c.execute('SELECT * FROM dso_entity_snapshots WHERE entity_key=? ORDER BY snapshot_date ASC LIMIT 30',(entity_key,)).fetchall()
+        # Backward compatibility for installations whose historical root snapshots
+        # predate the entity-scoped table.
+        if not snaps and not eid:
+            snaps=c.execute('SELECT * FROM dso_snapshots ORDER BY snapshot_date ASC LIMIT 30').fetchall()
+        c.close(); top.sort(key=lambda x:x['score'],reverse=True)
         dso_values=[s['avg_days_overdue'] or 0 for s in snaps][-12:]
         dso_svg=sparkline_svg(dso_values) if len(dso_values)>=2 else None
         dso_current=round(dso_values[-1]) if dso_values else None
