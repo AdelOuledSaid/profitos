@@ -1057,8 +1057,36 @@ def init_tenant_db(org_id=None):
         created_at TEXT NOT NULL,
         paid_at TEXT,
         document_path TEXT,
-        category TEXT DEFAULT 'autre'
+        category TEXT DEFAULT 'autre',
+        weinvoice_invoice_id TEXT,
+        weinvoice_status TEXT,
+        weinvoice_regulatory_code TEXT,
+        weinvoice_last_sync_at TEXT
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote
+        ON purchase_invoices(entity_id,weinvoice_invoice_id);
+    CREATE TABLE IF NOT EXISTS purchase_credit_notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        original_purchase_id INTEGER,
+        original_invoice_number TEXT,
+        credit_number TEXT NOT NULL,
+        supplier_name TEXT NOT NULL,
+        issue_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        vat_amount REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        category TEXT DEFAULT 'autre',
+        notes TEXT,
+        document_path TEXT,
+        weinvoice_invoice_id TEXT,
+        weinvoice_status TEXT,
+        weinvoice_regulatory_code TEXT,
+        weinvoice_last_sync_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_credit_weinvoice_remote
+        ON purchase_credit_notes(entity_id,weinvoice_invoice_id);
     CREATE TABLE IF NOT EXISTS purchase_budgets(
         category TEXT NOT NULL,
         entity_key INTEGER NOT NULL DEFAULT 0,
@@ -1167,6 +1195,31 @@ def init_tenant_db(org_id=None):
         UNIQUE(entity_id, record_type, source_type, source_id)
     );
     CREATE INDEX IF NOT EXISTS idx_ereporting_pending ON ereporting_records(entity_id, status, period_date);
+    CREATE TABLE IF NOT EXISTS ereporting_transmissions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        provider TEXT NOT NULL DEFAULT 'weinvoice',
+        transmission_number TEXT NOT NULL,
+        flow_type TEXT NOT NULL,
+        anchor_date TEXT NOT NULL,
+        type_code TEXT NOT NULL DEFAULT 'IN',
+        provider_reference TEXT,
+        status TEXT NOT NULL DEFAULT 'prepared',
+        late_deposit INTEGER NOT NULL DEFAULT 0,
+        payload_json TEXT NOT NULL,
+        response_json TEXT,
+        proof_json TEXT,
+        rejection_motifs_json TEXT,
+        flux_status TEXT,
+        last_checked_at TEXT,
+        last_error TEXT,
+        submitted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(entity_id,provider,transmission_number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ereporting_transmissions_entity
+        ON ereporting_transmissions(entity_id,created_at);
     CREATE TABLE IF NOT EXISTS recurring_invoice_templates(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -1236,7 +1289,12 @@ def init_tenant_db(org_id=None):
         reason TEXT,
         status TEXT DEFAULT 'issued',
         created_at TEXT,
-        entity_id INTEGER
+        entity_id INTEGER,
+        weinvoice_invoice_id TEXT,
+        weinvoice_status TEXT,
+        weinvoice_regulatory_code TEXT,
+        weinvoice_last_sync_at TEXT,
+        weinvoice_last_error TEXT
     );
     CREATE TABLE IF NOT EXISTS accounting_chart_of_accounts(
         code TEXT PRIMARY KEY,
@@ -1786,6 +1844,8 @@ def init_tenant_db(org_id=None):
                        ('app_settings','price_index_name'),
                        ('company','siret'),('company','address'),('company','vat_number'),('company','postal_code'),
                        ('purchase_invoices','document_path'),('purchase_invoices','category'),
+                       ('purchase_invoices','weinvoice_invoice_id'),('purchase_invoices','weinvoice_status'),
+                       ('purchase_invoices','weinvoice_regulatory_code'),('purchase_invoices','weinvoice_last_sync_at'),
                        ('outgoing_invoices','client_siren'),('outgoing_invoices','operation_nature'),
                        ('outgoing_invoices','vat_on_debits'),('outgoing_invoices','delivery_address'),
                        ('outgoing_invoices','weinvoice_invoice_id'),('outgoing_invoices','weinvoice_status'),
@@ -1837,6 +1897,54 @@ def init_tenant_db(org_id=None):
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
             print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+
+    try:
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
+        c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : index WeInvoice achats ignoré ({e})")
+
+    # Lot F final — suivi/preuve des transmissions e-reporting existantes
+    for col, decl in (
+        ('proof_json','TEXT'),('rejection_motifs_json','TEXT'),
+        ('flux_status','TEXT'),('last_checked_at','TEXT')
+    ):
+        try:
+            cols=[r['name'] for r in c.execute('PRAGMA table_info(ereporting_transmissions)').fetchall()]
+            if col not in cols: c.execute(f'ALTER TABLE ereporting_transmissions ADD COLUMN {col} {decl}')
+        except Exception as e: print(f"[ProfitOS] ATTENTION : migration e-reporting final {col} ignorée ({e})")
+    try: c.commit()
+    except Exception: pass
+
+    # Lot F4B — qualification explicite du périmètre e-reporting
+    for col, decl in (('ereporting_scope','TEXT'),('ereporting_category','TEXT'),
+                      ('counterparty_country','TEXT'),('client_vat_number','TEXT')):
+        try:
+            cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_invoices)').fetchall()]
+            if col not in cols: c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}')
+        except Exception as e: print(f"[ProfitOS] ATTENTION : migration e-reporting {col} ignorée ({e})")
+    try: c.commit()
+    except Exception: pass
+
+    # Lot F3 — avoirs électroniques sortants WeInvoice
+    for col, decl in (
+        ('weinvoice_invoice_id','TEXT'),
+        ('weinvoice_status','TEXT'),
+        ('weinvoice_regulatory_code','TEXT'),
+        ('weinvoice_last_sync_at','TEXT'),
+        ('weinvoice_last_error','TEXT'),
+    ):
+        try:
+            cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_credit_notes)').fetchall()]
+            if col not in cols:
+                c.execute(f'ALTER TABLE outgoing_credit_notes ADD COLUMN {col} {decl}')
+        except Exception as e:
+            print(f"[ProfitOS] ATTENTION : migration avoir électronique {col} ignorée ({e})")
+    try:
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_weinvoice_remote ON outgoing_credit_notes(entity_id,weinvoice_invoice_id)')
+        c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : index WeInvoice avoirs ignoré ({e})")
 
     # V220 — rattache les actions historiques à l'entité de leur source quand elle est connue.
     try:

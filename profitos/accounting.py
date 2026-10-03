@@ -348,6 +348,21 @@ def generate_purchase_entry(conn, purchase, commit=True):
     )
 
 
+
+def generate_purchase_credit_entry(conn, credit, commit=True):
+    """Comptabilise un avoir fournisseur : 401 au débit, charge et TVA au crédit."""
+    entity_id=credit['entity_id'] if 'entity_id' in credit.keys() else None
+    if _entry_already_exists(conn,'purchase_credit_note',credit['id'],entity_id): return None
+    charge_account=_category_account(conn,credit['category'])
+    lines=[{'account_code':'401000','debit':credit['total'],'auxiliary_name':credit['supplier_name']},
+           {'account_code':charge_account,'credit':credit['subtotal']}]
+    if credit['vat_amount']:
+        lines.append({'account_code':'445660','credit':credit['vat_amount']})
+    return create_entry(conn,'AC',credit['issue_date'] or date.today(),
+        f"Avoir fournisseur {credit['credit_number']} — {credit['supplier_name']}",
+        lines,source_type='purchase_credit_note',source_id=credit['id'],entity_id=entity_id,commit=commit)
+
+
 def generate_purchase_payment_entry(conn, purchase):
     """Génère l'écriture de règlement (journal BQ) quand une facture
     fournisseur est marquée payée : Fournisseurs (401) au débit, Banque (512)

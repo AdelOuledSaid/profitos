@@ -60,6 +60,10 @@
           </label>
           <label class="wide">Adresse de livraison <span style="font-weight:400;">(si différente, requise pour une vente de biens)</span><input name="delivery_address"></label>
           <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="vat_on_debits" style="width:auto;"> TVA sur les débits (plutôt que sur les encaissements)</label>
+          <label>Périmètre e-reporting<select name="ereporting_scope"><option value="">Hors e-reporting / à qualifier</option><option value="b2c">Vente B2C</option><option value="international_b2b">Vente B2B internationale</option></select></label>
+          <label>Catégorie B2C<select name="ereporting_category"><option value="">—</option><option value="TLB1">Livraison de biens</option><option value="TPS1">Prestation de services</option><option value="TNT1">Non taxable</option><option value="TMA1">Régime de la marge</option></select></label>
+          <label>Pays contrepartie (ISO 2)<input name="counterparty_country" maxlength="2" placeholder="DE, BE, TN…"></label>
+          <label>N° TVA client étranger<input name="client_vat_number" maxlength="40"></label>
         </div>
       </div>
 

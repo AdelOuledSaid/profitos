@@ -638,8 +638,8 @@ def invoice_status_from_timeline(data):
 def _tenant_connection_for_remote_invoice(remote_id):
     """Retrouve le tenant propriétaire d'un eInvoicingId sans session utilisateur.
 
-    En production PostgreSQL, les tenants sont des schémas org_<id> et ne
-    dépendent pas de la présence de fichiers tenant_data/org_*.db.
+    La recherche sortante conserve volontairement le chemin historique exact
+    (régressions v196/v266), puis F2 ajoute un fallback séparé sur les achats.
     """
     for org_id in list_organization_ids():
         conn=None
@@ -648,6 +648,12 @@ def _tenant_connection_for_remote_invoice(remote_id):
             conn=_dbmod.connect_tenant(org_id, tenant_db(org_id))
             row=conn.execute(
                 'SELECT id,entity_id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',
+                (str(remote_id),)
+            ).fetchone()
+            if row:
+                return conn,row
+            row=conn.execute(
+                "SELECT id,entity_id,'purchase' AS invoice_kind FROM purchase_invoices WHERE weinvoice_invoice_id=?",
                 (str(remote_id),)
             ).fetchone()
             if row:
@@ -689,34 +695,42 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         event_id=str(payload.get('event_id') or webhook_id or '').strip()
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
-        # Le nom d'événement est une information de transport fiable : WeInvoice
-        # nous a confirmé l'événement invoice.status.rejected. On ne suppose pas
-        # de nomenclature supplémentaire : seul ce cas confirmé alimente
-        # weinvoice_last_error, les autres statuts restant conservés tels quels.
         is_rejected=(event_name == 'invoice.status.rejected')
         rejection_detail=(data.get('reason') or data.get('message') or data.get('detail') or '').strip() if is_rejected else ''
         last_error=(f"Facture électronique rejetée par WeInvoice{': ' + rejection_detail if rejection_detail else '.'}" if is_rejected else None)
-        updated = conn.execute(
-            'UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=? WHERE id=? AND entity_id IS ?',
-            (str(status), str(cdv) if cdv is not None else None, now(), last_error, row['id'], row['entity_id'])
-        )
-        if getattr(updated, 'rowcount', 0) != 1:
-            raise RuntimeError(f'WeInvoice webhook invoice update failed for local invoice {row["id"]}')
-        conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
-                     VALUES(?,?,'weinvoice','webhook_status',?,?,?,?,?,?)""",
-                     (row['entity_id'],row['id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
-                      event_id or f'webhook-{remote_id}-{status}-{cdv}',
-                      (event_name + (f' — {rejection_detail}' if rejection_detail else ''))[:2000],now()))
+
+        kind=row['invoice_kind'] if 'invoice_kind' in row.keys() else 'outgoing'
+        if kind != 'purchase':
+            # Chemin sortant historique conservé à l'identique pour les lots figés.
+            updated = conn.execute(
+                'UPDATE outgoing_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=? WHERE id=? AND entity_id IS ?',
+                (str(status), str(cdv) if cdv is not None else None, now(), last_error, row['id'], row['entity_id'])
+            )
+            if getattr(updated, 'rowcount', 0) != 1:
+                raise RuntimeError(f'WeInvoice webhook invoice update failed for local invoice {row["id"]}')
+            conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
+                         VALUES(?,?,'weinvoice','webhook_status',?,?,?,?,?,?)""",
+                         (row['entity_id'],row['id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
+                          event_id or f'webhook-{remote_id}-{status}-{cdv}',
+                          (event_name + (f' — {rejection_detail}' if rejection_detail else ''))[:2000],now()))
+        else:
+            updated=conn.execute(
+                'UPDATE purchase_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
+                (str(status), str(cdv) if cdv is not None else None, now(), row['id'], row['entity_id'])
+            )
+            if getattr(updated,'rowcount',0)!=1:
+                raise RuntimeError(f'WeInvoice webhook invoice update failed for local invoice {row["id"]}')
+            conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
+                         VALUES(? ,NULL,'weinvoice','purchase_webhook_status',?,?,?,?,?,?)""",
+                         (row['entity_id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
+                          event_id or f'webhook-{remote_id}-{status}-{cdv}',
+                          (event_name + (f' — {rejection_detail}' if rejection_detail else ''))[:2000],now()))
         if event_id:
             conn.execute('INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',(event_id,str(webhook_id or ''),event_name,now()))
         conn.commit()
         log_ops_event('WEINVOICE_INVOICE_STATUS_UPDATED','INFO',detail=f'eInvoicingId={remote_id} status={status} cdv={cdv} webhook_id={webhook_id or ""}')
         return True
     except Exception as exc:
-        # Ne jamais acquitter implicitement un traitement partiel. Toutes les
-        # écritures du statut + historique + marqueur d'idempotence forment une
-        # seule transaction : en cas d'erreur, rollback puis propagation jusqu'à
-        # la route webhook, qui répondra hors 2xx afin que WeInvoice relivre.
         try:
             conn.rollback()
         except Exception:
@@ -730,3 +744,181 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
     finally:
         conn.close()
 
+
+# ---------------------------------------------------------------------------
+# Lot F1 — réception des factures électroniques fournisseurs.
+# Contrat OpenAPI WeInvoice: GET /v1/invoice-queries/list?direction=INBOUND,
+# GET /v1/invoice-queries/{id}/content et /readable.
+# ---------------------------------------------------------------------------
+def list_inbound_invoices(organization_id, page=1, page_size=100, timeout=20):
+    if not organization_id:
+        raise WeInvoiceConfigError("Organisation WeInvoice absente.")
+    token=fetch_access_token(credential_set='invoicing')
+    headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'}
+    params={'direction':'INBOUND','page':max(1,int(page)),'pageSize':min(100,max(1,int(page_size))),'sortKey':'createdAt','sortDir':'desc'}
+    try:
+        resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/invoice-queries/list",headers=headers,params=params,timeout=timeout)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion WeInvoice impossible pendant la réception : {e}") from e
+    try: data=resp.json()
+    except ValueError: data={'error':resp.text[:800] or 'Réponse non JSON'}
+    if resp.status_code!=200 or not isinstance(data,dict) or not isinstance(data.get('invoices'),list):
+        raise WeInvoiceAPIError(f"Liste des factures reçues WeInvoice invalide ({resp.status_code}) — détail : {data}")
+    return data
+
+
+def get_inbound_invoice_content(organization_id, remote_id, timeout=20):
+    token=fetch_access_token(credential_set='invoicing')
+    headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'}
+    try:
+        resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/invoice-queries/{remote_id}/content",headers=headers,timeout=timeout)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion WeInvoice impossible pendant la lecture : {e}") from e
+    try: data=resp.json()
+    except ValueError: data={'error':resp.text[:800] or 'Réponse non JSON'}
+    if resp.status_code!=200 or not isinstance(data,dict):
+        raise WeInvoiceAPIError(f"Contenu de facture WeInvoice invalide ({resp.status_code}) — détail : {data}")
+    return data
+
+
+def download_inbound_invoice_readable(organization_id, remote_id, timeout=30):
+    token=fetch_access_token(credential_set='invoicing')
+    headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/pdf'}
+    try:
+        resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/invoice-queries/{remote_id}/readable",headers=headers,params={'disposition':'attachment'},timeout=timeout)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Téléchargement du lisible WeInvoice impossible : {e}") from e
+    if resp.status_code!=200 or not resp.content:
+        raise WeInvoiceAPIError(f"Lisible WeInvoice indisponible ({resp.status_code}).")
+    return resp.content
+
+
+# Lot F2 — cycle de vie acheteur des factures électroniques reçues.
+_BUYER_LIFECYCLE_ACTIONS={'take-in-charge':(204,'TAKEN_IN_CHARGE'),'approve':(205,'APPROVED'),'approve-partially':(206,'PARTIALLY_APPROVED'),'dispute':(207,'DISPUTED'),'suspend':(208,'SUSPENDED'),'refuse':(210,'REFUSED'),'payment-sent':(211,'PAYMENT_SENT')}
+
+def apply_inbound_lifecycle_action(organization_id,e_invoicing_id,action,*,reason_code=None,reason_label=None,timeout=20):
+    if not organization_id or not e_invoicing_id: raise WeInvoiceConfigError("Organisation ou identifiant WeInvoice de facture absent.")
+    action=str(action or '').strip().lower()
+    if action not in _BUYER_LIFECYCLE_ACTIONS: raise WeInvoiceConfigError("Action de cycle de vie acheteur non autorisée.")
+    payload={}
+    if action in {'dispute','refuse'}:
+        reason_code=str(reason_code or '').strip()
+        if not reason_code or len(reason_code)>50: raise WeInvoiceConfigError("Un code motif valide est obligatoire (50 caractères maximum).")
+        payload['reasonCode']=reason_code
+        label=str(reason_label or '').strip()
+        if len(label)>2000: raise WeInvoiceConfigError("Le libellé du motif est limité à 2000 caractères.")
+        if label: payload['reasonLabel']=label
+    token=fetch_access_token(credential_set='invoicing')
+    headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'}
+    try: resp=requests.post(f"{WEINVOICE_BASE_URL}/v1/invoice-lifecycle/{e_invoicing_id}/{action}",headers=headers,json=payload if payload else None,timeout=timeout)
+    except requests.RequestException as e: raise WeInvoiceAPIError(f"Connexion WeInvoice impossible pendant l’action acheteur : {e}") from e
+    try: data=resp.json() if resp.content else {}
+    except ValueError: data={'error':resp.text[:800] or 'Réponse non JSON'}
+    if resp.status_code not in (200,201,202,204): raise WeInvoiceAPIError(f"WeInvoice a refusé l’action acheteur ({resp.status_code}) — détail : {data}")
+    cdv,status=_BUYER_LIFECYCLE_ACTIONS[action]
+    return {'status':(data.get('status') if isinstance(data,dict) else None) or status,'regulatoryStatusCode':(data.get('regulatoryStatusCode') if isinstance(data,dict) else None) or cdv,'response':data}
+
+
+def download_inbound_invoice_original(organization_id, remote_id, timeout=30):
+    """Télécharge le document électronique source d'une facture INBOUND."""
+    token=fetch_invoicing_access_token()
+    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/invoice-queries/{remote_id}/file",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'*/*'},timeout=timeout)
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(f"WeInvoice original invoice file: HTTP {resp.status_code}")
+    if not resp.content:
+        raise WeInvoiceAPIError("WeInvoice original invoice file: document vide")
+    return resp.content
+
+
+_EREPORTING_FLOW_TYPES={
+    'AggregatedCustomerTransactionReport',
+    'UnitaryCustomerTransactionReport',
+    'AggregatedCustomerPaymentReport',
+    'UnitaryCustomerPaymentReport',
+    'UnitarySupplierTransactionReport',
+    'MultiFlowReport',
+}
+
+def submit_ereporting_flow(organization_id, payload, timeout=30):
+    """Dépose un Flux 10 WeInvoice. Le transmissionNumber rend le rejeu sûr (409 doublon côté PA)."""
+    if not isinstance(payload,dict): raise WeInvoiceAPIError("Payload e-reporting invalide")
+    missing=[k for k in ('flowType','transmissionNumber','anchorDate','lines') if not payload.get(k)]
+    if missing: raise WeInvoiceAPIError("E-reporting incomplet: "+", ".join(missing))
+    if payload['flowType'] not in _EREPORTING_FLOW_TYPES:
+        raise WeInvoiceAPIError("flowType e-reporting invalide")
+    token=fetch_invoicing_access_token()
+    resp=requests.post(f"{WEINVOICE_BASE_URL}/v1/e-reporting/flows",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),
+                 'Content-Type':'application/json','Accept':'application/json'},
+        json=payload,timeout=timeout)
+    data=_json_or_empty(resp)
+    if resp.status_code not in (200,201,202):
+        raise WeInvoiceAPIError(_api_error_message(resp,data,'WeInvoice e-reporting deposit'))
+    return data
+
+def list_ereporting_transmissions(organization_id, timeout=20):
+    token=fetch_invoicing_access_token()
+    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
+        timeout=timeout)
+    data=_json_or_empty(resp)
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(_api_error_message(resp,data,'WeInvoice e-reporting transmissions'))
+    return data
+
+def get_ereporting_transmission(organization_id, transmission_id, timeout=20):
+    token=fetch_invoicing_access_token()
+    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
+        timeout=timeout)
+    data=_json_or_empty(resp)
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(_api_error_message(resp,data,'WeInvoice e-reporting transmission'))
+    return data
+
+def get_ereporting_proof(organization_id, transmission_id, timeout=30):
+    """Retourne la preuve fiscale §7.3 (JSON : verdict, motifs, chaîne SHA-256, archives)."""
+    token=fetch_invoicing_access_token()
+    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}/proof",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
+        timeout=timeout)
+    data=_json_or_empty(resp)
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(_api_error_message(resp,data,'WeInvoice e-reporting proof'))
+    return data
+
+
+def get_ereporting_fiscal_settings(organization_id, timeout=20):
+    token=fetch_invoicing_access_token()
+    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/fiscal-settings",
+        headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
+        timeout=timeout)
+    data=_json_or_empty(resp)
+    if resp.status_code != 200:
+        raise WeInvoiceAPIError(_api_error_message(resp,data,'WeInvoice fiscal settings'))
+    return data
+
+
+def validate_ereporting_fiscal_readiness(organization_id, timeout=20):
+    """Bloque un Flux 10 si le régime fiscal indispensable n'est pas configuré côté PA."""
+    settings=get_ereporting_fiscal_settings(organization_id,timeout=timeout)
+    periodicity=settings.get('vatDeclarationPeriodicityRegime')
+    regime=settings.get('vatRegime')
+    if not periodicity:
+        raise WeInvoiceConfigError(
+            "Régime de périodicité TVA WeInvoice non configuré : le dépôt Flux 10 serait refusé."
+        )
+    if regime not in ('DEBIT','COLLECTION','EXEMPT'):
+        raise WeInvoiceConfigError("Régime d'exigibilité TVA WeInvoice absent ou invalide.")
+    return settings
+
+def production_readiness():
+    """Contrôles locaux sans jamais basculer automatiquement Sandbox -> Production."""
+    issues=[]
+    if WEINVOICE_ENV not in ('sandbox','production'): issues.append('WEINVOICE_ENV invalide')
+    if not is_configured('management'): issues.append('identifiants Management absents')
+    if not is_configured('invoicing'): issues.append('identifiants Facturation absents')
+    if not WEINVOICE_WEBHOOK_SECRET and not WEINVOICE_INVOICE_WEBHOOK_SECRET:
+        issues.append('secret webhook absent')
+    return {'environment':WEINVOICE_ENV,'ready_local':not issues,'issues':issues}

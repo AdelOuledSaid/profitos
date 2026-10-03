@@ -3,18 +3,21 @@ import uuid
 import statistics
 import xml.etree.ElementTree as ET
 import base64
+import math
+import hashlib
 from pypdf.errors import PyPdfError
 from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry,
-    generate_sale_credit_entry, generate_customer_deposit_entry, generate_customer_final_entry, generate_purchase_entry,
+    generate_sale_credit_entry, generate_customer_deposit_entry, generate_customer_final_entry, generate_purchase_entry, generate_purchase_credit_entry,
     generate_purchase_payment_entry, generate_purchase_partial_payment_entry, AccountingError)
 from profitos.webhooks_outbound import deliver_webhook
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
-    WeInvoiceAPIError, WeInvoiceConfigError)
+    WeInvoiceAPIError, WeInvoiceConfigError, list_inbound_invoices,
+    get_inbound_invoice_content, download_inbound_invoice_readable, download_inbound_invoice_original, apply_inbound_lifecycle_action)
 
 
 def _compute_line_items(form):
@@ -857,6 +860,15 @@ def _generate_due_recurring_invoices(c, entity_id, through_date=None):
                   (run_date,status,now(),tpl['id'],entity_id))
     return created
 
+
+from profitos.ereporting import build_flux10
+from profitos.weinvoice import submit_ereporting_flow
+
+from profitos.einvoice_validation import validate_outgoing_invoice
+from profitos.weinvoice import (
+    get_ereporting_transmission, get_ereporting_proof,
+    validate_ereporting_fiscal_readiness, production_readiness,
+)
 
 def register(app):
     @app.route('/facturation/clients')
@@ -1742,6 +1754,179 @@ def register(app):
                        detail=f"org={org_id} entity={entity_id} créées={created} échecs={failed}")
         return jsonify({'created': created, 'failed': failed}), 200
 
+    def _inbound_original_reference(raw):
+        """Extrait la facture précédente d'un UBL/CII entrant."""
+        try: root=ET.fromstring(raw)
+        except Exception: return None
+        for parent_name,id_name in (('BillingReference','ID'),('InvoiceReferencedDocument','IssuerAssignedID')):
+            for el in root.iter():
+                if el.tag.rsplit('}',1)[-1] == parent_name:
+                    for child in el.iter():
+                        if child.tag.rsplit('}',1)[-1] == id_name and (child.text or '').strip():
+                            return child.text.strip()
+        return None
+
+    def _is_inbound_credit_note(item, raw):
+        kind=str(item.get('type') or '').upper().replace('-','_')
+        if 'CREDIT' in kind or 'AVOIR' in kind: return True
+        try:
+            root=ET.fromstring(raw)
+            if root.tag.rsplit('}',1)[-1].upper() == 'CREDITNOTE': return True
+            for el in root.iter():
+                if el.tag.rsplit('}',1)[-1] in ('TypeCode','InvoiceTypeCode','CreditNoteTypeCode'):
+                    if (el.text or '').strip() in {'261','381','396','502','503'}: return True
+        except Exception: pass
+        return False
+
+    @app.route('/facturation/achats/weinvoice/synchroniser', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_weinvoice_sync():
+        """Lot F1 — importe les factures électroniques INBOUND WeInvoice.
+
+        Idempotence par (entity_id, eInvoicingId). Le document PDF lisible est
+        conservé comme justificatif; l'écriture comptable est générée dans la
+        même transaction que la facture locale.
+        """
+        eid=current_entity_id()
+        c=cx()
+        try:
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité.")
+                return redirect(url_for('purchase_list'))
+            org_remote=settings['weinvoice_company_id']
+            try:
+                payload=list_inbound_invoices(org_remote,page=1,page_size=100)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                flash(str(exc)); return redirect(url_for('purchase_list'))
+            created=0; skipped=0; failed=[]
+            for item in payload.get('invoices',[]):
+                stored=None
+                remote_id=str(item.get('id') or '').strip()
+                if not remote_id or str(item.get('direction') or '').upper()!='INBOUND':
+                    continue
+                if (c.execute('SELECT 1 FROM purchase_invoices WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()
+                    or c.execute('SELECT 1 FROM purchase_credit_notes WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()):
+                    skipped+=1; continue
+                try:
+                    content=get_inbound_invoice_content(org_remote,remote_id)
+                    raw_original=download_inbound_invoice_original(org_remote,remote_id)
+                    subtotal=float(content.get('totalHt') if content.get('totalHt') is not None else (item.get('totalHt') or 0))
+                    vat=float(content.get('totalVat') or item.get('totalVat') or 0)
+                    total=float(content.get('totalTtc') if content.get('totalTtc') is not None else subtotal+vat)
+                    if not all(math.isfinite(v) and v>=0 for v in (subtotal,vat,total)):
+                        raise ValueError('montants non valides')
+                    number=str(item.get('number') or remote_id)[:100]
+                    supplier=str(item.get('vendorName') or item.get('vendorSiren') or 'Fournisseur électronique')[:255]
+                    issue=str(item.get('date') or '')[:10] or None
+                    due=str(item.get('dueDate') or '')[:10] or None
+                    if _is_inbound_credit_note(item,raw_original):
+                        original_number=_inbound_original_reference(raw_original)
+                        if not original_number: raise ValueError("avoir fournisseur sans référence à la facture d'origine")
+                        original=c.execute('SELECT * FROM purchase_invoices WHERE entity_id IS ? AND invoice_number=? ORDER BY id DESC LIMIT 1',(eid,original_number)).fetchone()
+                        if not original: raise ValueError("facture fournisseur d'origine introuvable")
+                        pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                        stored=f"weinvoice_credit_{hashlib.sha256((str(eid)+':'+remote_id).encode()).hexdigest()[:24]}.pdf"
+                        (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                        c.execute("""INSERT INTO purchase_credit_notes(
+                            entity_id,original_purchase_id,original_invoice_number,credit_number,supplier_name,issue_date,
+                            subtotal,vat_amount,total,category,notes,document_path,weinvoice_invoice_id,weinvoice_status,
+                            weinvoice_regulatory_code,weinvoice_last_sync_at,created_at)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (eid,original['id'],original_number,number,supplier,issue,subtotal,vat,total,
+                             original['category'] or 'autre','Avoir reçu par facturation électronique WeInvoice',stored,
+                             remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now(),now()))
+                        credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                        credit=c.execute('SELECT * FROM purchase_credit_notes WHERE id=? AND entity_id IS ?',(credit_id,eid)).fetchone()
+                        generate_purchase_credit_entry(c,credit,commit=False)
+                        c.commit(); created+=1
+                        continue
+                    pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                    stored=f"weinvoice_{hashlib.sha256(remote_id.encode()).hexdigest()[:24]}.pdf"
+                    (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                    validation='pending'
+                    settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
+                    if not (settings_row and settings_row['require_purchase_validation']): validation='approved'
+                    c.execute("""INSERT INTO purchase_invoices(
+                        supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
+                        notes,created_at,document_path,category,validation_status,entity_id,
+                        weinvoice_invoice_id,weinvoice_status,weinvoice_regulatory_code,weinvoice_last_sync_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (supplier,number,issue,due,subtotal,vat,total,'unpaid','Reçue par facturation électronique WeInvoice',now(),stored,'autre',validation,eid,
+                         remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now()))
+                    new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                    purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(new_id,eid)).fetchone()
+                    generate_purchase_entry(c,purchase_row,commit=False)
+                    c.commit(); created+=1
+                except Exception as exc:
+                    c.rollback()
+                    try:
+                        if stored: (_purchase_pdf_dir()/stored).unlink(missing_ok=True)
+                    except Exception: pass
+                    failed.append(f"{remote_id}: {type(exc).__name__}")
+                    log_ops_event('WEINVOICE_INBOUND_IMPORT_FAILED','ERROR',detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+            log_ops_event('WEINVOICE_INBOUND_SYNC','INFO' if not failed else 'WARNING',detail=f'entity={eid} created={created} skipped={skipped} failed={len(failed)}')
+            flash(f"Factures électroniques reçues : {created} importée(s), {skipped} déjà présente(s), {len(failed)} échec(s).")
+            return redirect(url_for('purchase_list'))
+        finally:
+            c.close()
+
+    @app.post('/facturation/achats/<int:purchase_id>/weinvoice/action')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_weinvoice_action(purchase_id):
+        eid=current_entity_id(); c=cx()
+        try:
+            p=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
+            if not p: abort(404)
+            remote_id=p['weinvoice_invoice_id']
+            if not remote_id:
+                flash("Cette facture n’est pas une facture électronique WeInvoice."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            action=str(request.form.get('action') or '').strip()
+            try:
+                result=apply_inbound_lifecycle_action(settings['weinvoice_company_id'],remote_id,action,reason_code=request.form.get('reason_code'),reason_label=request.form.get('reason_label'))
+                timeline=get_invoice_timeline(settings['weinvoice_company_id'],remote_id)
+                status,cdv=invoice_status_from_timeline(timeline)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                flash(str(exc)); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            c.execute('UPDATE purchase_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
+                      (str(status or result['status']),str(cdv if cdv is not None else result['regulatoryStatusCode']),now(),purchase_id,eid))
+            c.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
+                         VALUES(?,NULL,'weinvoice','purchase_buyer_action',?,?,?,?,?,?)""",
+                      (eid,remote_id,str(status or result['status']),str(cdv if cdv is not None else result['regulatoryStatusCode']),f'buyer-{purchase_id}-{action}-{uuid.uuid4()}',action,now()))
+            c.commit(); flash("Statut réglementaire de la facture fournisseur mis à jour.")
+            return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        finally: c.close()
+
+    @app.post('/facturation/achats/<int:purchase_id>/weinvoice/synchroniser')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def purchase_weinvoice_status_sync(purchase_id):
+        eid=current_entity_id(); c=cx()
+        try:
+            p=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
+            if not p: abort(404)
+            if not p['weinvoice_invoice_id']:
+                flash("Cette facture n’est pas une facture électronique WeInvoice."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            try: timeline=get_invoice_timeline(settings['weinvoice_company_id'],p['weinvoice_invoice_id']); status,cdv=invoice_status_from_timeline(timeline)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc: flash(str(exc)); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            c.execute('UPDATE purchase_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?', (str(status),str(cdv) if cdv is not None else None,now(),purchase_id,eid))
+            c.commit(); flash("Statut WeInvoice actualisé."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+        finally: c.close()
+
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
     @login_required
     @requires_active_plan
@@ -1997,8 +2182,11 @@ def register(app):
         supplier=None
         if p['supplier_id']:
             supplier=c.execute("SELECT * FROM suppliers WHERE id=? AND entity_id IS ?",(p['supplier_id'],eid)).fetchone()
+        einvoice_events=[]
+        if p['weinvoice_invoice_id']:
+            einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE entity_id IS ? AND remote_id=? ORDER BY id DESC LIMIT 50",(eid,p['weinvoice_invoice_id'])).fetchall()
         c.close()
-        return render_template('purchase_detail.html',p=p,supplier=supplier)
+        return render_template('purchase_detail.html',p=p,supplier=supplier,einvoice_events=einvoice_events)
 
     @app.route('/facturation/achats/<int:purchase_id>/modifier',methods=['GET','POST'])
     @login_required
@@ -2543,6 +2731,16 @@ def register(app):
             if operation_nature not in ('biens','services','mixte'): operation_nature='services'
             vat_on_debits=1 if request.form.get('vat_on_debits')=='on' else 0
             delivery_address=request.form.get('delivery_address','').strip()
+            ereporting_scope=(request.form.get('ereporting_scope') or '').strip()
+            ereporting_category=(request.form.get('ereporting_category') or '').strip()
+            counterparty_country=(request.form.get('counterparty_country') or '').strip().upper()
+            client_vat_number=(request.form.get('client_vat_number') or '').strip()
+            if ereporting_scope not in ('','b2c','international_b2b'):
+                flash("Périmètre e-reporting invalide."); return redirect(url_for('invoicing_new'))
+            if ereporting_scope=='b2c' and ereporting_category not in ('TLB1','TPS1','TNT1','TMA1'):
+                flash("Catégorie e-reporting B2C requise."); return redirect(url_for('invoicing_new'))
+            if ereporting_scope=='international_b2b' and (len(counterparty_country)!=2 or counterparty_country=='FR'):
+                flash("Pays étranger ISO alpha-2 requis pour le B2B international."); return redirect(url_for('invoicing_new'))
             due_date=request.form.get('due_date','').strip()
             notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
@@ -2587,11 +2785,13 @@ def register(app):
 
             c.execute('''INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,
                          line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,
-                         client_siren,operation_nature,vat_on_debits,delivery_address,entity_id)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)''',
+                         client_siren,operation_nature,vat_on_debits,delivery_address,entity_id,
+                         ereporting_scope,ereporting_category,counterparty_country,client_vat_number)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?)''',
                 (invoice_number,client_name,client_address,client_email,issue_date,due_date or None,
                  json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,token,now(),
-                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None,entity_id))
+                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None,entity_id,
+                 ereporting_scope or None,ereporting_category or None,counterparty_country or None,client_vat_number or None))
             c.commit()
             new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
@@ -2930,6 +3130,10 @@ def register(app):
             _, rule_failures = validate_facturx_business_rules(inv, items, company_row)
             if rule_failures:
                 flash("Facture EN16931 invalide — corrige les règles métier avant transmission WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            validation_errors = validate_outgoing_invoice(inv)
+            if validation_errors:
+                flash("Transmission bloquée : " + " ".join(validation_errors))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             pdf_bytes = render_facturx_pdf(inv, company_row)
             if pdf_bytes is None:
@@ -3389,6 +3593,210 @@ def register(app):
         if not credit: abort(404)
         items=json.loads(credit['line_items'] or '[]')
         return render_template('invoicing_credit_detail.html',credit=credit,items=items)
+
+    @app.post('/facturation/e-reporting/transmettre')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_ereporting_transmit():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); anchor_date=(request.form.get('anchor_date') or '').strip()
+        flow_type=(request.form.get('flow_type') or '').strip()
+        try: date.fromisoformat(anchor_date)
+        except Exception:
+            flash("Date d'ancrage e-reporting invalide."); return redirect(url_for('invoicing_list'))
+        c=cx()
+        try:
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((eid or 0),)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('invoicing_list'))
+            try:
+                validate_ereporting_fiscal_readiness(settings['weinvoice_company_id'])
+                payload=build_flux10(c,eid,anchor_date,flow_type)
+            except ValueError as exc:
+                flash(str(exc)); return redirect(url_for('invoicing_list'))
+            if not payload:
+                flash("Aucune donnée éligible pour ce flux et cette date."); return redirect(url_for('invoicing_list'))
+            old=c.execute("""SELECT * FROM ereporting_transmissions WHERE entity_id IS ? AND provider='weinvoice'
+                AND transmission_number=?""",(eid,payload['transmissionNumber'])).fetchone()
+            if old and old['status'] in ('submitted','accepted'):
+                flash("Ce flux e-reporting a déjà été transmis."); return redirect(url_for('invoicing_list'))
+            stamp=now()
+            c.execute("""INSERT OR IGNORE INTO ereporting_transmissions(
+                entity_id,provider,transmission_number,flow_type,anchor_date,type_code,status,payload_json,created_at,updated_at)
+                VALUES(?,'weinvoice',?,?,?,?, 'prepared',?,?,?)""",
+                (eid,payload['transmissionNumber'],flow_type,anchor_date,payload.get('typeCode','IN'),
+                 json.dumps(payload,ensure_ascii=False,separators=(',',':')),stamp,stamp)); c.commit()
+            try: result=submit_ereporting_flow(settings['weinvoice_company_id'],payload)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                c.execute("""UPDATE ereporting_transmissions SET status='error',last_error=?,updated_at=?
+                    WHERE entity_id IS ? AND transmission_number=?""",(str(exc)[:2000],now(),eid,payload['transmissionNumber']))
+                c.commit(); flash(str(exc)); return redirect(url_for('invoicing_list'))
+            ref=str(result.get('id') or result.get('transmissionId') or result.get('reference') or '')
+            c.execute("""UPDATE ereporting_transmissions SET status='submitted',provider_reference=?,late_deposit=?,
+                response_json=?,last_error=NULL,submitted_at=?,updated_at=? WHERE entity_id IS ? AND transmission_number=?""",
+                (ref,1 if result.get('lateDeposit') else 0,json.dumps(result,ensure_ascii=False),now(),now(),eid,payload['transmissionNumber']))
+            c.commit(); log_activity('EREPORTING_SUBMITTED',f"Flux {flow_type} transmis ({anchor_date})")
+            flash("Flux e-reporting transmis à la plateforme agréée."); return redirect(url_for('invoicing_list'))
+        finally: c.close()
+
+    @app.post('/facturation/e-reporting/<int:transmission_id>/synchroniser')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_ereporting_sync(transmission_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        try:
+            row=c.execute('SELECT * FROM ereporting_transmissions WHERE id=? AND entity_id IS ?',
+                          (transmission_id,eid)).fetchone()
+            if not row: abort(404)
+            if not row['provider_reference']:
+                flash("Transmission sans identifiant distant."); return redirect(url_for('invoicing_list'))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',
+                               ((eid or 0),)).fetchone()
+            if not settings or not settings['weinvoice_company_id']: abort(409)
+            try:
+                data=get_ereporting_transmission(settings['weinvoice_company_id'],row['provider_reference'])
+                tx=data.get('transmission') or {}
+                status=str(tx.get('status') or tx.get('fluxStatus') or row['status'])
+                flux_status=str(tx.get('fluxStatus') or '')
+                motifs=tx.get('rejectionMotifs') or data.get('rejectionMotifs') or []
+                c.execute("""UPDATE ereporting_transmissions SET status=?,flux_status=?,
+                    rejection_motifs_json=?,response_json=?,last_checked_at=?,last_error=NULL,updated_at=?
+                    WHERE id=? AND entity_id IS ?""",
+                    (status,flux_status,json.dumps(motifs,ensure_ascii=False),
+                     json.dumps(data,ensure_ascii=False),now(),now(),transmission_id,eid))
+                c.commit(); flash("Statut e-reporting actualisé.")
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                c.execute('UPDATE ereporting_transmissions SET last_error=?,last_checked_at=?,updated_at=? WHERE id=? AND entity_id IS ?',
+                          (str(exc)[:2000],now(),now(),transmission_id,eid)); c.commit(); flash(str(exc))
+            return redirect(url_for('invoicing_list'))
+        finally: c.close()
+
+    @app.post('/facturation/e-reporting/<int:transmission_id>/preuve')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_ereporting_proof(transmission_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        try:
+            row=c.execute('SELECT * FROM ereporting_transmissions WHERE id=? AND entity_id IS ?',
+                          (transmission_id,eid)).fetchone()
+            if not row: abort(404)
+            if not row['provider_reference']:
+                flash("Preuve indisponible : transmission sans identifiant distant."); return redirect(url_for('invoicing_list'))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',
+                               ((eid or 0),)).fetchone()
+            if not settings or not settings['weinvoice_company_id']: abort(409)
+            try:
+                proof=get_ereporting_proof(settings['weinvoice_company_id'],row['provider_reference'])
+                motifs=proof.get('rejectionMotifs') or []
+                c.execute("""UPDATE ereporting_transmissions SET proof_json=?,rejection_motifs_json=?,
+                    flux_status=?,last_checked_at=?,updated_at=?,last_error=NULL WHERE id=? AND entity_id IS ?""",
+                    (json.dumps(proof,ensure_ascii=False),json.dumps(motifs,ensure_ascii=False),
+                     str(proof.get('fluxStatus') or proof.get('status') or ''),now(),now(),transmission_id,eid))
+                c.commit()
+                return Response(json.dumps(proof,ensure_ascii=False,indent=2),mimetype='application/json',
+                    headers={'Content-Disposition':f'attachment; filename="preuve-fiscale-{transmission_id}.json"'})
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                flash(str(exc)); return redirect(url_for('invoicing_list'))
+        finally: c.close()
+
+    @app.get('/facturation/electronique/diagnostic')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_electronic_diagnostic():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); local=production_readiness(); fiscal=None; fiscal_error=None
+        c=cx()
+        try:
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',
+                               ((eid or 0),)).fetchone()
+            if settings and settings['weinvoice_company_id']:
+                try: fiscal=validate_ereporting_fiscal_readiness(settings['weinvoice_company_id'])
+                except Exception as exc: fiscal_error=str(exc)
+        finally: c.close()
+        return jsonify({'local':local,'fiscalSettings':fiscal,'fiscalError':fiscal_error,
+                        'productionSwitchAutomatic':False})
+
+    @app.post('/facturation/avoir/<int:credit_id>/electronique/envoyer')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_credit_electronic_send(credit_id):
+        c=cx()
+        try:
+            credit=_current_credit(c,credit_id)
+            if not credit: abort(404)
+            original=_current_invoice(c,credit['original_invoice_id'])
+            if not original: abort(404)
+            if credit['weinvoice_invoice_id']:
+                flash("Cet avoir a déjà été transmis électroniquement.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((credit['entity_id'] or 0),)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            from profitos.entities import resolve_entity
+            company=resolve_entity(c,credit['entity_id'])
+            pdf=render_credit_facturx_pdf(credit,original,company)
+            if not pdf:
+                flash("Impossible de générer le Factur-X de l'avoir.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            idem=f"credit-{credit['entity_id'] or 0}-{credit['id']}-{credit['credit_number']}"
+            try:
+                data=submit_invoice_file(settings['weinvoice_company_id'],pdf,f"{credit['credit_number']}.pdf",idem)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                c.execute('UPDATE outgoing_credit_notes SET weinvoice_last_error=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
+                          (str(exc)[:2000],now(),credit_id,credit['entity_id']))
+                c.commit(); flash(str(exc))
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            remote=str(data.get('eInvoicingId') or '').strip()
+            if not remote:
+                flash("WeInvoice n'a pas retourné d'identifiant électronique.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            c.execute('UPDATE outgoing_credit_notes SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',
+                      (remote,str(data.get('status') or 'SUBMITTED'),str(data.get('regulatoryStatusCode') or ''),now(),credit_id,credit['entity_id']))
+            c.commit(); log_activity('CREDIT_NOTE_EINVOICE_SUBMITTED',f"Avoir {credit['credit_number']} transmis électroniquement")
+            flash("Avoir transmis à la facturation électronique.")
+            return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+        finally: c.close()
+
+    @app.post('/facturation/avoir/<int:credit_id>/electronique/synchroniser')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_credit_electronic_sync(credit_id):
+        c=cx()
+        try:
+            credit=_current_credit(c,credit_id)
+            if not credit: abort(404)
+            if not credit['weinvoice_invoice_id']:
+                flash("Cet avoir n'a pas encore été transmis électroniquement.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((credit['entity_id'] or 0),)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Organisation WeInvoice absente pour cette entité.")
+                return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            try:
+                timeline=get_invoice_timeline(settings['weinvoice_company_id'],credit['weinvoice_invoice_id'])
+                status,cdv=invoice_status_from_timeline(timeline)
+            except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
+                flash(str(exc)); return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+            c.execute('UPDATE outgoing_credit_notes SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',
+                      (str(status or ''),str(cdv) if cdv is not None else None,now(),credit_id,credit['entity_id']))
+            c.commit(); flash("Statut électronique de l'avoir actualisé.")
+            return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
+        finally: c.close()
 
     @app.route('/facturation/avoir/<int:credit_id>/pdf')
     @login_required
@@ -3861,6 +4269,66 @@ def render_facturx_pdf(inv, company_row):
         associated_file_relationship='Alternative',
         compress=True,
     )
+    return bytes(pdf.output(dest='S'))
+
+
+
+def generate_credit_facturx_xml(credit, original_invoice, company):
+    """CII EN16931 d'un avoir : code 381 + référence à la facture d'origine."""
+    items=json.loads(credit['line_items'] or '[]')
+    proxy=dict(original_invoice)
+    proxy.update(invoice_number=credit['credit_number'],issue_date=credit['issue_date'],
+                 due_date=None,subtotal=credit['subtotal'],vat_amount=credit['vat_amount'],total=credit['total'])
+    xml=generate_facturx_xml(proxy,items,company)
+    root=ET.fromstring(xml.split(b'\n',1)[1]); ns=_CII_NS
+    doc=root.find(f'{{{ns["rsm"]}}}ExchangedDocument')
+    type_code=doc.find(f'{{{ns["ram"]}}}TypeCode') if doc is not None else None
+    if type_code is None: raise ValueError("CII invalide : TypeCode absent")
+    type_code.text='381'
+    txn=root.find(f'{{{ns["rsm"]}}}SupplyChainTradeTransaction')
+    settlement=txn.find(f'{{{ns["ram"]}}}ApplicableHeaderTradeSettlement') if txn is not None else None
+    if settlement is None: raise ValueError("CII invalide : règlement absent")
+    ref=ET.Element(f'{{{ns["ram"]}}}InvoiceReferencedDocument')
+    ET.SubElement(ref,f'{{{ns["ram"]}}}IssuerAssignedID').text=credit['original_invoice_number']
+    formatted=ET.SubElement(ref,f'{{{ns["ram"]}}}FormattedIssueDateTime')
+    d=ET.SubElement(formatted,f'{{{ns["qdt"]}}}DateTimeString')
+    d.set('format','102'); d.text=_cii_date(original_invoice['issue_date']) or ''
+    monetary=settlement.find(f'{{{ns["ram"]}}}SpecifiedTradeSettlementHeaderMonetarySummation')
+    children=list(settlement); pos=children.index(monetary) if monetary is not None else len(children)
+    settlement.insert(pos,ref)
+    return b'<?xml version="1.0" encoding="UTF-8"?>\n'+ET.tostring(root,encoding='utf-8')
+
+def render_credit_facturx_pdf(credit, original_invoice, company_row):
+    """PDF/A-3 Factur-X d'avoir avec CII 381 embarqué."""
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import DocumentCompliance
+    except ImportError:
+        return None
+    if not hasattr(DocumentCompliance,'PDFA_3B'): return None
+    regular=BASE/'static'/'fonts'/'DejaVuSans.ttf'; bold=BASE/'static'/'fonts'/'DejaVuSans-Bold.ttf'
+    if not regular.is_file() or not bold.is_file(): return None
+    xml_bytes=generate_credit_facturx_xml(credit,original_invoice,company_row)
+    items=json.loads(credit['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4',enforce_compliance=DocumentCompliance.PDFA_3B)
+    pdf.set_auto_page_break(auto=True,margin=18); pdf.set_title(f"Avoir {credit['credit_number']}")
+    pdf.add_font('DejaVu','',str(regular)); pdf.add_font('DejaVu','B',str(bold)); pdf.add_page()
+    pdf.set_font('DejaVu','B',20); pdf.cell(0,12,f"Avoir {credit['credit_number']}",ln=1)
+    pdf.set_font('DejaVu','',10)
+    if company_row:
+        pdf.cell(0,6,str(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,f"SIRET : {company_row['siret']}",ln=1)
+    pdf.ln(4); pdf.set_font('DejaVu','B',11); pdf.cell(0,7,f"Facture d'origine : {credit['original_invoice_number']}",ln=1)
+    pdf.set_font('DejaVu','',10); pdf.cell(0,6,f"Client : {credit['client_name'] or ''}",ln=1)
+    pdf.cell(0,6,f"Date : {credit['issue_date']}",ln=1); pdf.multi_cell(0,6,f"Motif : {credit['reason'] or ''}"); pdf.ln(5)
+    for it in items:
+        pdf.cell(135,7,str(it.get('label') or '')); pdf.cell(45,7,f"-{fr_number(it.get('line_total',0),2)} EUR",align='R',ln=1)
+    pdf.ln(5); pdf.set_font('DejaVu','B',12); pdf.cell(135,8,'Total TTC avoir',align='R')
+    pdf.cell(45,8,f"-{fr_number(credit['total'],2)} EUR",align='R',ln=1)
+    pdf.ln(8); pdf.set_font('DejaVu','',8)
+    pdf.multi_cell(0,4,"Avoir électronique Factur-X EN16931 — code document 381 et référence à la facture d'origine.")
+    pdf.embed_file(bytes=xml_bytes,basename='factur-x.xml',mime_type='application/xml',
+                   desc='Factur-X credit note data (EN16931)',associated_file_relationship='Alternative',compress=True)
     return bytes(pdf.output(dest='S'))
 
 
