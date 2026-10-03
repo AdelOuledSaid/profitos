@@ -24,7 +24,7 @@ from profitos.runtime import (
     WEINVOICE_BASE_URL, WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV,
     WEINVOICE_INVOICE_CLIENT_ID, WEINVOICE_INVOICE_CLIENT_SECRET,
     WEINVOICE_WEBHOOK_SECRET, WEINVOICE_INVOICE_WEBHOOK_SECRET,
-    cx, now, log_ops_event, TENANTS, tenant_db,
+    cx, now, log_ops_event, TENANTS, tenant_db, list_organization_ids,
 )
 
 
@@ -636,22 +636,28 @@ def invoice_status_from_timeline(data):
 
 
 def _tenant_connection_for_remote_invoice(remote_id):
-    """Retrouve le tenant propriétaire d'un eInvoicingId sans session utilisateur."""
-    for db_path in Path(TENANTS).glob('org_*.db'):
+    """Retrouve le tenant propriétaire d'un eInvoicingId sans session utilisateur.
+
+    En production PostgreSQL, les tenants sont des schémas org_<id> et ne
+    dépendent pas de la présence de fichiers tenant_data/org_*.db.
+    """
+    for org_id in list_organization_ids():
         conn=None
         try:
-            org_id=int(db_path.stem.split('_',1)[1])
             from profitos import db as _dbmod
             conn=_dbmod.connect_tenant(org_id, tenant_db(org_id))
-            row=conn.execute('SELECT id,entity_id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',(str(remote_id),)).fetchone()
-            if row: return conn,row
+            row=conn.execute(
+                'SELECT id,entity_id FROM outgoing_invoices WHERE weinvoice_invoice_id=?',
+                (str(remote_id),)
+            ).fetchone()
+            if row:
+                return conn,row
             conn.close()
         except Exception:
             if conn:
                 try: conn.close()
                 except Exception: pass
     return None,None
-
 
 def handle_invoice_status_webhook(payload, webhook_id=None):
     """Applique un invoice.status.* au bon tenant et déduplique event_id."""
