@@ -7,7 +7,7 @@ T=Path("templates/invoicing_detail.html").read_text(encoding="utf-8")
 def test_force_status_uses_documented_sandbox_contract():
     assert "/v1/_sandbox/einvoicing/{e_invoicing_id}/force-status" in W
     assert "WEINVOICE_ENV != 'sandbox'" in W
-    assert "X-Org-Id" not in W[W.index("def sandbox_force_invoice_status"):W.index("# ---------------------------------------------------------------------------\n# Vérification Standard Webhooks")]
+    assert "X-Org-Id" in W[W.index("def sandbox_force_invoice_status"):W.index("# ---------------------------------------------------------------------------\n# Vérification Standard Webhooks")]
     assert "occurredAt" in W
 
 def test_force_status_restricts_documented_codes():

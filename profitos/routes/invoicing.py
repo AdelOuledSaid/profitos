@@ -3008,7 +3008,7 @@ def register(app):
                 flash("Organisation WeInvoice absente — test impossible.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             try:
-                sandbox_force_invoice_status(remote_id, status=request.form.get('sandbox_status','213'))
+                sandbox_force_invoice_status(remote_id, status=request.form.get('sandbox_status','213'), organization_id=settings['weinvoice_company_id'])
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
                 flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))

@@ -510,7 +510,7 @@ def submit_invoice_file(organization_id, invoice_bytes, filename, idempotency_ke
 # ---------------------------------------------------------------------------
 # Lot 23.6 — test E2E sandbox du webhook de statut.
 # ---------------------------------------------------------------------------
-def sandbox_force_invoice_status(e_invoicing_id, status=213, occurred_at=None, timeout=20):
+def sandbox_force_invoice_status(e_invoicing_id, status=213, occurred_at=None, timeout=20, organization_id=None):
     """Force une transition CDV via l'API de contrôle WeInvoice Sandbox.
 
     Contrat Sandbox documenté: POST /v1/_sandbox/einvoicing/{id}/force-status
@@ -527,9 +527,16 @@ def sandbox_force_invoice_status(e_invoicing_id, status=213, occurred_at=None, t
         raise WeInvoiceConfigError("Statut CDV Sandbox invalide.")
     if status not in allowed:
         raise WeInvoiceConfigError(f"Statut CDV Sandbox non autorisé: {status}.")
-    token = fetch_access_token(credential_set='invoicing')
+    if not organization_id:
+        raise WeInvoiceConfigError("Organisation WeInvoice absente — le levier Sandbox exige un contexte d'organisation.")
+    token = fetch_access_token(credential_set='management')
     url = f"{WEINVOICE_BASE_URL}/v1/_sandbox/einvoicing/{e_invoicing_id}/force-status"
-    headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'X-Org-Id': str(organization_id),
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    }
     payload = {'status': status}
     if occurred_at:
         payload['occurredAt'] = occurred_at
