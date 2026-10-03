@@ -14,10 +14,36 @@ WooCommerce : authentification par clé/secret consommateur (Consumer
 Key/Secret), générés depuis WooCommerce > Réglages > Avancé > REST API.
 """
 import base64
+import ipaddress
+import re
 
 import requests
 
 SHOPIFY_API_VERSION = '2024-01'
+
+
+
+_HOST_RE = re.compile(r'^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$')
+
+
+def normalize_shop_domain(shop_domain, platform):
+    """Validate a merchant-supplied hostname before it is interpolated into an outbound URL."""
+    host = str(shop_domain or '').strip().lower().rstrip('.')
+    if not host or '://' in host or '/' in host or '@' in host or ':' in host:
+        raise ValueError("Domaine de boutique invalide.")
+    if not _HOST_RE.fullmatch(host):
+        raise ValueError("Domaine de boutique invalide.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Une adresse IP n'est pas acceptée comme domaine de boutique.")
+    if host == 'localhost' or host.endswith('.localhost'):
+        raise ValueError("Domaine de boutique invalide.")
+    if platform == 'shopify' and not host.endswith('.myshopify.com'):
+        raise ValueError("Le domaine Shopify doit se terminer par .myshopify.com.")
+    return host
 
 
 def is_connected(conn, platform):
@@ -45,6 +71,7 @@ def save_connection(conn, platform, shop_domain, credential_1, credential_2, con
 def fetch_shopify_orders(shop_domain, access_token, limit=20):
     """Liste les commandes récentes (les plus récentes en premier). Renvoie
     une liste normalisée, indépendante du format brut Shopify."""
+    shop_domain = normalize_shop_domain(shop_domain, 'shopify')
     url = f"https://{shop_domain}/admin/api/{SHOPIFY_API_VERSION}/orders.json"
     try:
         resp = requests.get(
@@ -77,6 +104,7 @@ def fetch_shopify_orders(shop_domain, access_token, limit=20):
 def fetch_woocommerce_orders(shop_domain, consumer_key, consumer_secret, limit=20):
     """Liste les commandes récentes via l'API REST WooCommerce (clé/secret
     consommateur, authentification HTTP Basic)."""
+    shop_domain = normalize_shop_domain(shop_domain, 'woocommerce')
     url = f"https://{shop_domain}/wp-json/wc/v3/orders"
     auth_bytes = f"{consumer_key}:{consumer_secret}".encode('utf-8')
     auth_header = 'Basic ' + base64.b64encode(auth_bytes).decode('ascii')

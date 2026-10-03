@@ -45,9 +45,16 @@ def _parse_rows(raw, filename):
             return ''
         acc=_norm(get('account_code'))
         if not acc: continue
+        debit=_amount(get('debit')); credit=_amount(get('credit'))
+        if debit < 0 or credit < 0:
+            raise ValueError('Les montants débit/crédit doivent être positifs ou nuls.')
+        if debit and credit:
+            raise ValueError(f'Le compte {acc} ne peut pas avoir un débit et un crédit sur la même ligne.')
+        if not debit and not credit:
+            continue
         out.append({'account_code':acc,'label':_norm(get('label')) or 'Paie',
                     'auxiliary_name':_norm(get('auxiliary_name')) or None,
-                    'debit':_amount(get('debit')),'credit':_amount(get('credit'))})
+                    'debit':debit,'credit':credit})
     return out
 
 
@@ -55,8 +62,10 @@ def register(app):
     @app.route('/comptabilite/paie', methods=['GET','POST'])
     @login_required
     def payroll_imports_list():
-        from profitos.entities import current_entity_id
+        from profitos.entities import current_entity_id, user_can_access_entity
         eid=current_entity_id(); c=cx(); error=None
+        if not user_can_access_entity(c, session.get('user_id'), eid):
+            c.close(); abort(403)
         if request.method=='POST':
             provider=_norm(request.form.get('provider')).upper()
             period=_norm(request.form.get('period_label'))
@@ -65,9 +74,21 @@ def register(app):
             if provider not in ('SILAE','PAYFIT') or not period or not f or not f.filename:
                 error='Prestataire, période et fichier CSV/XLSX sont obligatoires.'
             else:
+                try:
+                    entry_date=date.fromisoformat(entry_date).isoformat()
+                except (TypeError, ValueError):
+                    error="La date comptable de l'import de paie est invalide."
+            if not error:
                 raw=f.read(); digest=hashlib.sha256(raw).hexdigest()
                 exists=c.execute('SELECT id FROM payroll_imports WHERE entity_id IS ? AND file_sha256=?',(eid,digest)).fetchone()
-                if exists: error='Ce fichier de paie a déjà été importé pour cette entité.'
+                period_exists=c.execute(
+                    'SELECT id FROM payroll_imports WHERE entity_id IS ? AND provider=? AND period_label=? AND status IN (\'pending\',\'posted\')',
+                    (eid,provider,period),
+                ).fetchone()
+                if exists:
+                    error='Ce fichier de paie a déjà été importé pour cette entité.'
+                elif period_exists:
+                    error='Un import de paie existe déjà pour ce prestataire et cette période sur cette entité.'
                 else:
                     try:
                         lines=_parse_rows(raw,f.filename)
@@ -86,8 +107,10 @@ def register(app):
     @app.route('/comptabilite/paie/<int:import_id>/valider', methods=['POST'])
     @login_required
     def payroll_import_validate(import_id):
-        from profitos.entities import current_entity_id
+        from profitos.entities import current_entity_id, user_can_access_entity
         eid=current_entity_id(); c=cx()
+        if not user_can_access_entity(c, session.get('user_id'), eid):
+            c.close(); abort(403)
         row=c.execute("SELECT * FROM payroll_imports WHERE id=? AND entity_id IS ?",(import_id,eid)).fetchone()
         if not row or row['status']!='pending':
             c.close(); abort(404)
@@ -97,11 +120,14 @@ def register(app):
             lines=json.loads(row['lines_json'])
             entry_id=create_entry(c,'PA',row['entry_date'],f"Paie {row['provider']} — {row['period_label']}",lines,
                                   source_type='payroll_import',source_id=row['id'],created_by=current_user()['email'],entity_id=eid,commit=False)
-            c.execute("UPDATE payroll_imports SET status='posted',accounting_entry_id=?,validated_by=?,validated_at=? WHERE id=? AND entity_id IS ? AND status='pending'",
-                      (entry_id,current_user()['email'],datetime.utcnow().isoformat(),import_id,eid)); c.commit()
+            posted = c.execute("UPDATE payroll_imports SET status='posted',accounting_entry_id=?,validated_by=?,validated_at=? WHERE id=? AND entity_id IS ? AND status='pending'",
+                               (entry_id,current_user()['email'],datetime.utcnow().isoformat(),import_id,eid))
+            if posted.rowcount != 1:
+                raise AccountingError("Cet import de paie n'est plus en attente de validation.")
+            c.commit()
             log_activity('PAYROLL_IMPORT_POSTED',f"Import paie #{import_id} comptabilisé dans PA")
             flash('OD de paie validée et comptabilisée dans le journal PA.')
-        except AccountingError as exc:
+        except (AccountingError, ValueError, TypeError, json.JSONDecodeError) as exc:
             c.rollback()
             flash(f'Validation impossible : {exc}')
         finally: c.close()

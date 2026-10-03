@@ -116,8 +116,10 @@ def register(app):
     @login_required
     @require_area('settings')
     def cloud_storage_sync(provider):
+        from profitos.entities import current_entity_id
         if provider not in PROVIDERS:
             abort(404)
+        entity_id = current_entity_id()
         c = cx()
         connection = c.execute('SELECT * FROM cloud_storage_connections WHERE provider=?', (provider,)).fetchone()
         if not connection:
@@ -187,25 +189,28 @@ def register(app):
             c.execute(
                 """INSERT INTO purchase_invoices
                    (supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,
-                    status,notes,created_at,document_path,category,validation_status)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    status,notes,created_at,document_path,category,validation_status,entity_id)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (detected['supplier_name'], detected['invoice_number'],
                  detected['issue_date'] or None, detected['due_date'] or None,
                  detected['subtotal'], detected['vat_amount'], detected['total'],
-                 'unpaid', f"Importé depuis {PROVIDERS[provider]['label']}", now(), stored, 'autre', 'pending'),
+                 'unpaid', f"Importé depuis {PROVIDERS[provider]['label']}", now(), stored, 'autre', 'pending', entity_id),
             )
-            c.commit()
             new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
             try:
                 purchase_row = c.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
-                generate_purchase_entry(c, purchase_row)
+                generate_purchase_entry(c, purchase_row, commit=False)
+                c.execute(
+                    'INSERT INTO cloud_storage_imported_files(connection_id,provider_file_id,purchase_invoice_id,imported_at) VALUES(?,?,?,?)',
+                    (connection['id'], f['file_id'], new_id, now()),
+                )
+                c.commit()
             except AccountingError as e:
+                c.rollback()
+                path.unlink(missing_ok=True)
+                failed.append(f"{f['name']} : comptabilisation impossible ({e})")
                 log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat cloud {new_id}: {e}")
-            c.execute(
-                'INSERT INTO cloud_storage_imported_files(connection_id,provider_file_id,purchase_invoice_id,imported_at) VALUES(?,?,?,?)',
-                (connection['id'], f['file_id'], new_id, now()),
-            )
-            c.commit()
+                continue
             created.append(detected['invoice_number'])
 
         c.execute('UPDATE cloud_storage_connections SET last_sync_at=?,last_sync_error=? WHERE id=?',

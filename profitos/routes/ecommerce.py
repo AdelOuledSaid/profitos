@@ -5,6 +5,7 @@ from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
 from profitos.ecommerce import (
     is_connected, get_connection, save_connection, fetch_shopify_orders, fetch_woocommerce_orders,
+    normalize_shop_domain,
 )
 
 PLATFORM_LABELS = {'shopify': 'Shopify', 'woocommerce': 'WooCommerce'}
@@ -31,6 +32,11 @@ def register(app):
         cred2 = (request.form.get('credential_2') or '').strip()
         if not shop_domain or not cred1 or (platform == 'woocommerce' and not cred2):
             flash("Tous les champs requis pour cette plateforme doivent être renseignés.")
+            return redirect(url_for('ecommerce_settings'))
+        try:
+            shop_domain = normalize_shop_domain(shop_domain, platform)
+        except ValueError as e:
+            flash(str(e))
             return redirect(url_for('ecommerce_settings'))
         c = cx()
         save_connection(c, platform, shop_domain, cred1, cred2, current_user()['email'])
@@ -76,12 +82,13 @@ def register(app):
             flash(f"Synchronisation échouée : {e}")
             return redirect(url_for('ecommerce_settings'))
 
+        entity_id = current_entity_id()
         already = {
             r['external_order_id'] for r in c.execute(
-                'SELECT external_order_id FROM ecommerce_imported_orders WHERE platform=?', (platform,)
+                'SELECT external_order_id FROM ecommerce_imported_orders WHERE platform=? AND entity_id IS ?',
+                (platform, entity_id),
             ).fetchall()
         }
-        entity_id = current_entity_id()
         created = 0
         for o in orders:
             if o['external_id'] in already or not o['line_items']:
@@ -92,7 +99,10 @@ def register(app):
                  'vat_rate': 0, 'line_total': round(li['qty'] * li['unit_price'], 2)}
                 for li in o['line_items']
             ]
-            seq = c.execute("SELECT COUNT(*) n FROM outgoing_invoices").fetchone()['n'] + 1
+            seq = c.execute(
+                "SELECT COUNT(*) n FROM outgoing_invoices WHERE entity_id IS ?",
+                (entity_id,),
+            ).fetchone()['n'] + 1
             invoice_number = f"FA-{platform.upper()}-{date.today().year}-{seq:04d}"
             token = secrets.token_urlsafe(20)
             c.execute(

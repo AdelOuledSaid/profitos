@@ -324,7 +324,7 @@ def generate_sale_partial_payment_entry(conn, invoice, payment):
     )
 
 
-def generate_purchase_entry(conn, purchase):
+def generate_purchase_entry(conn, purchase, commit=True):
     """Génère l'écriture d'achat (journal AC) pour une facture fournisseur
     enregistrée : compte de charge (selon la catégorie) + TVA déductible
     (445660) au débit, Fournisseurs (401) au crédit. purchase : ligne de
@@ -344,6 +344,7 @@ def generate_purchase_entry(conn, purchase):
         f"Facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         lines, source_type='purchase_invoice', source_id=purchase['id'],
         entity_id=purchase['entity_id'] if 'entity_id' in purchase.keys() else None,
+        commit=commit,
     )
 
 

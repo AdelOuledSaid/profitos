@@ -8,6 +8,7 @@ from profitos.plan_usage import quota_state
 def register(app):
     @app.route('/organizations/new',methods=['POST'])
     @login_required
+    @require_area('settings')
     def org_new():
         name=request.form.get('org_name','').strip()
         if not name: flash("Nom d'organisation requis."); return redirect(url_for('settings'))
@@ -268,12 +269,22 @@ def register(app):
         org=current_org()
         if request.method=='POST':
             provider=request.form.get('provider','').strip()
-            email=request.form.get('email','').strip() or current_user()['email']
-            if provider:
-                c=auth_cx(); c.execute('INSERT INTO integration_interest(organization_id,provider,email,created_at) VALUES(?,?,?,?)',
-                    (org['id'],provider,email,now())); c.commit(); c.close()
+            allowed_providers={'Pennylane','QuickBooks','Sage'}
+            if provider not in allowed_providers:
+                abort(400)
+            email=current_user()['email']
+            c=auth_cx()
+            existing=c.execute(
+                'SELECT 1 FROM integration_interest WHERE organization_id=? AND provider=?',
+                (org['id'],provider),
+            ).fetchone()
+            if not existing:
+                c.execute('INSERT INTO integration_interest(organization_id,provider,email,created_at) VALUES(?,?,?,?)',
+                    (org['id'],provider,email,now()))
+                c.commit()
                 log_activity('INTEGRATION_INTEREST',f'Intérêt exprimé pour {provider}')
-                flash(f"Merci ! On te préviendra dès que la connexion {provider} sera disponible.")
+            c.close()
+            flash(f"Merci ! On te préviendra dès que la connexion {provider} sera disponible.")
             return redirect(url_for('integrations'))
         ac=auth_cx(); requested=ac.execute('SELECT provider FROM integration_interest WHERE organization_id=?',(org['id'],)).fetchall(); ac.close()
         requested_providers={r['provider'] for r in requested}
@@ -315,6 +326,7 @@ def register(app):
 
     @app.route('/settings/send-accountant-export',methods=['POST'])
     @login_required
+    @require_area('settings')
     def send_accountant_export_now():
         """Envoie immédiatement (test manuel) l'export RECOVER au comptable configuré.
         N'envoie qu'un LIEN de téléchargement sécurisé par token, jamais de pièce jointe
@@ -378,6 +390,7 @@ def register(app):
 
     @app.route('/settings/test-notification',methods=['POST'])
     @login_required
+    @require_area('settings')
     def test_notification():
         notify_org(f"🔔 Test ProfitOS depuis {current_org()['name']} — les notifications fonctionnent.")
         flash("Notification de test envoyée (si un webhook est configuré et joignable).")
@@ -444,6 +457,7 @@ def register(app):
 
     @app.route('/settings/gdpr-export')
     @login_required
+    @require_area('settings')
     def gdpr_export():
         """Export RGPD en lecture seule : toutes les données liées à l'utilisateur et à
         son organisation active, au format JSON. N'altère jamais les données existantes."""
@@ -525,30 +539,37 @@ def register(app):
                     ('sector_dso_signals','organization_id'),
                     ('public_invoice_tokens','organization_id'),
                     ('export_tokens','organization_id'),
+                    ('accounting_fec_tokens','organization_id'),
+                    ('supplier_inbox_tokens','organization_id'),
+                    ('supplier_inbox_entity_tokens','organization_id'),
+                    ('outgoing_invoice_tokens','organization_id'),
+                    ('outgoing_quote_tokens','organization_id'),
+                    ('api_audit_log','organization_id'),
+                    ('api_idempotency','organization_id'),
                     ('api_keys','organization_id'),
+                    ('cabinet_time_entries','organization_id'),
+                    ('cabinet_documents','organization_id'),
                     ('partner_directory','organization_id'),
                     ('integration_interest','organization_id'),
                     ('activity_log','organization_id'),
                     ('security_events','organization_id'),
                     ('plan_usage','organization_id'),
                 )
-                for table,column in auth_deletes:
-                    try:
-                        ac.execute(f'DELETE FROM {table} WHERE {column}=?',(org['id'],))
-                        ac.commit()
-                    except Exception:
-                        # Compatibilité avec anciennes bases où certaines tables
-                        # n'existent pas encore. PGConnection rollbacke l'instruction
-                        # fautive, sans annuler les suppressions déjà commitées.
-                        pass
                 try:
+                    # Nettoyage AUTH atomique : ne jamais annoncer une suppression
+                    # complète si une table partagée actuelle n'a pas pu être nettoyée.
+                    for table,column in auth_deletes:
+                        ac.execute(f'DELETE FROM {table} WHERE {column}=?',(org['id'],))
                     ac.execute('DELETE FROM referrals WHERE referrer_org_id=? OR referred_org_id=?',(org['id'],org['id']))
+                    ac.execute('DELETE FROM memberships WHERE organization_id=?',(org['id'],))
+                    ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],))
                     ac.commit()
                 except Exception:
-                    pass
-                ac.execute('DELETE FROM memberships WHERE organization_id=?',(org['id'],))
-                ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],))
-                ac.commit()
+                    ac.rollback(); ac.close()
+                    current_app.logger.exception('Auth organization deletion failed for org %s',org['id'])
+                    flash("Le stockage privé a été supprimé, mais le nettoyage final des métadonnées du compte a échoué. Aucune confirmation de suppression totale n'a été affichée ; contactez le support pour finaliser le nettoyage.")
+                    session.clear()
+                    return redirect(url_for('login'))
                 remaining_members=0
             else:
                 # L'organisation continue d'exister : seul l'utilisateur la quitte.

@@ -6,6 +6,7 @@ from profitos.accounting import (AccountingError, generate_fec, fec_filename,
                                    create_cutoff_entry, reverse_cutoff_entry, CUTOFF_ACCOUNTS, CUTOFF_LABELS,
                                    compute_bilan, compute_compte_resultat)
 import io
+from datetime import datetime, timedelta
 
 
 def register(app):
@@ -297,7 +298,7 @@ def register(app):
     @login_required
     @requires_feature('accounting_core')
     def accounting_fec_export():
-        from profitos.entities import resolve_entity, list_all_entities
+        from profitos.entities import resolve_entity, accessible_entities, user_can_access_entity
         c = cx()
         error = None
         if request.method == 'POST':
@@ -307,9 +308,19 @@ def register(app):
             entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
             if not date_from or not date_to:
                 error = "Les deux dates (début et fin) sont obligatoires."
-            elif date_from > date_to:
-                error = "La date de début doit précéder la date de fin."
             else:
+                try:
+                    parsed_date_from = date.fromisoformat(date_from)
+                    parsed_date_to = date.fromisoformat(date_to)
+                except (TypeError, ValueError):
+                    parsed_date_from = parsed_date_to = None
+                if parsed_date_from is None or parsed_date_to is None:
+                    error = "Les dates FEC sont invalides."
+                elif parsed_date_from > parsed_date_to:
+                    error = "La date de début doit précéder la date de fin."
+            if not error and not user_can_access_entity(c, session.get('user_id'), entity_id):
+                error = "Vous n'avez pas accès à cette entité."
+            if not error:
                 try:
                     identity = resolve_entity(c, entity_id)
                 except ValueError as e:
@@ -332,7 +343,7 @@ def register(app):
         from profitos.entities import current_entity_id
         n_entries = c.execute('SELECT COUNT(*) n FROM accounting_entries WHERE entity_id IS ?', (current_entity_id(),)).fetchone()['n']
         settings = c.execute('SELECT accountant_email FROM app_settings WHERE id=1').fetchone()
-        entities = list_all_entities(c)
+        entities = accessible_entities(c, session.get('user_id'))
         c.close()
         return render_template('accounting_fec_export.html', error=error, n_entries=n_entries,
                                 accountant_email=settings['accountant_email'] if settings else None,
@@ -351,13 +362,22 @@ def register(app):
 
         date_from = (request.form.get('date_from') or '').strip()
         date_to = (request.form.get('date_to') or '').strip()
-        if not date_from or not date_to or date_from > date_to:
+        try:
+            parsed_date_from = date.fromisoformat(date_from)
+            parsed_date_to = date.fromisoformat(date_to)
+        except (TypeError, ValueError):
+            parsed_date_from = parsed_date_to = None
+        if parsed_date_from is None or parsed_date_to is None or parsed_date_from > parsed_date_to:
             flash("Dates invalides.")
             return redirect(url_for('accounting_fec_export'))
         entity_id_raw = request.form.get('entity_id')
         entity_id = int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
-        from profitos.entities import resolve_entity
+        from profitos.entities import resolve_entity, user_can_access_entity
         c2 = cx()
+        if not user_can_access_entity(c2, session.get('user_id'), entity_id):
+            c2.close()
+            flash("Vous n'avez pas accès à cette entité.")
+            return redirect(url_for('accounting_fec_export'))
         try:
             identity = resolve_entity(c2, entity_id)
         except ValueError:
@@ -383,7 +403,7 @@ def register(app):
                    f"{identity['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
                    f"l'export à jour à chaque clic."),
             cta_label='Télécharger le FEC', cta_url=link,
-            footer="Ce lien reste valable — contacte l'organisation si tu n'es pas concerné(e).",
+            footer="Ce lien est valable 7 jours — contacte l'organisation si tu n'es pas concerné(e).",
         )
         result = send_email(settings['accountant_email'], f"Export FEC — {identity['name']}", html)
         if result.get('dry_run'):
@@ -405,6 +425,14 @@ def register(app):
         ac.close()
         if not mapping:
             abort(404)
+        created_at = mapping['created_at']
+        try:
+            created_dt = datetime.fromisoformat(str(created_at).replace('Z', '+00:00'))
+            current_dt = datetime.now(created_dt.tzinfo) if created_dt.tzinfo else datetime.now()
+        except (TypeError, ValueError):
+            abort(404)
+        if current_dt - created_dt > timedelta(days=7):
+            abort(410)
         tc = tenant_cx_direct(mapping['organization_id'])
         from profitos.entities import resolve_entity
         try:
@@ -451,26 +479,35 @@ def register(app):
             ).fetchone()['n']
             if not closed_until:
                 error = "La date de clôture est obligatoire."
-            elif already_closed and closed_until <= already_closed:
-                error = f"La comptabilité est déjà clôturée jusqu'au {already_closed} — impossible de reculer la clôture."
-            elif unbalanced:
-                error = "Impossible de clôturer : certaines écritures de cette entité ne sont pas équilibrées (anomalie à corriger d'abord)."
+            elif not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", closed_until):
+                error = "La date de clôture est invalide."
             else:
-                c.execute(
-                    '''INSERT INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
-                       VALUES(?,?,?,?,?)
-                       ON CONFLICT(entity_key) DO UPDATE SET closed_until=excluded.closed_until,
-                       closed_at=excluded.closed_at,closed_by=excluded.closed_by''',
-                    (entity_key, entity_id, closed_until, now(), session.get('user_id')),
-                )
-                c.execute(
-                    "UPDATE accounting_entries SET is_locked=1 WHERE entity_id IS ? AND entry_date<=?",
-                    (entity_id, closed_until),
-                )
-                c.commit()
-                log_activity('ACCOUNTING_CLOSED', f"Comptabilité entité {entity_key} clôturée jusqu'au {closed_until}")
-                flash(f"Comptabilité clôturée jusqu'au {closed_until}. Les écritures de cette entité antérieures ou à cette date sont désormais verrouillées.")
-                return redirect(url_for('accounting_closure'))
+                try:
+                    parsed_closed_until = date.fromisoformat(closed_until)
+                except ValueError:
+                    parsed_closed_until = None
+                if parsed_closed_until is None:
+                    error = "La date de clôture est invalide."
+                elif already_closed and closed_until <= already_closed:
+                    error = f"La comptabilité est déjà clôturée jusqu'au {already_closed} — impossible de reculer la clôture."
+                elif unbalanced:
+                    error = "Impossible de clôturer : certaines écritures de cette entité ne sont pas équilibrées (anomalie à corriger d'abord)."
+                else:
+                    c.execute(
+                        '''INSERT INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
+                           VALUES(?,?,?,?,?)
+                           ON CONFLICT(entity_key) DO UPDATE SET closed_until=excluded.closed_until,
+                           closed_at=excluded.closed_at,closed_by=excluded.closed_by''',
+                        (entity_key, entity_id, closed_until, now(), session.get('user_id')),
+                    )
+                    c.execute(
+                        "UPDATE accounting_entries SET is_locked=1 WHERE entity_id IS ? AND entry_date<=?",
+                        (entity_id, closed_until),
+                    )
+                    c.commit()
+                    log_activity('ACCOUNTING_CLOSED', f"Comptabilité entité {entity_key} clôturée jusqu'au {closed_until}")
+                    flash(f"Comptabilité clôturée jusqu'au {closed_until}. Les écritures de cette entité antérieures ou à cette date sont désormais verrouillées.")
+                    return redirect(url_for('accounting_closure'))
 
         closure = c.execute(
             'SELECT * FROM accounting_entity_closure WHERE entity_key=?', (entity_key,)
@@ -686,7 +723,12 @@ def register(app):
         c = cx()
         date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
         date_to = request.values.get('date_to') or date.today().isoformat()
-        if date_from > date_to:
+        try:
+            parsed_date_from = date.fromisoformat(date_from)
+            parsed_date_to = date.fromisoformat(date_to)
+        except (TypeError, ValueError):
+            parsed_date_from = parsed_date_to = None
+        if parsed_date_from is None or parsed_date_to is None or parsed_date_from > parsed_date_to:
             c.close(); flash("Période TVA invalide."); return redirect(url_for('vat_summary'))
 
         collected,deductible,entry_count,max_entry_id = _vat_snapshot(c,eid,date_from,date_to)
@@ -708,6 +750,9 @@ def register(app):
 
         if request.method == 'POST':
             action=request.form.get('action') or 'prepare'
+            allowed_actions = {'prepare','lock','file','reopen','fiscal_prepare','fiscal_validate'}
+            if action not in allowed_actions:
+                c.close(); abort(400)
             user=session.get('email') or session.get('user_email') or 'utilisateur'
             if action in ('fiscal_prepare','fiscal_validate'):
                 if action=='fiscal_validate' and not all(x['ok'] for x in checks):
@@ -734,6 +779,9 @@ def register(app):
                 return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
             if declaration and declaration['status']=='filed' and action not in ('reopen',):
                 c.close(); flash("Cette période est marquée déclarée. Rouvrez-la avant toute modification.")
+                return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
+            if declaration and declaration['status']=='locked' and action=='prepare':
+                c.close(); flash("Cette période TVA est verrouillée. Rouvrez-la avant de la modifier.")
                 return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
             if action=='reopen':
                 if declaration:
@@ -789,7 +837,12 @@ def register(app):
         eid = current_entity_id(); c = cx()
         date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
         date_to = request.values.get('date_to') or date.today().isoformat()
-        if date_from > date_to:
+        try:
+            parsed_date_from = date.fromisoformat(date_from)
+            parsed_date_to = date.fromisoformat(date_to)
+        except (TypeError, ValueError):
+            parsed_date_from = parsed_date_to = None
+        if parsed_date_from is None or parsed_date_to is None or parsed_date_from > parsed_date_to:
             c.close(); flash("Période fiscale invalide."); return redirect(url_for('fiscal_workpapers'))
         workpaper_type = (request.values.get('workpaper_type') or 'LIASSE').upper()
         allowed = ('LIASSE','IS','CVAE','DAS2')
@@ -818,8 +871,17 @@ def register(app):
             {'code':'trial_balance','label':'Balance générale débit = crédit','ok':abs(debit_total-credit_total)<0.01,'count':0 if abs(debit_total-credit_total)<0.01 else 1},
         ]
         existing = c.execute("SELECT * FROM fiscal_workpapers WHERE workpaper_type=? AND period_start=? AND period_end=? AND " + ('entity_id=?' if eid else 'entity_id IS NULL'), (workpaper_type,date_from,date_to,eid) if eid else (workpaper_type,date_from,date_to)).fetchone()
+        stale = False
+        if existing and existing['status'] == 'validated':
+            stale = (
+                max_entry_id != int(existing['snapshot_max_entry_id'] or 0)
+                or abs(debit_total - float(existing['debit_total'] or 0)) > 0.01
+                or abs(credit_total - float(existing['credit_total'] or 0)) > 0.01
+            )
         if request.method == 'POST':
             action = request.form.get('action') or 'prepare'
+            if action not in {'prepare','validate'}:
+                c.close(); abort(400)
             if existing and existing['status'] == 'validated':
                 c.close(); flash("Ce dossier fiscal est validé et verrouillé. Il ne peut plus être écrasé.")
                 return redirect(url_for('fiscal_workpapers',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type))
@@ -837,7 +899,7 @@ def register(app):
             return redirect(url_for('fiscal_workpapers',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type))
         history = c.execute("SELECT * FROM fiscal_workpapers WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC,id DESC LIMIT 20", ep).fetchall()
         c.close()
-        return render_template('fiscal_workpapers.html',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type,trial=trial,debit_total=debit_total,credit_total=credit_total,checks=checks,existing=existing,history=history,closed_until=closed_until)
+        return render_template('fiscal_workpapers.html',date_from=date_from,date_to=date_to,workpaper_type=workpaper_type,trial=trial,debit_total=debit_total,credit_total=credit_total,checks=checks,existing=existing,history=history,closed_until=closed_until,stale=stale)
 
     @app.route('/comptabilite/plaquette', methods=['GET', 'POST'])
     @login_required

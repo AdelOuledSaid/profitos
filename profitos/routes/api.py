@@ -2,6 +2,7 @@ from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
 from profitos.entities import current_entity_id
 from profitos.webhooks_outbound import validate_outbound_webhook_url, new_webhook_secret, deliver_webhook, WEBHOOK_EVENTS
+import math
 
 
 def register(app):
@@ -115,6 +116,8 @@ def register(app):
             vat_amount = float(payload.get('vat_amount', 0) or 0)
         except (TypeError, ValueError):
             return jsonify({'error': 'invalid_amount', 'message': 'subtotal doit être un nombre.'}), 400
+        if not math.isfinite(subtotal) or not math.isfinite(vat_amount) or subtotal < 0 or vat_amount < 0:
+            return jsonify({'error': 'invalid_amount', 'message': 'subtotal et vat_amount doivent être des montants finis et positifs ou nuls.'}), 400
         if not supplier_name or not invoice_number:
             return jsonify({'error': 'missing_fields', 'message': 'supplier_name et invoice_number sont obligatoires.'}), 400
         category = payload.get('category', 'autre')
@@ -169,8 +172,8 @@ def register(app):
                 amount = float(l.get('amount'))
             except (TypeError, ValueError):
                 return jsonify({'error': 'invalid_amount', 'message': f"Ligne {i+1} : amount invalide."}), 400
-            if amount <= 0:
-                return jsonify({'error': 'invalid_amount', 'message': f"Ligne {i+1} : amount doit être positif."}), 400
+            if not math.isfinite(amount) or amount <= 0:
+                return jsonify({'error': 'invalid_amount', 'message': f"Ligne {i+1} : amount doit être un montant fini et positif."}), 400
             clean_lines.append({
                 'category': category, 'amount': amount,
                 'expense_date': l.get('expense_date'), 'description': l.get('description', ''),
@@ -220,6 +223,9 @@ def register(app):
                 vat_rate = float(l.get('vat_rate', 20))
             except (TypeError, ValueError):
                 return jsonify({'error': 'invalid_line', 'message': f"Ligne {i+1} : qty/unit_price/vat_rate invalide."}), 400
+            if (not math.isfinite(qty) or not math.isfinite(price) or not math.isfinite(vat_rate)
+                    or qty <= 0 or price < 0 or vat_rate < 0):
+                return jsonify({'error': 'invalid_line', 'message': f"Ligne {i+1} : qty/unit_price/vat_rate doivent être finis et positifs ou nuls."}), 400
             line_ht = round(qty * price, 2)
             subtotal += line_ht
             vat_amount += round(line_ht * vat_rate / 100, 2)

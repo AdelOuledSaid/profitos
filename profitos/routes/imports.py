@@ -3,6 +3,7 @@ from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 import base64
 from pypdf.errors import PyPdfError
+from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 
 # Formats de données acceptés par les imports financiers.
 # Déclarés localement pour éviter qu'une ancienne constante runtime bloque les PDF.
@@ -41,7 +42,7 @@ def _pdf_first(patterns, text, flags=re.I|re.M):
 
 
 def _pdf_text(path, max_pages=20):
-    """Extrait le texte d'un PDF natif. Pas d'OCR : un scan image est refusé."""
+    """Extrait la couche texte native ; le flux appelant bascule vers la vision si elle est absente."""
     reader=PdfReader(str(path))
     pages=[]
     for page in reader.pages[:max_pages]:
@@ -51,7 +52,7 @@ def _pdf_text(path, max_pages=20):
             pages.append('')
     text='\n'.join(pages).strip()
     if len(text)<20:
-        raise ValueError("PDF sans texte exploitable (probablement scanné). Utilisez un PDF texte ou le CSV/XLSX pour cette version.")
+        raise PdfTextUnavailable("PDF sans couche texte exploitable.")
     return text
 
 
@@ -134,7 +135,7 @@ def _extract_expense_pdf(path):
     try:
         text=_pdf_text(path, max_pages=20)
     except (ValueError,PyPdfError) as text_err:
-        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
             raise
         prompt=(
             "Tu analyses un document de dépense (facture fournisseur, avis URSSAF, "
@@ -297,7 +298,7 @@ def _extract_bank_statement_pdf(path):
     try:
         text=_pdf_text(path, max_pages=40)
     except (ValueError,PyPdfError) as text_err:
-        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
             raise
         rows=_ai_extract_bank_statement_rows(path)
         unique=[]; seen=set()
@@ -350,7 +351,7 @@ def _extract_invoice_pdf(path):
     try:
         text=_pdf_text(path, max_pages=12)
     except (ValueError,PyPdfError) as text_err:
-        if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
             raise
         prompt=(
             "Tu analyses une facture client fournie en pièce jointe. Réponds "

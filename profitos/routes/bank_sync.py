@@ -170,6 +170,14 @@ def _sync_powens(c, row):
         aid = str(a.get("id") or "")
         if not aid:
             continue
+        # A provider account already attached to another ProfitOS entity must
+        # never be silently reassigned by a synchronization.
+        existing_account = c.execute(
+            "SELECT entity_id FROM bank_accounts WHERE provider=? AND provider_account_id=?",
+            ("powens", aid),
+        ).fetchone()
+        if existing_account and existing_account["entity_id"] != entity_id:
+            raise RuntimeError("Compte bancaire déjà rattaché à une autre entité ProfitOS.")
         synced_account_ids.add(aid)
         balance = a.get("balance")
         try:
@@ -216,6 +224,19 @@ def _sync_powens(c, row):
             continue
         label = t.get("simplified_wording") or t.get("wording") or t.get("original_wording") or ""
         tx_date = str(t.get("date") or t.get("application_date") or "")[:10]
+        # Same protection for provider transactions: a remote transaction
+        # cannot migrate between entity-owned bank accounts during an upsert.
+        existing_tx = c.execute(
+            """SELECT a.entity_id
+                 FROM bank_transactions bt
+                 JOIN bank_accounts a
+                   ON a.provider=bt.provider
+                  AND a.provider_account_id=bt.provider_account_id
+                WHERE bt.provider=? AND bt.provider_transaction_id=?""",
+            ("powens", tid),
+        ).fetchone()
+        if existing_tx and existing_tx["entity_id"] != entity_id:
+            raise RuntimeError("Transaction bancaire déjà rattachée à une autre entité ProfitOS.")
         auto_category = apply_categorization_rule(c, label, entity_id)
         c.execute(
             """INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at,category)
@@ -223,7 +244,8 @@ def _sync_powens(c, row):
                ON CONFLICT(provider,provider_transaction_id) DO UPDATE SET
                  provider_account_id=excluded.provider_account_id,transaction_date=excluded.transaction_date,
                  label=excluded.label,amount=excluded.amount,raw_status=excluded.raw_status,
-                 last_synced_at=excluded.last_synced_at""",
+                 last_synced_at=excluded.last_synced_at,
+                 category=COALESCE(NULLIF(bank_transactions.category,''),excluded.category)""",
             ("powens", tid, account_id, tx_date, label, amount,
              str(t.get("state") or t.get("coming") or ""), now, auto_category),
         )
@@ -831,7 +853,7 @@ def register(app):
         available=max(0.0,round(abs(float(tx['amount'] or 0))-float(allocated),2))
         amount=round(float(requested),2) if requested else min(balance,available)
         if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
-        key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}:{float(allocated):.2f}"
+        key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
             c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['booking_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
@@ -840,7 +862,7 @@ def register(app):
             new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
             c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
             c.commit()
-        except (AccountingError, sqlite3.IntegrityError) as e:
+        except (AccountingError, sqlite3.IntegrityError, ValueError) as e:
             c.rollback(); c.close(); flash(f"Rapprochement annulé : {e}"); return redirect(url_for('banking'))
         c.close(); flash("Rapprochement fournisseur enregistré."); return redirect(url_for('banking'))
 

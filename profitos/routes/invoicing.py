@@ -4,6 +4,7 @@ import statistics
 import xml.etree.ElementTree as ET
 import base64
 from pypdf.errors import PyPdfError
+from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
@@ -465,7 +466,7 @@ def _purchase_pdf_extract(path):
     reader=PdfReader(str(path))
     text='\n'.join((page.extract_text() or '') for page in reader.pages[:12]).strip()
     if len(text)<20:
-        raise ValueError("PDF sans texte exploitable. Les PDF scannés ne sont pas encore pris en charge.")
+        raise PdfTextUnavailable("PDF sans couche texte exploitable.")
 
     def first(patterns):
         for pat in patterns:
@@ -1586,7 +1587,7 @@ def register(app):
                 try:
                     detected=_purchase_pdf_extract(path)
                 except (ValueError,PyPdfError) as text_err:
-                    if isinstance(text_err,ValueError) and "PDF sans texte exploitable" not in str(text_err):
+                    if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
                         raise
                     # PDF scanné sans texte, ou structurellement illisible par pypdf
                     # (fichier corrompu/tronqué) -> repli sur l'extraction IA, qui
@@ -1704,7 +1705,7 @@ def register(app):
                     try:
                         detected = _purchase_pdf_extract(path)
                     except (ValueError, PyPdfError) as text_err:
-                        if isinstance(text_err, ValueError) and "PDF sans texte exploitable" not in str(text_err):
+                        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
                             raise
                         detected = _purchase_ai_extract(path.read_bytes(), mime)
                 else:

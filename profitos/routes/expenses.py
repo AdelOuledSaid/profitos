@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 from pypdf.errors import PyPdfError
+from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
@@ -37,7 +38,7 @@ def _receipt_pdf_extract(path):
     reader = PdfReader(str(path))
     text = '\n'.join((p.extract_text() or '') for p in reader.pages[:3]).strip()
     if len(text) < 10:
-        raise ValueError("PDF sans texte exploitable (probablement scanné).")
+        raise PdfTextUnavailable("PDF sans couche texte exploitable.")
     amount_match = re.search(
         r'(?:total\s*ttc|montant\s*total|total\s*\u00e0\s*payer|total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*\u20ac?)',
         text, re.I,
@@ -258,7 +259,7 @@ def register(app):
                     try:
                         detected = _receipt_pdf_extract(path)
                     except (ValueError, PyPdfError) as text_err:
-                        if isinstance(text_err, ValueError) and "PDF sans texte exploitable" not in str(text_err):
+                        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
                             raise
                         detected = _receipt_ai_extract(path.read_bytes(), mime)
                         used_ai = True

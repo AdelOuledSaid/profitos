@@ -2248,9 +2248,10 @@ def api_entity_clause(column='entity_id'):
 
 def api_require_idempotency():
     key=(request.headers.get('Idempotency-Key') or '').strip()
-    if not key or len(key)>128:
+    if (not key or len(key)>128
+            or any(ord(ch) < 32 or ord(ch) == 127 for ch in key)):
         return None, (jsonify({'error':'idempotency_key_required',
-                              'message':'Idempotency-Key (1 à 128 caractères) requis pour cette écriture.'}),400)
+                              'message':'Idempotency-Key (1 à 128 caractères imprimables) requis pour cette écriture.'}),400)
     return key,None
 
 
@@ -2435,10 +2436,12 @@ def token_digest(token):
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 def _token_user(kind, raw_token):
-    """Retourne (user, stored_value).
+    """Retourne (user, stored_digest) pour un token stocké uniquement sous SHA-256.
 
-    Les nouveaux tokens sont stockés sous SHA-256. Le fallback plaintext permet
-    de ne pas casser immédiatement les liens émis avant le déploiement V1.3.3.
+    Les anciens tokens historiquement stockés en clair ne sont plus acceptés :
+    les liens de vérification expirent en 24 h et les liens de réinitialisation
+    en 1 h, donc conserver indéfiniment ce fallback affaiblirait inutilement la
+    protection des secrets présents dans la base d'authentification.
     """
     if kind not in ('verification','reset'):
         raise ValueError('Unknown token kind')
@@ -2446,13 +2449,8 @@ def _token_user(kind, raw_token):
     digest=token_digest(raw_token)
     c=auth_cx()
     u=c.execute(f'SELECT * FROM users WHERE {column}=?',(digest,)).fetchone()
-    stored=digest
-    if not u:
-        # Compatibilité transitoire avec les anciens liens V1.3.2 stockés en clair.
-        u=c.execute(f'SELECT * FROM users WHERE {column}=?',(raw_token,)).fetchone()
-        stored=raw_token
     c.close()
-    return u,stored
+    return u,digest
 
 def send_verification_email(user, dry_run=None):
     token=gen_token()
