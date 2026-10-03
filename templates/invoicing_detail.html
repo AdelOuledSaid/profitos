@@ -129,7 +129,7 @@
       <button type="submit" class="purchase-primary-btn secondary">Transmettre à WeInvoice</button>
     </form>
     {% endif %}
-    {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">Information de transmission : {{ inv.weinvoice_last_error }}</p>{% endif %}
+    {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">{% if wi_rejected %}Information de transmission : La facture électronique a été rejetée.{% else %}Information de transmission : {{ inv.weinvoice_last_error }}{% endif %}</p>{% endif %}
     {% if einvoice_events %}
     {% set event_labels = {
       'submitted': 'Transmission à WeInvoice',
