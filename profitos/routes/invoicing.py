@@ -10,6 +10,7 @@ from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavail
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
+from profitos.entities import current_entity_id
 from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry,
     generate_sale_credit_entry, generate_customer_deposit_entry, generate_customer_final_entry, generate_purchase_entry, generate_purchase_credit_entry,
     generate_purchase_payment_entry, generate_purchase_partial_payment_entry, AccountingError)
