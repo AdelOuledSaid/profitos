@@ -132,10 +132,10 @@
     {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">{% if wi_rejected %}Information de transmission : La facture électronique a été rejetée.{% else %}Information de transmission : {{ inv.weinvoice_last_error }}{% endif %}</p>{% endif %}
     {% if einvoice_events %}
     {% set event_labels = {
-      'submitted': 'Transmission à WeInvoice',
+      'submitted': 'Transmission électronique',
       'submission_failed': 'Échec de transmission',
       'status_sync': 'Synchronisation du statut',
-      'webhook_status': 'Webhook WeInvoice reçu'
+      'webhook_status': 'Mise à jour du statut'
     } %}
     <details style="margin:10px 0 14px;" open>
       <summary style="cursor:pointer;font-weight:700;">Historique de facturation électronique ({{ einvoice_events|length }})</summary>
