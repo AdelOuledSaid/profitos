@@ -752,6 +752,41 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         last_error=(f"Facture électronique rejetée par WeInvoice{': ' + rejection_detail if rejection_detail else '.'}" if is_rejected else None)
 
         kind=row['invoice_kind'] if 'invoice_kind' in row.keys() else 'outgoing'
+
+        # v340 — idempotence sémantique des webhooks de statut. WeInvoice peut
+        # relivrer le même état avec un nouvel event_id. Dans ce cas on acquitte
+        # bien la livraison et on rafraîchit les métadonnées, mais on ne crée pas
+        # une seconde ligne identique dans einvoice_events.
+        table = 'purchase_invoices' if kind == 'purchase' else 'outgoing_invoices'
+        current = conn.execute(
+            f'SELECT weinvoice_status FROM {table} WHERE id=? AND entity_id IS ?',
+            (row['id'], row['entity_id'])
+        ).fetchone()
+        same_business_status = bool(
+            current and str(current['weinvoice_status'] or '').strip().upper()
+            == str(status or '').strip().upper()
+        )
+        if same_business_status:
+            if kind != 'purchase':
+                conn.execute(
+                    'UPDATE outgoing_invoices SET weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=? WHERE id=? AND entity_id IS ?',
+                    (str(cdv) if cdv is not None else None, now(), last_error, row['id'], row['entity_id'])
+                )
+            else:
+                conn.execute(
+                    'UPDATE purchase_invoices SET weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
+                    (str(cdv) if cdv is not None else None, now(), row['id'], row['entity_id'])
+                )
+            if event_id:
+                conn.execute(
+                    'INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',
+                    (event_id,str(webhook_id or ''),event_name,now())
+                )
+            conn.commit()
+            log_ops_event('WEINVOICE_INVOICE_STATUS_DUPLICATE','INFO',
+                          detail=f'eInvoicingId={remote_id} status={status} webhook_id={webhook_id or ""}')
+            return True
+
         if kind != 'purchase':
             # Chemin sortant historique conservé à l'identique pour les lots figés.
             updated = conn.execute(
