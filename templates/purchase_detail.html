@@ -18,7 +18,7 @@
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
     <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
-      {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','DISPUTED':'En litige','SUSPENDED':'Suspendue','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
+      {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','APPROVED_PARTIALLY':'Partiellement acceptée','DISPUTED':'En litige','SUSPENDED':'Suspendue','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
       <tr><td>Statut</td><td><strong>{{ purchase_status_labels.get((p.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></td></tr>
       <tr><td>Dernière synchronisation</td><td>{{ p.weinvoice_last_sync_at|fr_date(true) if p.weinvoice_last_sync_at else '—' }}</td></tr>
     </tbody></table></div>
