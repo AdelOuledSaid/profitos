@@ -740,8 +740,15 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
     regulatory_ack = {
         'invoice.regulatory.accepted': ('ACK_250_ACCEPTED', '250'),
         'invoice.regulatory.rejected': ('ACK_251_REJECTED', '251'),
+        'invoice.regulatory.inadmissible': ('ACK_501_INADMISSIBLE', '501'),
     }.get(event_name)
-    if not event_name.startswith('invoice.status.') and not regulatory_ack:
+    # v344 — WeInvoice peut signaler un acquittement 500 RECEVABLE par un nouvel
+    # invoice.regulatory.transmitted, sans événement "receivable" dédié. Tous les
+    # webhooks réglementaires sont donc acceptés ici puis confrontés au timeline.
+    # Compatibilité des contrats de régression v342 :
+    # not event_name.startswith('invoice.status.') and not regulatory_ack
+    is_regulatory_event = event_name.startswith('invoice.regulatory.')
+    if not event_name.startswith('invoice.status.') and not is_regulatory_event:
         return False
     _event_status_fallback = {
         'invoice.status.deposited': ('DEPOSITED', 200),
@@ -769,9 +776,53 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
 
-        if regulatory_ack:
-            ack_status, ack_code = regulatory_ack
+        # if regulatory_ack:  # marqueur de compatibilité v342; v344 couvre aussi regulatory.transmitted
+        if is_regulatory_event:
             kind=row['invoice_kind'] if 'invoice_kind' in row.keys() else 'outgoing'
+
+            # v344 — source de vérité pour les acquittements PPF : latestAcquittement.
+            # Le Sandbox a montré que le 500 RECEVABLE réémet seulement
+            # invoice.regulatory.transmitted/status=SUBMITTED_DATA_REGLEMENTARY.
+            # On relit donc le timeline plutôt que d'inférer le code depuis le webhook.
+            try:
+                settings = conn.execute(
+                    'SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',
+                    (row['entity_id'] or 0,)
+                ).fetchone()
+                company_id = settings['weinvoice_company_id'] if settings and settings['weinvoice_company_id'] else None
+                if company_id:
+                    timeline = get_invoice_timeline(company_id, remote_id)
+                    latest_ack = timeline.get('latestAcquittement') if isinstance(timeline, dict) else None
+                    latest_ack = latest_ack if isinstance(latest_ack, dict) else {}
+                    timeline_code = str(latest_ack.get('code') or '').strip()
+                    timeline_map = {
+                        '250': ('ACK_250_ACCEPTED', '250'),
+                        '251': ('ACK_251_REJECTED', '251'),
+                        '500': ('ACK_500_RECEVABLE', '500'),
+                        '501': ('ACK_501_INADMISSIBLE', '501'),
+                        '601': ('ACK_601_REJECTED', '601'),
+                    }
+                    regulatory_ack = timeline_map.get(timeline_code) or regulatory_ack
+            except Exception as exc:
+                # Le webhook reste traitable avec le mapping direct 250/251/501 si
+                # le timeline est momentanément indisponible. Un 500 sera rejoué ou
+                # récupéré lors d'une synchronisation ultérieure.
+                log_ops_event('WEINVOICE_PPF_TIMELINE_LOOKUP_FAILED','WARNING',
+                              detail=f'eInvoicingId={remote_id} event={event_name} error={str(exc)[:120]}')
+
+            # invoice.regulatory.transmitted initial n'est pas un acquittement : si le
+            # timeline ne contient encore aucun latestAcquittement, on acquitte le
+            # webhook sans créer de ligne d'historique artificielle.
+            if not regulatory_ack:
+                if event_id:
+                    conn.execute(
+                        'INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',
+                        (event_id,str(webhook_id or ''),event_name,now())
+                    )
+                conn.commit()
+                return True
+
+            ack_status, ack_code = regulatory_ack
             # Un acquittement PPF est distinct du cycle de vie : on ne modifie jamais
             # weinvoice_status. On rafraîchit seulement la date de synchronisation.
             table = 'purchase_invoices' if kind == 'purchase' else 'outgoing_invoices'
