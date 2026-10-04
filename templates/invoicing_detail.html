@@ -159,7 +159,19 @@
             <tr>
               <td>{{ ev.occurred_at|fr_date(true) }}</td>
               <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
-              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed or (ev.status or '')|upper in ('ACK_251_REJECTED','ACK_501_INADMISSIBLE','ACK_601_REJECTED') else '' }}">{{ ack_labels.get((ev.status or '')|upper, ('Rejetée' if ev_rejected else status_labels.get((ev.status or '')|upper, ('Erreur' if ev_failed else 'En cours de traitement'))) }}</td>
+              {% set ev_status = (ev.status or '')|upper %}
+              {% set ev_is_ack_error = ev_status in ('ACK_251_REJECTED','ACK_501_INADMISSIBLE','ACK_601_REJECTED') %}
+              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed or ev_is_ack_error else '' }}">
+                {% if ev_status in ack_labels %}
+                  {{ ack_labels.get(ev_status) }}
+                {% elif ev_rejected %}
+                  Rejetée
+                {% elif ev_failed %}
+                  Erreur
+                {% else %}
+                  {{ status_labels.get((ev.status or '')|upper, 'En cours de traitement') }}
+                {% endif %}
+              </td>
                           </tr>
           {% endfor %}
           </tbody>
