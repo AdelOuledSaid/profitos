@@ -14,6 +14,56 @@
     · {{ "%.2f"|format(p.total) }} € · {% if p.status=='paid' %}Payée{% else %}À payer{% endif %}
   </p>
 
+  {% if p.weinvoice_invoice_id %}
+  <section class="purchase-panel" style="margin-top:20px;">
+    <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
+    <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
+      {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','DISPUTED':'En litige','SUSPENDED':'Suspendue','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
+      <tr><td>Statut</td><td><strong>{{ purchase_status_labels.get((p.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></td></tr>
+      <tr><td>Dernière synchronisation</td><td>{{ p.weinvoice_last_sync_at|fr_date(true) if p.weinvoice_last_sync_at else '—' }}</td></tr>
+    </tbody></table></div>
+    <form method="post" action="{{ url_for('purchase_weinvoice_status_sync',purchase_id=p.id) }}" style="margin:12px 0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-primary-btn secondary" type="submit">Actualiser le statut</button>
+    </form>
+    {% if current_role() in ('OWNER','ADMIN','COMPTABLE') %}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0;">
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="take-in-charge">
+        <button class="purchase-primary-btn secondary" type="submit">Prendre en charge</button>
+      </form>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve">
+        <button class="purchase-primary-btn primary" type="submit">Accepter</button>
+      </form>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve-partially">
+        <button class="purchase-primary-btn secondary" type="submit">Accepter partiellement</button>
+      </form>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="suspend">
+        <button class="purchase-primary-btn secondary" type="submit">Suspendre</button>
+      </form>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="payment-sent">
+        <button class="purchase-primary-btn secondary" type="submit">Signaler le paiement</button>
+      </form>
+    </div>
+    <details style="margin-top:10px;">
+      <summary>Litige ou refus</summary>
+      <p class="purchase-muted" style="font-size:12px;">Le motif réglementaire est obligatoire pour ces décisions.</p>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="action" required><option value="dispute">Mettre en litige</option><option value="refuse">Refuser</option></select>
+        <input name="reason_code" maxlength="50" required placeholder="Motif réglementaire">
+        <input name="reason_label" maxlength="2000" placeholder="Précision (facultative)">
+        <button class="purchase-primary-btn secondary" type="submit">Confirmer</button>
+      </form>
+    </details>
+    {% endif %}
+    {% if einvoice_events %}<div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Événement</th><th>Statut</th></tr></thead><tbody>{% for e in einvoice_events %}<tr><td>{{ e.occurred_at|fr_date(true) }}</td><td>{{ e.detail or "Mise à jour" }}</td><td>{{ purchase_status_labels.get((e.status or "")|upper, "En cours") }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </section>
+  {% endif %}
+
   <section class="purchase-panel">
     <div class="purchase-panel-head"><h2>Détails de la facture</h2></div>
     <div class="purchase-table-wrap">
@@ -33,7 +83,9 @@
           {% elif p.validation_status=='approved' and p.validated_by %}
           <tr><td>Validation</td><td><span class="purchase-ok-text">✓ Validée</span> <span class="purchase-muted" style="font-size:12px;">par {{ p.validated_by }} le {{ p.validated_at|fr_date(true) }}</span></td></tr>
           {% endif %}
-          {% if p.notes %}<tr><td>Notes</td><td>{{ p.notes }}</td></tr>{% endif %}
+          {% if p.notes %}
+          <tr><td>Notes</td><td>{% if p.weinvoice_invoice_id and 'Reçue par facturation électronique' in p.notes %}Reçue par facturation électronique{% else %}{{ p.notes }}{% endif %}</td></tr>
+          {% endif %}
           <tr>
             <td>Justificatif</td>
             <td>{% if p.document_path %}<a class="purchase-detail-link" href="{{ url_for('purchase_document_view', purchase_id=p.id) }}" target="_blank">Voir le justificatif</a>{% else %}<span class="muted">Aucun justificatif</span>{% endif %}</td>
@@ -43,28 +95,6 @@
     </div>
   </section>
 
-  {% if p.weinvoice_invoice_id %}
-  <section class="purchase-panel" style="margin-top:20px;">
-    <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
-    <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
-      {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','DISPUTED':'En litige','SUSPENDED':'Suspendue','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
-      <tr><td>Statut</td><td><strong>{{ purchase_status_labels.get((p.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></td></tr>
-      <tr><td>Dernière synchronisation</td><td>{{ p.weinvoice_last_sync_at|fr_date(true) if p.weinvoice_last_sync_at else '—' }}</td></tr>
-    </tbody></table></div>
-    <form method="post" action="{{ url_for('purchase_weinvoice_status_sync',purchase_id=p.id) }}" style="margin:12px 0;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-primary-btn secondary" type="submit">Actualiser le statut</button>
-    </form>
-    {% if current_role() in ('OWNER','ADMIN','COMPTABLE') %}
-    <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="action" required><option value="take-in-charge">Prendre en charge</option><option value="approve">Accepter</option><option value="approve-partially">Accepter partiellement</option><option value="dispute">Mettre en litige</option><option value="suspend">Suspendre</option><option value="refuse">Refuser</option><option value="payment-sent">Signaler le paiement</option></select>
-      <input name="reason_label" maxlength="2000" placeholder="Motif (si nécessaire)">
-      <button class="purchase-primary-btn primary" type="submit">Confirmer</button>
-    </form>
-    {% endif %}
-    {% if einvoice_events %}<div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Événement</th><th>Statut</th></tr></thead><tbody>{% for e in einvoice_events %}<tr><td>{{ e.occurred_at|fr_date(true) }}</td><td>{{ e.detail or "Mise à jour" }}</td><td>{{ purchase_status_labels.get((e.status or "")|upper, "En cours") }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
-  </section>
-  {% endif %}
 
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Document fournisseur</h2></div>
