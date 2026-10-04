@@ -629,10 +629,58 @@ def get_invoice_timeline(organization_id, e_invoicing_id, timeout=15):
 
 
 def invoice_status_from_timeline(data):
-    """Extrait le statut courant et le code réglementaire du payload timeline."""
+    """Extrait le statut métier courant et le code réglementaire du payload timeline.
+
+    WeInvoice peut conserver ``invoice.status=IN_PROGRESS`` alors que la timeline
+    contient déjà un événement métier plus précis (par ex. invoice.status.in_dispute).
+    Dans ce cas, l'événement métier doit prévaloir pour l'affichage ProfitOS.
+    """
     invoice = data.get('invoice') if isinstance(data, dict) else None
     invoice = invoice if isinstance(invoice, dict) else {}
-    return invoice.get('status') or 'UNKNOWN', invoice.get('regulatoryStatusCode')
+    status = invoice.get('status') or 'UNKNOWN'
+    cdv = invoice.get('regulatoryStatusCode')
+
+    event_fallbacks = {
+        'invoice.status.in_dispute': ('IN_DISPUTE', 207),
+        'invoice.status.disputed': ('IN_DISPUTE', 207),
+        'invoice.status.approved_partially': ('APPROVED_PARTIALLY', 206),
+        'invoice.status.partially_approved': ('APPROVED_PARTIALLY', 206),
+        'invoice.status.suspended': ('SUSPENDED', 208),
+        'invoice.status.refused': ('REFUSED', 210),
+        'invoice.status.payment_sent': ('PAYMENT_SENT', 211),
+        'invoice.status.approved': ('APPROVED', 205),
+        'invoice.status.taken_in_charge': ('TAKEN_IN_CHARGE', 204),
+    }
+
+    def _walk(value):
+        if isinstance(value, dict):
+            yield value
+            for child in value.values():
+                yield from _walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from _walk(child)
+
+    # Le statut générique ne doit pas masquer le dernier état métier reçu.
+    if str(status).upper() in ('IN_PROGRESS', 'PENDING', 'PROCESSING', 'UNKNOWN'):
+        matched = None
+        for item in _walk(data):
+            event_name = str(
+                item.get('event_name') or item.get('eventName') or
+                item.get('event_type') or item.get('eventType') or
+                item.get('type') or ''
+            ).strip().lower()
+            if event_name in event_fallbacks:
+                matched = event_fallbacks[event_name]
+            item_status = str(item.get('status') or '').strip().upper()
+            if item_status in ('IN_DISPUTE', 'DISPUTED'):
+                matched = ('IN_DISPUTE', item.get('regulatoryStatusCode') or item.get('cdvCode') or 207)
+        if matched:
+            status, fallback_cdv = matched
+            if cdv is None:
+                cdv = fallback_cdv
+
+    return status, cdv
 
 
 def _tenant_connection_for_remote_invoice(remote_id):
@@ -678,10 +726,14 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         'invoice.status.deposited': ('DEPOSITED', 200),
         'invoice.status.received': ('RECEIVED', 202),
         'invoice.status.rejected': ('REJECTED', 213),
+        'invoice.status.in_dispute': ('IN_DISPUTE', 207),
+        'invoice.status.disputed': ('IN_DISPUTE', 207),
     }
     fallback = _event_status_fallback.get(event_name)
     if fallback:
-        if not status:
+        # Pour les événements métier précis, le nom de l'événement est plus
+        # spécifique qu'un éventuel status générique IN_PROGRESS.
+        if not status or str(status).upper() in ('IN_PROGRESS','PENDING','PROCESSING','UNKNOWN') or event_name in ('invoice.status.in_dispute','invoice.status.disputed'):
             status = fallback[0]
         if cdv is None:
             cdv = fallback[1]
