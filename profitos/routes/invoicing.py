@@ -3255,6 +3255,36 @@ def register(app):
                       (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id, inv['entity_id']))
             _record_einvoice_event(c,inv,'status_sync',remote_id=remote_id,status=status,regulatory_code=regulatory_code,
                                    idempotency_key=f'sync-{remote_id}-{status}-{regulatory_code}')
+
+            # Les acquittements PPF (250/251/500/501/601) sont distincts du
+            # statut métier de la facture. On les journalise séparément afin
+            # qu'un 601, par exemple, ne transforme jamais RECEIVED en rejet.
+            ack = data.get('latestAcquittement') if isinstance(data, dict) else None
+            if isinstance(ack, dict) and ack.get('code') is not None:
+                ack_code = str(ack.get('code')).strip()
+                ack_decision = str(ack.get('decision') or '').strip().upper()
+                ack_status_map = {
+                    '250': 'ACK_250_ACCEPTED',
+                    '251': 'ACK_251_REJECTED',
+                    '500': 'ACK_500_RECEVABLE',
+                    '501': 'ACK_501_INADMISSIBLE',
+                    '601': 'ACK_601_REJECTED',
+                }
+                ack_status = ack_status_map.get(ack_code, f'ACK_{ack_code}_{ack_decision or "UNKNOWN"}')
+                ack_detail = json.dumps({
+                    'code': ack_code,
+                    'statut': ack.get('statut'),
+                    'objet': ack.get('objet'),
+                    'decision': ack.get('decision'),
+                    'motifCode': ack.get('motifCode'),
+                    'motifTexte': ack.get('motifTexte'),
+                }, ensure_ascii=False)
+                _record_einvoice_event(
+                    c, inv, 'acquittement', remote_id=remote_id, status=ack_status,
+                    regulatory_code=None,
+                    idempotency_key=f'ack-{remote_id}-{ack_code}-{ack.get("motifCode") or ""}',
+                    detail=ack_detail,
+                )
             c.commit()
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
