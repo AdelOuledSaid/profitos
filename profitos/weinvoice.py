@@ -718,6 +718,18 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
     if not isinstance(payload,dict): return False
     event_name=str(payload.get('event_name') or '')
     data=payload.get('data') if isinstance(payload.get('data'),dict) else {}
+    # v341 — diagnostic temporaire : journaliser uniquement les champs utiles
+    # du webhook de statut, sans secret, token ni payload complet.
+    log_ops_event(
+        'WEINVOICE_INVOICE_WEBHOOK_DEBUG',
+        'INFO',
+        detail=(
+            f"event={event_name} "
+            f"status={data.get('status')} "
+            f"cdv={data.get('cdvCode')} "
+            f"id={data.get('eInvoicingId') or data.get('einvoicingId') or data.get('invoiceId')}"
+        )
+    )
     if not event_name.startswith('invoice.status.'): return False
     remote_id=data.get('eInvoicingId') or data.get('einvoicingId') or data.get('invoiceId')
     status=data.get('status')
