@@ -72,5 +72,47 @@
       </table>
     </div>
   </section>
+
+  <section class="purchase-panel" style="margin-top:18px;">
+    <div class="purchase-panel-head">
+      <h2>Suivi e-reporting</h2>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_electronic_diagnostic') }}">Diagnostic facturation électronique</a>
+    </div>
+    <p class="purchase-subtitle" style="margin:0 0 14px;">Dernières transmissions à la plateforme agréée. Les statuts affichés proviennent de ProfitOS et de la dernière synchronisation WeInvoice.</p>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Transmission</th><th>Flux</th><th>Date</th><th>Statut</th><th>Contrôle</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for t in ereporting_rows %}
+          {% set remote_status = t.flux_status or t.status %}
+          <tr>
+            <td><strong>{{ t.transmission_number }}</strong>{% if t.type_code == 'RE' %}<br><small>Rectificative</small>{% endif %}</td>
+            <td>{{ t.flow_type }}</td>
+            <td>{{ t.anchor_date|fr_date }}</td>
+            <td><span class="purchase-status {{ 'paid' if remote_status in ('ACCEPTED','accepted','300') else ('overdue' if remote_status in ('REJECTED','rejected','301','error') else '') }}">{{ remote_status }}</span>{% if t.late_deposit %}<br><small>Dépôt tardif signalé</small>{% endif %}</td>
+            <td>
+              {% if t.rejection_motifs_json and t.rejection_motifs_json not in ('[]','null') %}<small>Motifs disponibles</small>
+              {% elif t.last_error %}<small>Erreur de synchronisation</small>
+              {% elif t.last_checked_at %}<small>Synchronisé</small>
+              {% else %}<small>En attente</small>{% endif %}
+            </td>
+            <td>
+              {% if t.provider_reference %}
+              <form method="post" action="{{ url_for('invoicing_ereporting_sync',transmission_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-nav-btn" type="submit">Synchroniser</button>
+              </form>
+              <form method="post" action="{{ url_for('invoicing_ereporting_proof',transmission_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-nav-btn" type="submit">Preuve JSON</button>
+              </form>
+              {% else %}<small>Non transmise</small>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="purchase-empty">Aucune transmission e-reporting enregistrée.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

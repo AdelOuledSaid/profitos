@@ -2746,6 +2746,9 @@ def register(app):
         from profitos.entities import current_entity_id
         eid=current_entity_id()
         rows=c.execute('SELECT * FROM outgoing_invoices WHERE entity_id IS ? ORDER BY id DESC',(eid,)).fetchall()
+        ereporting_rows=c.execute("""SELECT id,transmission_number,flow_type,anchor_date,type_code,provider_reference,status,
+            late_deposit,flux_status,rejection_motifs_json,last_error,submitted_at,last_checked_at,created_at
+            FROM ereporting_transmissions WHERE entity_id IS ? ORDER BY id DESC LIMIT 25""",(eid,)).fetchall()
         c.close()
         totals={'draft':0,'sent':0,'overdue':0,'paid':0,'cancelled':0}
         display_statuses={}
@@ -2753,7 +2756,7 @@ def register(app):
             status=_display_status(r)
             display_statuses[r['id']]=status
             if status in totals: totals[status]+=r['total'] or 0
-        return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses)
+        return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses,ereporting_rows=ereporting_rows)
 
     @app.route('/facturation/nouvelle',methods=['GET','POST'])
     @login_required
