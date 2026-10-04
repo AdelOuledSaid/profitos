@@ -20,7 +20,7 @@
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_credit_pdf',credit_id=credit.id) }}">Télécharger le PDF</a>
     <span class="purchase-status">Émis</span>
     {% if credit.weinvoice_invoice_id %}
-      <span class="purchase-status">Électronique : {{ credit.weinvoice_status or 'transmis' }}{% if credit.weinvoice_regulatory_code %} · {{ credit.weinvoice_regulatory_code }}{% endif %}</span>
+      {% set credit_status_labels = {'SUBMITTED':'Transmis','SUBMITTED_DATA_REGLEMENTARY':'Données réglementaires transmises','RECEIVED':'Reçu','MADE_AVAILABLE':'Mis à disposition','ACCEPTED':'Accepté','APPROVED':'Accepté','REJECTED':'Rejeté','PAID':'Payé','SUSPENDED':'Suspendu','DISPUTED':'En litige'} %}<span class="purchase-status">Électronique : {{ credit_status_labels.get((credit.weinvoice_status or '')|upper, 'En cours de traitement') }}</span>
       <form method="post" action="{{ url_for('invoicing_credit_electronic_sync',credit_id=credit.id) }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="purchase-nav-btn" type="submit">Actualiser le statut</button>

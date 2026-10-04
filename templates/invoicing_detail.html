@@ -151,7 +151,7 @@
             <tr>
               <td>{{ ev.occurred_at|fr_date(true) }}</td>
               <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
-              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed else '' }}">{{ 'Rejetée' if ev_rejected else (ev.status or ('Erreur' if ev_failed else '—')) }}</td>
+              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed else '' }}">{{ 'Rejetée' if ev_rejected else status_labels.get((ev.status or '')|upper, ('Erreur' if ev_failed else 'En cours de traitement')) }}</td>
                           </tr>
           {% endfor %}
           </tbody>

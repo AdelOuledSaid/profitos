@@ -2,8 +2,8 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">FACTURATION ÉLECTRONIQUE</div>
-<h1 class="purchase-title">Signer l'accord d'onboarding WeInvoice</h1>
-<p class="purchase-subtitle">Cette signature devient la preuve réelle transmise à WeInvoice (référence <code>proofRef</code>) — elle est conservée dans ProfitOS avec ton identité, l'horodatage et ton adresse IP.</p>
+<h1 class="purchase-title">Signer l’accord de connexion à la facturation électronique</h1>
+<p class="purchase-subtitle">Cette signature constitue la preuve de votre accord de connexion. Elle est conservée dans ProfitOS avec votre identité et l’horodatage.</p>
 
 <section class="purchase-panel" style="max-width:560px;margin-top:20px;">
   <p class="purchase-muted" style="margin-top:0;">Entreprise : <strong style="color:#fff;">{{ company.name }}</strong> · SIRET {{ company.siret }}</p>
@@ -13,10 +13,10 @@
     <label class="wide">Qualité du signataire<input name="signatory_quality" required placeholder="Président, Gérant, Directeur Général..."></label>
     <label class="wide" style="display:flex;align-items:flex-start;gap:10px;font-weight:400;">
       <input type="checkbox" name="certify" value="1" style="width:auto;margin-top:3px;" required>
-      <span>Je certifie être habilité à engager l'entreprise <strong>{{ company.name }}</strong> et j'accepte les conditions d'onboarding de WeInvoice / Weproc en son nom.</span>
+      <span>Je certifie être habilité à engager l'entreprise <strong>{{ company.name }}</strong> et j'accepte les conditions de connexion au service de facturation électronique en son nom.</span>
     </label>
     <div class="wide" style="display:flex;gap:12px;">
-      <button class="purchase-primary-btn primary">Signer et envoyer à WeInvoice</button>
+      <button class="purchase-primary-btn primary">Signer et continuer</button>
       <a class="purchase-nav-btn" href="{{ url_for('company') }}">Annuler</a>
     </div>
   </form>

@@ -89,7 +89,7 @@
             <td><strong>{{ t.transmission_number }}</strong>{% if t.type_code == 'RE' %}<br><small>Rectificative</small>{% endif %}</td>
             <td>{{ t.flow_type }}</td>
             <td>{{ t.anchor_date|fr_date }}</td>
-            <td><span class="purchase-status {{ 'paid' if remote_status in ('ACCEPTED','accepted','300') else ('overdue' if remote_status in ('REJECTED','rejected','301','error') else '') }}">{{ remote_status }}</span>{% if t.late_deposit %}<br><small>Dépôt tardif signalé</small>{% endif %}</td>
+            {% set reporting_status_labels = {'CREATED':'Créée','SUBMITTED':'Transmise','PENDING':'En cours de traitement','ACCEPTED':'Acceptée','REJECTED':'Rejetée','ERROR':'Erreur','300':'Acceptée','301':'Rejetée'} %}<td><span class="purchase-status {{ 'paid' if remote_status in ('ACCEPTED','accepted','300') else ('overdue' if remote_status in ('REJECTED','rejected','301','error','ERROR') else '') }}">{{ reporting_status_labels.get((remote_status or '')|upper, 'En cours de traitement') }}</span>{% if t.late_deposit %}<br><small>Dépôt tardif signalé</small>{% endif %}</td>
             <td>
               {% if t.rejection_motifs_json and t.rejection_motifs_json not in ('[]','null') %}<small>Motifs disponibles</small>
               {% elif t.last_error %}<small>Erreur de synchronisation</small>

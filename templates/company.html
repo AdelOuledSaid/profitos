@@ -26,7 +26,7 @@
 
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="margin:0 0 4px;font-size:18px;color:#fff;">Facturation électronique</h2>
-  <p class="purchase-muted" style="font-size:13px;margin-bottom:14px;">Plateforme : WeInvoice / Weproc · Environnement : {{ weinvoice_env }}</p>
+  <p class="purchase-muted" style="font-size:13px;margin-bottom:14px;">Service de facturation électronique · Environnement : {{ "Test" if (weinvoice_env or "")|lower == "sandbox" else "Production" }}</p>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
     <span class="purchase-muted">Statut :</span>
     {% if weinvoice.weinvoice_status == 'connected' %}
@@ -46,7 +46,7 @@
   {% endif %}
   <form method="post" action="{{ url_for('company_weinvoice_test') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="purchase-primary-btn secondary" {% if not weinvoice_configured %}disabled{% endif %}>Tester la connexion sandbox</button>
+    <button class="purchase-primary-btn secondary" {% if not weinvoice_configured %}disabled{% endif %}>Tester la connexion</button>
   </form>
 
   <div style="margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);">
@@ -65,7 +65,7 @@
       {% endif %}
     </div>
     {% if weinvoice.weinvoice_company_id %}
-    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Identifiant WeInvoice : <code>{{ weinvoice.weinvoice_company_id }}</code>{% if weinvoice.weinvoice_onboarded_at %} · envoyé le {{ weinvoice.weinvoice_onboarded_at|fr_date(true) }}{% endif %}</p>
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Identifiant de connexion : <code>{{ weinvoice.weinvoice_company_id }}</code>{% if weinvoice.weinvoice_onboarded_at %} · envoyé le {{ weinvoice.weinvoice_onboarded_at|fr_date(true) }}{% endif %}</p>
     {% endif %}
     {% if weinvoice.weinvoice_status == 'connected' %}
     <a class="purchase-nav-btn" href="{{ url_for('company_weinvoice_onboard') }}" style="display:inline-block;">Envoyer les informations de l'entreprise</a>
@@ -78,7 +78,7 @@
       <button class="purchase-primary-btn secondary">Actualiser le statut</button>
     </form>
     {% endif %}
-    {% if weinvoice.weinvoice_status != 'connected' %}<p class="purchase-muted" style="font-size:11px;margin-top:8px;">Teste d'abord la connexion sandbox ci-dessus.</p>{% endif %}
+    {% if weinvoice.weinvoice_status != 'connected' %}<p class="purchase-muted" style="font-size:11px;margin-top:8px;">Testez d’abord la connexion ci-dessus.</p>{% endif %}
   </div>
 </section>
 </div>
