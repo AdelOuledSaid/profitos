@@ -1821,8 +1821,16 @@ def register(app):
                     ignored+=1
                     continue
                 try:
+                    # Le contenu structure est la source metier indispensable.
+                    # Le socle original et le lisible sont des enrichissements :
+                    # leur indisponibilite ne doit pas bloquer une facture valide.
                     content=get_inbound_invoice_content(org_remote,remote_id)
-                    raw_original=download_inbound_invoice_original(org_remote,remote_id)
+                    raw_original=b''
+                    try:
+                        raw_original=download_inbound_invoice_original(org_remote,remote_id)
+                    except WeInvoiceAPIError as exc:
+                        log_ops_event('WEINVOICE_INBOUND_ORIGINAL_UNAVAILABLE','WARNING',
+                                      detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
                     subtotal=float(content.get('totalHt') if content.get('totalHt') is not None else (item.get('totalHt') or 0))
                     vat=float(content.get('totalVat') or item.get('totalVat') or 0)
                     total=float(content.get('totalTtc') if content.get('totalTtc') is not None else subtotal+vat)
@@ -1853,9 +1861,15 @@ def register(app):
                         generate_purchase_credit_entry(c,credit,commit=False)
                         c.commit(); created+=1
                         continue
-                    pdf=download_inbound_invoice_readable(org_remote,remote_id)
-                    stored=f"weinvoice_{hashlib.sha256(remote_id.encode()).hexdigest()[:24]}.pdf"
-                    (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                    try:
+                        pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                    except WeInvoiceAPIError as exc:
+                        pdf=None
+                        log_ops_event('WEINVOICE_INBOUND_READABLE_UNAVAILABLE','WARNING',
+                                      detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+                    if pdf:
+                        stored=f"weinvoice_{hashlib.sha256(remote_id.encode()).hexdigest()[:24]}.pdf"
+                        (_purchase_pdf_dir()/stored).write_bytes(pdf)
                     validation='pending'
                     settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
                     if not (settings_row and settings_row['require_purchase_validation']): validation='approved'
