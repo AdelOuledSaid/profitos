@@ -1939,11 +1939,11 @@ def register(app):
             action=str(request.form.get('action') or '').strip()
             reason_code=str(request.form.get('reason_code') or '').strip()
             reason_label=str(request.form.get('reason_label') or '').strip()
-            # WeInvoice n'accepte pas un motif libre comme reasonCode pour un refus :
+            # WeInvoice n'accepte pas un motif libre comme reasonCode pour un refus ou un litige :
             # le code doit provenir du catalogue réglementaire (Annexe 7 / Annexe A).
             # Tant que ProfitOS n'expose pas ce catalogue dans l'UI, un motif libre est
             # transmis avec le code réglementaire AUTRE et conservé dans reasonLabel.
-            if action == 'refuse' and reason_code.upper() != 'AUTRE':
+            if action in {'refuse','dispute'} and reason_code.upper() != 'AUTRE':
                 free_reason=reason_code
                 reason_code='AUTRE'
                 if free_reason:
