@@ -1799,12 +1799,27 @@ def register(app):
                 flash("Organisation WeInvoice absente pour cette entité.")
                 return redirect(url_for('purchase_list'))
             org_remote=settings['weinvoice_company_id']
+            # Parcourt toutes les pages WeInvoice. La limite de 100 est celle
+            # d'une page API, pas celle d'une synchronisation ProfitOS.
+            inbound_items=[]; page=1; page_size=100
             try:
-                payload=list_inbound_invoices(org_remote,page=1,page_size=100)
+                while True:
+                    payload=list_inbound_invoices(org_remote,page=page,page_size=page_size)
+                    batch=payload.get('invoices',[])
+                    inbound_items.extend(batch)
+                    total=payload.get('total')
+                    if isinstance(total,int):
+                        if len(inbound_items) >= total: break
+                    elif len(batch) < page_size:
+                        break
+                    if not batch: break
+                    page += 1
+                    if page > 1000:
+                        raise WeInvoiceAPIError("Pagination WeInvoice anormalement longue.")
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
                 flash(str(exc)); return redirect(url_for('purchase_list'))
             created=0; skipped=0; ignored=0; failed=[]
-            for item in payload.get('invoices',[]):
+            for item in inbound_items:
                 stored=None
                 remote_id=str(item.get('id') or '').strip()
                 if not remote_id or str(item.get('direction') or '').upper()!='INBOUND':
@@ -1845,9 +1860,17 @@ def register(app):
                         if not original_number: raise ValueError("avoir fournisseur sans référence à la facture d'origine")
                         original=c.execute('SELECT * FROM purchase_invoices WHERE entity_id IS ? AND invoice_number=? ORDER BY id DESC LIMIT 1',(eid,original_number)).fetchone()
                         if not original: raise ValueError("facture fournisseur d'origine introuvable")
-                        pdf=download_inbound_invoice_readable(org_remote,remote_id)
-                        stored=f"weinvoice_credit_{hashlib.sha256((str(eid)+':'+remote_id).encode()).hexdigest()[:24]}.pdf"
-                        (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                        # Comme pour une facture normale, le PDF lisible est un
+                        # enrichissement documentaire et non une condition d'import.
+                        try:
+                            pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                        except WeInvoiceAPIError as exc:
+                            pdf=None
+                            log_ops_event('WEINVOICE_INBOUND_CREDIT_READABLE_UNAVAILABLE','WARNING',
+                                          detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+                        if pdf:
+                            stored=f"weinvoice_credit_{hashlib.sha256((str(eid)+':'+remote_id).encode()).hexdigest()[:24]}.pdf"
+                            (_purchase_pdf_dir()/stored).write_bytes(pdf)
                         c.execute("""INSERT INTO purchase_credit_notes(
                             entity_id,original_purchase_id,original_invoice_number,credit_number,supplier_name,issue_date,
                             subtotal,vat_amount,total,category,notes,document_path,weinvoice_invoice_id,weinvoice_status,
