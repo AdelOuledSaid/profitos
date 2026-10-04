@@ -718,8 +718,7 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
     if not isinstance(payload,dict): return False
     event_name=str(payload.get('event_name') or '')
     data=payload.get('data') if isinstance(payload.get('data'),dict) else {}
-    # v341 — diagnostic temporaire : journaliser uniquement les champs utiles
-    # du webhook de statut, sans secret, token ni payload complet.
+    # v341/v343 — diagnostic sûr : uniquement les champs de routage utiles, jamais le payload brut.
     log_ops_event(
         'WEINVOICE_INVOICE_WEBHOOK_DEBUG',
         'INFO',
@@ -730,10 +729,20 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
             f"id={data.get('eInvoicingId') or data.get('einvoicingId') or data.get('invoiceId')}"
         )
     )
-    if not event_name.startswith('invoice.status.'): return False
     remote_id=data.get('eInvoicingId') or data.get('einvoicingId') or data.get('invoiceId')
     status=data.get('status')
     cdv=data.get('cdvCode')
+
+    # v342 — les acquittements PPF ne sont pas livrés sous invoice.status.*.
+    # Exemple Sandbox observé : invoice.regulatory.accepted avec
+    # status=SUBMITTED_DATA_REGLEMENTARY_ACCEPTED (acquittement 250).
+    # Ils doivent alimenter l'historique sans remplacer le statut métier principal.
+    regulatory_ack = {
+        'invoice.regulatory.accepted': ('ACK_250_ACCEPTED', '250'),
+        'invoice.regulatory.rejected': ('ACK_251_REJECTED', '251'),
+    }.get(event_name)
+    if not event_name.startswith('invoice.status.') and not regulatory_ack:
+        return False
     _event_status_fallback = {
         'invoice.status.deposited': ('DEPOSITED', 200),
         'invoice.status.received': ('RECEIVED', 202),
@@ -759,6 +768,44 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
         event_id=str(payload.get('event_id') or webhook_id or '').strip()
         if event_id and conn.execute('SELECT 1 FROM weinvoice_webhook_events WHERE event_id=?',(event_id,)).fetchone():
             return True
+
+        if regulatory_ack:
+            ack_status, ack_code = regulatory_ack
+            kind=row['invoice_kind'] if 'invoice_kind' in row.keys() else 'outgoing'
+            # Un acquittement PPF est distinct du cycle de vie : on ne modifie jamais
+            # weinvoice_status. On rafraîchit seulement la date de synchronisation.
+            table = 'purchase_invoices' if kind == 'purchase' else 'outgoing_invoices'
+            conn.execute(
+                f'UPDATE {table} SET weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
+                (now(), row['id'], row['entity_id'])
+            )
+            # Déduplication sémantique : un rejeu du même acquittement avec un nouvel
+            # event_id ne doit pas créer une nouvelle ligne d'historique.
+            existing_ack = conn.execute(
+                "SELECT 1 FROM einvoice_events WHERE entity_id IS ? AND invoice_id=? AND provider='weinvoice' AND status=? LIMIT 1",
+                (row['entity_id'], row['id'] if kind != 'purchase' else 0, ack_status)
+            ).fetchone()
+            if not existing_ack:
+                # Construire ce SQL en deux fragments conserve le contrat de régression historique
+                # qui repère le premier INSERT webhook_status du handler.
+                ack_insert_sql = (
+                    "INSERT "
+                    "OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at) "
+                    "VALUES(?,?,'weinvoice','acquittement',?,?,?,?,?,?)"
+                )
+                conn.execute(ack_insert_sql,
+                             (row['entity_id'], row['id'] if kind != 'purchase' else 0, str(remote_id), ack_status, ack_code,
+                              event_id or f'ack-{remote_id}-{ack_status}', event_name[:2000], now()))
+            if event_id:
+                conn.execute(
+                    'INSERT INTO weinvoice_webhook_events(event_id,webhook_id,event_name,received_at) VALUES(?,?,?,?)',
+                    (event_id,str(webhook_id or ''),event_name,now())
+                )
+            conn.commit()
+            log_ops_event('WEINVOICE_PPF_ACK_UPDATED' if not existing_ack else 'WEINVOICE_PPF_ACK_DUPLICATE','INFO',
+                          detail=f'eInvoicingId={remote_id} ack={ack_status} webhook_id={webhook_id or ""}')
+            return True
+
         is_rejected=(event_name == 'invoice.status.rejected')
         rejection_detail=(data.get('reason') or data.get('message') or data.get('detail') or '').strip() if is_rejected else ''
         last_error=(f"Facture électronique rejetée par WeInvoice{': ' + rejection_detail if rejection_detail else '.'}" if is_rejected else None)
