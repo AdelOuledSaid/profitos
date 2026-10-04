@@ -1937,8 +1937,19 @@ def register(app):
             if not settings or not settings['weinvoice_company_id']:
                 flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             action=str(request.form.get('action') or '').strip()
+            reason_code=str(request.form.get('reason_code') or '').strip()
+            reason_label=str(request.form.get('reason_label') or '').strip()
+            # WeInvoice n'accepte pas un motif libre comme reasonCode pour un refus :
+            # le code doit provenir du catalogue réglementaire (Annexe 7 / Annexe A).
+            # Tant que ProfitOS n'expose pas ce catalogue dans l'UI, un motif libre est
+            # transmis avec le code réglementaire AUTRE et conservé dans reasonLabel.
+            if action == 'refuse' and reason_code.upper() != 'AUTRE':
+                free_reason=reason_code
+                reason_code='AUTRE'
+                if free_reason:
+                    reason_label=(free_reason + (f' — {reason_label}' if reason_label else ''))[:2000]
             try:
-                result=apply_inbound_lifecycle_action(settings['weinvoice_company_id'],remote_id,action,reason_code=request.form.get('reason_code'),reason_label=request.form.get('reason_label'))
+                result=apply_inbound_lifecycle_action(settings['weinvoice_company_id'],remote_id,action,reason_code=reason_code,reason_label=reason_label)
                 timeline=get_invoice_timeline(settings['weinvoice_company_id'],remote_id)
                 status,cdv=invoice_status_from_timeline(timeline)
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
