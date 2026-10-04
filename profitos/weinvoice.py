@@ -721,7 +721,7 @@ def handle_invoice_status_webhook(payload, webhook_id=None):
             if getattr(updated,'rowcount',0)!=1:
                 raise RuntimeError(f'WeInvoice webhook invoice update failed for local invoice {row["id"]}')
             conn.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
-                         VALUES(? ,NULL,'weinvoice','purchase_webhook_status',?,?,?,?,?,?)""",
+                         VALUES(? ,0,'weinvoice','purchase_webhook_status',?,?,?,?,?,?)""",
                          (row['entity_id'],str(remote_id),str(status),str(cdv) if cdv is not None else None,
                           event_id or f'webhook-{remote_id}-{status}-{cdv}',
                           (event_name + (f' — {rejection_detail}' if rejection_detail else ''))[:2000],now()))

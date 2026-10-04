@@ -26,39 +26,25 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-primary-btn secondary" type="submit">Actualiser le statut</button>
     </form>
     {% if current_role() in ('OWNER','ADMIN','COMPTABLE') %}
+    {% set lifecycle_stage=(p.weinvoice_status or '')|upper %}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0;">
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="take-in-charge">
-        <button class="purchase-primary-btn secondary" type="submit">Prendre en charge</button>
-      </form>
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve">
-        <button class="purchase-primary-btn primary" type="submit">Accepter</button>
-      </form>
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve-partially">
-        <button class="purchase-primary-btn secondary" type="submit">Accepter partiellement</button>
-      </form>
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="suspend">
-        <button class="purchase-primary-btn secondary" type="submit">Suspendre</button>
-      </form>
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="payment-sent">
-        <button class="purchase-primary-btn secondary" type="submit">Signaler le paiement</button>
-      </form>
+      {% if lifecycle_stage in ('RECEIVED','MADE_AVAILABLE') %}
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="take-in-charge"><button class="purchase-primary-btn primary" type="submit">Prendre en charge</button></form>
+      {% endif %}
+      {% if lifecycle_stage in ('TAKEN_IN_CHARGE','DISPUTED','COMPLETED') %}
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve"><button class="purchase-primary-btn primary" type="submit">Accepter</button></form>
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="approve-partially"><button class="purchase-primary-btn secondary" type="submit">Accepter partiellement</button></form>
+      {% endif %}
+      {% if lifecycle_stage in ('TAKEN_IN_CHARGE','DISPUTED') %}
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="suspend"><button class="purchase-primary-btn secondary" type="submit">Suspendre</button></form>
+      {% endif %}
+      {% if lifecycle_stage in ('TAKEN_IN_CHARGE','APPROVED','DISPUTED') %}
+      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="payment-sent"><button class="purchase-primary-btn secondary" type="submit">Signaler le paiement</button></form>
+      {% endif %}
     </div>
-    <details style="margin-top:10px;">
-      <summary>Litige ou refus</summary>
-      <p class="purchase-muted" style="font-size:12px;">Le motif réglementaire est obligatoire pour ces décisions.</p>
-      <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <select name="action" required><option value="dispute">Mettre en litige</option><option value="refuse">Refuser</option></select>
-        <input name="reason_code" maxlength="50" required placeholder="Motif réglementaire">
-        <input name="reason_label" maxlength="2000" placeholder="Précision (facultative)">
-        <button class="purchase-primary-btn secondary" type="submit">Confirmer</button>
-      </form>
-    </details>
+    {% if lifecycle_stage in ('TAKEN_IN_CHARGE','APPROVED','DISPUTED') %}
+    <details style="margin-top:10px;"><summary>Litige ou refus</summary><p class="purchase-muted" style="font-size:12px;">Un motif réglementaire est nécessaire pour ces décisions.</p><form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><select name="action" required>{% if lifecycle_stage in ('TAKEN_IN_CHARGE','APPROVED') %}<option value="dispute">Mettre en litige</option>{% endif %}{% if lifecycle_stage in ('TAKEN_IN_CHARGE','DISPUTED') %}<option value="refuse">Refuser</option>{% endif %}</select><input name="reason_code" maxlength="50" required placeholder="Motif réglementaire"><input name="reason_label" maxlength="2000" placeholder="Précision (facultative)"><button class="purchase-primary-btn secondary" type="submit">Confirmer</button></form></details>
+    {% endif %}
     {% endif %}
     {% if einvoice_events %}<div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Événement</th><th>Statut</th></tr></thead><tbody>{% for e in einvoice_events %}<tr><td>{{ e.occurred_at|fr_date(true) }}</td><td>{{ e.detail or "Mise à jour" }}</td><td>{{ purchase_status_labels.get((e.status or "")|upper, "En cours") }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
   </section>

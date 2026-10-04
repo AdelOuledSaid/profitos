@@ -1946,7 +1946,7 @@ def register(app):
             c.execute('UPDATE purchase_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?',
                       (str(status or result['status']),str(cdv if cdv is not None else result['regulatoryStatusCode']),now(),purchase_id,eid))
             c.execute("""INSERT OR IGNORE INTO einvoice_events(entity_id,invoice_id,provider,event_type,remote_id,status,regulatory_code,idempotency_key,detail,occurred_at)
-                         VALUES(?,NULL,'weinvoice','purchase_buyer_action',?,?,?,?,?,?)""",
+                         VALUES(?,0,'weinvoice','purchase_buyer_action',?,?,?,?,?,?)""",
                       (eid,remote_id,str(status or result['status']),str(cdv if cdv is not None else result['regulatoryStatusCode']),f'buyer-{purchase_id}-{action}-{uuid.uuid4()}',action,now()))
             c.commit(); flash("Statut réglementaire de la facture fournisseur mis à jour.")
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
