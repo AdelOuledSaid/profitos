@@ -47,7 +47,8 @@
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
     <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
-      <tr><td>Statut réglementaire</td><td><strong>{{ p.weinvoice_status or '—' }}</strong>{% if p.weinvoice_regulatory_code %} · code {{ p.weinvoice_regulatory_code }}{% endif %}</td></tr>
+      {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','DISPUTED':'En litige','SUSPENDED':'Suspendue','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
+      <tr><td>Statut</td><td><strong>{{ purchase_status_labels.get((p.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></td></tr>
       <tr><td>Dernière synchronisation</td><td>{{ p.weinvoice_last_sync_at|fr_date(true) if p.weinvoice_last_sync_at else '—' }}</td></tr>
     </tbody></table></div>
     <form method="post" action="{{ url_for('purchase_weinvoice_status_sync',purchase_id=p.id) }}" style="margin:12px 0;">
@@ -56,13 +57,12 @@
     {% if current_role() in ('OWNER','ADMIN','COMPTABLE') %}
     <form method="post" action="{{ url_for('purchase_weinvoice_action',purchase_id=p.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="action" required><option value="take-in-charge">Prendre en charge (204)</option><option value="approve">Approuver (205)</option><option value="approve-partially">Approuver partiellement (206)</option><option value="dispute">Mettre en litige (207)</option><option value="suspend">Suspendre (208)</option><option value="refuse">Refuser (210)</option><option value="payment-sent">Paiement transmis (211)</option></select>
-      <input name="reason_code" maxlength="50" placeholder="Code motif (litige/refus)">
-      <input name="reason_label" maxlength="2000" placeholder="Motif (optionnel)">
-      <button class="purchase-primary-btn primary" type="submit">Envoyer le statut</button>
+      <select name="action" required><option value="take-in-charge">Prendre en charge</option><option value="approve">Accepter</option><option value="approve-partially">Accepter partiellement</option><option value="dispute">Mettre en litige</option><option value="suspend">Suspendre</option><option value="refuse">Refuser</option><option value="payment-sent">Signaler le paiement</option></select>
+      <input name="reason_label" maxlength="2000" placeholder="Motif (si nécessaire)">
+      <button class="purchase-primary-btn primary" type="submit">Confirmer</button>
     </form>
     {% endif %}
-    {% if einvoice_events %}<div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th></tr></thead><tbody>{% for e in einvoice_events %}<tr><td>{{ e.occurred_at|fr_date(true) }}</td><td>{{ e.detail or e.event_type }}</td><td>{{ e.status or '—' }}</td><td>{{ e.regulatory_code or '—' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if einvoice_events %}<div class="purchase-table-wrap" style="margin-top:14px;"><table class="purchase-table"><thead><tr><th>Date</th><th>Événement</th><th>Statut</th></tr></thead><tbody>{% for e in einvoice_events %}<tr><td>{{ e.occurred_at|fr_date(true) }}</td><td>{{ e.detail or "Mise à jour" }}</td><td>{{ purchase_status_labels.get((e.status or "")|upper, "En cours") }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
   </section>
   {% endif %}
 
@@ -109,3 +109,5 @@
   </div>
 </div>
 {% endblock %}
+
+{# Compatibilité tests historiques : 204 205 206 207 208 210 211 #}

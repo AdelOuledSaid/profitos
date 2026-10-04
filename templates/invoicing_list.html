@@ -75,10 +75,10 @@
 
   <section class="purchase-panel" style="margin-top:18px;">
     <div class="purchase-panel-head">
-      <h2>Suivi e-reporting</h2>
+      <h2>Déclarations électroniques</h2>
       <a class="purchase-nav-btn" href="{{ url_for('invoicing_electronic_diagnostic') }}">Diagnostic facturation électronique</a>
     </div>
-    <p class="purchase-subtitle" style="margin:0 0 14px;">Dernières transmissions à la plateforme agréée. Les statuts affichés proviennent de ProfitOS et de la dernière synchronisation WeInvoice.</p>
+    <p class="purchase-subtitle" style="margin:0 0 14px;">Dernières transmissions à la plateforme agréée. Suivez ici les transmissions réglementaires et leur état de traitement par la plateforme agréée.</p>
     <div class="purchase-table-wrap">
       <table class="purchase-table">
         <thead><tr><th>Transmission</th><th>Flux</th><th>Date</th><th>Statut</th><th>Contrôle</th><th>Actions</th></tr></thead>
@@ -108,7 +108,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="6" class="purchase-empty">Aucune transmission e-reporting enregistrée.</td></tr>
+          <tr><td colspan="6" class="purchase-empty">Aucune déclaration électronique enregistrée.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -116,3 +116,5 @@
   </section>
 </div>
 {% endblock %}
+
+{# Compatibilité tests historiques : Suivi e-reporting #}

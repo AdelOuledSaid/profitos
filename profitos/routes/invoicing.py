@@ -1796,7 +1796,7 @@ def register(app):
         try:
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité.")
+                flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('purchase_list'))
             org_remote=settings['weinvoice_company_id']
             # Parcourt toutes les pages WeInvoice. La limite de 100 est celle
@@ -1932,10 +1932,10 @@ def register(app):
             if not p: abort(404)
             remote_id=p['weinvoice_invoice_id']
             if not remote_id:
-                flash("Cette facture n’est pas une facture électronique WeInvoice."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Cette facture ne dispose pas de transmission électronique."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             action=str(request.form.get('action') or '').strip()
             try:
                 result=apply_inbound_lifecycle_action(settings['weinvoice_company_id'],remote_id,action,reason_code=request.form.get('reason_code'),reason_label=request.form.get('reason_label'))
@@ -1963,14 +1963,14 @@ def register(app):
             p=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(purchase_id,eid)).fetchone()
             if not p: abort(404)
             if not p['weinvoice_invoice_id']:
-                flash("Cette facture n’est pas une facture électronique WeInvoice."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Cette facture ne dispose pas de transmission électronique."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             try: timeline=get_invoice_timeline(settings['weinvoice_company_id'],p['weinvoice_invoice_id']); status,cdv=invoice_status_from_timeline(timeline)
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc: flash(str(exc)); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             c.execute('UPDATE purchase_invoices SET weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=? WHERE id=? AND entity_id IS ?', (str(status),str(cdv) if cdv is not None else None,now(),purchase_id,eid))
-            c.commit(); flash("Statut WeInvoice actualisé."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            c.commit(); flash("Statut de facturation électronique actualisé."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         finally: c.close()
 
     @app.route('/facturation/achats/nouvelle',methods=['GET','POST'])
@@ -3659,7 +3659,7 @@ def register(app):
         try:
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((eid or 0),)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité."); return redirect(url_for('invoicing_list'))
+                flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('invoicing_list'))
             try:
                 validate_ereporting_fiscal_readiness(settings['weinvoice_company_id'])
                 payload=build_flux10(c,eid,anchor_date,flow_type)
@@ -3687,7 +3687,7 @@ def register(app):
                 response_json=?,last_error=NULL,submitted_at=?,updated_at=? WHERE entity_id IS ? AND transmission_number=?""",
                 (ref,1 if result.get('lateDeposit') else 0,json.dumps(result,ensure_ascii=False),now(),now(),eid,payload['transmissionNumber']))
             c.commit(); log_activity('EREPORTING_SUBMITTED',f"Flux {flow_type} transmis ({anchor_date})")
-            flash("Flux e-reporting transmis à la plateforme agréée."); return redirect(url_for('invoicing_list'))
+            flash("Déclaration électronique transmise à la plateforme agréée."); return redirect(url_for('invoicing_list'))
         finally: c.close()
 
     @app.post('/facturation/e-reporting/<int:transmission_id>/synchroniser')
@@ -3718,7 +3718,7 @@ def register(app):
                     WHERE id=? AND entity_id IS ?""",
                     (status,flux_status,json.dumps(motifs,ensure_ascii=False),
                      json.dumps(data,ensure_ascii=False),now(),now(),transmission_id,eid))
-                c.commit(); flash("Statut e-reporting actualisé.")
+                c.commit(); flash("Statut de la déclaration électronique actualisé.")
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
                 c.execute('UPDATE ereporting_transmissions SET last_error=?,last_checked_at=?,updated_at=? WHERE id=? AND entity_id IS ?',
                           (str(exc)[:2000],now(),now(),transmission_id,eid)); c.commit(); flash(str(exc))
@@ -3792,7 +3792,7 @@ def register(app):
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((credit['entity_id'] or 0),)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité.")
+                flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             from profitos.entities import resolve_entity
             company=resolve_entity(c,credit['entity_id'])
@@ -3834,7 +3834,7 @@ def register(app):
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',((credit['entity_id'] or 0),)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente pour cette entité.")
+                flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             try:
                 timeline=get_invoice_timeline(settings['weinvoice_company_id'],credit['weinvoice_invoice_id'])

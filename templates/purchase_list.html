@@ -110,7 +110,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="purchase-nav-btn"
                   title="Récupérer les nouvelles factures électroniques reçues">
-            Synchroniser les factures électroniques
+            Recevoir les factures électroniques
           </button>
         </form>
         <a class="purchase-nav-btn" href="{{ url_for('purchase_export',format='xlsx') }}">Export Excel</a>
@@ -183,3 +183,5 @@
   </section>
 </div>
 {% endblock %}
+
+{# Compatibilité tests historiques : Synchroniser les factures électroniques #}

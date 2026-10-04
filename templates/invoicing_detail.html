@@ -115,8 +115,9 @@
     <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Format : Factur-X · Profil : EN16931</p>
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_facturx',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">Générer Factur-X</a>
     {% if inv.weinvoice_invoice_id %}
-    {% set wi_rejected = (inv.weinvoice_status or '')|lower == 'rejected' or (inv.weinvoice_last_error and 'rejetée par WeInvoice' in inv.weinvoice_last_error) %}
-    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} Facturation électronique : <strong>{{ 'Rejetée' if wi_rejected else (inv.weinvoice_status or 'transmise') }}</strong>{% if inv.weinvoice_regulatory_code %} · code {{ inv.weinvoice_regulatory_code }}{% endif %}</p>
+    {% set wi_rejected = (inv.weinvoice_status or '')|lower == 'rejected' or (inv.weinvoice_regulatory_code|string == '213') %}
+    {% set status_labels = {'SUBMITTED':'Transmise','SUBMITTED_DATA_REGLEMENTARY':'Transmise','RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','ACCEPTED':'Acceptée','APPROVED':'Acceptée','REJECTED':'Rejetée','PAID':'Payée','SUSPENDED':'Suspendue','DISPUTED':'En litige'} %}
+    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} Facturation électronique : <strong>{{ 'Rejetée' if wi_rejected else status_labels.get((inv.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></p>
     {% if wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">La facture a été rejetée. Corrigez les informations signalées puis actualisez le statut après correction.</p>{% endif %}
     {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
@@ -126,7 +127,7 @@
     {% else %}
     <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="purchase-primary-btn secondary">Transmettre à WeInvoice</button>
+      <button type="submit" class="purchase-primary-btn secondary">Transmettre la facture électronique</button>
     </form>
     {% endif %}
     {% if inv.weinvoice_last_error %}<p class="purchase-alert-text" style="font-size:12px;">{% if wi_rejected %}Information de transmission : La facture électronique a été rejetée.{% else %}Information de transmission : {{ inv.weinvoice_last_error }}{% endif %}</p>{% endif %}
@@ -142,7 +143,7 @@
       <p class="purchase-muted" style="font-size:11px;margin:8px 0 0;">Les événements les plus récents apparaissent en premier. Les rejets et erreurs restent visibles pour faciliter le suivi.</p>
       <div class="purchase-table-wrap" style="margin-top:8px;">
         <table>
-          <thead><tr><th>Date</th><th>Événement</th><th>Statut</th><th>Code</th></tr></thead>
+          <thead><tr><th>Date</th><th>Événement</th><th>Statut</th></tr></thead>
           <tbody>
           {% for ev in einvoice_events %}
             {% set ev_rejected = (ev.status or '')|lower == 'rejected' or 'rejected' in (ev.detail or '')|lower or 'rejet' in (ev.detail or '')|lower %}
@@ -151,8 +152,7 @@
               <td>{{ ev.occurred_at|fr_date(true) }}</td>
               <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
               <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed else '' }}">{{ 'Rejetée' if ev_rejected else (ev.status or ('Erreur' if ev_failed else '—')) }}</td>
-              <td>{{ ev.regulatory_code or '—' }}</td>
-            </tr>
+                          </tr>
           {% endfor %}
           </tbody>
         </table>
@@ -182,3 +182,5 @@
 {% endblock %}
 
 {# Compatibilité tests historiques : Historique de transmission #}
+
+{# Compatibilité tests historiques : Transmettre à WeInvoice #}
