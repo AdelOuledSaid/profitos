@@ -1803,7 +1803,7 @@ def register(app):
                 payload=list_inbound_invoices(org_remote,page=1,page_size=100)
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
                 flash(str(exc)); return redirect(url_for('purchase_list'))
-            created=0; skipped=0; failed=[]
+            created=0; skipped=0; ignored=0; failed=[]
             for item in payload.get('invoices',[]):
                 stored=None
                 remote_id=str(item.get('id') or '').strip()
@@ -1812,6 +1812,14 @@ def register(app):
                 if (c.execute('SELECT 1 FROM purchase_invoices WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()
                     or c.execute('SELECT 1 FROM purchase_credit_notes WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()):
                     skipped+=1; continue
+                # Un document terminalement rejeté n'est pas une facture fournisseur
+                # importable. Il reste visible chez WeInvoice mais ne doit pas être
+                # compté comme une panne de synchronisation ProfitOS.
+                status=str(item.get('status') or '').upper()
+                regulatory=str(item.get('regulatoryStatusCode') or item.get('cdvCode') or '').strip()
+                if status in {'REJECTED','REJETEE','REJETÉE'} or regulatory == '213':
+                    ignored+=1
+                    continue
                 try:
                     content=get_inbound_invoice_content(org_remote,remote_id)
                     raw_original=download_inbound_invoice_original(org_remote,remote_id)
@@ -1869,8 +1877,8 @@ def register(app):
                     except Exception: pass
                     failed.append(f"{remote_id}: {type(exc).__name__}")
                     log_ops_event('WEINVOICE_INBOUND_IMPORT_FAILED','ERROR',detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
-            log_ops_event('WEINVOICE_INBOUND_SYNC','INFO' if not failed else 'WARNING',detail=f'entity={eid} created={created} skipped={skipped} failed={len(failed)}')
-            flash(f"Factures électroniques reçues : {created} importée(s), {skipped} déjà présente(s), {len(failed)} échec(s).")
+            log_ops_event('WEINVOICE_INBOUND_SYNC','INFO' if not failed else 'WARNING',detail=f'entity={eid} created={created} skipped={skipped} ignored={ignored} failed={len(failed)}')
+            flash(f"Factures électroniques reçues : {created} importée(s), {skipped} déjà présente(s), {ignored} rejetée(s) ignorée(s), {len(failed)} échec(s).")
             return redirect(url_for('purchase_list'))
         finally:
             c.close()

@@ -821,7 +821,7 @@ def apply_inbound_lifecycle_action(organization_id,e_invoicing_id,action,*,reaso
 
 def download_inbound_invoice_original(organization_id, remote_id, timeout=30):
     """Télécharge le document électronique source d'une facture INBOUND."""
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/invoice-queries/{remote_id}/file",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'*/*'},timeout=timeout)
     if resp.status_code != 200:
@@ -847,7 +847,7 @@ def submit_ereporting_flow(organization_id, payload, timeout=30):
     if missing: raise WeInvoiceAPIError("E-reporting incomplet: "+", ".join(missing))
     if payload['flowType'] not in _EREPORTING_FLOW_TYPES:
         raise WeInvoiceAPIError("flowType e-reporting invalide")
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.post(f"{WEINVOICE_BASE_URL}/v1/e-reporting/flows",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),
                  'Content-Type':'application/json','Accept':'application/json'},
@@ -858,7 +858,7 @@ def submit_ereporting_flow(organization_id, payload, timeout=30):
     return data
 
 def list_ereporting_transmissions(organization_id, timeout=20):
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
@@ -868,7 +868,7 @@ def list_ereporting_transmissions(organization_id, timeout=20):
     return data
 
 def get_ereporting_transmission(organization_id, transmission_id, timeout=20):
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
@@ -879,7 +879,7 @@ def get_ereporting_transmission(organization_id, transmission_id, timeout=20):
 
 def get_ereporting_proof(organization_id, transmission_id, timeout=30):
     """Retourne la preuve fiscale §7.3 (JSON : verdict, motifs, chaîne SHA-256, archives)."""
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}/proof",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
@@ -890,7 +890,7 @@ def get_ereporting_proof(organization_id, transmission_id, timeout=30):
 
 
 def get_ereporting_fiscal_settings(organization_id, timeout=20):
-    token=fetch_invoicing_access_token()
+    token=fetch_access_token(credential_set='invoicing')
     resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/fiscal-settings",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
