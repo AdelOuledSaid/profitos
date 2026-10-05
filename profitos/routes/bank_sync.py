@@ -528,12 +528,14 @@ def register(app):
             ).fetchone()
             total=round(abs(float(tx['amount'] or 0)),2)
             allocated=round(float(customer)+float(supplier)+float(fee),2)
-            if accounting_validation:
-                allocated=total
             if ignored and ignored['state']=='ignored':
                 state='ignored'
             elif total > .005 and allocated >= total-.005:
                 state='reconciled'
+            elif accounting_validation:
+                # Accounting categorization is not an invoice reconciliation.
+                # Keep the transaction eligible for later customer/supplier matching.
+                state='accounted'
             else:
                 state='pending'
             states[tx['id']]={'state':state,'allocated':allocated,'remaining':max(0.0,round(total-allocated,2))}
@@ -564,15 +566,22 @@ def register(app):
                 ep,
             ).fetchall()
             transaction_states = _bank_transaction_states(c, transactions, eid)
-            active_transactions = [t for t in transactions if transaction_states[t['id']]['state']=='pending']
-            reconciliation_suggestions = _reconciliation_suggestions(c, active_transactions)
-            accounting_suggestions = {t['id']: _accounting_suggestion(c, t, eid) for t in active_transactions}
+            reconciliation_candidates = [
+                t for t in transactions
+                if transaction_states[t['id']]['state'] in ('pending','accounted')
+            ]
+            reconciliation_suggestions = _reconciliation_suggestions(c, reconciliation_candidates)
+            accounting_suggestions = {
+                t['id']: _accounting_suggestion(c, t, eid)
+                for t in transactions
+                if transaction_states[t['id']]['state']=='pending'
+            }
 
             # Lot 14: suggestions de rapprochement des paiements fournisseurs.
             # La vue banking.html attend un dictionnaire indexé par l'id
             # de la transaction bancaire.
             purchase_reconciliation_suggestions = {}
-            for tx in active_transactions:
+            for tx in reconciliation_candidates:
                 suggestions = _purchase_reconciliation_suggestions(c, tx)
                 if suggestions:
                     purchase_reconciliation_suggestions[tx["id"]] = suggestions

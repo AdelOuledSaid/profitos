@@ -209,7 +209,7 @@
 
   {% set ns = namespace(found=false) %}
   {% for tx in transactions %}
-    {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) if transaction_states.get(tx.id, {}).get('state') == 'pending' else [] %}
+    {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) if transaction_states.get(tx.id, {}).get('state') in ('pending','accounted') else [] %}
     {% if suggestions %}
       {% set ns.found = true %}
       <div style="padding:12px 0;border-top:1px solid rgba(255,255,255,.08);">
@@ -264,6 +264,9 @@
             {% set wf = transaction_states.get(t.id, {'state':'pending','remaining':0}) %}
             {% if wf.state == 'reconciled' %}
               <strong>Rapprochée</strong>
+            {% elif wf.state == 'accounted' %}
+              <strong>Comptabilisée</strong>
+              <small style="display:block;opacity:.75;">Rapprochement facture encore possible</small>
             {% elif wf.state == 'ignored' %}
               <strong>Ignorée</strong>
               <form method="post" action="{{ url_for('banking_transaction_restore',tx_id=t.id) }}" style="display:inline;">
