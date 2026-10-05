@@ -101,9 +101,6 @@
               <input type="number" name="matched_amount" min="0.01" step="0.01" max="{{ m.transaction_available }}" value="{{ m.matched_amount }}" style="width:110px;margin-bottom:6px;">
               <button type="submit" class="purchase-primary-btn secondary">Rapprocher</button>
             </form>
-            {% else %}
-              <span class="purchase-muted">Aucune action comptable proposée.</span>
-            {% endif %}
           </td>
         </tr>
       {% endfor %}
@@ -184,9 +181,9 @@
                   Après ce rapprochement : {{ '%.2f'|format(s.remaining_after) }} € resteront à traiter sur le mouvement bancaire.
                   {% if s.small_difference %}
                     <strong>Petit écart / frais bancaire possible — à comptabiliser séparément.</strong>
-                    <form method="post" action="{{ url_for('banking_transaction_book_fee', tx_id=tx.id) }}" style="display:inline;margin-left:8px;">
+                    <form method="post" action="{{ url_for('banking_transaction_book_fee',tx_id=tx.id) }}" style="display:inline;margin-left:8px;">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button type="submit" class="purchase-primary-btn secondary">Comptabiliser en frais bancaire</button>
+                      <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Comptabiliser en frais bancaire</button>
                     </form>
                   {% else %}Ce reliquat peut correspondre à une autre facture.{% endif %}
                 </small>
@@ -248,6 +245,9 @@
               <button class="btn btn-secondary" type="submit" style="font-size:12px;padding:5px 8px;">Valider</button>
               {% if sug %}<small style="grid-column:1/-1;opacity:.75;">Suggestion {{ sug.confidence_score }} % — {{ sug.reason }}. Validation humaine requise.</small>{% endif %}
             </form>
+            {% else %}
+              <span class="purchase-muted">Aucune action comptable proposée.</span>
+            {% endif %}
           </td>
         </tr>
       {% endfor %}
