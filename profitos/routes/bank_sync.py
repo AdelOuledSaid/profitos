@@ -1036,10 +1036,10 @@ def register(app):
         if residual <= .005 or residual > 5.00 or residual > limit:
             c.close(); flash("Écart trop important pour être comptabilisé automatiquement en frais bancaire.")
             return redirect(url_for('banking'))
-        expense=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '627%'
+        expense=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '627%%'
                              AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
                              ORDER BY code LIMIT 1""",(eid,)).fetchone()
-        bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%'
+        bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%%'
                                   AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
                                   ORDER BY code LIMIT 1""",(eid,)).fetchone()
         if not expense or not bank_account:
