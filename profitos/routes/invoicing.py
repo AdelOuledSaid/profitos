@@ -1990,6 +1990,7 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_new():
+        eid=current_entity_id()
         c=cx()
         suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
         if request.method=='POST':
