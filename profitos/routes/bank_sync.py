@@ -1054,7 +1054,13 @@ def register(app):
         from profitos.entities import current_entity_id
         eid=current_entity_id()
         c=cx()
-        tx=c.execute("SELECT id FROM bank_transactions WHERE id=? AND entity_id IS ?",(tx_id,eid)).fetchone()
+        tx=c.execute(
+            """SELECT t.id
+               FROM bank_transactions t
+               JOIN bank_accounts a ON a.id=t.account_id
+               WHERE t.id=? AND a.entity_id IS ?""",
+            (tx_id,eid),
+        ).fetchone()
         if not tx:
             c.close(); abort(404)
         _ensure_bank_workflow_table(c)
@@ -1074,7 +1080,13 @@ def register(app):
         from profitos.entities import current_entity_id
         eid=current_entity_id()
         c=cx()
-        tx=c.execute("SELECT id FROM bank_transactions WHERE id=? AND entity_id IS ?",(tx_id,eid)).fetchone()
+        tx=c.execute(
+            """SELECT t.id
+               FROM bank_transactions t
+               JOIN bank_accounts a ON a.id=t.account_id
+               WHERE t.id=? AND a.entity_id IS ?""",
+            (tx_id,eid),
+        ).fetchone()
         if not tx:
             c.close(); abort(404)
         _ensure_bank_workflow_table(c)
