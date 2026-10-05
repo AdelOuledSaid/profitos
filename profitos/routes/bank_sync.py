@@ -512,7 +512,7 @@ def register(app):
                 '''SELECT COALESCE(SUM(l.debit),0) AS x
                    FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
                    WHERE e.entity_id IS ? AND e.source_type='bank_fee' AND e.source_id=?
-                     AND l.account_code LIKE '627%' ''',
+                     AND l.account_code LIKE '627%%' ''',
                 (eid,tx['id'])
             ).fetchone()['x'] or 0
             accounting_validation=c.execute(
