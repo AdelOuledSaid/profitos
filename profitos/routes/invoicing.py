@@ -3212,7 +3212,9 @@ def register(app):
             remote_id = data.get('eInvoicingId') or data.get('generationId') or data.get('id') or ''
             remote_status = data.get('status') or ('GENERATION' if data.get('generationId') else 'SUBMITTED')
             if not remote_id:
-                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', ("WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé.", invoice_id, inv['entity_id']))
+                missing_remote_id_error = "WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé."
+                c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (missing_remote_id_error, invoice_id, inv['entity_id']))
+                _record_einvoice_event(c,inv,'submission_failed',idempotency_key=idem,detail=missing_remote_id_error)
                 c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifie les logs avant tout nouvel envoi.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (remote_id, remote_status, now(), invoice_id, inv['entity_id']))
@@ -3247,6 +3249,35 @@ def register(app):
             try:
                 data = get_invoice_timeline(settings['weinvoice_company_id'], remote_id)
                 status, regulatory_code = invoice_status_from_timeline(data)
+
+                # Les acquittements PPF sont des accusés techniques/réglementaires :
+                # ils sont journalisés séparément et ne remplacent jamais le cycle de vie métier.
+                ack = data.get('latestAcquittement') or {}
+                ack_code = str(ack.get('code') or '').strip()
+                ack_statuses = {
+                    '250': 'ACK_250_ACCEPTED',
+                    '251': 'ACK_251_REJECTED',
+                    '500': 'ACK_500_RECEVABLE',
+                    '501': 'ACK_501_INADMISSIBLE',
+                    '601': 'ACK_601_REJECTED',
+                }
+                ack_status = ack_statuses.get(ack_code)
+                if ack_status:
+                    ack_detail = ' · '.join(
+                        str(v) for v in (
+                            ack.get('objet'),
+                            ack.get('decision'),
+                            ack.get('motifCode'),
+                        ) if v not in (None, '')
+                    )
+                    _record_einvoice_event(
+                        c, inv, 'acquittement',
+                        remote_id=remote_id,
+                        status=ack_status,
+                        regulatory_code=ack_code,
+                        idempotency_key=f'ppf-ack-{remote_id}-{ack_code}-{ack.get("motifCode") or ""}',
+                        detail=ack_detail,
+                    )
             except (WeInvoiceAPIError, WeInvoiceConfigError) as e:
                 c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (str(e)[:1500], invoice_id, inv['entity_id']))
                 c.commit(); flash(str(e))
@@ -3255,36 +3286,6 @@ def register(app):
                       (status, str(regulatory_code) if regulatory_code is not None else None, now(), invoice_id, inv['entity_id']))
             _record_einvoice_event(c,inv,'status_sync',remote_id=remote_id,status=status,regulatory_code=regulatory_code,
                                    idempotency_key=f'sync-{remote_id}-{status}-{regulatory_code}')
-
-            # Les acquittements PPF (250/251/500/501/601) sont distincts du
-            # statut métier de la facture. On les journalise séparément afin
-            # qu'un 601, par exemple, ne transforme jamais RECEIVED en rejet.
-            ack = data.get('latestAcquittement') if isinstance(data, dict) else None
-            if isinstance(ack, dict) and ack.get('code') is not None:
-                ack_code = str(ack.get('code')).strip()
-                ack_decision = str(ack.get('decision') or '').strip().upper()
-                ack_status_map = {
-                    '250': 'ACK_250_ACCEPTED',
-                    '251': 'ACK_251_REJECTED',
-                    '500': 'ACK_500_RECEVABLE',
-                    '501': 'ACK_501_INADMISSIBLE',
-                    '601': 'ACK_601_REJECTED',
-                }
-                ack_status = ack_status_map.get(ack_code, f'ACK_{ack_code}_{ack_decision or "UNKNOWN"}')
-                ack_detail = json.dumps({
-                    'code': ack_code,
-                    'statut': ack.get('statut'),
-                    'objet': ack.get('objet'),
-                    'decision': ack.get('decision'),
-                    'motifCode': ack.get('motifCode'),
-                    'motifTexte': ack.get('motifTexte'),
-                }, ensure_ascii=False)
-                _record_einvoice_event(
-                    c, inv, 'acquittement', remote_id=remote_id, status=ack_status,
-                    regulatory_code=None,
-                    idempotency_key=f'ack-{remote_id}-{ack_code}-{ack.get("motifCode") or ""}',
-                    detail=ack_detail,
-                )
             c.commit()
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
