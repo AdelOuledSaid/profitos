@@ -155,9 +155,57 @@
 </section>
 {% endif %}
 
+
+{% if reconciliations or purchase_reconciliations %}
+<section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.5">
+  <h2 style="color:#fff;margin-bottom:6px;">Historique des rapprochements</h2>
+  <p class="purchase-muted" style="margin-top:0;">Affectations bancaires déjà confirmées pour les factures clients et fournisseurs.</p>
+
+  {% if reconciliations %}
+  <h3 style="margin-top:18px;">Clients</h3>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant affecté</th></tr></thead>
+      <tbody>
+      {% for r in reconciliations %}
+        <tr>
+          <td>{{ r.transaction_date|fr_date or '—' }}</td>
+          <td>{{ r.label or '—' }}</td>
+          <td>{{ r.invoice_number or '—' }}</td>
+          <td>{{ r.client_name or '—' }}</td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }} €</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if purchase_reconciliations %}
+  <h3 style="margin-top:22px;">Fournisseurs</h3>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Fournisseur</th><th>Montant affecté</th></tr></thead>
+      <tbody>
+      {% for r in purchase_reconciliations %}
+        <tr>
+          <td>{{ r.transaction_date|fr_date or '—' }}</td>
+          <td>{{ r.label or '—' }}</td>
+          <td>{{ r.invoice_number or '—' }}</td>
+          <td>{{ r.supplier_name or '—' }}</td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }} €</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.4">
-  <h2 style="color:#fff;">Paiements fournisseurs à rapprocher</h2>
-  <p class="purchase-muted">Sorties bancaires pouvant correspondre à une facture fournisseur impayée. Confirmation manuelle obligatoire.</p>
+  <h2 style="color:#fff;margin-bottom:6px;">Paiements fournisseurs à rapprocher</h2>
+  <p class="purchase-muted" style="margin-top:0;">Suggestions nécessitant un montant exact ou un indice fournisseur/facture. Confirmation manuelle obligatoire.</p>
 
   {% set ns = namespace(found=false) %}
   {% for tx in transactions %}

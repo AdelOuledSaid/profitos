@@ -389,6 +389,10 @@ def _purchase_reconciliation_suggestions(c, tx):
             and remaining_after <= 5.00
             and remaining_after <= max(0.01, round(total*0.02,2))
         )
+        # A score of 30 means "amount relation only" (partial/grouped) with no
+        # invoice/supplier signal. Do not surface these noisy suggestions.
+        if score <= 30:
+            continue
         out.append({'purchase':p,'score':score,'confidence':confidence,
                     'reasons':', '.join(reasons),'amount':suggested_amount,
                     'remaining_after':remaining_after,
