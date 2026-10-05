@@ -538,7 +538,16 @@ def register(app):
                 state='accounted'
             else:
                 state='pending'
-            states[tx['id']]={'state':state,'allocated':allocated,'remaining':max(0.0,round(total-allocated,2))}
+            remaining=max(0.0,round(total-allocated,2))
+            fee_eligible=(
+                float(tx['amount'] or 0) < 0
+                and float(supplier) > .005
+                and remaining > .005
+                and remaining <= 5.00
+                and remaining <= max(0.01, round(float(supplier)*0.02,2))
+            )
+            states[tx['id']]={'state':state,'allocated':allocated,'remaining':remaining,
+                              'fee_eligible':fee_eligible}
         return states
 
     @app.route("/banking")

@@ -280,6 +280,12 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Ignorer</button>
               </form>
+              {% if wf.fee_eligible %}
+                <form method="post" action="{{ url_for('banking_transaction_book_fee',tx_id=t.id) }}" style="display:block;margin-top:6px;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Comptabiliser l'écart en frais bancaire</button>
+                </form>
+              {% endif %}
             {% endif %}
           </td>
           <td>
