@@ -1051,7 +1051,7 @@ def register(app):
             c.execute("""INSERT INTO accounting_entries
                          (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
                          VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
-                      (piece,entry_date,label,'bank_fee',tx_id,current_user_email(),now(),eid))
+                      (piece,entry_date,label,'bank_fee',tx_id,session.get('user_email') or session.get('email') or 'system',now(),eid))
             entry=c.execute("""SELECT id FROM accounting_entries WHERE entity_id IS ?
                                AND source_type='bank_fee' AND source_id=? ORDER BY id DESC LIMIT 1""",(eid,tx_id)).fetchone()
             c.execute("""INSERT INTO accounting_entry_lines
