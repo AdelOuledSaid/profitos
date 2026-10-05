@@ -855,7 +855,7 @@ def register(app):
         if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
         key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
-            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['booking_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',tx['label'],key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
             generate_purchase_partial_payment_entry(c,p,payment)
             c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
