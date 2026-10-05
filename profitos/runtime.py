@@ -1022,6 +1022,16 @@ def init_tenant_db(org_id=None):
     );
     CREATE INDEX IF NOT EXISTS idx_bank_invoice_alloc_tx ON bank_invoice_allocations(entity_id,bank_transaction_id);
     CREATE INDEX IF NOT EXISTS idx_bank_invoice_alloc_inv ON bank_invoice_allocations(entity_id,invoice_id);
+    CREATE TABLE IF NOT EXISTS bank_transaction_workflow(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        bank_transaction_id INTEGER NOT NULL,
+        state TEXT NOT NULL DEFAULT 'ignored',
+        updated_at TEXT NOT NULL,
+        UNIQUE(entity_id,bank_transaction_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bank_transaction_workflow_tx
+        ON bank_transaction_workflow(entity_id,bank_transaction_id);
     CREATE TABLE IF NOT EXISTS invoice_reminders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,

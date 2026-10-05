@@ -279,18 +279,44 @@ def _norm_text(value):
     return " ".join(value.split())
 
 
+def _token_typo_match(a, b):
+    """Conservative one-edit tolerance for long company-name tokens only."""
+    if a == b:
+        return True
+    if min(len(a),len(b)) < 5 or abs(len(a)-len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diffs=[i for i,(x,y) in enumerate(zip(a,b)) if x != y]
+        if len(diffs) <= 1:
+            return True
+        # One adjacent transposition, e.g. AMAZON -> AMAZNO.
+        return (
+            len(diffs) == 2
+            and diffs[1] == diffs[0] + 1
+            and a[diffs[0]] == b[diffs[1]]
+            and a[diffs[1]] == b[diffs[0]]
+        )
+    short,long = (a,b) if len(a) < len(b) else (b,a)
+    i=j=errors=0
+    while i < len(short) and j < len(long):
+        if short[i] == long[j]:
+            i += 1; j += 1
+        else:
+            errors += 1; j += 1
+            if errors > 1:
+                return False
+    return True
+
+
 def _name_similarity(client_name, bank_label):
-    """
-    Conservative lexical score based only on tokens actually present in the bank label.
-    Company-form words are ignored. No fuzzy guessing.
-    """
+    """Conservative lexical score with one-edit tolerance on long tokens."""
     ignore = {"sas","sasu","sarl","eurl","sa","sc","sci","societe","entreprise",
               "company","ltd","limited","inc","gmbh","bv","the","de","du","des","et"}
     client_tokens = [t for t in _norm_text(client_name).split() if len(t) >= 3 and t not in ignore]
-    label_tokens = set(_norm_text(bank_label).split())
+    label_tokens = [t for t in _norm_text(bank_label).split() if len(t) >= 3 and t not in ignore]
     if not client_tokens:
         return 0
-    hits = sum(1 for t in client_tokens if t in label_tokens)
+    hits = sum(1 for t in client_tokens if any(_token_typo_match(t,lt) for lt in label_tokens))
     if hits == 0:
         return 0
     ratio = hits / len(client_tokens)
@@ -300,16 +326,20 @@ def _name_similarity(client_name, bank_label):
         return 20
     return 10
 
-
-
 def _purchase_reconciliation_suggestions(c, tx):
     # Supplier payments are negative bank transactions.
     amount = float(tx['amount'] or 0)
     if amount >= 0:
         return []
-    target = abs(amount)
-
     eid=tx['entity_id'] if 'entity_id' in tx.keys() else None
+    allocated=c.execute(
+        "SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",
+        (eid,tx['id'])
+    ).fetchone()['x'] or 0
+    target=max(0.0,round(abs(amount)-float(allocated),2))
+    if target <= .005:
+        return []
+
     rows=c.execute("""
         SELECT p.*,
                COALESCE((SELECT SUM(pp.amount) FROM purchase_invoice_payments pp
@@ -324,25 +354,45 @@ def _purchase_reconciliation_suggestions(c, tx):
     out=[]
     for p in rows:
         total=max(0.0,float(p['total'] or 0)-float(p['paid_total'] or 0))
-        if total<=.005 or abs(total-target)>0.01:
+        if total<=.005:
             continue
-        score=60
-        reasons=['montant exact']
+        if abs(total-target)<=0.01:
+            score=60
+            reasons=['montant exact']
+            suggested_amount=target
+        elif target < total and target > .005:
+            score=30
+            reasons=['paiement partiel possible']
+            suggested_amount=target
+        elif total < target and total > .005:
+            score=30
+            reasons=['paiement groupé possible']
+            suggested_amount=total
+        else:
+            continue
         inv_no=_norm_text(p['invoice_number'] or '')
         supplier=_norm_text(p['supplier_name'] or '')
         if inv_no and inv_no in tx_label:
             score += 35
             reasons.append('n° facture')
         sim=_name_similarity(supplier, tx_label) if supplier else 0
-        if sim >= .85:
+        if sim >= 30:
             score += 30; reasons.append('fournisseur très proche')
-        elif sim >= .65:
+        elif sim >= 20:
             score += 20; reasons.append('fournisseur proche')
-        elif sim >= .45:
+        elif sim >= 10:
             score += 10; reasons.append('fournisseur partiel')
         confidence='Élevée' if score>=90 else ('Moyenne' if score>=75 else 'Faible')
+        remaining_after=max(0.0,round(target-suggested_amount,2))
+        small_difference=(
+            remaining_after > .005
+            and remaining_after <= 5.00
+            and remaining_after <= max(0.01, round(total*0.02,2))
+        )
         out.append({'purchase':p,'score':score,'confidence':confidence,
-                    'reasons':', '.join(reasons),'amount':target})
+                    'reasons':', '.join(reasons),'amount':suggested_amount,
+                    'remaining_after':remaining_after,
+                    'small_difference':small_difference})
     out.sort(key=lambda x:(-x['score'], x['purchase']['due_date'] or '', x['purchase']['id']))
     # Exact same amount can be ambiguous: keep all suggestions visible, never auto-pay.
     return out
@@ -434,6 +484,59 @@ def register(app):
         flash(f"Compte rattaché à {identity['name']}.")
         return redirect(url_for("banking"))
 
+    def _ensure_bank_workflow_table(c):
+        c.execute("""CREATE TABLE IF NOT EXISTS bank_transaction_workflow(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_id INTEGER,
+            bank_transaction_id INTEGER NOT NULL,
+            state TEXT NOT NULL DEFAULT 'ignored',
+            updated_at TEXT NOT NULL,
+            UNIQUE(entity_id,bank_transaction_id)
+        )""")
+
+    def _bank_transaction_states(c, transactions, eid):
+        _ensure_bank_workflow_table(c)
+        states={}
+        for tx in transactions:
+            ignored=c.execute(
+                "SELECT state FROM bank_transaction_workflow WHERE entity_id IS ? AND bank_transaction_id=?",
+                (eid,tx['id'])
+            ).fetchone()
+            customer=c.execute(
+                "SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_invoice_allocations WHERE entity_id IS ? AND bank_transaction_id=?",
+                (eid,tx['id'])
+            ).fetchone()['x'] or 0
+            supplier=c.execute(
+                "SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",
+                (eid,tx['id'])
+            ).fetchone()['x'] or 0
+            fee=c.execute(
+                '''SELECT COALESCE(SUM(l.debit),0) AS x
+                   FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
+                   WHERE e.entity_id IS ? AND e.source_type='bank_fee' AND e.source_id=?
+                     AND l.account_code LIKE '627%' ''',
+                (eid,tx['id'])
+            ).fetchone()['x'] or 0
+            accounting_validation=c.execute(
+                '''SELECT account_code FROM bank_accounting_validations
+                   WHERE entity_id IS ? AND bank_transaction_id=?
+                     AND account_code IS NOT NULL AND TRIM(account_code) <> ''
+                   LIMIT 1''',
+                (eid,tx['id'])
+            ).fetchone()
+            total=round(abs(float(tx['amount'] or 0)),2)
+            allocated=round(float(customer)+float(supplier)+float(fee),2)
+            if accounting_validation:
+                allocated=total
+            if ignored and ignored['state']=='ignored':
+                state='ignored'
+            elif total > .005 and allocated >= total-.005:
+                state='reconciled'
+            else:
+                state='pending'
+            states[tx['id']]={'state':state,'allocated':allocated,'remaining':max(0.0,round(total-allocated,2))}
+        return states
+
     @app.route("/banking")
     @login_required
     @requires_paid_plan
@@ -458,14 +561,16 @@ def register(app):
                     ORDER BY t.transaction_date DESC,t.id DESC LIMIT 50""",
                 ep,
             ).fetchall()
-            reconciliation_suggestions = _reconciliation_suggestions(c, transactions)
-            accounting_suggestions = {t['id']: _accounting_suggestion(c, t, eid) for t in transactions}
+            transaction_states = _bank_transaction_states(c, transactions, eid)
+            active_transactions = [t for t in transactions if transaction_states[t['id']]['state']=='pending']
+            reconciliation_suggestions = _reconciliation_suggestions(c, active_transactions)
+            accounting_suggestions = {t['id']: _accounting_suggestion(c, t, eid) for t in active_transactions}
 
             # Lot 14: suggestions de rapprochement des paiements fournisseurs.
             # La vue banking.html attend un dictionnaire indexé par l'id
             # de la transaction bancaire.
             purchase_reconciliation_suggestions = {}
-            for tx in transactions:
+            for tx in active_transactions:
                 suggestions = _purchase_reconciliation_suggestions(c, tx)
                 if suggestions:
                     purchase_reconciliation_suggestions[tx["id"]] = suggestions
@@ -476,7 +581,17 @@ def register(app):
                    JOIN bank_transactions t ON t.id=r.bank_transaction_id
                    JOIN outgoing_invoices i ON i.id=r.invoice_id
                    WHERE r.{ef}
-                   ORDER BY r.id DESC LIMIT 20''',
+                   ORDER BY r.id DESC LIMIT 50''',
+                ep,
+            ).fetchall()
+            purchase_reconciliations = c.execute(
+                f'''SELECT r.*,t.transaction_date,t.label,t.amount,
+                           p.invoice_number,p.supplier_name
+                   FROM bank_purchase_allocations r
+                   JOIN bank_transactions t ON t.id=r.bank_transaction_id
+                   JOIN purchase_invoices p ON p.id=r.purchase_invoice_id
+                   WHERE r.{ef}
+                   ORDER BY r.id DESC LIMIT 50''',
                 ep,
             ).fetchall()
             categories = sorted(DEFAULT_CATEGORY_MAPPING.keys())
@@ -487,10 +602,12 @@ def register(app):
             connection=connection,
             accounts=accounts,
             transactions=transactions,
+            transaction_states=transaction_states,
             reconciliation_suggestions=reconciliation_suggestions,
             accounting_suggestions=accounting_suggestions,
             purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
+            purchase_reconciliations=purchase_reconciliations,
             powens_configured=_configured(),
             swan_configured=__import__('profitos.swan_baas', fromlist=['is_configured']).is_configured(),
             swan_environment=__import__('profitos.swan_baas', fromlist=['current_environment']).current_environment(),
@@ -855,7 +972,7 @@ def register(app):
         if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
         key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
-            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',tx['label'],key,now()))
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
             generate_purchase_partial_payment_entry(c,p,payment)
             c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
@@ -865,6 +982,108 @@ def register(app):
         except (AccountingError, sqlite3.IntegrityError, ValueError) as e:
             c.rollback(); c.close(); flash(f"Rapprochement annulé : {e}"); return redirect(url_for('banking'))
         c.close(); flash("Rapprochement fournisseur enregistré."); return redirect(url_for('banking'))
+
+    @app.post("/banking/transaction/<int:tx_id>/book-fee")
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @requires_feature('banking')
+    @require_area('invoicing')
+    def banking_transaction_book_fee(tx_id):
+        """Book only a small residual debit as a bank fee: Dr 627 / Cr 512."""
+        from profitos.entities import current_entity_id
+        eid=current_entity_id(); c=cx()
+        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                        ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                        WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
+        if not tx:
+            c.close(); abort(404)
+        if float(tx['amount'] or 0) >= 0:
+            c.close(); flash("Seule une sortie bancaire peut être comptabilisée en frais bancaire.")
+            return redirect(url_for('banking'))
+        existing=c.execute("""SELECT id FROM accounting_entries
+                              WHERE entity_id IS ? AND source_type='bank_fee' AND source_id=? LIMIT 1""",
+                           (eid,tx_id)).fetchone()
+        if existing:
+            c.close(); flash("Les frais de ce mouvement bancaire sont déjà comptabilisés.")
+            return redirect(url_for('banking'))
+        customer_alloc=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_invoice_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
+        supplier_alloc=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
+        allocated=round(float(customer_alloc)+float(supplier_alloc),2)
+        residual=max(0.0,round(abs(float(tx['amount'] or 0))-allocated,2))
+        reference=max(float(supplier_alloc),float(customer_alloc),0.0)
+        limit=max(0.01,round(reference*0.02,2))
+        if residual <= .005 or residual > 5.00 or residual > limit:
+            c.close(); flash("Écart trop important pour être comptabilisé automatiquement en frais bancaire.")
+            return redirect(url_for('banking'))
+        expense=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '627%'
+                             AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
+                             ORDER BY code LIMIT 1""",(eid,)).fetchone()
+        bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%'
+                                  AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
+                                  ORDER BY code LIMIT 1""",(eid,)).fetchone()
+        if not expense or not bank_account:
+            c.close(); flash("Comptes 627 (services bancaires) ou 512 (banque) absents du plan comptable.")
+            return redirect(url_for('banking'))
+        entry_date=tx['transaction_date'] or date.today().isoformat()
+        label=f"Frais bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKFEE-{tx_id}"
+        try:
+            c.execute("""INSERT INTO accounting_entries
+                         (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
+                         VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
+                      (piece,entry_date,label,'bank_fee',tx_id,current_user_email(),now(),eid))
+            entry=c.execute("""SELECT id FROM accounting_entries WHERE entity_id IS ?
+                               AND source_type='bank_fee' AND source_id=? ORDER BY id DESC LIMIT 1""",(eid,tx_id)).fetchone()
+            c.execute("""INSERT INTO accounting_entry_lines
+                         (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
+                         VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],expense['code'],None,label,residual,0.0,None,1))
+            c.execute("""INSERT INTO accounting_entry_lines
+                         (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
+                         VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],bank_account['code'],None,label,0.0,residual,None,2))
+            c.commit()
+        except (sqlite3.IntegrityError, ValueError) as e:
+            c.rollback(); c.close(); flash(f"Comptabilisation des frais annulée : {e}")
+            return redirect(url_for('banking'))
+        c.close(); flash(f"Frais bancaire de {fr_number(residual,2)} € comptabilisé (627 / 512).")
+        return redirect(url_for('banking'))
+
+
+    @app.post("/banking/transaction/<int:tx_id>/ignore")
+    @login_required
+    @requires_paid_plan
+    @requires_feature('banking')
+    def banking_transaction_ignore(tx_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx()
+        tx=c.execute("SELECT id FROM bank_transactions WHERE id=? AND entity_id IS ?",(tx_id,eid)).fetchone()
+        if not tx:
+            c.close(); abort(404)
+        _ensure_bank_workflow_table(c)
+        c.execute("""INSERT INTO bank_transaction_workflow(entity_id,bank_transaction_id,state,updated_at)
+                     VALUES(?,?,'ignored',?)
+                     ON CONFLICT(entity_id,bank_transaction_id)
+                     DO UPDATE SET state='ignored',updated_at=excluded.updated_at""",(eid,tx_id,now()))
+        c.commit(); c.close()
+        flash("Opération bancaire ignorée.")
+        return redirect(url_for('banking'))
+
+    @app.post("/banking/transaction/<int:tx_id>/restore")
+    @login_required
+    @requires_paid_plan
+    @requires_feature('banking')
+    def banking_transaction_restore(tx_id):
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx()
+        tx=c.execute("SELECT id FROM bank_transactions WHERE id=? AND entity_id IS ?",(tx_id,eid)).fetchone()
+        if not tx:
+            c.close(); abort(404)
+        _ensure_bank_workflow_table(c)
+        c.execute("DELETE FROM bank_transaction_workflow WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id))
+        c.commit(); c.close()
+        flash("Opération bancaire remise à traiter.")
+        return redirect(url_for('banking'))
 
     @app.route('/banking/regles', methods=['GET', 'POST'])
     @login_required

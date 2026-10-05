@@ -101,6 +101,9 @@
               <input type="number" name="matched_amount" min="0.01" step="0.01" max="{{ m.transaction_available }}" value="{{ m.matched_amount }}" style="width:110px;margin-bottom:6px;">
               <button type="submit" class="purchase-primary-btn secondary">Rapprocher</button>
             </form>
+            {% else %}
+              <span class="purchase-muted">Aucune action comptable proposée.</span>
+            {% endif %}
           </td>
         </tr>
       {% endfor %}
@@ -112,7 +115,7 @@
 
 {% if reconciliations %}
 <section class="purchase-panel" style="margin-top:20px;">
-  <h2 style="color:#fff;">Rapprochements confirmés</h2>
+  <h2 style="color:#fff;">Rapprochements clients confirmés</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
       <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
@@ -132,13 +135,36 @@
 </section>
 {% endif %}
 
+{% if purchase_reconciliations %}
+<section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.5">
+  <h2>Rapprochements fournisseurs confirmés</h2>
+  <p class="purchase-muted">Historique des affectations bancaires fournisseurs, y compris les paiements partiels et groupés.</p>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Fournisseur</th><th>Montant affecté</th></tr></thead>
+      <tbody>
+      {% for r in purchase_reconciliations %}
+        <tr>
+          <td>{{ r.transaction_date|fr_date or '—' }}</td>
+          <td>{{ r.label or '—' }}</td>
+          <td>{{ r.invoice_number }}</td>
+          <td>{{ r.supplier_name }}</td>
+          <td><strong>{{ r.matched_amount or 0|fr_number(2) }} €</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.4">
   <h2 style="color:#fff;">Paiements fournisseurs à rapprocher</h2>
   <p class="purchase-muted">Sorties bancaires pouvant correspondre à une facture fournisseur impayée. Confirmation manuelle obligatoire.</p>
 
   {% set ns = namespace(found=false) %}
   {% for tx in transactions %}
-    {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) %}
+    {% set suggestions = purchase_reconciliation_suggestions.get(tx.id, []) if transaction_states.get(tx.id, {}).get('state') == 'pending' else [] %}
     {% if suggestions %}
       {% set ns.found = true %}
       <div style="padding:12px 0;border-top:1px solid rgba(255,255,255,.08);">
@@ -151,7 +177,20 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="bank_transaction_id" value="{{ tx.id }}">
               <input type="hidden" name="purchase_invoice_id" value="{{ s.purchase.id }}">
+              <input type="hidden" name="matched_amount" value="{{ '%.2f'|format(s.amount) }}">
               <button type="submit" class="purchase-primary-btn secondary">Confirmer le paiement fournisseur</button>
+              {% if s.remaining_after > 0.005 %}
+                <small style="display:block;margin-top:5px;opacity:.8;">
+                  Après ce rapprochement : {{ '%.2f'|format(s.remaining_after) }} € resteront à traiter sur le mouvement bancaire.
+                  {% if s.small_difference %}
+                    <strong>Petit écart / frais bancaire possible — à comptabiliser séparément.</strong>
+                    <form method="post" action="{{ url_for('banking_transaction_book_fee', tx_id=tx.id) }}" style="display:inline;margin-left:8px;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="purchase-primary-btn secondary">Comptabiliser en frais bancaire</button>
+                    </form>
+                  {% else %}Ce reliquat peut correspondre à une autre facture.{% endif %}
+                </small>
+              {% endif %}
             </form>
           </div>
         {% endfor %}
@@ -169,7 +208,7 @@
   <h2 style="color:#fff;">Dernières transactions</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Catégorisation comptable assistée</th></tr></thead>
+      <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th><th>État</th><th>Catégorisation comptable assistée</th></tr></thead>
       <tbody>
       {% for t in transactions %}
         <tr>
@@ -177,7 +216,27 @@
           <td>{{ t.label or '—' }}</td>
           <td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td>
           <td>
+            {% set wf = transaction_states.get(t.id, {'state':'pending','remaining':0}) %}
+            {% if wf.state == 'reconciled' %}
+              <strong>Rapprochée</strong>
+            {% elif wf.state == 'ignored' %}
+              <strong>Ignorée</strong>
+              <form method="post" action="{{ url_for('banking_transaction_restore',tx_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Remettre à traiter</button>
+              </form>
+            {% else %}
+              <strong>À traiter</strong>
+              <small style="display:block;opacity:.75;">Reste : {{ wf.remaining|fr_number(2) }} €</small>
+              <form method="post" action="{{ url_for('banking_transaction_ignore',tx_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Ignorer</button>
+              </form>
+            {% endif %}
+          </td>
+          <td>
             {% set sug = accounting_suggestions.get(t.id) %}
+            {% if wf.state == 'pending' %}
             <form method="post" action="{{ url_for('banking_transaction_categorize',tx_id=t.id) }}" style="display:grid;grid-template-columns:minmax(130px,1fr) 90px 75px auto;gap:6px;align-items:center;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="category" style="font-size:12px;padding:4px 6px;">

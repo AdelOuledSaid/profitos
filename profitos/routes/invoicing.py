@@ -448,6 +448,17 @@ def _purchase_money(raw):
     except Exception: return None
 
 
+def _purchase_form_date(raw, label):
+    """Validate an optional HTML date field and return canonical ISO YYYY-MM-DD."""
+    value=(raw or '').strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} invalide. Utilisez une date valide au format AAAA-MM-JJ.")
+
+
 def _purchase_pdf_date(raw):
     if not raw:
         return None
@@ -2002,11 +2013,13 @@ def register(app):
                     supplier_name=s['name']
             number=(request.form.get('invoice_number') or '').strip()
             try:
+                issue_date=_purchase_form_date(request.form.get('issue_date'), "Date de facture")
+                due_date=_purchase_form_date(request.form.get('due_date'), "Date d'échéance")
                 subtotal=float(request.form.get('subtotal') or 0)
                 vat=float(request.form.get('vat_amount') or 0)
-            except ValueError:
+            except ValueError as exc:
                 c.close()
-                flash("Montants invalides.")
+                flash(str(exc) if "date" in str(exc).lower() else "Montants invalides.")
                 return redirect(url_for('purchase_new'))
             total=round(subtotal+vat,2)
             if not supplier_name or not number or subtotal < 0 or vat < 0:
@@ -2032,8 +2045,8 @@ def register(app):
                          subtotal,vat_amount,total,status,notes,created_at,document_path,category,validation_status,purchase_order_id,entity_id)
                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (supplier_id,supplier_name,number,
-                       request.form.get('issue_date') or None,
-                       request.form.get('due_date') or None,
+                       issue_date,
+                       due_date,
                        subtotal,vat,total,'unpaid',
                        (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status,purchase_order_id,entity_id))
             c.commit()
@@ -2272,10 +2285,13 @@ def register(app):
                     supplier_name=s['name']
             number=(request.form.get('invoice_number') or '').strip()
             try:
+                issue_date=_purchase_form_date(request.form.get('issue_date'), "Date de facture")
+                due_date=_purchase_form_date(request.form.get('due_date'), "Date d'échéance")
                 subtotal=float(request.form.get('subtotal') or 0)
                 vat=float(request.form.get('vat_amount') or 0)
-            except ValueError:
-                c.close(); flash("Montants invalides.")
+            except ValueError as exc:
+                c.close()
+                flash(str(exc) if "date" in str(exc).lower() else "Montants invalides.")
                 return redirect(url_for('purchase_edit',purchase_id=purchase_id))
             if not supplier_name or not number or subtotal<0 or vat<0:
                 c.close(); flash("Fournisseur, numéro et montants valides sont obligatoires.")
@@ -2284,8 +2300,8 @@ def register(app):
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             c.execute("""UPDATE purchase_invoices SET supplier_id=?,supplier_name=?,invoice_number=?,
                          issue_date=?,due_date=?,subtotal=?,vat_amount=?,total=?,notes=?,category=? WHERE id=? AND entity_id IS ?""",
-                      (supplier_id,supplier_name,number,request.form.get('issue_date') or None,
-                       request.form.get('due_date') or None,subtotal,vat,round(subtotal+vat,2),
+                      (supplier_id,supplier_name,number,issue_date,
+                       due_date,subtotal,vat,round(subtotal+vat,2),
                        (request.form.get('notes') or '').strip(),category,purchase_id,eid))
             c.commit(); c.close()
             flash("Facture fournisseur mise à jour.")
