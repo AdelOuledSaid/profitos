@@ -1057,7 +1057,9 @@ def register(app):
         tx=c.execute(
             """SELECT t.id
                FROM bank_transactions t
-               JOIN bank_accounts a ON a.id=t.account_id
+               JOIN bank_accounts a
+                 ON a.provider=t.provider
+                AND a.provider_account_id=t.provider_account_id
                WHERE t.id=? AND a.entity_id IS ?""",
             (tx_id,eid),
         ).fetchone()
@@ -1083,7 +1085,9 @@ def register(app):
         tx=c.execute(
             """SELECT t.id
                FROM bank_transactions t
-               JOIN bank_accounts a ON a.id=t.account_id
+               JOIN bank_accounts a
+                 ON a.provider=t.provider
+                AND a.provider_account_id=t.provider_account_id
                WHERE t.id=? AND a.entity_id IS ?""",
             (tx_id,eid),
         ).fetchone()
