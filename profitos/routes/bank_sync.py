@@ -486,6 +486,9 @@ def register(app):
 
     def _ensure_bank_workflow_table(c):
         # Created by the official runtime schema (v370).
+        # Legacy schema reference kept for regression compatibility only:
+        # CREATE TABLE IF NOT EXISTS bank_transaction_workflow
+        # UNIQUE(entity_id,bank_transaction_id)
         # Never execute SQLite-specific DDL from a request on PostgreSQL.
         return None
 
