@@ -485,14 +485,9 @@ def register(app):
         return redirect(url_for("banking"))
 
     def _ensure_bank_workflow_table(c):
-        c.execute("""CREATE TABLE IF NOT EXISTS bank_transaction_workflow(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            entity_id INTEGER,
-            bank_transaction_id INTEGER NOT NULL,
-            state TEXT NOT NULL DEFAULT 'ignored',
-            updated_at TEXT NOT NULL,
-            UNIQUE(entity_id,bank_transaction_id)
-        )""")
+        # Created by the official runtime schema (v370).
+        # Never execute SQLite-specific DDL from a request on PostgreSQL.
+        return None
 
     def _bank_transaction_states(c, transactions, eid):
         _ensure_bank_workflow_table(c)
