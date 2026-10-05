@@ -9,11 +9,13 @@ import requests
 from flask import flash, redirect, render_template, request, session, url_for
 
 from profitos.feature_access import requires_paid_plan, requires_feature
+from profitos import db as dbmod
 from profitos.runtime import *
 from profitos.accounting import generate_purchase_payment_entry, generate_purchase_partial_payment_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
 
 
 POWENS_TIMEOUT = 20
+BANK_DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + ((dbmod.psycopg2.IntegrityError,) if dbmod.USE_POSTGRES else ())
 
 
 def apply_categorization_rule(conn, label, entity_id=None):
@@ -1061,7 +1063,11 @@ def register(app):
                          (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
                          VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],bank_account['code'],None,label,0.0,residual,None,2))
             c.commit()
-        except (sqlite3.IntegrityError, ValueError) as e:
+        except BANK_DB_INTEGRITY_ERRORS:
+            # La contrainte unique en base arbitre aussi deux requêtes concurrentes.
+            c.rollback(); c.close(); flash("Les frais de ce mouvement bancaire sont déjà comptabilisés.")
+            return redirect(url_for('banking'))
+        except ValueError as e:
             c.rollback(); c.close(); flash(f"Comptabilisation des frais annulée : {e}")
             return redirect(url_for('banking'))
         c.close(); flash(f"Frais bancaire de {fr_number(residual,2)} € comptabilisé (627 / 512).")

@@ -2033,6 +2033,17 @@ def init_tenant_db(org_id=None):
         c.commit()
     except Exception as e:
         print(f"[ProfitOS] ATTENTION : index WeInvoice achats non créé ({e})")
+    # v383 — idempotence forte des frais bancaires : une seule écriture
+    # bank_fee par mouvement et par entité, y compris sous requêtes concurrentes.
+    try:
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_fee_source
+                     ON accounting_entries(entity_id, source_type, source_id)
+                     WHERE source_type='bank_fee'""")
+        c.commit()
+    except Exception as e:
+        c.rollback()
+        print(f"[ProfitOS] ATTENTION : index unique bank_fee non créé ({e})")
+
     from profitos.accounting import seed_accounting_defaults
     seed_accounting_defaults(c)
     from profitos.expenses import seed_mileage_rate_table
