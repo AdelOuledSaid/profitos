@@ -617,6 +617,21 @@ def register(app):
                 if transaction_states[t['id']]['state']=='pending'
             }
 
+            # v387 : file de traitement explicite pour prioriser les opérations
+            # comptables sans jamais déclencher une écriture automatiquement.
+            accounting_review_queue = {'stable': [], 'confirm': [], 'anomaly': []}
+            for t in transactions:
+                if transaction_states[t['id']]['state'] != 'pending':
+                    continue
+                sug = accounting_suggestions.get(t['id']) or {}
+                item = {'transaction': t, 'suggestion': sug}
+                if sug.get('automation_eligible'):
+                    accounting_review_queue['stable'].append(item)
+                elif (sug.get('confidence_score') or 0) <= 0 or 'contradictoires' in (sug.get('reason') or '').lower():
+                    accounting_review_queue['anomaly'].append(item)
+                else:
+                    accounting_review_queue['confirm'].append(item)
+
             # Lot 14: suggestions de rapprochement des paiements fournisseurs.
             # La vue banking.html attend un dictionnaire indexé par l'id
             # de la transaction bancaire.
@@ -656,6 +671,7 @@ def register(app):
             transaction_states=transaction_states,
             reconciliation_suggestions=reconciliation_suggestions,
             accounting_suggestions=accounting_suggestions,
+            accounting_review_queue=accounting_review_queue,
             purchase_reconciliation_suggestions=purchase_reconciliation_suggestions,
             reconciliations=reconciliations,
             purchase_reconciliations=purchase_reconciliations,

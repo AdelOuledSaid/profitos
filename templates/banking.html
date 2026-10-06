@@ -248,6 +248,24 @@
   {% endif %}
 </section>
 
+{% if accounting_review_queue %}
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">File de traitement comptable</h2>
+  <p class="purchase-muted">Priorisation des opérations à traiter — aucune écriture n'est créée sans votre validation.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+    <span class="btn btn-secondary" style="pointer-events:none;">Habitudes stables : {{ accounting_review_queue.stable|length }}</span>
+    <span class="btn btn-secondary" style="pointer-events:none;">À confirmer : {{ accounting_review_queue.confirm|length }}</span>
+    <span class="btn btn-secondary" style="pointer-events:none;">Anomalies / contradictions : {{ accounting_review_queue.anomaly|length }}</span>
+  </div>
+  {% if accounting_review_queue.stable %}
+    <p style="margin-top:12px;"><strong>{{ accounting_review_queue.stable|length }} opération(s)</strong> prête(s) pour une validation en 1 clic.</p>
+  {% endif %}
+  {% if accounting_review_queue.anomaly %}
+    <p style="margin-top:8px;"><strong>{{ accounting_review_queue.anomaly|length }} opération(s)</strong> nécessite(nt) une vérification manuelle.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if transactions %}
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="color:#fff;">Dernières transactions</h2>
