@@ -40,9 +40,17 @@ def apply_categorization_rule(conn, label, entity_id=None):
 
 
 def _learning_pattern(label, amount=None):
-    """Construit une signature stable et, si possible, sensible au sens du flux."""
+    """Construit une signature stable et sensible au sens du flux.
+
+    v393 : les libellés de salaire sont regroupés dans une même famille
+    (ex. SALAIRE LUC / MICHEL / MATTHIEU -> ``salaire``). Le sens du flux
+    reste dans la signature afin de ne jamais mélanger débit et crédit.
+    """
     words=[w for w in re.findall(r'[a-z0-9]+', norm(label or '')) if len(w)>=3 and not w.isdigit()]
-    base=' '.join(words[:5])[:110]
+    if words and words[0] == 'salaire':
+        base='salaire'
+    else:
+        base=' '.join(words[:5])[:110]
     if not base or amount is None:
         return base
     try:
@@ -50,6 +58,18 @@ def _learning_pattern(label, amount=None):
     except (TypeError, ValueError):
         return base
     return f"{direction}:{base}"[:120]
+
+
+def _learning_family_patterns(label, amount=None):
+    """Signatures historiques compatibles avec une famille v393.
+
+    Permet d'exploiter immédiatement les validations déjà enregistrées sous
+    ``debit:salaire luc``, ``debit:salaire michel``, etc., sans migration DB.
+    """
+    canonical=_learning_pattern(label, amount)
+    if canonical in ('debit:salaire', 'credit:salaire'):
+        return canonical, canonical + ' '
+    return canonical, None
 
 
 def _bootstrap_accounting_suggestion(tx):
@@ -85,7 +105,7 @@ def _accounting_suggestion(conn, tx, entity_id):
     comptes est volontairement bloquée au lieu de choisir arbitrairement.
     """
     label=tx['label'] or ''
-    directional=_learning_pattern(label, tx['amount'])
+    directional, family_prefix=_learning_family_patterns(label, tx['amount'])
     legacy=_learning_pattern(label)
     rules=conn.execute(
         """SELECT * FROM bank_accounting_learning_rules
@@ -106,6 +126,23 @@ def _accounting_suggestion(conn, tx, entity_id):
 
     learned, ambiguous=consensus(directional)
     source='directionnelle'
+
+    # v393 : compatibilité avec les anciennes signatures nominatives de salaire.
+    # On ne regroupe que si toutes les habitudes historiques de la famille
+    # convergent vers le même compte et le même taux de TVA.
+    if learned is None and not ambiguous and family_prefix:
+        family=[r for r in rules if (r['pattern'] or '') == directional or (r['pattern'] or '').startswith(family_prefix)]
+        if family:
+            choices={(r['account_code'], r['vat_rate']) for r in family}
+            if len(choices) != 1:
+                ambiguous=True
+            else:
+                learned=max(family, key=lambda r: int(r['confirmations'] or 0))
+                confirmations_total=sum(int(r['confirmations'] or 0) for r in family)
+                learned=dict(learned)
+                learned['confirmations']=confirmations_total
+                source='famille salaire'
+
     if learned is None and not ambiguous:
         learned, ambiguous=consensus(legacy)
         source='historique'
@@ -124,7 +161,7 @@ def _accounting_suggestion(conn, tx, entity_id):
                     vat_rate=learned['vat_rate'], counterparty_type=learned['counterparty_type'],
                     counterparty_id=learned['counterparty_id'], confidence_score=score,
                     confidence_label=label_conf,
-                    automation_eligible=(source == 'directionnelle' and confirmations >= 4 and score >= 90),
+                    automation_eligible=(source in ('directionnelle', 'famille salaire') and confirmations >= 4 and score >= 90),
                     reason=f"Habitude {source} validée {confirmations} fois")
 
     category=tx['category'] or apply_categorization_rule(conn,label,entity_id)
