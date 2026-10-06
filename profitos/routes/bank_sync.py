@@ -141,6 +141,13 @@ def _accounting_suggestion(conn, tx, entity_id):
                 confirmations_total=sum(int(r['confirmations'] or 0) for r in family)
                 learned=dict(learned)
                 learned['confirmations']=confirmations_total
+                # v394 : une famille salaire stable doit aussi fournir une
+                # catégorie cohérente à l'interface. Les anciennes validations
+                # pouvaient avoir une catégorie vide ou l'ancien libellé
+                # « Salaires et charges » malgré le même compte 641000.
+                # On ne modifie ni le compte appris ni la TVA.
+                if directional == 'debit:salaire' and learned.get('account_code') == '641000':
+                    learned['category']='Salaires et paie'
                 source='famille salaire'
 
     if learned is None and not ambiguous:
