@@ -255,13 +255,14 @@
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
     <span class="btn btn-secondary" style="pointer-events:none;">Habitudes stables : {{ accounting_review_queue.stable|length }}</span>
     <span class="btn btn-secondary" style="pointer-events:none;">À confirmer : {{ accounting_review_queue.confirm|length }}</span>
-    <span class="btn btn-secondary" style="pointer-events:none;">Anomalies / contradictions : {{ accounting_review_queue.anomaly|length }}</span>
+    <span class="btn btn-secondary" style="pointer-events:none;">Sans suggestion : {{ accounting_review_queue.no_suggestion|length }}</span>
+    <span class="btn btn-secondary" style="pointer-events:none;">Contradictions : {{ accounting_review_queue.contradiction|length }}</span>
   </div>
   {% if accounting_review_queue.stable %}
     <p style="margin-top:12px;"><strong>{{ accounting_review_queue.stable|length }} opération(s)</strong> prête(s) pour une validation en 1 clic.</p>
   {% endif %}
-  {% if accounting_review_queue.anomaly %}
-    <p style="margin-top:8px;"><strong>{{ accounting_review_queue.anomaly|length }} opération(s)</strong> nécessite(nt) une vérification manuelle.</p>
+  {% if accounting_review_queue.contradiction %}
+    <p style="margin-top:8px;"><strong>{{ accounting_review_queue.contradiction|length }} opération(s)</strong> présente(nt) des habitudes contradictoires et nécessite(nt) une vérification manuelle.</p>
   {% endif %}
 </section>
 {% endif %}

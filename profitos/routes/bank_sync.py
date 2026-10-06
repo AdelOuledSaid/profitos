@@ -619,16 +619,19 @@ def register(app):
 
             # v387 : file de traitement explicite pour prioriser les opérations
             # comptables sans jamais déclencher une écriture automatiquement.
-            accounting_review_queue = {'stable': [], 'confirm': [], 'anomaly': []}
+            accounting_review_queue = {'stable': [], 'confirm': [], 'no_suggestion': [], 'contradiction': []}
             for t in transactions:
                 if transaction_states[t['id']]['state'] != 'pending':
                     continue
                 sug = accounting_suggestions.get(t['id']) or {}
                 item = {'transaction': t, 'suggestion': sug}
+                reason = (sug.get('reason') or '').lower()
                 if sug.get('automation_eligible'):
                     accounting_review_queue['stable'].append(item)
-                elif (sug.get('confidence_score') or 0) <= 0 or 'contradictoires' in (sug.get('reason') or '').lower():
-                    accounting_review_queue['anomaly'].append(item)
+                elif 'contradictoires' in reason or 'contradiction' in reason:
+                    accounting_review_queue['contradiction'].append(item)
+                elif (sug.get('confidence_score') or 0) <= 0:
+                    accounting_review_queue['no_suggestion'].append(item)
                 else:
                     accounting_review_queue['confirm'].append(item)
 
