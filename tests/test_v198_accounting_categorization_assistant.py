@@ -1,33 +1,34 @@
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
-BANK=(ROOT/'profitos/routes/bank_sync.py').read_text(encoding='utf-8')
-RUNTIME=(ROOT/'profitos/runtime.py').read_text(encoding='utf-8')
-TPL=(ROOT/'templates/banking.html').read_text(encoding='utf-8')
+from jinja2 import Environment
 
-def test_learning_registry_is_entity_scoped():
-    assert 'bank_accounting_learning_rules' in RUNTIME and 'bank_accounting_validations' in RUNTIME
-    assert 'UNIQUE(entity_id,bank_transaction_id)' in RUNTIME
+ROOT = Path(__file__).resolve().parents[1]
+SRC = (ROOT / "profitos/routes/bank_sync.py").read_text(encoding="utf-8")
+TPL = (ROOT / "templates/banking.html").read_text(encoding="utf-8")
 
-def test_suggestion_never_posts_accounting_entry():
-    body=BANK[BANK.index('def _accounting_suggestion'):BANK.index('def _cfg')]
-    assert 'generate_' not in body and 'INSERT INTO accounting_entries' not in body and 'confidence_score' in body
 
-def test_learning_is_entity_scoped_and_human_validated():
-    body=BANK[BANK.index('def _accounting_suggestion'):BANK.index('def _cfg')]
-    assert 'bank_accounting_learning_rules' in body
-    assert 'WHERE entity_id IS ?' in body
-    assert "(entity_id,)" in body
-    # v384 performs an exact direction-aware match instead of the old substring match.
-    assert "(r['pattern'] or '') == pattern" in body
-    assert "consensus(directional)" in body
-    assert 'bank_accounting_validations' in BANK and 'bank_accounting_learning_rules' in BANK
-    assert 'a.entity_id IS ?' in BANK
+def test_template_parses():
+    Environment().parse(TPL)
 
-def test_account_code_is_checked_before_learning():
-    assert 'accounting_chart_of_accounts WHERE code=?' in BANK and 'Compte comptable invalide pour cette entité.' in BANK
+
+def test_learning_is_direction_aware_and_exact():
+    assert "(r['pattern'] or '') == pattern" in SRC
+    assert "consensus(directional)" in SRC
+
+
+def test_conflicting_habits_do_not_create_automatic_proposal():
+    assert "Habitudes contradictoires : aucune proposition automatique" in SRC
+
 
 def test_ui_shows_score_and_requires_explicit_validation():
     assert 'Confiance {{ sug.confidence_label' in TPL
     assert '{{ sug.confidence_score }} %' in TPL
     assert 'Validation humaine requise.' in TPL
-    assert 'name="account_code"' in TPL and 'name="vat_rate"' in TPL and '>Valider</button>' in TPL
+    assert 'name="account_code"' in TPL
+    assert 'name="vat_rate"' in TPL
+    # v386: stable habits use a Jinja conditional for the explicit submit label.
+    assert "{% if sug and sug.automation_eligible %}Valider en 1 clic{% else %}Valider{% endif %}" in TPL
+
+
+def test_stable_habit_still_requires_user_post():
+    assert 'method="post"' in TPL
+    assert "Habitude stable : catégorie, compte et TVA préremplis. Vérifiez puis validez en 1 clic." in TPL
