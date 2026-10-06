@@ -1323,6 +1323,13 @@ def register(app):
                 if amount <= .005: raise ValueError('Montant bancaire nul ou invalide.')
                 entry_date=tx['transaction_date'] or date.today().isoformat()
                 label=f"Catégorisation bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKCAT-{tx_id}"
+
+                # v392: DB-level idempotency guard. The partial unique index makes
+                # concurrent/double submissions safe; the application precheck above
+                # remains only a friendly fast path.
+                c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_categorization
+                    ON accounting_entries(entity_id,source_id)
+                    WHERE source_type='bank_categorization'""")
                 c.execute("""INSERT INTO accounting_entries
                     (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
                     VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
