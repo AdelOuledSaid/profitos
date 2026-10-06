@@ -585,10 +585,11 @@ def register(app):
                 (eid,tx['id'])
             ).fetchone()['x'] or 0
             accounting_validation=c.execute(
-                '''SELECT account_code FROM bank_accounting_validations
-                   WHERE entity_id IS ? AND bank_transaction_id=?
-                     AND account_code IS NOT NULL AND TRIM(account_code) <> ''
-                   LIMIT 1''',
+                '''SELECT v.account_code FROM bank_accounting_validations v
+                   JOIN accounting_entries e ON e.entity_id=v.entity_id
+                    AND e.source_type='bank_categorization' AND e.source_id=v.bank_transaction_id
+                   WHERE v.entity_id IS ? AND v.bank_transaction_id=?
+                     AND v.account_code IS NOT NULL AND TRIM(v.account_code) <> '' LIMIT 1''',
                 (eid,tx['id'])
             ).fetchone()
             total=round(abs(float(tx['amount'] or 0)),2)
@@ -1306,29 +1307,52 @@ def register(app):
             if not valid:
                 c.close(); flash('Compte comptable invalide pour cette entité.')
                 return redirect(url_for('banking'))
-        c.execute('UPDATE bank_transactions SET category=? WHERE id=?',(category,tx_id))
-        if account_code:
-            signature=_learning_pattern(tx['label'], tx['amount'])
-            suggestion=_accounting_suggestion(c,tx,eid)
-            c.execute("""INSERT INTO bank_accounting_validations
-                (entity_id,bank_transaction_id,category,account_code,vat_rate,counterparty_type,counterparty_id,confidence_score,suggestion_reason,validated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(entity_id,bank_transaction_id) DO UPDATE SET
-                category=excluded.category,account_code=excluded.account_code,vat_rate=excluded.vat_rate,
-                confidence_score=excluded.confidence_score,suggestion_reason=excluded.suggestion_reason,validated_at=excluded.validated_at""",
-                (eid,tx_id,category,account_code,vat_rate,None,None,suggestion['confidence_score'],suggestion['reason'],now()))
-            if signature:
-                row=c.execute("""SELECT id,confirmations FROM bank_accounting_learning_rules
-                    WHERE entity_id IS ? AND pattern=? AND account_code=? AND vat_rate IS ?
-                    AND counterparty_type IS NULL AND counterparty_id IS NULL""",(eid,signature,account_code,vat_rate)).fetchone()
-                if row:
-                    c.execute('UPDATE bank_accounting_learning_rules SET confirmations=?,category=?,last_confirmed_at=? WHERE id=?',
-                              (int(row['confirmations'] or 0)+1,category,now(),row['id']))
+        existing_entry=c.execute("""SELECT id FROM accounting_entries WHERE entity_id IS ?
+            AND source_type='bank_categorization' AND source_id=? LIMIT 1""",(eid,tx_id)).fetchone()
+        if existing_entry:
+            c.close(); flash('Cette transaction bancaire est déjà comptabilisée.')
+            return redirect(url_for('banking'))
+        existing_validation=c.execute("SELECT id FROM bank_accounting_validations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",(eid,tx_id)).fetchone()
+        try:
+            c.execute('UPDATE bank_transactions SET category=? WHERE id=?',(category,tx_id))
+            if account_code:
+                bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%%'
+                    AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1 ORDER BY code LIMIT 1""",(eid,)).fetchone()
+                if not bank_account: raise ValueError('Compte banque 512 absent du plan comptable.')
+                amount=round(abs(float(tx['amount'] or 0)),2)
+                if amount <= .005: raise ValueError('Montant bancaire nul ou invalide.')
+                entry_date=tx['transaction_date'] or date.today().isoformat()
+                label=f"Catégorisation bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKCAT-{tx_id}"
+                c.execute("""INSERT INTO accounting_entries
+                    (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
+                    VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
+                    (piece,entry_date,label,'bank_categorization',tx_id,session.get('user_email') or session.get('email') or 'system',now(),eid))
+                entry=c.execute("SELECT id FROM accounting_entries WHERE entity_id IS ? AND source_type='bank_categorization' AND source_id=? ORDER BY id DESC LIMIT 1",(eid,tx_id)).fetchone()
+                if float(tx['amount'] or 0) < 0:
+                    first=(account_code,amount,0.0); second=(bank_account['code'],0.0,amount)
                 else:
-                    c.execute("""INSERT INTO bank_accounting_learning_rules
+                    first=(bank_account['code'],amount,0.0); second=(account_code,0.0,amount)
+                for order,(code,debit,credit) in enumerate((first,second),1):
+                    c.execute("""INSERT INTO accounting_entry_lines
+                        (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
+                        VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],code,None,label,debit,credit,None,order))
+                signature=_learning_pattern(tx['label'], tx['amount']); suggestion=_accounting_suggestion(c,tx,eid)
+                c.execute("""INSERT INTO bank_accounting_validations
+                    (entity_id,bank_transaction_id,category,account_code,vat_rate,counterparty_type,counterparty_id,confidence_score,suggestion_reason,validated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(entity_id,bank_transaction_id) DO UPDATE SET
+                    category=excluded.category,account_code=excluded.account_code,vat_rate=excluded.vat_rate,
+                    confidence_score=excluded.confidence_score,suggestion_reason=excluded.suggestion_reason,validated_at=excluded.validated_at""",
+                    (eid,tx_id,category,account_code,vat_rate,None,None,suggestion['confidence_score'],suggestion['reason'],now()))
+                if signature and not existing_validation:
+                    row=c.execute("""SELECT id,confirmations FROM bank_accounting_learning_rules WHERE entity_id IS ? AND pattern=?
+                        AND account_code=? AND vat_rate IS ? AND counterparty_type IS NULL AND counterparty_id IS NULL""",(eid,signature,account_code,vat_rate)).fetchone()
+                    if row:c.execute('UPDATE bank_accounting_learning_rules SET confirmations=?,category=?,last_confirmed_at=? WHERE id=?',(int(row['confirmations'] or 0)+1,category,now(),row['id']))
+                    else:c.execute("""INSERT INTO bank_accounting_learning_rules
                         (entity_id,pattern,category,account_code,vat_rate,counterparty_type,counterparty_id,confirmations,last_confirmed_at)
                         VALUES(?,?,?,?,?,NULL,NULL,1,?)""",(eid,signature,category,account_code,vat_rate,now()))
-        c.commit(); c.close()
-        flash('Catégorisation comptable validée et apprise.' if account_code else ('Catégorie mise à jour.' if category else 'Catégorie retirée.'))
+            c.commit()
+        except BANK_DB_INTEGRITY_ERRORS + (ValueError,) as e:
+            c.rollback(); c.close(); flash(f'Catégorisation comptable annulée : {e}')
+            return redirect(url_for('banking'))
+        c.close(); flash('Catégorisation comptable validée, écriture BQ créée et apprentissage enregistré.' if account_code else ('Catégorie mise à jour.' if category else 'Catégorie retirée.'))
         return redirect(url_for('banking'))
-
