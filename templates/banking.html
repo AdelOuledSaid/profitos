@@ -300,7 +300,7 @@
               <input name="account_code" value="{{ sug.account_code if sug and sug.account_code else '' }}" placeholder="Compte PCG" style="font-size:12px;padding:4px 6px;">
               <input name="vat_rate" value="{{ sug.vat_rate if sug and sug.vat_rate is not none else '' }}" placeholder="TVA %" inputmode="decimal" style="font-size:12px;padding:4px 6px;">
               <button class="btn btn-secondary" type="submit" style="font-size:12px;padding:5px 8px;">Valider</button>
-              {% if sug %}<small style="grid-column:1/-1;opacity:.75;">Confiance {{ sug.confidence_label or 'À vérifier' }} · {{ sug.confidence_score }} % — {{ sug.reason }}. Validation humaine requise.</small>{% endif %}
+              {% if sug %}<small style="grid-column:1/-1;opacity:.75;">Confiance {{ sug.confidence_label or 'À vérifier' }} · {{ sug.confidence_score }} % — {{ sug.reason }}. {% if sug.automation_eligible %}<strong>Habitude stable : validation en un clic prête.</strong>{% else %}Validation humaine requise.{% endif %}</small>{% endif %}
             </form>
             {% else %}
               <span class="purchase-muted">Aucune action comptable proposée.</span>

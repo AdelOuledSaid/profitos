@@ -88,7 +88,7 @@ def _accounting_suggestion(conn, tx, entity_id):
     if ambiguous:
         return dict(category=tx['category'], account_code=None, vat_rate=None,
                     counterparty_type=None, counterparty_id=None, confidence_score=0,
-                    confidence_label='À vérifier',
+                    confidence_label='À vérifier', automation_eligible=False,
                     reason='Habitudes contradictoires : aucune proposition automatique')
 
     if learned:
@@ -99,6 +99,7 @@ def _accounting_suggestion(conn, tx, entity_id):
                     vat_rate=learned['vat_rate'], counterparty_type=learned['counterparty_type'],
                     counterparty_id=learned['counterparty_id'], confidence_score=score,
                     confidence_label=label_conf,
+                    automation_eligible=(source == 'directionnelle' and confirmations >= 4 and score >= 90),
                     reason=f"Habitude {source} validée {confirmations} fois")
 
     category=tx['category'] or apply_categorization_rule(conn,label,entity_id)
@@ -107,7 +108,7 @@ def _accounting_suggestion(conn, tx, entity_id):
     reason='Correspondance catégorie → compte PCG' if account else 'Aucune habitude suffisamment fiable'
     return dict(category=category, account_code=account, vat_rate=None,
                 counterparty_type=None, counterparty_id=None, confidence_score=score,
-                confidence_label='Faible' if account else 'Aucune', reason=reason)
+                confidence_label='Faible' if account else 'Aucune', automation_eligible=False, reason=reason)
 
 
 def _cfg():
