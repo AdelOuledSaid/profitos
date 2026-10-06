@@ -586,7 +586,7 @@ def register(app):
             ).fetchone()['x'] or 0
             accounting_validation=c.execute(
                 '''SELECT v.account_code FROM bank_accounting_validations v
-                   JOIN accounting_entries e ON e.entity_id=v.entity_id
+                   JOIN accounting_entries e ON CAST(e.entity_id AS TEXT)=CAST(v.entity_id AS TEXT)
                     AND e.source_type='bank_categorization' AND e.source_id=v.bank_transaction_id
                    WHERE v.entity_id IS ? AND v.bank_transaction_id=?
                      AND v.account_code IS NOT NULL AND TRIM(v.account_code) <> '' LIMIT 1''',
