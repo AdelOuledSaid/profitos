@@ -314,6 +314,9 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="category" style="font-size:12px;padding:4px 6px;">
                 <option value="" {% if not t.category and not (sug and sug.category) %}selected{% endif %}>— catégorie —</option>
+                {% if sug and sug.category and sug.category not in categories and not t.category %}
+                  <option value="{{ sug.category }}" selected>{{ sug.category }}</option>
+                {% endif %}
                 {% for cat in categories %}<option value="{{ cat }}" {% if t.category==cat or (not t.category and sug and sug.category==cat) %}selected{% endif %}>{{ cat }}</option>{% endfor %}
               </select>
               <input name="account_code" value="{{ sug.account_code if sug and sug.account_code else '' }}" placeholder="Compte PCG" style="font-size:12px;padding:4px 6px;">

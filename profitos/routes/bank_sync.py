@@ -58,7 +58,7 @@ def _bootstrap_accounting_suggestion(tx):
     amount=float(tx['amount'] or 0)
     direction='debit' if amount < 0 else 'credit'
     rules=(
-        ('debit',('salaire',),'Salaires','641000',82,'Suggestion initiale : salaire détecté'),
+        ('debit',('salaire',),'Salaires et charges','641000',82,'Suggestion initiale : salaire détecté'),
         ('debit',('assurance',),'Assurances','616000',80,'Suggestion initiale : assurance détectée'),
         ('debit',('loyer',),'Loyers','613000',80,'Suggestion initiale : loyer détecté'),
         ('debit',('carburant',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
