@@ -73,29 +73,61 @@ def _learning_family_patterns(label, amount=None):
 
 
 def _bootstrap_accounting_suggestion(tx):
-    """Conservative v389 first-use suggestion; never posts accounting."""
+    """v395 conservative first-use recognition; suggestion only, never posts accounting."""
     label=_norm_text(tx['label'] or '')
     amount=float(tx['amount'] or 0)
     direction='debit' if amount < 0 else 'credit'
+
+    # Ordered from the most specific/high-signal families to broader ones.
+    # No VAT is inferred from the bank label alone.
     rules=(
-        ('debit',('salaire',),'Salaires et charges','641000',82,'Suggestion initiale : salaire détecté'),
-        ('debit',('assurance',),'Assurances','616000',80,'Suggestion initiale : assurance détectée'),
-        ('debit',('loyer',),'Loyers','613000',80,'Suggestion initiale : loyer détecté'),
-        ('debit',('carburant',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
-        ('debit',('essence',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
-        ('debit',('diesel',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
-        ('debit',('telephone',),'Télécom','626000',76,'Suggestion initiale : télécommunication détectée'),
-        ('debit',('internet',),'Télécom','626000',76,'Suggestion initiale : télécommunication détectée'),
-        ('debit',('google',),'Logiciels / Abonnements','628100',65,'Suggestion initiale prudente : fournisseur numérique détecté'),
+        # Social contributions / payroll
+        ('debit',('urssaf',),'Charges sociales / URSSAF','645000',88,'URSSAF détecté'),
+        ('debit',('salaire',),'Salaires et paie','641000',82,'Salaire détecté'),
+        ('debit',('paie',),'Salaires et paie','641000',80,'Paie détectée'),
+
+        # Taxes: keep generic because the exact tax account depends on the tax.
+        ('debit',('dgfip',),'Impôts et taxes',None,72,'DGFiP détectée — compte à confirmer'),
+        ('debit',('impot',),'Impôts et taxes',None,70,'Impôt détecté — compte à confirmer'),
+        ('debit',('tresor public',),'Impôts et taxes',None,70,'Trésor public détecté — compte à confirmer'),
+
+        # Insurance / premises
+        ('debit',('assurance',),'Assurances','616000',80,'Assurance détectée'),
+        ('debit',('loyer',),'Loyers','613000',80,'Loyer détecté'),
+
+        # Fuel / mobility
+        ('debit',('carburant',),'Carburant','606100',78,'Carburant détecté'),
+        ('debit',('essence',),'Carburant','606100',78,'Carburant détecté'),
+        ('debit',('diesel',),'Carburant','606100',78,'Carburant détecté'),
+        ('debit',('totalenergies',),'Carburant','606100',72,'Fournisseur carburant détecté'),
+        ('debit',('total energies',),'Carburant','606100',72,'Fournisseur carburant détecté'),
+
+        # Telecom / software subscriptions
+        ('debit',('telephone',),'Télécom','626000',76,'Télécommunication détectée'),
+        ('debit',('internet',),'Télécom','626000',76,'Télécommunication détectée'),
+        ('debit',('orange',),'Télécom','626000',70,'Opérateur télécom détecté'),
+        ('debit',('sfr',),'Télécom','626000',70,'Opérateur télécom détecté'),
+        ('debit',('bouygues telecom',),'Télécom','626000',72,'Opérateur télécom détecté'),
+        ('debit',('free telecom',),'Télécom','626000',72,'Opérateur télécom détecté'),
+        ('debit',('google',),'Logiciels / Abonnements','628100',65,'Fournisseur numérique détecté'),
+        ('debit',('microsoft',),'Logiciels / Abonnements','628100',68,'Fournisseur numérique détecté'),
+        ('debit',('adobe',),'Logiciels / Abonnements','628100',70,'Abonnement logiciel détecté'),
+        ('debit',('openai',),'Logiciels / Abonnements','628100',70,'Abonnement logiciel détecté'),
+
+        # Explicit bank charges only; generic bank transfers are intentionally excluded.
+        ('debit',('frais bancaire',),'Frais bancaires','627000',88,'Frais bancaire explicite détecté'),
+        ('debit',('frais bancaires',),'Frais bancaires','627000',88,'Frais bancaires explicites détectés'),
+        ('debit',('commission bancaire',),'Frais bancaires','627000',86,'Commission bancaire explicite détectée'),
+        ('debit',('commission tenue de compte',),'Frais bancaires','627000',88,'Frais de tenue de compte détectés'),
     )
     for expected,tokens,category,account,score,reason in rules:
         if direction == expected and all(token in label for token in tokens):
             return dict(category=category, account_code=account, vat_rate=None,
                         counterparty_type=None, counterparty_id=None,
                         confidence_score=score, confidence_label='À confirmer',
-                        automation_eligible=False, reason=reason)
+                        automation_eligible=False,
+                        reason=f'Suggestion initiale : {reason}. Validation humaine requise.')
     return None
-
 
 def _accounting_suggestion(conn, tx, entity_id):
     """Suggestion prudente issue de l'apprentissage, sans écriture automatique.
