@@ -52,6 +52,31 @@ def _learning_pattern(label, amount=None):
     return f"{direction}:{base}"[:120]
 
 
+def _bootstrap_accounting_suggestion(tx):
+    """Conservative v389 first-use suggestion; never posts accounting."""
+    label=_norm_text(tx['label'] or '')
+    amount=float(tx['amount'] or 0)
+    direction='debit' if amount < 0 else 'credit'
+    rules=(
+        ('debit',('salaire',),'Salaires','641000',82,'Suggestion initiale : salaire détecté'),
+        ('debit',('assurance',),'Assurances','616000',80,'Suggestion initiale : assurance détectée'),
+        ('debit',('loyer',),'Loyers','613000',80,'Suggestion initiale : loyer détecté'),
+        ('debit',('carburant',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
+        ('debit',('essence',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
+        ('debit',('diesel',),'Carburant','606100',78,'Suggestion initiale : carburant détecté'),
+        ('debit',('telephone',),'Télécom','626000',76,'Suggestion initiale : télécommunication détectée'),
+        ('debit',('internet',),'Télécom','626000',76,'Suggestion initiale : télécommunication détectée'),
+        ('debit',('google',),'Logiciels / Abonnements','628100',65,'Suggestion initiale prudente : fournisseur numérique détecté'),
+    )
+    for expected,tokens,category,account,score,reason in rules:
+        if direction == expected and all(token in label for token in tokens):
+            return dict(category=category, account_code=account, vat_rate=None,
+                        counterparty_type=None, counterparty_id=None,
+                        confidence_score=score, confidence_label='À confirmer',
+                        automation_eligible=False, reason=reason)
+    return None
+
+
 def _accounting_suggestion(conn, tx, entity_id):
     """Suggestion prudente issue de l'apprentissage, sans écriture automatique.
 
@@ -104,11 +129,20 @@ def _accounting_suggestion(conn, tx, entity_id):
 
     category=tx['category'] or apply_categorization_rule(conn,label,entity_id)
     account=DEFAULT_CATEGORY_MAPPING.get(category) if category else None
-    score=55 if account else 0
-    reason='Correspondance catégorie → compte PCG' if account else 'Aucune habitude suffisamment fiable'
-    return dict(category=category, account_code=account, vat_rate=None,
-                counterparty_type=None, counterparty_id=None, confidence_score=score,
-                confidence_label='Faible' if account else 'Aucune', automation_eligible=False, reason=reason)
+    if account:
+        return dict(category=category, account_code=account, vat_rate=None,
+                    counterparty_type=None, counterparty_id=None, confidence_score=55,
+                    confidence_label='Faible', automation_eligible=False,
+                    reason='Correspondance catégorie → compte PCG')
+
+    bootstrap=_bootstrap_accounting_suggestion(tx)
+    if bootstrap:
+        return bootstrap
+
+    return dict(category=category, account_code=None, vat_rate=None,
+                counterparty_type=None, counterparty_id=None, confidence_score=0,
+                confidence_label='Aucune', automation_eligible=False,
+                reason='Aucune habitude suffisamment fiable')
 
 
 def _cfg():
