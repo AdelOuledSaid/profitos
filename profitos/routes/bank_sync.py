@@ -39,47 +39,75 @@ def apply_categorization_rule(conn, label, entity_id=None):
     return None
 
 
-def _learning_pattern(label):
-    """Construit une signature prudente et lisible à partir du libellé bancaire."""
+def _learning_pattern(label, amount=None):
+    """Construit une signature stable et, si possible, sensible au sens du flux."""
     words=[w for w in re.findall(r'[a-z0-9]+', norm(label or '')) if len(w)>=3 and not w.isdigit()]
-    return ' '.join(words[:5])[:120]
+    base=' '.join(words[:5])[:110]
+    if not base or amount is None:
+        return base
+    try:
+        direction='debit' if float(amount) < 0 else 'credit'
+    except (TypeError, ValueError):
+        return base
+    return f"{direction}:{base}"[:120]
 
 
 def _accounting_suggestion(conn, tx, entity_id):
-    """Propose catégorie, compte, TVA et tiers sans jamais comptabiliser.
+    """Suggestion prudente issue de l'apprentissage, sans écriture automatique.
 
-    Le score reflète uniquement la qualité des indices disponibles. La
-    validation humaine reste obligatoire, même avec un score élevé.
+    v384 : priorité à une signature exacte + sens débit/crédit. Les anciennes
+    règles sans sens restent compatibles, mais une ambiguïté entre plusieurs
+    comptes est volontairement bloquée au lieu de choisir arbitrairement.
     """
     label=tx['label'] or ''
-    signature=_learning_pattern(label)
-    learned=None
-    if signature:
-        # Keep wildcard matching out of SQL. Our DB compatibility layer converts
-        # qmark placeholders to psycopg placeholders; literal percent signs in a
-        # LIKE expression can then be interpreted by psycopg and raise
-        # ``IndexError: tuple index out of range`` on PostgreSQL. Fetch the small
-        # per-entity rule set and perform the substring match in Python instead.
-        rules=conn.execute(
-            """SELECT * FROM bank_accounting_learning_rules
-               WHERE entity_id IS ?
-               ORDER BY confirmations DESC, length(pattern) DESC, id DESC""",
-            (entity_id,),
-        ).fetchall()
-        learned=next((r for r in rules if (r['pattern'] or '') in signature), None)
+    directional=_learning_pattern(label, tx['amount'])
+    legacy=_learning_pattern(label)
+    rules=conn.execute(
+        """SELECT * FROM bank_accounting_learning_rules
+           WHERE entity_id IS ?
+           ORDER BY confirmations DESC, id DESC""",
+        (entity_id,),
+    ).fetchall()
+
+    def consensus(pattern):
+        matches=[r for r in rules if (r['pattern'] or '') == pattern]
+        if not matches:
+            return None, False
+        # Plusieurs comptes/TVA pour la même signature = cas ambigu : humain.
+        choices={(r['account_code'], r['vat_rate'], r['category']) for r in matches}
+        if len(choices) != 1:
+            return None, True
+        return max(matches, key=lambda r: int(r['confirmations'] or 0)), False
+
+    learned, ambiguous=consensus(directional)
+    source='directionnelle'
+    if learned is None and not ambiguous:
+        learned, ambiguous=consensus(legacy)
+        source='historique'
+
+    if ambiguous:
+        return dict(category=tx['category'], account_code=None, vat_rate=None,
+                    counterparty_type=None, counterparty_id=None, confidence_score=0,
+                    confidence_label='À vérifier',
+                    reason='Habitudes contradictoires : aucune proposition automatique')
+
     if learned:
-        score=min(95, 70 + min(int(learned['confirmations'] or 1), 5)*5)
+        confirmations=int(learned['confirmations'] or 1)
+        score=min(95, 70 + min(confirmations, 5)*5)
+        label_conf='Élevée' if score >= 90 else ('Moyenne' if score >= 80 else 'À confirmer')
         return dict(category=learned['category'], account_code=learned['account_code'],
                     vat_rate=learned['vat_rate'], counterparty_type=learned['counterparty_type'],
                     counterparty_id=learned['counterparty_id'], confidence_score=score,
-                    reason=f"Habitude validée {int(learned['confirmations'] or 1)} fois")
+                    confidence_label=label_conf,
+                    reason=f"Habitude {source} validée {confirmations} fois")
 
     category=tx['category'] or apply_categorization_rule(conn,label,entity_id)
     account=DEFAULT_CATEGORY_MAPPING.get(category) if category else None
     score=55 if account else 0
     reason='Correspondance catégorie → compte PCG' if account else 'Aucune habitude suffisamment fiable'
     return dict(category=category, account_code=account, vat_rate=None,
-                counterparty_type=None, counterparty_id=None, confidence_score=score, reason=reason)
+                counterparty_type=None, counterparty_id=None, confidence_score=score,
+                confidence_label='Faible' if account else 'Aucune', reason=reason)
 
 
 def _cfg():
@@ -1226,7 +1254,7 @@ def register(app):
                 return redirect(url_for('banking'))
         c.execute('UPDATE bank_transactions SET category=? WHERE id=?',(category,tx_id))
         if account_code:
-            signature=_learning_pattern(tx['label'])
+            signature=_learning_pattern(tx['label'], tx['amount'])
             suggestion=_accounting_suggestion(c,tx,eid)
             c.execute("""INSERT INTO bank_accounting_validations
                 (entity_id,bank_transaction_id,category,account_code,vat_rate,counterparty_type,counterparty_id,confidence_score,suggestion_reason,validated_at)
