@@ -131,7 +131,7 @@ def register(app):
         c.execute("""INSERT INTO accountant_activity
                      (collaboration_id,entity_id,event_type,detail,created_at,created_by)
                      VALUES(?,?,?,?,?,?)""",
-                  (collaboration_id,eid,event_type,detail,now_iso(),current_user()['email']))
+                  (collaboration_id,eid,event_type,detail,now(),current_user()['email']))
 
     @app.route('/comptabilite/revision/<int:review_id>/cabinet')
     @login_required
@@ -186,7 +186,7 @@ def register(app):
         cur=c.execute("""INSERT INTO accountant_collaborations
                          (entity_id,review_id,accountant_email,firm_name,status,created_at,created_by)
                          VALUES(?,?,?,?, 'active',?,?)""",
-                      (eid,review_id,accountant_email,firm_name,now_iso(),current_user()['email']))
+                      (eid,review_id,accountant_email,firm_name,now(),current_user()['email']))
         collab_id=cur.lastrowid
         _collab_event(c,collab_id,eid,'COLLABORATION_CREATED',
                       f"{firm_name or 'Cabinet'} · {accountant_email or 'contact non renseigné'}")
@@ -214,7 +214,7 @@ def register(app):
         cur=c.execute("""INSERT INTO accountant_requests
                          (collaboration_id,entity_id,title,description,due_date,status,created_at,created_by)
                          VALUES(?,?,?,?,?,'open',?,?)""",
-                      (collab['id'],eid,title,description,due_date,now_iso(),current_user()['email']))
+                      (collab['id'],eid,title,description,due_date,now(),current_user()['email']))
         _collab_event(c,collab['id'],eid,'REQUEST_CREATED',f"Demande #{cur.lastrowid}: {title}")
         c.commit(); c.close()
         flash("Demande créée.")
@@ -243,7 +243,7 @@ def register(app):
             return redirect(url_for('accountant_collaboration',review_id=review_id))
         c.execute("""INSERT INTO accountant_request_comments
                      (request_id,entity_id,body,created_at,created_by) VALUES(?,?,?,?,?)""",
-                  (request_id,eid,body,now_iso(),current_user()['email']))
+                  (request_id,eid,body,now(),current_user()['email']))
         _collab_event(c,req['collaboration_id'],eid,'COMMENT_ADDED',f"Demande #{request_id}")
         c.commit(); c.close()
         return redirect(url_for('accountant_collaboration',review_id=review_id))
@@ -267,7 +267,7 @@ def register(app):
             c.close(); abort(400)
         if target=='resolved':
             c.execute("""UPDATE accountant_requests SET status='resolved',resolved_at=?,resolved_by=?
-                         WHERE id=?""",(now_iso(),current_user()['email'],request_id))
+                         WHERE id=?""",(now(),current_user()['email'],request_id))
             event='REQUEST_RESOLVED'
         else:
             c.execute("""UPDATE accountant_requests SET status='open',resolved_at=NULL,resolved_by=NULL
@@ -290,17 +290,12 @@ def register(app):
             c.close(); abort(404)
         _collab_event(c,collab['id'],eid,'COLLABORATION_CLOSED','Collaboration clôturée')
         c.execute("UPDATE accountant_collaborations SET status='closed',closed_at=? WHERE id=?",
-                  (now_iso(),collab['id']))
+                  (now(),collab['id']))
         c.commit(); c.close()
         flash("Collaboration cabinet clôturée.")
         return redirect(url_for('accountant_collaboration',review_id=review_id))
 
 
-
-def review_progress_from_items(items):
-    total = len(items)
-    done = sum(1 for i in items if i['checked'])
-    return done, total
 
     @app.post('/comptabilite/revision/<int:review_id>/collaboration/inviter')
     @login_required
@@ -357,7 +352,7 @@ def review_progress_from_items(items):
             c.close(); abort(404)
         if inv['expires_at'] <= datetime.utcnow().replace(microsecond=0).isoformat():
             c.execute("UPDATE accountant_invitations SET status='expired' WHERE id=?",(inv['id'],))
-            c.commit(); c.close(); flash("Cette invitation a expiré."); return redirect(url_for('dashboard'))
+            c.commit(); c.close(); flash("Cette invitation a expiré."); return redirect(url_for('home'))
         user=current_user()
         if (user['email'] or '').strip().lower()!=inv['email'].strip().lower():
             c.close(); abort(403)
@@ -415,3 +410,9 @@ def review_progress_from_items(items):
         c.commit(); c.close()
         flash("Accès comptable révoqué.")
         return redirect(url_for('accountant_collaboration',review_id=review_id))
+
+
+def review_progress_from_items(items):
+    total = len(items)
+    done = sum(1 for i in items if i['checked'])
+    return done, total

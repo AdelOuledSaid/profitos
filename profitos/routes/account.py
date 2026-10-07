@@ -426,7 +426,10 @@ def register(app):
                 c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
             else:
                 checked_raw = request.form.getlist('entity_id')
-                checked = {(int(v) if v else None) for v in checked_raw}
+                # Seules les entités existantes sont acceptées : une valeur altérée ou inconnue
+                # provoquait une erreur 500 (int('abc')) ou un accès à une entité inexistante.
+                known = {str(e['id']) for e in list_all_entities(c) if e['id'] is not None}
+                checked = {(int(v) if v else None) for v in checked_raw if not v or v in known}
                 c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
                 for eid in checked:
                     c.execute(

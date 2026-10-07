@@ -7,7 +7,7 @@ def test_supplier_reconciliation_has_stable_idempotency_key():
     assert 'bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}:{float(allocated):.2f}' not in T
 
 def test_supplier_reconciliation_handles_invalid_numeric_input():
-    assert "except (AccountingError, sqlite3.IntegrityError, ValueError) as e:" in T
+    assert "except (AccountingError, *BANK_DB_INTEGRITY_ERRORS, ValueError) as e:" in T
 
 def test_customer_reconciliation_keeps_stable_idempotency_and_bounds():
     assert 'idem=f"bank:{eid}:{transaction_id}:{invoice_id}:{amount:.2f}"' in T

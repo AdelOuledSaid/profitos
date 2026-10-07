@@ -8,6 +8,7 @@ import hashlib
 from pypdf.errors import PyPdfError
 from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 from profitos.runtime import *
+from profitos import db as dbmod
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 from profitos.entities import current_entity_id
@@ -65,10 +66,33 @@ def _compute_line_items(form):
     return items
 
 
+# Taux de TVA applicables en France (métropole, Corse, DROM). Un taux hors liste est
+# presque toujours une faute de frappe (ex. 200 au lieu de 20).
+ALLOWED_VAT_RATES=(0.0,0.9,1.05,1.75,2.1,5.5,8.5,10.0,13.0,20.0)
+
+
+def _line_items_error(items):
+    """Message d'erreur si les lignes saisies ne peuvent pas produire un document valide,
+    sinon None. Une ligne de remise négative reste possible, mais le total HT doit rester
+    strictement positif (une facture négative se fait par avoir)."""
+    for it in items:
+        if it['qty']<=0:
+            return f"Quantité invalide sur la ligne « {it['label']} » : elle doit être supérieure à 0."
+        if not any(abs(it['vat_rate']-r)<1e-9 for r in ALLOWED_VAT_RATES):
+            rates=', '.join(f"{r:g}".replace('.',',') for r in ALLOWED_VAT_RATES)
+            return f"Taux de TVA invalide sur la ligne « {it['label']} » ({it['vat_rate']:g} %). Taux acceptés : {rates} %."
+    if round(sum(it['line_total'] for it in items),2)<=0:
+        return "Le total HT doit être positif. Pour annuler ou rembourser une facture, émettez un avoir."
+    return None
+
+
 def _totals(items):
-    subtotal=sum(i['line_total'] for i in items)
-    vat_amount=sum(i['line_total']*i['vat_rate']/100 for i in items)
-    return subtotal,vat_amount,subtotal+vat_amount
+    """Totaux arrondis au centime. Sans arrondi, une TVA de 0,62815 € était enregistrée telle
+    quelle : l'écriture de vente débitait 411 de 11,25815 € et le règlement de 11,26 €
+    affiché laissait un écart de centime non lettrable sur le compte client."""
+    subtotal=round(sum(i['line_total'] for i in items),2)
+    vat_amount=round(sum(i['line_total']*i['vat_rate']/100 for i in items),2)
+    return subtotal,vat_amount,round(subtotal+vat_amount,2)
 
 
 def _check_mandatory_mentions(inv,company):
@@ -1012,6 +1036,10 @@ def register(app):
             items=_compute_line_items(request.form)
             if not items:
                 c.close(); flash("Au moins une ligne de devis est requise.")
+                return redirect(url_for('invoicing_quote_new'))
+            items_error=_line_items_error(items)
+            if items_error:
+                c.close(); flash(items_error)
                 return redirect(url_for('invoicing_quote_new'))
             subtotal=round(sum(x['line_total'] for x in items),2)
             vat_amount=round(sum(x['line_total']*x['vat_rate']/100 for x in items),2)
@@ -2426,7 +2454,7 @@ def register(app):
             generate_purchase_partial_payment_entry(c,p,payment)
             c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),purchase_id,eid))
             c.commit()
-        except (AccountingError, sqlite3.IntegrityError) as e:
+        except (AccountingError, *dbmod.IntegrityError) as e:
             c.rollback(); c.close(); flash(f"Paiement non enregistré : {e}"); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         c.close(); flash("Solde fournisseur enregistré."); return redirect(url_for('purchase_list'))
 
@@ -2523,7 +2551,7 @@ def register(app):
                                  VALUES(?,?,?,?,?,?,?)""",
                               (batch['id'],entity_id,r['id'],balance,r['supplier_name'],r['invoice_number'],now()))
                 c.commit()
-            except (AccountingError, sqlite3.IntegrityError) as e:
+            except (AccountingError, *dbmod.IntegrityError) as e:
                 c.rollback(); c.close()
                 log_ops_event('SEPA_EXPORT_FAILED', outcome='ERROR', detail=f"lot {msg_id}: {e}")
                 flash(f"Export SEPA interrompu : {e}")
@@ -2888,6 +2916,10 @@ def register(app):
             if not client_name or not items:
                 c.close()
                 flash('Nom du client et au moins une ligne de facture requis.')
+                return redirect(url_for('invoicing_new'))
+            items_error=_line_items_error(items)
+            if items_error:
+                c.close(); flash(items_error)
                 return redirect(url_for('invoicing_new'))
             if client_siren and len(client_siren)!=9:
                 c.close()
@@ -3534,7 +3566,7 @@ def register(app):
             c.commit()
             if new_status=='paid':
                 deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],'client_name':inv['client_name'],'total':inv['total']},entity_id=inv['entity_id'])
-        except sqlite3.IntegrityError:
+        except dbmod.IntegrityError:
             c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         except AccountingError as e:
@@ -3569,7 +3601,7 @@ def register(app):
             c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),invoice_id,inv['entity_id']))
             _stage_payment_ereporting(c,inv,payment)
             c.commit()
-        except sqlite3.IntegrityError:
+        except dbmod.IntegrityError:
             c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         except AccountingError as e:
@@ -3615,6 +3647,10 @@ def register(app):
             if not client_name or not items:
                 c.close()
                 flash('Nom du client et au moins une ligne de facture requis.')
+                return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
+            items_error=_line_items_error(items)
+            if items_error:
+                c.close(); flash(items_error)
                 return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
             subtotal,vat_amount,total=_totals(items)
             c.execute("UPDATE outgoing_invoices SET client_name=?,client_address=?,client_email=?,due_date=?,line_items=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=? AND entity_id IS ? AND status='draft'",
@@ -4115,6 +4151,9 @@ def register(app):
             items=_compute_line_items(request.form)
             if not client_name or not items:
                 c.close(); flash("Client et au moins une ligne sont requis."); return redirect(url_for('recurring_invoices'))
+            items_error=_line_items_error(items)
+            if items_error:
+                c.close(); flash(items_error); return redirect(url_for('recurring_invoices'))
             end=(request.form.get('end_date') or '').strip() or None
             if end:
                 try: date.fromisoformat(end)

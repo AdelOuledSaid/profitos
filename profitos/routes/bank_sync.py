@@ -1066,7 +1066,7 @@ def register(app):
             c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,matched_at if status=='paid' else None,invoice_id,eid))
             c.commit()
             flash(f"{fr_number(amount,2)} € rapprochés avec la facture {inv['invoice_number']}.")
-        except (sqlite3.IntegrityError,ValueError):
+        except (*BANK_DB_INTEGRITY_ERRORS,ValueError):
             c.rollback(); flash("Ce rapprochement a déjà été enregistré ou son montant est invalide.")
         except AccountingError as e:
             c.rollback(); log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"rapprochement facture {invoice_id}: {e}"); flash(f"Rapprochement annulé : {e}")
@@ -1160,7 +1160,7 @@ def register(app):
             new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
             c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
             c.commit()
-        except (AccountingError, sqlite3.IntegrityError, ValueError) as e:
+        except (AccountingError, *BANK_DB_INTEGRITY_ERRORS, ValueError) as e:
             c.rollback(); c.close(); flash(f"Rapprochement annulé : {e}"); return redirect(url_for('banking'))
         c.close(); flash("Rapprochement fournisseur enregistré."); return redirect(url_for('banking'))
 

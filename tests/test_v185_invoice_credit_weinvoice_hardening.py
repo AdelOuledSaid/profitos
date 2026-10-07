@@ -32,7 +32,8 @@ def test_mark_paid_is_idempotent_and_entity_scoped():
     assert 'idempotency_key' in block
     assert 'generate_sale_partial_payment_entry(c,inv,payment)' in block
     assert "WHERE id=? AND entity_id IS ?" in block
-    assert 'except sqlite3.IntegrityError:' in block
+    # Doublon attrapé quel que soit le backend (SQLite en local, psycopg2 en production).
+    assert 'except dbmod.IntegrityError:' in block
     assert 'except AccountingError as e:' in block
     assert 'c.rollback()' in block
 

@@ -42,6 +42,11 @@ USE_POSTGRES = bool(DATABASE_URL)
 if USE_POSTGRES:
     import psycopg2  # noqa: à ajouter dans requirements.txt (psycopg2-binary) avant déploiement
 
+# Violation de contrainte (doublon, clé unique...) quel que soit le backend. Attraper
+# uniquement sqlite3.IntegrityError laissait passer l'erreur psycopg2 en production
+# (erreur 500 au lieu du message prévu, ex. « Ce règlement a déjà été enregistré »).
+IntegrityError = (sqlite3.IntegrityError,) + ((psycopg2.IntegrityError,) if USE_POSTGRES else ())
+
 
 class Row(dict):
     """Ligne de résultat supportant à la fois l'accès par nom (row['col'], comme
@@ -273,10 +278,22 @@ class SQLiteCursorResult:
     def fetchall(self):
         return [self._wrap(r) for r in self._cur.fetchall()]
 
+    @property
+    def lastrowid(self):
+        # Même interface que PGCursorResult.lastrowid : sans elle, l'enregistrement d'un
+        # règlement (et 6 autres écrans) levait AttributeError en local sur SQLite.
+        return self._cur.lastrowid
+
 
 class SQLiteConnection:
     def __init__(self, path):
         self._conn = sqlite3.connect(path)
+        # LEFT(texte, n) existe sous PostgreSQL mais pas sous SQLite. La révision comptable
+        # l'utilise (comptes 401/411/471...) : sans cet équivalent, le diagnostic et la
+        # clôture d'une révision levaient « no such function: LEFT » en local.
+        self._conn.create_function(
+            'LEFT', 2, lambda value, n: None if value is None else str(value)[:max(int(n or 0), 0)],
+            deterministic=True)
 
     def execute(self, sql, params=()):
         cur = self._conn.cursor()

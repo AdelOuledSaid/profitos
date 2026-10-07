@@ -33,7 +33,8 @@ def test_reconciliation_is_idempotent_and_cannot_over_allocate():
     assert 'amount > available+.001' in block
     assert 'amount > balance+.001' in block
     assert 'idempotency_key' in block
-    assert 'sqlite3.IntegrityError' in block
+    # Doublon attrapé quel que soit le backend (SQLite en local, psycopg2 en production).
+    assert 'BANK_DB_INTEGRITY_ERRORS' in block
 
 def test_ui_exposes_partial_allocation_and_remaining_amount():
     assert 'Disponible :' in TPL

@@ -2019,6 +2019,20 @@ def init_tenant_db(org_id=None):
     except Exception as e:
         print(f"[ProfitOS] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
 
+    # v1.8.9 — clôture comptable isolée par entité. L'ancienne clôture globale est reprise
+    # uniquement pour la société mère (entity_key=0). Ce bloc se trouvait par erreur dans
+    # sync_buyer_signals (base auth, où la table n'existe pas) : la reprise n'avait jamais lieu
+    # et une période clôturée avant la v1.8.9 redevenait modifiable.
+    try:
+        legacy_closure = c.execute('SELECT closed_until,closed_at,closed_by FROM accounting_closure WHERE id=1').fetchone()
+        if legacy_closure and legacy_closure['closed_until']:
+            c.execute("""INSERT OR IGNORE INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
+                         VALUES(0,NULL,?,?,?)""",
+                      (legacy_closure['closed_until'], legacy_closure['closed_at'], legacy_closure['closed_by']))
+            c.commit()
+    except Exception as e:
+        print(f"[ProfitOS] ATTENTION : reprise de la clôture comptable globale ignorée ({e})")
+
     try:
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_outgoing_invoice_recurring_run ON outgoing_invoices(recurring_template_id, recurring_run_date) WHERE recurring_template_id IS NOT NULL")
         c.execute("CREATE INDEX IF NOT EXISTS ix_recurring_templates_due ON recurring_invoice_templates(entity_id,status,next_run_date)")
@@ -2404,6 +2418,13 @@ def sync_buyer_signals(org_id, invoices_rows):
             by_customer[r['customer']].append(r['days_overdue'])
     if not by_customer: return
     c=auth_cx()
+    try:
+        _upsert_buyer_signals(c, org_id, by_customer)
+        c.commit()
+    finally:
+        c.close()
+
+def _upsert_buyer_signals(c, org_id, by_customer):
     for customer,days_list in by_customer.items():
         key=norm(customer)
         if not key: continue
@@ -2414,14 +2435,6 @@ def sync_buyer_signals(org_id, invoices_rows):
                        buyer_name_display=excluded.buyer_name_display,invoice_count=excluded.invoice_count,
                        avg_days_overdue=excluded.avg_days_overdue,updated_at=excluded.updated_at''',
             (key,org_id,customer,len(days_list),avg,now()))
-    # v1.8.9 — clôture comptable isolée par entité. L'ancienne clôture globale
-    # est reprise uniquement pour la société mère (entity_key=0).
-    legacy_closure = c.execute('SELECT closed_until,closed_at,closed_by FROM accounting_closure WHERE id=1').fetchone()
-    if legacy_closure and legacy_closure['closed_until']:
-        c.execute("""INSERT OR IGNORE INTO accounting_entity_closure(entity_key,entity_id,closed_until,closed_at,closed_by)
-                     VALUES(0,NULL,?,?,?)""",
-                  (legacy_closure['closed_until'], legacy_closure['closed_at'], legacy_closure['closed_by']))
-    c.commit(); c.close()
 
 def buyer_risk_lookup(customer_name, exclude_org_id):
     """Cherche si d'autres organisations ProfitOS (que la sienne) ont aussi signalé
