@@ -170,6 +170,34 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
                 issues.append(('VAT_RECONCILIATION_INCOMPLETE','warning',label,
                     len(missing_months)+invalid_validated,0,details))
 
+            # v399 — provisions pour risques et charges.
+            # La comptabilité permet de détecter les comptes/mouvements de provision,
+            # mais pas de prouver qu'un risque juridique/économique inexistant a été "revu".
+            # Le contrôle reste donc toujours informatif et à validation humaine.
+            prov_balance=conn.execute(f'''SELECT COUNT(*) n,
+                    COALESCE(SUM(l.credit-l.debit),0) balance
+                FROM accounting_entry_lines l
+                JOIN accounting_entries e ON e.id=l.entry_id
+                WHERE {ef} AND e.entry_date<=?
+                  AND LEFT(l.account_code,2)='15' ''',ep+(year_end,)).fetchone()
+            prov_moves=conn.execute(f'''SELECT COUNT(*) n,
+                    COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
+                FROM accounting_entry_lines l
+                JOIN accounting_entries e ON e.id=l.entry_id
+                WHERE {ef} AND e.entry_date BETWEEN ? AND ?
+                  AND (LEFT(l.account_code,4)='6815' OR LEFT(l.account_code,4)='7815')''',
+                ep+(f'{review_year}-01-01',year_end)).fetchone()
+            if prov_balance['n'] or prov_moves['n']:
+                issues.append(('PROVISIONS_REVIEW_REQUIRED','warning',
+                    'Provisions comptables détectées : revue humaine requise',
+                    int(prov_balance['n'] or 0)+int(prov_moves['n'] or 0),
+                    abs(float(prov_balance['balance'] or 0)),
+                    {'year':review_year,
+                     'provision_lines':int(prov_balance['n'] or 0),
+                     'provision_balance':float(prov_balance['balance'] or 0),
+                     'year_movements':int(prov_moves['n'] or 0),
+                     'movement_amount':float(prov_moves['amount'] or 0)}))
+
             entity_key=int(entity_id) if entity_id is not None else 0
             closure=conn.execute(
                 'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
@@ -263,6 +291,22 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'state':'review',
                 'label':'Clôture à vérifier',
                 'detail':'Année de clôture non déterminée.',
+            }
+
+    # Provisions (point 13) : jamais de vert automatique.
+    # L'absence d'écriture en compte 15/6815/7815 ne prouve pas l'absence de risque à provisionner.
+    if any(i['item_order']==13 for i in items):
+        if 'PROVISIONS_REVIEW_REQUIRED' in issue_codes:
+            status_by_order[13]={
+                'state':'review',
+                'label':'Provisions à revoir',
+                'detail':'Des comptes ou mouvements de provisions ont été détectés · validation humaine requise.',
+            }
+        else:
+            status_by_order[13]={
+                'state':'review',
+                'label':'Revue humaine requise',
+                'detail':"Aucune provision comptable détectée, mais l’absence de risque à provisionner ne peut pas être confirmée automatiquement.",
             }
 
     # Justificatifs fournisseurs : information utile rattachée au point "factures fournisseurs".
