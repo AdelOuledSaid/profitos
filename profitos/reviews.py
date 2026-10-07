@@ -198,6 +198,26 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
                      'year_movements':int(prov_moves['n'] or 0),
                      'movement_amount':float(prov_moves['amount'] or 0)}))
 
+            # v400 — créances douteuses / litigieuses.
+            # Détection comptable conservatrice : comptes 416 et dépréciations clients
+            # (491 / 68174 / 78174). La présence déclenche une revue humaine.
+            doubtful=conn.execute(f'''SELECT COUNT(*) n,
+                    COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
+                FROM accounting_entry_lines l
+                JOIN accounting_entries e ON e.id=l.entry_id
+                WHERE {ef} AND e.entry_date<=?
+                  AND (LEFT(l.account_code,3)='416'
+                       OR LEFT(l.account_code,3)='491'
+                       OR LEFT(l.account_code,5)='68174'
+                       OR LEFT(l.account_code,5)='78174')''',
+                ep+(year_end,)).fetchone()
+            if doubtful['n']:
+                issues.append(('DOUBTFUL_RECEIVABLES_REVIEW','warning',
+                    'Créances douteuses ou dépréciations clients détectées : revue humaine requise',
+                    int(doubtful['n'] or 0),float(doubtful['amount'] or 0),
+                    {'year':review_year,'lines':int(doubtful['n'] or 0),
+                     'amount':float(doubtful['amount'] or 0)}))
+
             entity_key=int(entity_id) if entity_id is not None else 0
             closure=conn.execute(
                 'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
@@ -307,6 +327,23 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'state':'review',
                 'label':'Revue humaine requise',
                 'detail':"Aucune provision comptable détectée, mais l’absence de risque à provisionner ne peut pas être confirmée automatiquement.",
+            }
+
+    # Créances douteuses / litigieuses (point 14) : jamais de vert automatique.
+    # L'absence de compte 416/491 ne prouve pas que tous les clients sont solvables
+    # ou qu'aucune créance n'est litigieuse.
+    if any(i['item_order']==14 for i in items):
+        if 'DOUBTFUL_RECEIVABLES_REVIEW' in issue_codes:
+            status_by_order[14]={
+                'state':'review',
+                'label':'Créances douteuses à examiner',
+                'detail':'Des comptes 416/491 ou mouvements de dépréciation clients ont été détectés · validation humaine requise.',
+            }
+        else:
+            status_by_order[14]={
+                'state':'review',
+                'label':'Revue humaine requise',
+                'detail':"Aucune créance douteuse comptabilisée détectée, mais les litiges et risques de non-recouvrement ne peuvent pas être exclus automatiquement.",
             }
 
     # Justificatifs fournisseurs : information utile rattachée au point "factures fournisseurs".
