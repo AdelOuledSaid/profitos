@@ -218,6 +218,28 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
                     {'year':review_year,'lines':int(doubtful['n'] or 0),
                      'amount':float(doubtful['amount'] or 0)}))
 
+            # v401 — rapprochement bancaire de clôture, contrôle strictement en lecture.
+            # On signale les opérations bancaires de l'exercice encore non rapprochées.
+            # Aucun état, rapprochement ou écriture comptable n'est modifié ici.
+            bf='a.entity_id=?' if entity_id is not None else 'a.entity_id IS NULL'
+            bp=(entity_id,year_end) if entity_id is not None else (year_end,)
+            bank_pending=conn.execute(f'''SELECT COUNT(DISTINCT t.id) n,
+                    COALESCE(SUM(ABS(t.amount)),0) amount
+                FROM bank_transactions t
+                JOIN bank_accounts a
+                  ON a.provider=t.provider
+                 AND a.provider_account_id=t.provider_account_id
+                LEFT JOIN bank_transaction_workflow w ON w.transaction_id=t.id
+                WHERE {bf}
+                  AND t.transaction_date<=?
+                  AND COALESCE(w.state,'pending') NOT IN ('ignored','reconciled')''',bp).fetchone()
+            if bank_pending and int(bank_pending['n'] or 0)>0:
+                issues.append(('BANK_RECONCILIATION_INCOMPLETE','warning',
+                    'Rapprochement bancaire de clôture incomplet : opérations à vérifier',
+                    int(bank_pending['n'] or 0),float(bank_pending['amount'] or 0),
+                    {'year':review_year,'transactions':int(bank_pending['n'] or 0),
+                     'amount':float(bank_pending['amount'] or 0)}))
+
             entity_key=int(entity_id) if entity_id is not None else 0
             closure=conn.execute(
                 'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
@@ -311,6 +333,22 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'state':'review',
                 'label':'Clôture à vérifier',
                 'detail':'Année de clôture non déterminée.',
+            }
+
+    # Rapprochement bancaire à la clôture (point 0).
+    # Lecture seule : le diagnostic ne rapproche jamais une transaction.
+    if any(i['item_order']==0 for i in items):
+        if 'BANK_RECONCILIATION_INCOMPLETE' in issue_codes:
+            status_by_order[0]={
+                'state':'review',
+                'label':'Rapprochement bancaire à vérifier',
+                'detail':"Des opérations bancaires non rapprochées existent à la date de clôture.",
+            }
+        else:
+            status_by_order[0]={
+                'state':'ok',
+                'label':'Contrôle auto OK',
+                'detail':'Aucune opération bancaire non rapprochée détectée à la date de clôture · validation finale manuelle.',
             }
 
     # Provisions (point 13) : jamais de vert automatique.
