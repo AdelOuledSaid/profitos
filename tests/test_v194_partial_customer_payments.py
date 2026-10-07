@@ -36,7 +36,9 @@ def test_payment_route_computes_balance_and_partial_status_atomically():
 def test_receivables_are_entity_scoped_and_net_of_payments():
     block=ROUTES[ROUTES.index('def invoicing_receivables():'):ROUTES.index("@app.route('/facturation/<int:invoice_id>/", ROUTES.index('def invoicing_receivables():'))]
     assert "i.status IN ('sent','partially_paid') AND i.entity_id IS ?" in block
-    assert 'p.entity_id IS i.entity_id' in block
+    # Rattachement du paiement à l'entité de la facture, sous une forme valable sur PostgreSQL
+    # (entity_id est un entier sur les paiements mais du texte sur les bases migrées).
+    assert "COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(i.entity_id AS TEXT),'')" in block
     assert "total-credited-float(r['paid_total'] or 0)" in block
 
 def test_invoice_ui_exposes_payment_history_and_partial_status():

@@ -1293,9 +1293,9 @@ def register(app):
         rows=c.execute("""
             SELECT i.*,
                    COALESCE((SELECT SUM(cn.total) FROM outgoing_credit_notes cn
-                             WHERE cn.original_invoice_id=i.id AND cn.entity_id IS i.entity_id AND cn.status='issued'),0) AS credited_total,
+                             WHERE cn.original_invoice_id=i.id AND COALESCE(CAST(cn.entity_id AS TEXT),'') = COALESCE(CAST(i.entity_id AS TEXT),'') AND cn.status='issued'),0) AS credited_total,
                    COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p
-                             WHERE p.invoice_id=i.id AND p.entity_id IS i.entity_id),0) AS paid_total
+                             WHERE p.invoice_id=i.id AND COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(i.entity_id AS TEXT),'')),0) AS paid_total
             FROM outgoing_invoices i
             WHERE i.status IN ('sent','partially_paid') AND i.entity_id IS ?
             ORDER BY i.due_date ASC, i.id DESC

@@ -81,10 +81,10 @@ def build_cash_intelligence():
         ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
         settings=_cash_settings(c)
         sales=c.execute(
-            "SELECT oi.*,COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p WHERE p.invoice_id=oi.id AND p.entity_id IS oi.entity_id),0) paid_total "
+            "SELECT oi.*,COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p WHERE p.invoice_id=oi.id AND COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(oi.entity_id AS TEXT),'')),0) paid_total "
             "FROM outgoing_invoices oi WHERE oi.entity_id IS ? AND oi.status IN ('sent','partially_paid') ORDER BY oi.due_date,oi.id",(eid,)).fetchall()
         purchases=c.execute(
-            "SELECT pi.*,COALESCE((SELECT SUM(p.amount) FROM purchase_invoice_payments p WHERE p.purchase_invoice_id=pi.id AND p.entity_id IS pi.entity_id),0) paid_total "
+            "SELECT pi.*,COALESCE((SELECT SUM(p.amount) FROM purchase_invoice_payments p WHERE p.purchase_invoice_id=pi.id AND COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(pi.entity_id AS TEXT),'')),0) paid_total "
             "FROM purchase_invoices pi WHERE pi.entity_id IS ? AND COALESCE(pi.status,'unpaid')!='paid' ORDER BY pi.due_date,pi.id",(eid,)).fetchall()
         expenses=c.execute(f"SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL AND {ef} ORDER BY expense_date DESC",ep).fetchall()
     finally: c.close()

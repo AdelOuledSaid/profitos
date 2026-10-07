@@ -48,7 +48,7 @@ def build_flux10(conn,entity_id,anchor_date,flow_type):
     elif flow_type in ('AggregatedCustomerPaymentReport','UnitaryCustomerPaymentReport'):
         scope='b2c' if flow_type=='AggregatedCustomerPaymentReport' else 'international_b2b'
         rows=conn.execute("""SELECT p.*,i.invoice_number,i.issue_date,i.line_items,i.counterparty_country
-          FROM outgoing_invoice_payments p JOIN outgoing_invoices i ON i.id=p.invoice_id AND i.entity_id IS p.entity_id
+          FROM outgoing_invoice_payments p JOIN outgoing_invoices i ON i.id=p.invoice_id AND COALESCE(CAST(i.entity_id AS TEXT),'') = COALESCE(CAST(p.entity_id AS TEXT),'')
           WHERE p.entity_id IS ? AND i.ereporting_scope=? AND p.payment_date=? ORDER BY p.id""",(entity_id,scope,anchor_date)).fetchall()
         if scope=='b2c':
             agg=defaultdict(lambda:[0,0.0])
