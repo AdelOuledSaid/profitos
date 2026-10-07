@@ -181,13 +181,19 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'detail':label + ' · validation finale manuelle',
             }
 
-    # Clôture stricte : OK uniquement si closed_until couvre réellement la fin de l'exercice.
+    # Clôture stricte : la période appartient à la révision, pas au snapshot diagnostic.
     if any(i['item_order']==15 for i in items):
-        m=re.search(r'(?<!\d)(20\d{2})(?!\d)', str(diag_run['period'] or '')) if diag_run else None
+        review_row=conn.execute(
+            'SELECT period_label, entity_id FROM reviews WHERE id=?',
+            (review_id,)
+        ).fetchone()
+        period_label=(review_row['period_label'] if review_row else '')
+        review_entity_id=(review_row['entity_id'] if review_row else None)
+        m=re.search(r'(?<!\d)(20\d{2})(?!\d)', str(period_label or ''))
         if m:
             year=int(m.group(1))
             year_end=f"{year}-12-31"
-            entity_key=str(diag_run['entity_id']) if diag_run['entity_id'] is not None else 'global'
+            entity_key=str(review_entity_id) if review_entity_id is not None else 'global'
             row=conn.execute("""SELECT closed_until FROM accounting_entity_closure
                                 WHERE entity_key=?""",(entity_key,)).fetchone()
             closed_until=(row['closed_until'] if row else None)
