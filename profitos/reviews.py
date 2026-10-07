@@ -122,6 +122,54 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
                     'CCA/FNP/FAE sans écriture comptable de cut-off valide',
                     bad_cutoff['n'],bad_cutoff['amount'],{'year':review_year}))
 
+            # v398 — TVA annuelle : prévalidation uniquement sur des préparations fiscales
+            # explicitement validées et dont les contrôles enregistrés sont tous OK.
+            # Une CA12 annuelle peut couvrir l'exercice ; sinon chaque mois doit être
+            # couvert par au moins une préparation validée (ex. CA3 mensuelles).
+            vf='entity_id=?' if entity_id is not None else 'entity_id IS NULL'
+            vp=(entity_id,year_end,f'{review_year}-01-01') if entity_id is not None else (year_end,f'{review_year}-01-01')
+            vat_rows=conn.execute(f'''SELECT declaration_type,period_start,period_end,status,checks_json
+                FROM tax_declaration_preparations
+                WHERE {vf} AND status='validated'
+                  AND period_start<=? AND period_end>=?
+                ORDER BY period_start,period_end''',vp).fetchall()
+
+            covered_months=set()
+            invalid_validated=0
+            import calendar
+            from datetime import date as _date
+            for vr in vat_rows:
+                try:
+                    checks=json.loads(vr['checks_json'] or '[]')
+                except (TypeError,ValueError,json.JSONDecodeError):
+                    checks=[]
+                checks_ok=bool(checks) and all(bool(x.get('ok')) for x in checks if isinstance(x,dict))
+                if not checks_ok:
+                    invalid_validated += 1
+                    continue
+                try:
+                    ps=_date.fromisoformat(str(vr['period_start'])[:10])
+                    pe=_date.fromisoformat(str(vr['period_end'])[:10])
+                except (TypeError,ValueError):
+                    invalid_validated += 1
+                    continue
+                for month in range(1,13):
+                    first=_date(int(review_year),month,1)
+                    last=_date(int(review_year),month,calendar.monthrange(int(review_year),month)[1])
+                    if ps<=first and pe>=last:
+                        covered_months.add(month)
+
+            missing_months=[m for m in range(1,13) if m not in covered_months]
+            if missing_months or invalid_validated:
+                details={'year':review_year,'missing_months':missing_months,
+                         'invalid_validated_preparations':invalid_validated}
+                label=(f'TVA {review_year} non entièrement réconciliée : '
+                       f'{len(missing_months)} mois non couverts')
+                if invalid_validated:
+                    label += f', {invalid_validated} préparation(s) validée(s) avec contrôles incomplets'
+                issues.append(('VAT_RECONCILIATION_INCOMPLETE','warning',label,
+                    len(missing_months)+invalid_validated,0,details))
+
             entity_key=int(entity_id) if entity_id is not None else 0
             closure=conn.execute(
                 'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
@@ -160,6 +208,7 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
         8: ('INVALID_CUTOFF', 'Cut-off contrôlé automatiquement'),
         9: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
         10: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
+        11: ('VAT_RECONCILIATION_INCOMPLETE', 'TVA annuelle contrôlée sur les préparations fiscales validées'),
         12: ('SUSPENSE_ACCOUNTS', 'Comptes d’attente contrôlés automatiquement'),
         # La clôture (point 15) est traitée séparément ci-dessous : absence d'alerte != période clôturée.
     }
