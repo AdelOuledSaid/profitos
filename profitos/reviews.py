@@ -240,6 +240,40 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
                     {'year':review_year,'transactions':int(bank_pending['n'] or 0),
                      'amount':float(bank_pending['amount'] or 0)}))
 
+            # v402 — exhaustivité factures clients / fournisseurs.
+            # Contrôle en lecture seule : détecter les pièces métier sans écriture comptable liée.
+            inv_missing=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(i.total),0) amount
+                FROM invoices i
+                WHERE {('i.entity_id=? AND ' if entity_id is not None else 'i.entity_id IS NULL AND ')}
+                      i.issue_date BETWEEN ? AND ?
+                  AND i.status NOT IN ('DRAFT','CANCELLED','CANCELED')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM accounting_entries e
+                    WHERE {('e.entity_id=i.entity_id AND ' if entity_id is not None else 'e.entity_id IS NULL AND ')}
+                      (e.source_id=i.id OR e.reference=i.number)
+                  )''',
+                ((entity_id,f'{review_year}-01-01',year_end) if entity_id is not None
+                 else (f'{review_year}-01-01',year_end))).fetchone()
+            pur_missing=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(p.total),0) amount
+                FROM purchases p
+                WHERE {('p.entity_id=? AND ' if entity_id is not None else 'p.entity_id IS NULL AND ')}
+                      p.invoice_date BETWEEN ? AND ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM accounting_entries e
+                    WHERE {('e.entity_id=p.entity_id AND ' if entity_id is not None else 'e.entity_id IS NULL AND ')}
+                      (e.source_id=p.id OR e.reference=p.invoice_number)
+                  )''',
+                ((entity_id,f'{review_year}-01-01',year_end) if entity_id is not None
+                 else (f'{review_year}-01-01',year_end))).fetchone()
+            if int(inv_missing['n'] or 0) or int(pur_missing['n'] or 0):
+                issues.append(('INVOICE_ACCOUNTING_INCOMPLETE','warning',
+                    'Exhaustivité factures/comptabilité à vérifier',
+                    int(inv_missing['n'] or 0)+int(pur_missing['n'] or 0),
+                    float(inv_missing['amount'] or 0)+float(pur_missing['amount'] or 0),
+                    {'year':review_year,
+                     'customer_invoices':int(inv_missing['n'] or 0),
+                     'supplier_invoices':int(pur_missing['n'] or 0)}))
+
             entity_key=int(entity_id) if entity_id is not None else 0
             closure=conn.execute(
                 'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
@@ -334,6 +368,23 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'label':'Clôture à vérifier',
                 'detail':'Année de clôture non déterminée.',
             }
+
+    # Exhaustivité factures clients/fournisseurs (points 1 et 2).
+    # Un vert signifie uniquement qu'aucune pièce métier non comptabilisée n'a été détectée.
+    for order in (1,2):
+        if any(i['item_order']==order for i in items):
+            if 'INVOICE_ACCOUNTING_INCOMPLETE' in issue_codes:
+                status_by_order[order]={
+                    'state':'review',
+                    'label':'Exhaustivité à vérifier',
+                    'detail':'Des factures sans écriture comptable liée ont été détectées · validation humaine requise.',
+                }
+            else:
+                status_by_order[order]={
+                    'state':'ok',
+                    'label':'Contrôle auto OK',
+                    'detail':'Aucune facture sans écriture comptable liée détectée sur l’exercice · validation finale manuelle.',
+                }
 
     # Rapprochement bancaire à la clôture (point 0).
     # Lecture seule : le diagnostic ne rapproche jamais une transaction.
