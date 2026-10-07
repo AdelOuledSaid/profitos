@@ -70,12 +70,12 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
         issues.append(('UNBALANCED_ENTRIES','blocker','Écritures comptables déséquilibrées',unbalanced['n'],unbalanced['amount'],None))
     suspense=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
-        WHERE {ef} AND (l.account_code='467000' OR l.account_code LIKE '471%') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
+        WHERE {ef} AND (l.account_code='467000' OR l.account_code LIKE '471%%') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
     if suspense['n']:
         issues.append(('SUSPENSE_ACCOUNTS','blocker','Comptes d’attente 467000/471 à solder ou justifier',suspense['n'],suspense['amount'],None))
     unlettered=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
-        WHERE {ef} AND (l.account_code LIKE '401%' OR l.account_code LIKE '411%')
+        WHERE {ef} AND (l.account_code LIKE '401%%' OR l.account_code LIKE '411%%')
           AND (l.lettrage_code IS NULL OR TRIM(l.lettrage_code)='') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
     if unlettered['n']:
         issues.append(('UNLETTERED_THIRDPARTY','warning','Lignes clients/fournisseurs non lettrées à revoir',unlettered['n'],unlettered['amount'],None))
