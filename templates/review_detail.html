@@ -15,6 +15,9 @@
   <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
     <div>
       <div class="purchase-eyebrow">DIAGNOSTIC AUTOMATIQUE</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">
+        Contrôles de cohérence, lettrage, justificatifs{% if review.review_type=='annuelle' %}, amortissements, cut-off et état de clôture{% endif %}. Aucune écriture n’est créée automatiquement.
+      </div>
       {% if diag_run %}
         <div style="margin-top:6px;color:#fff;"><strong>{{ diag_run.blocker_count }}</strong> blocage(s) · <strong>{{ diag_run.warning_count }}</strong> alerte(s)</div>
         <div class="purchase-muted" style="font-size:12px;">Dernier contrôle : {{ diag_run.run_at|fr_date(true) }} · {{ diag_run.entry_count }} écriture(s) analysée(s)</div>

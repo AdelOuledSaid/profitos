@@ -85,6 +85,51 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
         WHERE {pf} AND COALESCE(total,0)>0 AND (document_path IS NULL OR TRIM(document_path)='')''',pp).fetchone()
     if missing['n']:
         issues.append(('MISSING_PURCHASE_DOCS','warning','Factures fournisseurs sans justificatif attaché',missing['n'],missing['amount'],None))
+
+    # v396 — consolidation de clôture annuelle : contrôles objectifs supplémentaires.
+    review=conn.execute('SELECT review_type,period_label FROM reviews WHERE id=?',(review_id,)).fetchone()
+    if review and review['review_type']=='annuelle':
+        import re
+        year_match=re.search(r'(?<!\\d)(20\\d{2})(?!\\d)', review['period_label'] or '')
+        if year_match:
+            review_year=year_match.group(1)
+            year_end=f'{review_year}-12-31'
+
+            af='a.entity_id=?' if entity_id is not None else 'a.entity_id IS NULL'
+            ap=(entity_id,year_end,review_year) if entity_id is not None else (year_end,review_year)
+            missing_dep=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(a.purchase_amount),0) amount
+                FROM fixed_assets a
+                WHERE {af} AND a.status='active' AND a.purchase_date<=?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM fixed_asset_depreciation_runs r
+                    WHERE r.asset_id=a.id AND r.period_label=?
+                  )''',ap).fetchone()
+            if missing_dep['n']:
+                issues.append(('MISSING_DEPRECIATION','blocker',
+                    'Dotations aux amortissements de l’exercice non comptabilisées',
+                    missing_dep['n'],missing_dep['amount'],{'year':review_year}))
+
+            cf='c.entity_id=?' if entity_id is not None else 'c.entity_id IS NULL'
+            cp=(entity_id,year_end) if entity_id is not None else (year_end,)
+            bad_cutoff=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(c.amount),0) amount
+                FROM cutoff_entries c
+                LEFT JOIN accounting_entries e ON e.id=c.entry_id
+                WHERE {cf} AND c.period_end_date<=?
+                  AND (e.id IS NULL OR e.source_type<>'cutoff')''',cp).fetchone()
+            if bad_cutoff['n']:
+                issues.append(('INVALID_CUTOFF','blocker',
+                    'CCA/FNP/FAE sans écriture comptable de cut-off valide',
+                    bad_cutoff['n'],bad_cutoff['amount'],{'year':review_year}))
+
+            entity_key=int(entity_id) if entity_id is not None else 0
+            closure=conn.execute(
+                'SELECT closed_until FROM accounting_entity_closure WHERE entity_key=?',
+                (entity_key,)
+            ).fetchone()
+            if not closure or not closure['closed_until'] or closure['closed_until'] < year_end:
+                issues.append(('PERIOD_NOT_CLOSED','warning',
+                    f'Exercice {review_year} non clôturé/verrouillé jusqu’au 31/12',
+                    1,0,{'year_end':year_end}))
     meta=conn.execute(f'SELECT COUNT(*) n,COALESCE(MAX(e.id),0) mx FROM accounting_entries e WHERE {ef}',ep).fetchone()
     now=datetime.utcnow().isoformat()
     conn.execute('INSERT INTO review_diagnostic_runs(review_id,entity_id,run_at,run_by,blocker_count,warning_count,entry_count,snapshot_max_entry_id) VALUES(?,?,?,?,?,?,?,?)',(
