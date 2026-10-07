@@ -61,6 +61,28 @@
 </section>
 {% endif %}
 
+{% if held %}
+<section class="purchase-panel" style="margin-bottom:20px;">
+  <div class="purchase-panel-head"><h2>Retenues — statut de facturation électronique ({{ held|length }})</h2></div>
+  <p class="purchase-muted" style="font-size:12px;">Ces factures sont refusées, en litige, suspendues ou rejetées côté facturation électronique : elles ne sont jamais incluses dans un virement. Régularisez-les avant de les payer.</p>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Fournisseur</th><th>Facture</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+      {% for r, hold in held %}
+        <tr>
+          <td>{{ r.supplier_name }}</td>
+          <td>{{ r.invoice_number }}</td>
+          <td class="purchase-alert-text">{{ hold|capitalize }}</td>
+          <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail',purchase_id=r.id) }}">Voir la facture →</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 {% if blocked %}
 <section class="purchase-panel">
   <div class="purchase-panel-head"><h2>Non incluses — IBAN ou BIC fournisseur manquant ({{ blocked|length }})</h2></div>

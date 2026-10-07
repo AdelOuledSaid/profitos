@@ -117,8 +117,18 @@
     {% if inv.weinvoice_invoice_id %}
     {% set wi_rejected = (inv.weinvoice_status or '')|lower == 'rejected' or (inv.weinvoice_regulatory_code|string == '213') %}
     {% set status_labels = {'SUBMITTED':'Transmise','SUBMITTED_DATA_REGLEMENTARY':'Transmise','SUBMITTED_DATA_REGLEMENTARY_ACCEPTED':'Transmise','SUBMITTED_DATA_REGLEMENTARY_REJECTED':'Transmise','SUBMITTED_DATA_REGLEMENTARY_INADMISSIBLE':'Transmise','RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','TAKEN_IN_CHARGE':'Prise en charge','ACCEPTED':'Acceptée','APPROVED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','APPROVED_PARTIALLY':'Partiellement acceptée','DISPUTED':'En litige','IN_DISPUTE':'En litige','SUSPENDED':'Suspendue','COMPLETED':'Complétée','REFUSED':'Refusée','PAYMENT_SENT':'Paiement transmis','CASHED_IN':'Encaissée','CASHED_IN_ACCEPTED':'Encaissée','CASHED_IN_REJECTED':'Encaissée','CASHED_IN_INADMISSIBLE':'Encaissée','PAID':'Payée','REJECTED':'Rejetée','CANCELLED':'Annulée'} %}
-    <p class="{{ 'purchase-alert-text' if wi_rejected else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if wi_rejected else '✓' }} Facturation électronique : <strong>{{ 'Rejetée' if wi_rejected else status_labels.get((inv.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></p>
+    <p class="{{ 'purchase-alert-text' if (wi_rejected or einvoice_hold) else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if (wi_rejected or einvoice_hold) else '✓' }} Facturation électronique : <strong>{{ 'Rejetée' if wi_rejected else status_labels.get((inv.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></p>
     {% if wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">La facture a été rejetée. Corrigez les informations signalées puis actualisez le statut après correction.</p>{% endif %}
+    {% if einvoice_hold and not wi_rejected %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">{% if einvoice_hold == 'refusée' %}Le client a refusé cette facture. Contactez-le pour connaître le motif, puis régularisez-la (par exemple par un avoir et une nouvelle facture). Les relances de paiement sont suspendues.{% elif einvoice_hold == 'en litige' %}Le client a ouvert un litige sur cette facture. Les relances de paiement sont suspendues jusqu'à sa résolution.{% else %}Cette facture est suspendue côté client. Les relances de paiement sont suspendues.{% endif %}</p>{% endif %}
+    {% set ppf = namespace(ack=none) %}
+    {% for ev in (einvoice_events or []) %}{% if ppf.ack is none and ev.event_type == 'acquittement' %}{% set ppf.ack = ev %}{% endif %}{% endfor %}
+    {% if ppf.ack %}
+    {% set ppf_status = (ppf.ack.status or '')|upper %}
+    {% set ppf_bad = ppf_status in ('ACK_251_REJECTED','ACK_501_INADMISSIBLE','ACK_601_REJECTED') %}
+    {% set ppf_labels = {'ACK_250_ACCEPTED':'Données acceptées','ACK_251_REJECTED':'Données rejetées','ACK_500_RECEVABLE':'Flux recevable','ACK_501_INADMISSIBLE':'Flux irrecevable','ACK_601_REJECTED':'Statuts obligatoires rejetés'} %}
+    <p class="{{ 'purchase-alert-text' if ppf_bad else 'purchase-ok-text' }}" style="font-size:13px;margin:0 0 8px;">{{ '⚠' if ppf_bad else '✓' }} Données réglementaires (PPF) : <strong>{{ ppf_labels.get(ppf_status, 'En cours de traitement') }}</strong></p>
+    {% if ppf_bad %}<p class="purchase-alert-text" style="font-size:12px;margin:0 0 10px;">Retour réglementaire négatif : le statut de la facture ci-dessus n'en tient pas compte. Vérifiez les informations de la facture, puis actualisez le statut.</p>{% endif %}
+    {% endif %}
     {% if inv.weinvoice_last_sync_at %}<p class="purchase-muted" style="font-size:11px;margin:0 0 8px;">Dernière synchronisation : {{ inv.weinvoice_last_sync_at|fr_date(true) }}</p>{% endif %}
     <form method="post" action="{{ url_for('invoicing_sync_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -161,7 +171,8 @@
               <td>{{ event_labels.get(ev.event_type, ev.event_type) }}</td>
               {% set ev_status = (ev.status or '')|upper %}
               {% set ev_is_ack_error = ev_status in ('ACK_251_REJECTED','ACK_501_INADMISSIBLE','ACK_601_REJECTED') %}
-              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed or ev_is_ack_error else '' }}">
+              {% set ev_adverse = ev_status in ('REFUSED','IN_DISPUTE','DISPUTED','SUSPENDED') %}
+              <td class="{{ 'purchase-alert-text' if ev_rejected or ev_failed or ev_is_ack_error or ev_adverse else '' }}">
                 {% if ev_status in ack_labels %}
                   {{ ack_labels.get(ev_status) }}
                 {% elif ev_rejected %}

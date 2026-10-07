@@ -69,7 +69,7 @@
         <tbody>
         {% for inv in invoices %}
           <tr>
-            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a></td>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail', invoice_id=inv.id) }}"><strong>{{ inv.invoice_number }}</strong></a>{% if inv.einvoice_hold %}<br><span class="purchase-alert-text" style="font-size:12px;">⚠ Facture {{ inv.einvoice_hold }} — relance suspendue</span>{% endif %}</td>
             <td>{{ inv.client_name }}</td>
             <td>
               {{ inv.due_date|fr_date or "—" }}

@@ -17,6 +17,7 @@
   {% if p.weinvoice_invoice_id %}
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
+    {% if payment_hold %}<p class="purchase-alert-text" style="font-size:13px;font-weight:700;margin:8px 0;">⚠ Facture {{ payment_hold }} : elle est exclue des virements SEPA groupés. Régularisez-la avant tout paiement.</p>{% endif %}
     <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
       {% set purchase_status_labels = {'RECEIVED':'Reçue','MADE_AVAILABLE':'Mise à disposition','SUBMITTED':'Transmise','APPROVED':'Acceptée','ACCEPTED':'Acceptée','PARTIALLY_APPROVED':'Partiellement acceptée','APPROVED_PARTIALLY':'Partiellement acceptée','DISPUTED':'En litige','IN_DISPUTE':'En litige','SUSPENDED':'Suspendue','COMPLETED':'Complétée','REFUSED':'Refusée','REJECTED':'Rejetée','PAYMENT_SENT':'Paiement transmis','PAID':'Payée'} %}
       <tr><td>Statut</td><td><strong>{{ purchase_status_labels.get((p.weinvoice_status or '')|upper, 'En cours de traitement') }}</strong></td></tr>

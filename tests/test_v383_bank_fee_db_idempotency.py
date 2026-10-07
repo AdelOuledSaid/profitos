@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 BANK=(ROOT/'profitos/routes/bank_sync.py').read_text(encoding='utf-8')
 RUNTIME=(ROOT/'profitos/runtime.py').read_text(encoding='utf-8')
-CORE=(ROOT/'profitos/core/runtime.py').read_text(encoding='utf-8')
+CORE=(ROOT/'profitos/runtime.py').read_text(encoding='utf-8')
 
 def test_bank_fee_has_database_unique_index():
     expected="CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_fee_source"

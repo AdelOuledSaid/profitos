@@ -21,6 +21,30 @@ from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     get_inbound_invoice_content, download_inbound_invoice_readable, download_inbound_invoice_original, apply_inbound_lifecycle_action)
 
 
+# --- Facturation électronique : statuts qui retiennent un paiement ou une relance --------------------
+# Le cycle de vie WeInvoice est volontairement séparé de l'état de paiement ProfitOS. Conséquence : une
+# facture refusée, contestée ou suspendue restait « à payer » (achats) ou « à encaisser » (ventes). Ces
+# helpers rendent la situation visible et bloquent les deux actions risquées : payer par virement SEPA
+# une facture d'achat contestée, et relancer un client qui a refusé la facture.
+_EINVOICE_HOLD_BY_STATUS = {
+    'REFUSED': 'refusée', 'IN_DISPUTE': 'en litige', 'DISPUTED': 'en litige',
+    'SUSPENDED': 'suspendue', 'REJECTED': 'rejetée',
+}
+_EINVOICE_HOLD_BY_CODE = {'210': 'refusée', '207': 'en litige', '208': 'suspendue', '213': 'rejetée'}
+
+
+def _einvoice_hold(row):
+    """Libellé (« refusée », « en litige », « suspendue » ou « rejetée ») si le statut de facturation
+    électronique de la facture interdit de la payer ou de la relancer, sinon None. Le statut textuel
+    prime ; le code réglementaire ne sert que lorsque le statut est absent."""
+    keys = row.keys() if hasattr(row, 'keys') else []
+    status = str((row['weinvoice_status'] if 'weinvoice_status' in keys else '') or '').strip().upper()
+    if status:
+        return _EINVOICE_HOLD_BY_STATUS.get(status)
+    code = str((row['weinvoice_regulatory_code'] if 'weinvoice_regulatory_code' in keys else '') or '').strip()
+    return _EINVOICE_HOLD_BY_CODE.get(code)
+
+
 def _compute_line_items(form):
     """Lit jusqu'à 8 lignes de facture depuis le formulaire (libellé, quantité, prix
     unitaire, taux de TVA). Les lignes vides sont ignorées — pas de JS dynamique
@@ -1310,6 +1334,7 @@ def register(app):
                 'remaining':remaining,
                 'overdue':overdue,
                 'days_overdue':days_overdue,
+                'einvoice_hold':_einvoice_hold(r),
             }
             invoices.append(item)
 
@@ -2257,7 +2282,8 @@ def register(app):
         if p['weinvoice_invoice_id']:
             einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE entity_id IS ? AND remote_id=? ORDER BY id DESC LIMIT 50",(eid,p['weinvoice_invoice_id'])).fetchall()
         c.close()
-        return render_template('purchase_detail.html',p=p,supplier=supplier,einvoice_events=einvoice_events)
+        return render_template('purchase_detail.html',p=p,supplier=supplier,einvoice_events=einvoice_events,
+                               payment_hold=_einvoice_hold(p))
 
     @app.route('/facturation/achats/<int:purchase_id>/modifier',methods=['GET','POST'])
     @login_required
@@ -2449,6 +2475,14 @@ def register(app):
                       AND (p.validation_status IS NULL OR p.validation_status='approved')""",
                 selected_ids + ([entity_id] if entity_id else []),
             ).fetchall()
+            # Une facture « refusée », « en litige », « suspendue » ou « rejetée » côté facturation
+            # électronique ne part jamais dans un fichier de virement, même si un client mal formé la
+            # sélectionne : elle est écartée ici et l'utilisateur en est informé.
+            held_rows = [(r, _einvoice_hold(r)) for r in rows if _einvoice_hold(r)]
+            if held_rows:
+                rows = [r for r in rows if not _einvoice_hold(r)]
+                flash("Non incluses dans le virement (statut de facturation électronique) : "
+                      + ", ".join(f"{r['invoice_number']} ({hold})" for r, hold in held_rows) + ".")
             # Le virement porte sur le solde restant, jamais sur le total historique
             # de la facture (une facture peut déjà avoir reçu un paiement partiel).
             payable_rows = []
@@ -2511,8 +2545,12 @@ def register(app):
                ORDER BY p.due_date""",
             ([entity_id] if entity_id else []),
         ).fetchall()
-        ready, blocked = [], []
+        ready, blocked, held = [], [], []
         for r in candidates:
+            hold = _einvoice_hold(r)
+            if hold:
+                held.append((r, hold))
+                continue
             if r['supplier_iban'] and validate_iban(r['supplier_iban']) and r['supplier_bic']:
                 ready.append(r)
             else:
@@ -2520,7 +2558,7 @@ def register(app):
         company_ready = bool(debtor_identity['iban'] and validate_iban(debtor_identity['iban']) and debtor_identity['bic'])
         entities = list_all_entities(c)
         c.close()
-        return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked,
+        return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked, held=held,
                                 company_ready=company_ready, company=debtor_identity,
                                 entities=entities, current_entity_id=entity_id)
 
@@ -2910,6 +2948,7 @@ def register(app):
         einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 50",(invoice_id,inv['entity_id'])).fetchall()
         c.close()
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
+                               einvoice_hold=_einvoice_hold(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,payments=payments,
                                paid_total=paid_total,balance_due=balance_due,
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total),
@@ -3410,6 +3449,11 @@ def register(app):
         if inv['status'] not in ('sent','partially_paid') or _display_status(inv)!='overdue':
             c.close()
             flash("Seule une facture envoyée et échue peut être relancée.")
+            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        hold=_einvoice_hold(inv)
+        if hold:
+            c.close()
+            flash(f"Cette facture est {hold} côté facturation électronique : régularise-la avant de relancer le client.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if not inv['client_email']:
             c.close()
