@@ -222,3 +222,17 @@
 .decision-check input{width:18px!important;height:18px!important;min-width:18px;margin:0}
 .decision-constraint-group input:disabled,.decision-constraint-group select:disabled{opacity:.48;cursor:not-allowed}
 @media(max-width:900px){.decision-constraint-group{grid-template-columns:1fr}}
+
+/* Cash Intelligence : échelle commune, graduations et avertissements de données */
+.chart-grid{stroke:#1d2c44;stroke-width:1;vector-effect:non-scaling-stroke}
+.chart-zero{stroke:#ff9aaa;stroke-width:1.5;stroke-dasharray:6 5;vector-effect:non-scaling-stroke}
+.chart-label{fill:#8fa9d3;font-size:12px;font-family:inherit}
+.scenario-summary-card .scenario-rule{margin-top:8px;font-size:11px;opacity:.85}
+.cash-stale{margin:6px 0 0;font-size:13px}
+.cash-data-warning{margin:10px 0 4px;padding:10px 14px;border:1px solid #5b471d;border-radius:10px;background:rgba(91,71,29,.18);color:#ffd166;font-size:13px}
+[data-theme="light"] .chart-grid{stroke:#e2e8f0}
+[data-theme="light"] .chart-label{fill:#475569}
+[data-theme="light"] .cash-data-warning{background:#fff7e0;border-color:#f0d58a;color:#7a5a00}
+.purchase-stats.cash-kpis{grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0}
+@media(max-width:1050px){.purchase-stats.cash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.purchase-stats.cash-kpis{grid-template-columns:1fr}}
