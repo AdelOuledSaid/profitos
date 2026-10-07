@@ -74,6 +74,8 @@ def _simulate_curve(cash, daily_burn, receivables, scheduled_outflows=None, mode
 
 def build_cash_intelligence():
     """Prévision 90 j fondée sur les soldes réellement ouverts de l'entité active."""
+    # Import tardif : évite une dépendance circulaire au chargement des routes.
+    from profitos.routes.invoicing import _einvoice_hold
     c=cx()
     try:
         from profitos.entities import current_entity_id
@@ -115,9 +117,17 @@ def build_cash_intelligence():
     observed_90=sum(recent); daily_burn=observed_90/90.0 if recent else 0.0; monthly_burn=daily_burn*30.0
     planned_outflows_90=round(sum(x['amount'] for x in scheduled_outflows),2)
     receivables=[]
+    held_receivables=[]
     for inv in sales:
         amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total']),2))
         if amount<=.005: continue
+        # Une facture refusée, en litige, suspendue ou rejetée côté facturation électronique n'est pas
+        # un encaissement fiable : elle sort de la prévision et reste signalée à part.
+        hold=_einvoice_hold(inv)
+        if hold:
+            held_receivables.append({'id':inv['id'],'invoice_number':inv['invoice_number'],
+                'customer':inv['client_name'],'amount':amount,'reason':hold})
+            continue
         due=_iso_date(inv['due_date']) or _iso_date(inv['issue_date']) or today
         overdue=max(0,(today-due).days)
         # Facture commerciale émise : 100% du solde est connu; seul le timing varie selon le scénario.
@@ -160,7 +170,9 @@ def build_cash_intelligence():
     else: alert_level='STABLE'; alert='Aucune tension détectée sur les données actuellement connues.'
     return {'cash_balance':cash,'cash_as_of':settings['cash_as_of'],'monthly_burn':round(monthly_burn,2),'observed_90':round(observed_90,2),
         'expense_rows':len(recent),'horizons':horizons,'scheduled_outflows':scheduled_outflows,'supplier_payables':supplier_payables,
-        'planned_outflows_90':planned_outflows_90,'receivables':receivables,'top_receivable':top,'scenarios':scenarios,
+        'planned_outflows_90':planned_outflows_90,'receivables':receivables,
+        'held_receivables':held_receivables,'held_receivables_total':round(sum(h['amount'] for h in held_receivables),2),
+        'top_receivable':top,'scenarios':scenarios,
         'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,'alert_level':alert_level,'alert':alert,'curves':curves,
         'method_note':"Prévision calculée par entité à partir du solde disponible, des factures clients émises restant à encaisser, des factures fournisseurs restant à payer et des dépenses futures enregistrées. Les paiements partiels sont déduits. Les scénarios modifient le timing des encaissements, jamais les écritures comptables."}
 
