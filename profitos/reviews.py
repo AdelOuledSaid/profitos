@@ -1,6 +1,7 @@
 """Révision comptable et diagnostics de clôture."""
 from datetime import datetime
 import json
+import re
 
 COURANTE_ITEMS = [
     ("Rapprochement bancaire du mois effectué", 'banking'),
@@ -160,7 +161,7 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
         9: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
         10: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
         12: ('SUSPENSE_ACCOUNTS', 'Comptes d’attente contrôlés automatiquement'),
-        15: ('PERIOD_NOT_CLOSED', 'État de clôture contrôlé automatiquement'),
+        # La clôture (point 15) est traitée séparément ci-dessous : absence d'alerte != période clôturée.
     }
     for item in items:
         order=item['item_order']
@@ -178,6 +179,35 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
                 'state':'ok',
                 'label':'Contrôle auto OK',
                 'detail':label + ' · validation finale manuelle',
+            }
+
+    # Clôture stricte : OK uniquement si closed_until couvre réellement la fin de l'exercice.
+    if any(i['item_order']==15 for i in items):
+        m=re.search(r'(?<!\d)(20\d{2})(?!\d)', str(diag_run['period'] or '')) if diag_run else None
+        if m:
+            year=int(m.group(1))
+            year_end=f"{year}-12-31"
+            entity_key=str(diag_run['entity_id']) if diag_run['entity_id'] is not None else 'global'
+            row=conn.execute("""SELECT closed_until FROM accounting_entity_closure
+                                WHERE entity_key=?""",(entity_key,)).fetchone()
+            closed_until=(row['closed_until'] if row else None)
+            if closed_until and str(closed_until)[:10] >= year_end:
+                status_by_order[15]={
+                    'state':'ok',
+                    'label':'Période réellement clôturée',
+                    'detail':f'Clôture comptable enregistrée jusqu’au {str(closed_until)[:10]} · validation finale manuelle',
+                }
+            else:
+                status_by_order[15]={
+                    'state':'review',
+                    'label':'Période à clôturer',
+                    'detail':f'Aucune clôture comptable couvrant le {year_end} n’est enregistrée.',
+                }
+        else:
+            status_by_order[15]={
+                'state':'review',
+                'label':'Clôture à vérifier',
+                'detail':'Année de clôture non déterminée.',
             }
 
     # Justificatifs fournisseurs : information utile rattachée au point "factures fournisseurs".

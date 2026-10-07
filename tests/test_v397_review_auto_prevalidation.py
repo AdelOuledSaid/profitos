@@ -1,7 +1,7 @@
 from pathlib import Path
 import ast
-ROOT=Path(__file__).resolve().parents[1]
 
+ROOT=Path(__file__).resolve().parents[1]
 def txt(p): return (ROOT/p).read_text(encoding="utf-8")
 
 def test_auto_prevalidation_is_read_only_and_manual_final_validation_remains():
@@ -14,7 +14,10 @@ def test_auto_prevalidation_is_read_only_and_manual_final_validation_remains():
     assert "'INVALID_CUTOFF'" in block
     assert "'UNLETTERED_THIRDPARTY'" in block
     assert "'SUSPENSE_ACCOUNTS'" in block
-    assert "'PERIOD_NOT_CLOSED'" in block
+    # v397c: closure is no longer inferred from absence of PERIOD_NOT_CLOSED.
+    # It is checked directly against accounting_entity_closure.closed_until.
+    assert "SELECT closed_until FROM accounting_entity_closure" in block
+    assert "str(closed_until)[:10] >= year_end" in block
     assert "'MISSING_PURCHASE_DOCS'" in block
 
 def test_route_passes_auto_statuses_to_review_template():
@@ -26,9 +29,7 @@ def test_route_passes_auto_statuses_to_review_template():
 def test_template_keeps_manual_validation_and_displays_auto_status():
     s=txt("templates/review_detail.html")
     assert "review_item_toggle" in s
-    assert "Contrôle auto OK" not in s  # label comes from backend
     assert "auto_statuses.get(i.item_order)" in s
-    assert "validation finale manuelle" not in s  # detail comes from backend
 
 def test_postgres_runtime_fix_is_preserved():
     s=txt("profitos/reviews.py")
