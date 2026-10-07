@@ -193,7 +193,7 @@ def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_i
         if m:
             year=int(m.group(1))
             year_end=f"{year}-12-31"
-            entity_key=str(review_entity_id) if review_entity_id is not None else 'global'
+            entity_key=int(review_entity_id) if review_entity_id is not None else 0
             row=conn.execute("""SELECT closed_until FROM accounting_entity_closure
                                 WHERE entity_key=?""",(entity_key,)).fetchone()
             closed_until=(row['closed_until'] if row else None)
