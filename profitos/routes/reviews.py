@@ -1,5 +1,5 @@
 from profitos.runtime import *
-from profitos.reviews import create_review, toggle_review_item, review_progress, complete_review, run_review_diagnostics, latest_review_diagnostics
+from profitos.reviews import create_review, toggle_review_item, review_progress, complete_review, run_review_diagnostics, latest_review_diagnostics, automatic_review_item_statuses
 
 
 def register(app):
@@ -53,10 +53,11 @@ def register(app):
             'SELECT * FROM review_items WHERE review_id=? ORDER BY item_order', (review_id,)
         ).fetchall()
         diag_run, diag_issues = latest_review_diagnostics(c, review_id)
+        auto_statuses = automatic_review_item_statuses(c, review_id, items, diag_run, diag_issues)
         c.close()
         done, total = review_progress_from_items(items)
         return render_template('review_detail.html', review=review, items=items, done=done, total=total,
-                               diag_run=diag_run, diag_issues=diag_issues)
+                               diag_run=diag_run, diag_issues=diag_issues, auto_statuses=auto_statuses)
 
     @app.route('/comptabilite/revision/<int:review_id>/diagnostic', methods=['POST'])
     @login_required

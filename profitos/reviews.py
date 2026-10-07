@@ -70,12 +70,12 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
         issues.append(('UNBALANCED_ENTRIES','blocker','Écritures comptables déséquilibrées',unbalanced['n'],unbalanced['amount'],None))
     suspense=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
-        WHERE {ef} AND (l.account_code='467000' OR l.account_code LIKE '471%%') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
+        WHERE {ef} AND (l.account_code='467000' OR LEFT(l.account_code,3)='471') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
     if suspense['n']:
         issues.append(('SUSPENSE_ACCOUNTS','blocker','Comptes d’attente 467000/471 à solder ou justifier',suspense['n'],suspense['amount'],None))
     unlettered=conn.execute(f'''SELECT COUNT(*) n,COALESCE(SUM(ABS(l.debit-l.credit)),0) amount
         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
-        WHERE {ef} AND (l.account_code LIKE '401%%' OR l.account_code LIKE '411%%')
+        WHERE {ef} AND (LEFT(l.account_code,3) IN ('401','411'))
           AND (l.lettrage_code IS NULL OR TRIM(l.lettrage_code)='') AND ABS(l.debit-l.credit)>0.005''',ep).fetchone()
     if unlettered['n']:
         issues.append(('UNLETTERED_THIRDPARTY','warning','Lignes clients/fournisseurs non lettrées à revoir',unlettered['n'],unlettered['amount'],None))
@@ -90,7 +90,7 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
     review=conn.execute('SELECT review_type,period_label FROM reviews WHERE id=?',(review_id,)).fetchone()
     if review and review['review_type']=='annuelle':
         import re
-        year_match=re.search(r'(?<!\\d)(20\\d{2})(?!\\d)', review['period_label'] or '')
+        year_match=re.search(r'(?<!\d)(20\d{2})(?!\d)', review['period_label'] or '')
         if year_match:
             review_year=year_match.group(1)
             year_end=f'{review_year}-12-31'
@@ -139,6 +139,62 @@ def run_review_diagnostics(conn, review_id, entity_id=None, run_by=None):
         conn.execute('INSERT INTO review_diagnostic_issues(run_id,issue_code,severity,label,item_count,amount,details) VALUES(?,?,?,?,?,?,?)',(run_id,code,severity,label,count,float(amount or 0),json.dumps(details) if details else None))
     conn.commit()
     return latest_review_diagnostics(conn,review_id)
+
+def automatic_review_item_statuses(conn, review_id, items, diag_run=None, diag_issues=None):
+    """Prévalidation informative des points objectivement contrôlables.
+
+    Ne modifie jamais review_items.checked : la validation finale reste humaine.
+    """
+    issue_codes={row['issue_code'] for row in (diag_issues or [])}
+    status_by_order={}
+    if not diag_run:
+        return status_by_order
+
+    # Mapping strict : "ok" seulement quand le diagnostic correspondant a réellement été exécuté
+    # et qu'aucune anomalie de ce contrôle n'est présente.
+    checks={
+        3: ('MISSING_DEPRECIATION', 'Amortissements contrôlés automatiquement'),
+        6: ('INVALID_CUTOFF', 'Cut-off contrôlé automatiquement'),
+        7: ('INVALID_CUTOFF', 'Cut-off contrôlé automatiquement'),
+        8: ('INVALID_CUTOFF', 'Cut-off contrôlé automatiquement'),
+        9: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
+        10: ('UNLETTERED_THIRDPARTY', 'Lettrage tiers contrôlé automatiquement'),
+        12: ('SUSPENSE_ACCOUNTS', 'Comptes d’attente contrôlés automatiquement'),
+        15: ('PERIOD_NOT_CLOSED', 'État de clôture contrôlé automatiquement'),
+    }
+    for item in items:
+        order=item['item_order']
+        if order not in checks:
+            continue
+        code,label=checks[order]
+        if code in issue_codes:
+            status_by_order[order]={
+                'state':'review',
+                'label':'À vérifier automatiquement',
+                'detail':label,
+            }
+        else:
+            status_by_order[order]={
+                'state':'ok',
+                'label':'Contrôle auto OK',
+                'detail':label + ' · validation finale manuelle',
+            }
+
+    # Justificatifs fournisseurs : information utile rattachée au point "factures fournisseurs".
+    if 2 in [i['item_order'] for i in items]:
+        if 'MISSING_PURCHASE_DOCS' in issue_codes:
+            status_by_order[2]={
+                'state':'review',
+                'label':'Justificatifs à vérifier',
+                'detail':'Le diagnostic a détecté des factures fournisseurs sans justificatif.',
+            }
+        else:
+            status_by_order[2]={
+                'state':'ok',
+                'label':'Justificatifs auto OK',
+                'detail':'Aucun justificatif fournisseur manquant détecté · validation finale manuelle',
+            }
+    return status_by_order
 
 def latest_review_diagnostics(conn, review_id):
     run=conn.execute('SELECT * FROM review_diagnostic_runs WHERE review_id=? ORDER BY id DESC LIMIT 1',(review_id,)).fetchone()

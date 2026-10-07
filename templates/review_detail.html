@@ -56,6 +56,12 @@
       </button>
       <div style="flex:1;">
         <div style="color:#fff;{% if i.checked %}text-decoration:line-through;opacity:.7;{% endif %}">{{ i.label }}</div>
+        {% set auto = auto_statuses.get(i.item_order) if auto_statuses else None %}
+        {% if auto %}
+          <div style="font-size:11px;margin-top:4px;{% if auto.state=='ok' %}color:#39e58c;{% else %}color:#ffcf66;{% endif %}">
+            {{ '✓' if auto.state=='ok' else '⚠' }} {{ auto.label }} · {{ auto.detail }}
+          </div>
+        {% endif %}
         {% if i.linked_route %}<a class="purchase-detail-link" href="{{ url_for(i.linked_route) }}" style="font-size:12px;" target="_blank">Ouvrir le module concerné →</a>{% endif %}
         {% if i.checked and i.checked_by %}<div class="purchase-muted" style="font-size:11px;margin-top:4px;">validé par {{ i.checked_by }} le {{ i.checked_at|fr_date(true) }}</div>{% endif %}
         <input type="text" name="note" value="{{ i.note or '' }}" placeholder="Note (feuille de travail, optionnel)" style="margin-top:6px;font-size:12px;padding:6px 8px;width:100%;max-width:400px;">
