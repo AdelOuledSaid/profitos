@@ -34,8 +34,8 @@ def test_v208_acceptance_grants_accountant_membership_and_one_entity_only():
     accept=RV[RV.index("def accountant_invite_accept"):RV.index("def accountant_invite_revoke")]
     assert "role='COMPTABLE'" in accept or "'COMPTABLE'" in accept
     assert "DELETE FROM user_entity_access WHERE user_id=?" in accept
-    assert "INSERT INTO user_entity_access(user_id,entity_id)" in accept
-    assert "(user['id'],inv['entity_id'])" in accept
+    assert "INSERT INTO user_entity_access(user_id,entity_id,created_at)" in accept
+    assert "(user['id'],inv['entity_id'],now())" in accept
 
 def test_v208_revoke_removes_entity_access_and_is_audited():
     revoke=RV[RV.index("def accountant_invite_revoke"):]

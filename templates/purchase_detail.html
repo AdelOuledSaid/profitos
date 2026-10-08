@@ -11,7 +11,7 @@
   <h1 class="purchase-title">{{ p.invoice_number }}</h1>
   <p class="purchase-subtitle">
     {% if supplier %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}
-    · {{ "%.2f"|format(p.total) }} € · {% if p.status=='paid' %}Payée{% else %}À payer{% endif %}
+    · {{ "%.2f"|format(p.total) }}&nbsp;€ · {% if p.status=='paid' %}Payée{% else %}À payer{% endif %}
   </p>
 
   {% if p.weinvoice_invoice_id %}
@@ -59,9 +59,9 @@
           <tr><td>Fournisseur</td><td>{% if supplier %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=supplier.id) }}">{{ supplier.name }}</a>{% else %}{{ p.supplier_name }}{% endif %}</td></tr>
           <tr><td>Date de facture</td><td>{{ p.issue_date|fr_date or "—" }}</td></tr>
           <tr><td>Échéance</td><td>{{ p.due_date|fr_date or "—" }}</td></tr>
-          <tr><td>Montant HT</td><td>{{ "%.2f"|format(p.subtotal) }} €</td></tr>
-          <tr><td>TVA</td><td>{{ "%.2f"|format(p.vat_amount) }} €</td></tr>
-          <tr><td>Total TTC</td><td><strong>{{ "%.2f"|format(p.total) }} €</strong></td></tr>
+          <tr><td>Montant HT</td><td>{{ "%.2f"|format(p.subtotal) }}&nbsp;€</td></tr>
+          <tr><td>TVA</td><td>{{ "%.2f"|format(p.vat_amount) }}&nbsp;€</td></tr>
+          <tr><td>Total TTC</td><td><strong>{{ "%.2f"|format(p.total) }}&nbsp;€</strong></td></tr>
           <tr><td>Statut</td><td><span class="purchase-status {{ 'paid' if p.status=='paid' else '' }}">{{ 'Payée' if p.status=='paid' else 'À payer' }}</span></td></tr>
           {% if p.validation_status=='pending' %}
           <tr><td>Validation</td><td><span class="purchase-status-warn" style="display:inline-block;padding:2px 8px;border-radius:999px;">⏳ En attente de validation</span></td></tr>

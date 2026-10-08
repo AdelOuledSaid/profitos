@@ -20,7 +20,7 @@
         <tr>
           <td><span class="purchase-status">{{ r.cutoff_type }}</span></td>
           <td>{{ r.label }}</td>
-          <td style="text-align:right;"><strong>{{ r.amount|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;"><strong>{{ r.amount|fr_number(2) }}&nbsp;€</strong></td>
           <td>{{ r.period_end_date|fr_date }}</td>
           <td>
             <form method="post" action="{{ url_for('cutoff_reverse',cutoff_id=r.id) }}" style="display:flex;gap:8px;align-items:center;">
@@ -48,7 +48,7 @@
         <tr>
           <td><span class="purchase-status paid">{{ r.cutoff_type }}</span></td>
           <td>{{ r.label }}</td>
-          <td style="text-align:right;">{{ r.amount|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ r.amount|fr_number(2) }}&nbsp;€</td>
           <td>{{ r.period_end_date|fr_date }}</td>
         </tr>
       {% else %}

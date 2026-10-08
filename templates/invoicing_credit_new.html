@@ -15,7 +15,7 @@
     <form method="post" class="formgrid">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Montant TTC de l'avoir (€)<input type="number" name="amount_ttc" min="0.01" max="{{ '%.2f'|format(remaining) }}" step="0.01" required></label>
-      <label>Maximum disponible<input value="{{ '%.2f'|format(remaining) }} €" disabled></label>
+      <label>Maximum disponible<input value="{{ '%.2f'|format(remaining) }}&nbsp;€" disabled></label>
       <label class="wide">Motif de l'avoir<input name="reason" required placeholder="Ex. remboursement partiel, erreur de facturation"></label>
       <div class="wide" style="margin-top:12px;">
         <button type="submit" class="purchase-primary-btn primary">Créer l'avoir</button>

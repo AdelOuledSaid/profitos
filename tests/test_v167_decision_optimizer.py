@@ -20,4 +20,4 @@ def test_optimizer_ui_present():
 def test_optimizer_cache_bumped():
     t=(ROOT/'templates/base.html').read_text(encoding='utf-8')
     assert "financial-brain.css'" in t
-    assert '>AI CFO Planner<' in t
+    assert '>Simulateur de décision<' in t

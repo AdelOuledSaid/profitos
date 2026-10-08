@@ -25,8 +25,8 @@
           <td><code>{{ l.account_code }}</code></td>
           <td>{{ l.auxiliary_name or '' }}</td>
           <td>{{ l.label or '' }}</td>
-          <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }} €{% endif %}</td>
-          <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }} €{% endif %}</td>
+          <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }}&nbsp;€{% endif %}</td>
+          <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }}&nbsp;€{% endif %}</td>
           <td>
             {% if all_tags %}
             <form method="post" action="{{ url_for('analytical_tag_line',line_id=l.id) }}">

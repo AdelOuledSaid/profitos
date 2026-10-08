@@ -10,7 +10,7 @@
 
   <div class="purchase-eyebrow">FACTURATION</div>
   <h1 class="purchase-title">Budgets fournisseurs</h1>
-  <p class="purchase-subtitle">Un budget mensuel par catégorie, comparé à tes factures d'achat réelles — pas de prévision, que du constaté.</p>
+  <p class="purchase-subtitle">Un budget mensuel par catégorie, comparé à vos factures d'achat réelles — pas de prévision, que du constaté.</p>
 
   {% if any_overrun %}
   <div class="purchase-panel" style="margin:20px 0;border-color:rgba(255,94,94,.4);background:rgba(255,60,60,.06);">
@@ -41,11 +41,11 @@
         {% for row in overview %}
           <tr>
             <td>{{ row.label }}</td>
-            <td>{% if row.has_budget %}{{ '%.2f'|format(row.budget) }} €{% else %}<span class="purchase-muted">Non défini</span>{% endif %}</td>
-            <td>{{ '%.2f'|format(row.consumed) }} €</td>
+            <td>{% if row.has_budget %}{{ '%.2f'|format(row.budget) }}&nbsp;€{% else %}<span class="purchase-muted">Non défini</span>{% endif %}</td>
+            <td>{{ '%.2f'|format(row.consumed) }}&nbsp;€</td>
             <td>
               {% if row.has_budget %}
-                <strong style="color:{{ '#ff8b8b' if row.remaining < 0 else '#67f0aa' }};">{{ '%.2f'|format(row.remaining) }} €</strong>
+                <strong style="color:{{ '#ff8b8b' if row.remaining < 0 else '#67f0aa' }};">{{ '%.2f'|format(row.remaining) }}&nbsp;€</strong>
               {% else %}<span class="purchase-muted">—</span>{% endif %}
             </td>
             <td>{% if row.has_budget %}{{ row.pct }}%{% else %}<span class="purchase-muted">—</span>{% endif %}</td>
@@ -69,7 +69,7 @@
 
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Définir les budgets mensuels</h2></div>
-    <p class="purchase-muted" style="margin-top:-6px;">Un même montant s'applique chaque mois — modifie-le ici si tes besoins changent.</p>
+    <p class="purchase-muted" style="margin-top:-6px;">Un même montant s'applique chaque mois — modifiez-le ici si vos besoins changent.</p>
     <form method="post" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:16px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="month" value="{{ month }}">

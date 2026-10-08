@@ -115,7 +115,7 @@ def register(app):
                 flash("Client invalide.")
                 return redirect(url_for('cabinet_time_new'))
             if org_id not in {o['id'] for o in orgs}:
-                flash("Tu n'as pas accès à ce client.")
+                flash("Vous n'avez pas accès à ce client.")
                 return redirect(url_for('cabinet_time_new'))
             entry_date = request.form.get('entry_date') or date.today().isoformat()
             try:

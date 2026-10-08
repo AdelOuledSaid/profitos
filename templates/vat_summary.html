@@ -13,9 +13,9 @@
 <button class="purchase-primary-btn primary">Actualiser</button></form>
 </section>
 <div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:24px;">
-<div class="purchase-stat"><div><div class="purchase-stat-label">TVA COLLECTÉE</div><div class="purchase-stat-value">{{ collected|fr_number(2) }} €</div></div></div>
-<div class="purchase-stat"><div><div class="purchase-stat-label">TVA DÉDUCTIBLE</div><div class="purchase-stat-value">{{ deductible|fr_number(2) }} €</div></div></div>
-<div class="purchase-stat"><div><div class="purchase-stat-label">{{ 'TVA À DÉCAISSER' if balance >= 0 else 'CRÉDIT DE TVA' }}</div><div class="purchase-stat-value">{{ balance|abs|fr_number(2) }} €</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">TVA COLLECTÉE</div><div class="purchase-stat-value">{{ collected|fr_number(2) }}&nbsp;€</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">TVA DÉDUCTIBLE</div><div class="purchase-stat-value">{{ deductible|fr_number(2) }}&nbsp;€</div></div></div>
+<div class="purchase-stat"><div><div class="purchase-stat-label">{{ 'TVA À DÉCAISSER' if balance >= 0 else 'CRÉDIT DE TVA' }}</div><div class="purchase-stat-value">{{ balance|abs|fr_number(2) }}&nbsp;€</div></div></div>
 <div class="purchase-stat"><div><div class="purchase-stat-label">ÉCRITURES TVA</div><div class="purchase-stat-value">{{ entry_count }}</div></div></div>
 </div>
 <section class="purchase-panel" style="margin-bottom:20px;">
@@ -25,7 +25,7 @@
 <input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">
 <label>Formulaire<select name="declaration_type"><option value="CA3" {% if declaration_type=='CA3' %}selected{% endif %}>CA3</option><option value="CA12" {% if declaration_type=='CA12' %}selected{% endif %}>CA12</option></select></label>
 <button class="purchase-nav-btn">Afficher</button></form>
-<p>Statut interne : <strong>{{ fiscal_preparation.status if fiscal_preparation else 'non préparée' }}</strong>{% if fiscal_preparation and fiscal_preparation.validated_at %} — validée le {{ fiscal_preparation.validated_at }}{% endif %}</p>
+<p>Statut interne : <strong>{{ fiscal_preparation.status if fiscal_preparation else 'non préparée' }}</strong>{% if fiscal_preparation and fiscal_preparation.validated_at %} — validée le {{ fiscal_preparation.validated_at|fr_date(True) }}{% endif %}</p>
 <form method="post" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
 <input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}"><input type="hidden" name="declaration_type" value="{{ declaration_type }}">
 <label>Note interne<input name="fiscal_notes" value="{{ fiscal_preparation.notes if fiscal_preparation else '' }}" placeholder="Optionnel"></label>
@@ -47,10 +47,10 @@
 {% if declaration %}<button name="action" value="reopen" class="purchase-nav-btn">Rouvrir</button>{% endif %}
 </form></section>
 <div class="twocol"><section class="purchase-panel"><div class="purchase-panel-head"><h2>TVA collectée</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><tbody>
-{% for l in sales_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.credit-l.debit)|fr_number(2) }} €</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
+{% for l in sales_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.credit-l.debit)|fr_number(2) }}&nbsp;€</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
 </tbody></table></div></section><section class="purchase-panel"><div class="purchase-panel-head"><h2>TVA déductible</h2></div><div class="purchase-table-wrap"><table class="purchase-table"><tbody>
-{% for l in purchase_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.debit-l.credit)|fr_number(2) }} €</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
+{% for l in purchase_lines %}<tr><td>{{ l.entry_date|fr_date }}</td><td>{{ l.label }}</td><td style="text-align:right"><strong>{{ (l.debit-l.credit)|fr_number(2) }}&nbsp;€</strong></td></tr>{% else %}<tr><td class="purchase-empty">Aucune ligne.</td></tr>{% endfor %}
 </tbody></table></div></section></div>
-{% if fiscal_history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des préparations fiscales</h2></div><table class="purchase-table"><tbody>{% for d in fiscal_history %}<tr><td><strong>{{ d.declaration_type }}</strong></td><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }} €</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-{% if history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des périodes</h2></div><table class="purchase-table"><tbody>{% for d in history %}<tr><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }} €</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% if fiscal_history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des préparations fiscales</h2></div><table class="purchase-table"><tbody>{% for d in fiscal_history %}<tr><td><strong>{{ d.declaration_type }}</strong></td><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }}&nbsp;€</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% if history %}<section class="purchase-panel" style="margin-top:20px;"><div class="purchase-panel-head"><h2>Historique des périodes</h2></div><table class="purchase-table"><tbody>{% for d in history %}<tr><td>{{ d.period_start|fr_date }} → {{ d.period_end|fr_date }}</td><td>{{ d.status }}</td><td style="text-align:right">{{ d.balance_amount|fr_number(2) }}&nbsp;€</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 </div>{% endblock %}

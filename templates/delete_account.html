@@ -6,7 +6,7 @@
 
 {% if is_last_member %}
 <section class="purchase-panel" style="margin:20px 0;border-color:rgba(255,110,120,.4);">
-  <p style="margin:0;">Tu es le <strong style="color:#fff;">dernier membre</strong> de l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Continuer supprimera <strong class="purchase-alert-text">définitivement et irréversiblement</strong> :</p>
+  <p style="margin:0;">Vous êtes le <strong style="color:#fff;">dernier membre</strong> de l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Continuer supprimera <strong class="purchase-alert-text">définitivement et irréversiblement</strong> :</p>
   <ul style="margin:10px 0 0;padding-left:20px;">
     <li>Toutes les factures, dépenses et opportunités importées</li>
     <li>Tout l'historique d'actions et de statuts</li>
@@ -15,11 +15,11 @@
 </section>
 {% else %}
 <section class="purchase-panel" style="margin:20px 0;">
-  <p style="margin:0;">Tu quitteras l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Les autres membres et leurs données ne sont pas affectés. Si tu n'appartiens à aucune autre organisation après ça, ton compte utilisateur sera aussi supprimé.</p>
+  <p style="margin:0;">Vous quitterez l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Les autres membres et leurs données ne sont pas affectés. Si vous n'appartenez à aucune autre organisation ensuite, votre compte utilisateur sera également supprimé.</p>
 </section>
 {% endif %}
 
-<p class="purchase-muted">Avant de continuer, tu peux <a class="purchase-detail-link" href="{{ url_for('gdpr_export') }}">télécharger toutes tes données</a> (RGPD).</p>
+<p class="purchase-muted">Avant de continuer, vous pouvez <a class="purchase-detail-link" href="{{ url_for('gdpr_export') }}">télécharger toutes vos données</a> (RGPD).</p>
 
 <form method="post" class="stack" style="max-width:420px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

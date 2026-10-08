@@ -44,7 +44,7 @@
             <td>{{ r.supplier_name }}</td>
             <td>{{ r.invoice_number }}</td>
             <td>{{ r.due_date|fr_date or '—' }}</td>
-            <td style="text-align:right;"><strong>{{ r.total|fr_number(2) }} €</strong></td>
+            <td style="text-align:right;"><strong>{{ r.total|fr_number(2) }}&nbsp;€</strong></td>
           </tr>
         {% endfor %}
         </tbody>
@@ -94,7 +94,7 @@
         <tr>
           <td>{{ r.supplier_name }}</td>
           <td>{{ r.invoice_number }}</td>
-          <td style="text-align:right;">{{ r.total|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ r.total|fr_number(2) }}&nbsp;€</td>
           <td>{% if r.supplier_id %}<a class="purchase-detail-link" href="{{ url_for('supplier_detail',supplier_id=r.supplier_id) }}">Renseigner l'IBAN →</a>{% else %}<span class="purchase-muted" style="font-size:12px;">Aucun fournisseur lié</span>{% endif %}</td>
         </tr>
       {% endfor %}

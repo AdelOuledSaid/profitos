@@ -2,7 +2,7 @@
 {% block content %}
 <div class="container py-4" style="max-width:720px">
   <h1 class="h3">Invitation expert-comptable</h1>
-  <p>Vous avez été invité avec l'adresse <strong>{{ inv.email }}</strong> à collaborer sur une entité ProfitOS.</p>
+  <p>Vous avez été invité avec l'adresse <strong>{{ inv.email }}</strong> à collaborer sur une entité de <strong>{{ org.name }}</strong> dans ProfitOS.</p>
   <p class="text-muted">L'accès est limité à l'entité concernée et peut être révoqué par un administrateur.</p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

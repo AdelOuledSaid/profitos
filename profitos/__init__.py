@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 import secrets
@@ -144,8 +145,14 @@ def create_app(config_object=None):
             'status': 'ok' if healthy else 'degraded',
             'service': 'profitos',
             'version': APP_VERSION,
-            'dependencies': deps,
         }
+        # Le détail des dépendances (base, e-mail, cache configurés ou non) aide un
+        # attaquant à cibler l'infrastructure : il n'est renvoyé qu'avec le jeton
+        # d'exploitation OPS_HEALTH_TOKEN, envoyé dans l'en-tête X-Ops-Token.
+        expected = os.environ.get('OPS_HEALTH_TOKEN', '')
+        provided = request.headers.get('X-Ops-Token', '')
+        if expected and provided and hmac.compare_digest(provided, expected):
+            payload['dependencies'] = deps
         return jsonify(**payload), (200 if healthy else 503)
 
     @app.get('/healthz')

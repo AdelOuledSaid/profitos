@@ -14,7 +14,7 @@
     <label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments or '' }}" placeholder="14, 50, 61, 27"></label>
     <label class="wide">Activités<textarea name="activities" rows="4">{{ p.activities or '' }}</textarea></label>
     <label class="wide">Certifications<input name="certifications" value="{{ p.certifications or '' }}"></label>
-    <label class="wide">Adresse (pour tes factures)<input name="address" value="{{ p.address or '' }}" placeholder="12 rue Example"></label>
+    <label class="wide">Adresse (figurant sur vos factures)<input name="address" value="{{ p.address or '' }}" placeholder="12 rue Example"></label>
     <label>Code postal<input name="postal_code" value="{{ p.postal_code or '' }}" placeholder="75001"></label>
     <label>SIRET<input name="siret" value="{{ p.siret or '' }}" placeholder="123 456 789 00012"></label>
     <label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number or '' }}" placeholder="FR12345678900"></label>
@@ -42,7 +42,7 @@
   <p class="purchase-alert-text" style="font-size:12px;margin-bottom:14px;">{{ weinvoice.weinvoice_last_error }}</p>
   {% endif %}
   {% if not weinvoice_configured %}
-  <p class="purchase-muted" style="font-size:12px;margin-bottom:14px;">Connexion non configurée pour l'instant. Contacte le support si tu as besoin d'y accéder.</p>
+  <p class="purchase-muted" style="font-size:12px;margin-bottom:14px;">Connexion non configurée pour l'instant. Contactez le support si vous avez besoin d'y accéder.</p>
   {% endif %}
   <form method="post" action="{{ url_for('company_weinvoice_test') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -11,7 +11,7 @@
 
   <div class="purchase-eyebrow">FACTURATION</div>
   <h1 class="purchase-title">Charges récurrentes détectées</h1>
-  <p class="purchase-subtitle">Basé sur le rythme réel de tes factures d'achat — aucune donnée inventée. Les fournisseurs sans rythme régulier n'apparaissent pas ici.</p>
+  <p class="purchase-subtitle">Basé sur le rythme réel de vos factures d'achat — aucune donnée inventée. Les fournisseurs sans rythme régulier n'apparaissent pas ici.</p>
 
   {% if anomaly_count > 0 %}
   <div class="purchase-panel" style="margin:20px 0;border-color:rgba(255,94,94,.4);background:rgba(255,60,60,.06);">
@@ -24,7 +24,7 @@
       <div><div class="purchase-stat-label">Charges récurrentes identifiées</div><div class="purchase-stat-value">{{ recurring|length }}</div></div>
     </div>
     <div class="purchase-stat">
-      <div><div class="purchase-stat-label">Coût annuel estimé cumulé</div><div class="purchase-stat-value">{{ total_annual_estimate|fr_number }} €</div></div>
+      <div><div class="purchase-stat-label">Coût annuel estimé cumulé</div><div class="purchase-stat-value">{{ total_annual_estimate|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div><div class="purchase-stat-label">Hausses anormales</div><div class="purchase-stat-value">{{ anomaly_count }}</div></div>
@@ -52,11 +52,11 @@
           <tr>
             <td><span class="purchase-link">{{ r.supplier }}</span></td>
             <td>{{ r.category }}</td>
-            <td>{{ '%.2f'|format(r.usual_amount) }} €</td>
+            <td>{{ '%.2f'|format(r.usual_amount) }}&nbsp;€</td>
             <td>{{ r.frequency }}</td>
-            <td>{{ r.last_date }}<div class="purchase-muted">{{ '%.2f'|format(r.last_amount) }} €</div></td>
-            <td>{{ r.next_due_estimate }}</td>
-            <td><strong>{{ r.annual_cost_estimate|fr_number }} €</strong></td>
+            <td>{{ r.last_date|fr_date }}<div class="purchase-muted">{{ '%.2f'|format(r.last_amount) }}&nbsp;€</div></td>
+            <td>{{ r.next_due_estimate|fr_date }}</td>
+            <td><strong>{{ r.annual_cost_estimate|fr_number }}&nbsp;€</strong></td>
             <td>
               {% if r.anomaly %}
                 <span class="purchase-status overdue">Hausse anormale</span>

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
 <div class="purchase-page">
 
 <div class="purchase-toolbar">
   <div>
-    <div class="purchase-eyebrow">GROW · LIVE BOAMP</div>
+    <div class="purchase-eyebrow">MARCHÉS PUBLICS · BOAMP</div>
     <h1 class="purchase-title">Opportunités de marchés publics</h1>
-    <p class="purchase-subtitle">Filtrées selon tes métiers et départements.</p>
+    <p class="purchase-subtitle">Filtrées selon vos métiers et départements.</p>
   </div>
   {% if not needs_profile %}
     {% if advanced_plan %}
@@ -42,7 +42,7 @@
 
 {% if needs_profile %}
 <section class="purchase-panel">
-  <h2 style="color:#fff;">Configure ton entreprise</h2>
+  <h2 style="color:#fff;">Configurez votre entreprise</h2>
   <a class="purchase-primary-btn primary" href="{{ url_for('company') }}">Créer le profil</a>
 </section>
 {% else %}

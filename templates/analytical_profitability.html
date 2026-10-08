@@ -34,9 +34,9 @@
       {% for r in rows %}
         <tr>
           <td><strong>{{ r.tag.name }}</strong></td>
-          <td style="text-align:right;">{{ r.revenue|fr_number(2) }} €</td>
-          <td style="text-align:right;">{{ r.expense|fr_number(2) }} €</td>
-          <td style="text-align:right;"><strong class="{{ 'purchase-ok-text' if r.margin>=0 else 'purchase-alert-text' }}">{{ r.margin|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;">{{ r.revenue|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;">{{ r.expense|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;"><strong class="{{ 'purchase-ok-text' if r.margin>=0 else 'purchase-alert-text' }}">{{ r.margin|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% else %}
         <tr><td colspan="4" class="purchase-empty">Aucun tag sur cet axe.</td></tr>
@@ -48,7 +48,7 @@
 
 {% if untagged_revenue or untagged_expense %}
 <section class="purchase-panel">
-  <p class="purchase-muted" style="margin:0;">Non taguées sur cette période : {{ untagged_revenue|fr_number(2) }} € de produits, {{ untagged_expense|fr_number(2) }} € de charges — visibles dans les journaux mais pas encore réparties par {{ axes|selectattr('id','equalto',axis_id)|map(attribute='name')|first if axis_id else 'axe' }}.</p>
+  <p class="purchase-muted" style="margin:0;">Non taguées sur cette période : {{ untagged_revenue|fr_number(2) }}&nbsp;€ de produits, {{ untagged_expense|fr_number(2) }}&nbsp;€ de charges — visibles dans les journaux mais pas encore réparties par {{ axes|selectattr('id','equalto',axis_id)|map(attribute='name')|first if axis_id else 'axe' }}.</p>
 </section>
 {% endif %}
 {% endif %}

@@ -5,13 +5,13 @@
   <div>
     <div class="purchase-eyebrow">CRÉDIT-BAIL</div>
     <h1 class="purchase-title">{{ lease.lessor_name }} — {{ lease.asset_description }}</h1>
-    <p class="purchase-subtitle">{{ lease.redevance_amount|fr_number(2) }} € · {{ {'monthly':'mensuelle','quarterly':'trimestrielle','annual':'annuelle'}.get(lease.periodicity) }} · {{ lease.duration_months }} mois</p>
+    <p class="purchase-subtitle">{{ lease.redevance_amount|fr_number(2) }}&nbsp;€ · {{ {'monthly':'mensuelle','quarterly':'trimestrielle','annual':'annuelle'}.get(lease.periodicity) }} · {{ lease.duration_months }} mois</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('finance_leases_list') }}">← Crédit-bail</a>
 </div>
 
 <div class="purchase-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px;">
-  <div class="purchase-stat"><div><div class="purchase-stat-label">ENGAGEMENT RESTANT (ANNEXE)</div><div class="purchase-stat-value">{{ remaining|fr_number(2) }} €</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">ENGAGEMENT RESTANT (ANNEXE)</div><div class="purchase-stat-value">{{ remaining|fr_number(2) }}&nbsp;€</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">STATUT</div><div class="purchase-stat-value">{{ {'active':'Actif','completed':'Terminé','option_exercised':'Option levée'}.get(lease.status, lease.status) }}</div></div></div>
 </div>
 
@@ -33,7 +33,7 @@
       </select>
     </label>
     <label>Durée d'amortissement (années)<input type="number" name="useful_life_years" step="0.5" min="0.5" value="5"></label>
-    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Lever l'option ({{ lease.purchase_option_amount|fr_number(2) }} €)</button></div>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Lever l'option ({{ lease.purchase_option_amount|fr_number(2) }}&nbsp;€)</button></div>
   </form>
 </section>
 {% endif %}
@@ -48,7 +48,7 @@
         <tr>
           <td>{{ p.payment_number }}</td>
           <td>{{ p.due_date|fr_date }}</td>
-          <td style="text-align:right;">{{ p.amount|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ p.amount|fr_number(2) }}&nbsp;€</td>
           <td>
             {% if p.paid %}
             <span class="purchase-status paid">Réglée</span>

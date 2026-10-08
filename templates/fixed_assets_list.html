@@ -36,8 +36,8 @@
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('fixed_asset_detail',asset_id=a.id) }}"><strong>{{ a.label }}</strong></a></td>
           <td>{{ a.purchase_date|fr_date }}</td>
-          <td><strong>{{ a.purchase_amount|fr_number(2) }} €</strong></td>
-          <td>{{ posted.get(a.id,0)|fr_number(2) }} €</td>
+          <td><strong>{{ a.purchase_amount|fr_number(2) }}&nbsp;€</strong></td>
+          <td>{{ posted.get(a.id,0)|fr_number(2) }}&nbsp;€</td>
           <td><span class="purchase-status {{ '' if a.status=='active' else 'paid' }}">{{ 'Active' if a.status=='active' else 'Cédée' }}</span></td>
         </tr>
       {% else %}

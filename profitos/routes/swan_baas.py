@@ -403,7 +403,7 @@ def register(app):
         if result.get('consent_url'):
             flash("Compte demandé — il ne sera actif qu'après validation sur la page Swan (lien ci-dessous).")
         else:
-            flash("Compte demandé, mais Swan n'a renvoyé aucun lien de validation — vérifie manuellement sur ton tableau de bord Swan.")
+            flash("Compte demandé, mais Swan n'a renvoyé aucun lien de validation — vérifiez manuellement sur votre tableau de bord Swan.")
         return redirect(url_for('swan_settings'))
 
     @app.route('/settings/swan/compte/<int:account_row_id>/carte', methods=['POST'])
@@ -447,7 +447,7 @@ def register(app):
         if result.get('consent_url'):
             flash("Carte demandée — elle ne sera active qu'après validation sur la page Swan (lien ci-dessous).")
         else:
-            flash("Carte demandée, mais Swan n'a renvoyé aucun lien de validation — vérifie manuellement sur ton tableau de bord Swan.")
+            flash("Carte demandée, mais Swan n'a renvoyé aucun lien de validation — vérifiez manuellement sur votre tableau de bord Swan.")
         return redirect(url_for('swan_settings'))
 
     @app.route('/webhooks/swan', methods=['POST'])

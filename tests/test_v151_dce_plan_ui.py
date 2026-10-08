@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_dce_plan_gate_present():
     t=(ROOT/'templates'/'detail.html').read_text(encoding='utf-8')
-    assert "advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS')" in t
+    assert "advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI')" in t
     assert "Analyse DCE · Pro" in t
     assert "L'analyse automatique des DCE est disponible avec les formules Pro et Business." in t
 

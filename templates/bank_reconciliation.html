@@ -3,7 +3,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">BANK RECONCILIATION</div>
 <h1 class="purchase-title">Rapprochement bancaire</h1>
-<p class="purchase-subtitle">{{ matched_count }}/{{ total_rows }} ligne(s) du relevé rapprochée(s) automatiquement à une facture. Vérifie et décoche ce qui ne convient pas avant de valider — aucune facture n'est marquée payée sans ta confirmation.</p>
+<p class="purchase-subtitle">{{ matched_count }}/{{ total_rows }} ligne(s) du relevé rapprochée(s) automatiquement à une facture. Vérifiez et décochez ce qui ne convient pas avant de valider — aucune facture n'est marquée payée sans votre confirmation.</p>
 
 <form method="post" action="{{ url_for('reconcile_confirm') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -17,14 +17,14 @@
               {% if p.match %}
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                 <input type="checkbox" name="confirm_invoice_id" value="{{ p.match.id }}" checked>
-                <span><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }} €<br>
+                <span><strong>{{ p.bank_date|fr_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }}&nbsp;€<br>
                 <small class="purchase-muted">→ Facture #{{ p.match.invoice_number }} — {{ p.match.customer }}</small></span>
               </label>
               {% elif p.ambiguous %}
-              <div><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }} €<br>
+              <div><strong>{{ p.bank_date|fr_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }}&nbsp;€<br>
               <small class="purchase-status-warn" style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;">⚠ Montant identique sur {{ p.candidates|length }} factures — désambiguïsation impossible, à traiter manuellement.</small></div>
               {% else %}
-              <div><strong>{{ p.bank_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }} €<br>
+              <div><strong>{{ p.bank_date|fr_date }}</strong> · {{ p.bank_desc }} · {{ p.bank_amount|fr_number }}&nbsp;€<br>
               <small class="purchase-muted">Aucune facture impayée ne correspond à ce montant.</small></div>
               {% endif %}
             </td>

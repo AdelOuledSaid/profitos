@@ -31,14 +31,14 @@
       {% if recommended %}<div class="billing-badge">RECOMMANDÉ</div>{% endif %}
       <div class="billing-plan-head">
         <div class="billing-plan-code">{{ key }}</div><h2>{{ plan.name }}</h2>
-        <div class="billing-price">{{ plan.price_eur }} € <small>/ mois</small></div>
+        <div class="billing-price">{{ plan.price_eur }}&nbsp;€ <small>/ mois</small></div>
         {% if key=='STARTER' %}<p class="billing-for">Facturation, achats et gestion essentielle pour indépendants et micro-entreprises.</p>{% elif key=='PRO' %}<p class="billing-for">Comptabilité, TVA, banque et trésorerie pour les TPE.</p>{% elif key=='BUSINESS' %}<p class="billing-for">Pilotage avancé et intelligence financière pour les PME.</p>{% else %}<p class="billing-for">Multi-entités, groupes, holdings et cabinets.</p>{% endif %}
       </div>
       <div class="billing-feature-group"><div class="billing-feature-title">INCLUS</div>
         <div class="billing-feature"><span class="tick">✓</span><span>Facturation, achats et gestion</span></div>
         {% if plan_limits[key].accounting_core %}<div class="billing-feature"><span class="tick">✓</span><span>Comptabilité, TVA et FEC</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>Comptabilité, TVA et FEC</span></div>{% endif %}
         {% if plan_limits[key].banking %}<div class="billing-feature"><span class="tick">✓</span><span>Banque et rapprochement</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>Banque et rapprochement</span></div>{% endif %}
-        {% if plan_limits[key].advanced_ai %}<div class="billing-feature"><span class="tick">✓</span><span>Financial Brain, Cash Intelligence et simulateur</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>IA financière avancée</span></div>{% endif %}
+        {% if plan_limits[key].advanced_ai %}<div class="billing-feature"><span class="tick">✓</span><span>Diagnostic financier, trésorerie et simulateur</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>IA financière avancée</span></div>{% endif %}
         {% if plan_limits[key].multi_entity %}<div class="billing-feature"><span class="tick">✓</span><span>Pilotage multi-entités</span></div>{% endif %}
       </div>
       <div class="billing-feature-group"><div class="billing-feature-title">CAPACITÉ</div>

@@ -91,3 +91,10 @@
 [data-theme="light"] .purchase-alert-text{color:#b3261e}
 [data-theme="light"] .purchase-label-muted{color:#5b6c8f}
 [data-theme="light"] .purchase-ok-text{color:#0f7a4d}
+[data-theme="light"] nav a.active{background:#e8f8ef;color:#137a45;box-shadow:inset 3px 0 0 #1f9d5a}
+[data-theme="light"] .navgroup>summary{color:#1f7a4a}
+[data-theme="light"] .navgroup>summary:hover{background:#eef2fa}
+[data-theme="light"] .mobilebar{background:#ffffff;border-bottom-color:#dde5f2}
+[data-theme="light"] .mobilebar .brand{color:#0f1c33}
+[data-theme="light"] .navtoggle{background:#eef2fa;border-color:#dde5f2}
+[data-theme="light"] .navtoggle span{background:#0f1c33}

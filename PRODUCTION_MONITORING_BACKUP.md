@@ -12,6 +12,11 @@ Il expose uniquement des états non sensibles :
 
 Aucune URL de connexion, clé API ou credential n'est retourné.
 
+Sans authentification, la réponse se limite à `status`, `service` et `version`.
+Le détail `dependencies` n'est renvoyé qu'avec le jeton d'exploitation :
+définir `OPS_HEALTH_TOKEN` (valeur longue et aléatoire) dans Render, puis
+`curl -H "X-Ops-Token: $OPS_HEALTH_TOKEN" https://app.profitos.fr/ops/health`.
+
 Chaque réponse contient :
 - `X-Request-ID`
 - `X-Response-Time-Ms`
@@ -39,7 +44,7 @@ base séparée. Ne jamais restaurer un test sur la base de production active.
 
 ## Tests après déploiement
 1. `curl https://app.profitos.fr/healthz`
-2. `curl https://app.profitos.fr/ops/health`
+2. `curl -H "X-Ops-Token: $OPS_HEALTH_TOKEN" https://app.profitos.fr/ops/health`
 3. `curl -I https://app.profitos.fr/login` et vérifier `X-Response-Time-Ms`
 4. vérifier l'absence de 5xx dans les logs Render
 5. créer une sauvegarde locale et la vérifier avec `check_backup.py`

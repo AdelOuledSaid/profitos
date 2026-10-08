@@ -256,7 +256,7 @@ def register(app):
         if not inv or not inv['customer_email']:
             flash(
                 f"Aucun email connu pour {inv['customer'] if inv else 'ce client'}. "
-                'Ajoute une colonne "customer_email" dans ton fichier de factures pour activer l’envoi.'
+                'Ajoutez une colonne "customer_email" dans votre fichier de factures pour activer l’envoi.'
             )
             return redirect(url_for('actions'))
 
@@ -304,7 +304,7 @@ def register(app):
         if not inv or not inv['customer_phone']:
             flash(
                 f"Aucun téléphone connu pour {inv['customer'] if inv else 'ce client'}. "
-                'Ajoute une colonne "customer_phone" dans ton fichier de factures pour activer l’envoi.'
+                'Ajoutez une colonne "customer_phone" dans votre fichier de factures pour activer l’envoi.'
             )
             return redirect(url_for('actions'))
 

@@ -31,7 +31,7 @@ def test_financial_brain_does_not_invent_cash():
 
 def test_financial_brain_template_has_core_sections():
     t=(ROOT/'templates'/'financial_brain.html').read_text(encoding='utf-8')
-    for marker in ['FINANCIAL CONTROL SCORE','CAPITAL À RISQUE','NEXT BEST FINANCIAL DECISION','GROW · FINANCIAL CHECK','QUALITÉ DES DONNÉES']:
+    for marker in ['SCORE DE MAÎTRISE FINANCIÈRE','CAPITAL À RISQUE','PROCHAINE MEILLEURE DÉCISION','GROW · FINANCIAL CHECK','QUALITÉ DES DONNÉES']:
         assert marker in t
 
 def test_financial_brain_in_navigation():

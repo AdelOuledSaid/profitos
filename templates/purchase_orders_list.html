@@ -20,7 +20,7 @@
           <td><a class="purchase-detail-link" href="{{ url_for('purchase_order_detail',order_id=o.id) }}"><strong>{{ o.order_number }}</strong></a></td>
           <td>{{ o.supplier_name }}</td>
           <td>{{ o.order_date|fr_date }}</td>
-          <td style="text-align:right;"><strong>{{ totals.get(o.id,0)|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;"><strong>{{ totals.get(o.id,0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             <span class="purchase-status {{ 'paid' if o.status=='received' else ('overdue' if o.status=='cancelled' else '') }}">
               {{ {'draft':'Brouillon','sent':'Envoyée','partially_received':'Partiellement reçue','received':'Reçue','cancelled':'Annulée'}.get(o.status, o.status) }}

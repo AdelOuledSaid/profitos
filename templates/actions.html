@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
 <div class="purchase-page">
 
-<div class="purchase-eyebrow">ACTION CENTER</div>
+<div class="purchase-eyebrow">CENTRE D'ACTIONS</div>
 <h1 class="purchase-title">Décider avant d'agir.</h1>
 <p class="purchase-subtitle">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
 

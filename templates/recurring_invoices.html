@@ -26,7 +26,7 @@
   </div></div>
   <div class="card"><div class="card-body"><h2 class="h5">Récurrences</h2>
     <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Client</th><th>Fréquence</th><th>Prochaine génération</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-    {% for r in rows %}<tr><td>{{ r.client_name }}</td><td>{{ r.frequency }}</td><td>{{ r.next_run_date }}</td><td>{{ r.status }}</td><td>
+    {% for r in rows %}<tr><td>{{ r.client_name }}</td><td>{{ r.frequency }}</td><td>{{ r.next_run_date|fr_date }}</td><td>{{ r.status }}</td><td>
       <form class="d-inline" method="post" action="{{ url_for('recurring_invoice_status',template_id=r.id) }}">
       {% if r.status == 'active' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="pause">Pause</button>{% elif r.status == 'paused' %}<button class="btn btn-sm btn-outline-success" name="action" value="resume">Reprendre</button>{% endif %}
       {% if r.status not in ('stopped','completed') %}<button class="btn btn-sm btn-outline-danger" name="action" value="stop">Arrêter</button>{% endif %}</form>

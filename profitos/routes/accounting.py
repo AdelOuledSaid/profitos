@@ -249,7 +249,7 @@ def register(app):
         if request.method == 'POST':
             selected_ids = [int(x) for x in request.form.getlist('line_id')]
             if len(selected_ids) < 2:
-                error = "Sélectionne au moins deux lignes à lettrer ensemble."
+                error = "Sélectionnez au moins deux lignes à lettrer ensemble."
             else:
                 placeholders = ','.join('?' * len(selected_ids))
                 rows = c.execute(
@@ -400,10 +400,10 @@ def register(app):
         html = render_template(
             'email_transactional.html', title=f"Export FEC — {identity['name']}",
             intro=(f"Voici le lien pour télécharger le Fichier des Écritures Comptables (FEC) de "
-                   f"{identity['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
+                   f"{identity['name']} pour la période du {fr_date(date_from)} au {fr_date(date_to)}. Le lien régénère "
                    f"l'export à jour à chaque clic."),
             cta_label='Télécharger le FEC', cta_url=link,
-            footer="Ce lien est valable 7 jours — contacte l'organisation si tu n'es pas concerné(e).",
+            footer="Ce lien est valable 7 jours — contactez l'organisation si vous n'êtes pas concerné(e).",
         )
         result = send_email(settings['accountant_email'], f"Export FEC — {identity['name']}", html)
         if result.get('dry_run'):
@@ -657,7 +657,7 @@ def register(app):
         c.commit(); c.close()
         log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée")
         flash("Immobilisation marquée cédée. Aucune écriture de sortie/plus-value générée automatiquement — "
-              "à saisir manuellement avec ton expert-comptable selon le prix de cession réel.")
+              "à saisir manuellement avec votre expert-comptable selon le prix de cession réel.")
         return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
 
     def _vat_snapshot(c, eid, date_from, date_to):

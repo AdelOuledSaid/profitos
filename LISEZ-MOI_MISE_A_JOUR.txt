@@ -1,0 +1,22 @@
+Mise à jour ProfitOS — 08/10/2026
+==================================
+
+Contenu : tous les fichiers modifiés depuis votre version (commit 3276a01),
+avec leur arborescence, + profitos/reviews.py d'origine (répare l'écrasement
+de ce fichier par profitos/routes/reviews.py).
+
+Installation (Windows)
+1. Clic droit sur le zip > « Extraire tout… »
+2. Destination : Z:\   (le dossier qui CONTIENT ProfitOS_V1_0_Commercial_MVP)
+3. Accepter de remplacer les fichiers existants.
+   Le dossier ProfitOS_V1_0_Commercial_MVP du zip se fusionne avec le vôtre :
+   chaque fichier retombe à sa place (profitos\routes\..., templates\..., etc.).
+4. Vérifier :  cd Z:\ProfitOS_V1_0_Commercial_MVP
+               pytest -q          -> 957 passed attendus
+5. Commiter :  git add -A
+               git commit -m "Mise à jour audit + interface"
+
+Votre fichier TEST-PROFITOS-003.xml n'est pas inclus et n'est pas touché.
+
+Après déploiement : définir OPS_HEALTH_TOKEN dans Render (voir
+PRODUCTION_MONITORING_BACKUP.md).

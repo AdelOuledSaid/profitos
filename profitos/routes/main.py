@@ -152,7 +152,7 @@ def register(app):
         signatory_name=request.form.get('signatory_name','').strip()
         signatory_quality=request.form.get('signatory_quality','').strip()
         if not request.form.get('certify'):
-            flash("Tu dois certifier être habilité à engager l'entreprise pour continuer.")
+            flash("Vous devez certifier être habilité(e) à engager l'entreprise pour continuer.")
             return redirect(url_for('company_weinvoice_onboard'))
         if not signatory_name or not signatory_quality:
             flash('Le nom et la qualité du signataire sont requis.')
@@ -342,7 +342,7 @@ def register(app):
                     ac.close(); flash("Seuls le propriétaire ou un administrateur peuvent activer le partage."); return redirect(url_for('partners'))
                 c=cx(); comp=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close()
                 if not comp or not comp['name']:
-                    ac.close(); flash("Complète d'abord ton profil entreprise avant d'activer le partage."); return redirect(url_for('company'))
+                    ac.close(); flash("Complétez d'abord votre profil entreprise avant d'activer le partage."); return redirect(url_for('company'))
                 contact=request.form.get('contact_email','').strip() or current_user()['email']
                 ac.execute('''INSERT INTO partner_directory(organization_id,company_name,department,activities,contact_email,opted_in,updated_at)
                               VALUES(?,?,?,?,?,1,?)
@@ -351,11 +351,11 @@ def register(app):
                                 contact_email=excluded.contact_email,opted_in=1,updated_at=excluded.updated_at''',
                     (org['id'],comp['name'],comp['department'],comp['activities'],contact,now())); ac.commit()
                 log_activity('PARTNER_DIRECTORY_OPT_IN','Profil rendu visible pour le radar de partenaires')
-                flash('Ton profil est maintenant visible par les autres organisations ProfitOS dans le radar de partenaires.')
+                flash('Votre profil est maintenant visible par les autres organisations ProfitOS dans le radar de partenaires.')
             elif action=='opt_out':
                 ac.execute('UPDATE partner_directory SET opted_in=0,updated_at=? WHERE organization_id=?',(now(),org['id'])); ac.commit()
                 log_activity('PARTNER_DIRECTORY_OPT_OUT','Profil retiré du radar de partenaires')
-                flash('Ton profil a été retiré du radar de partenaires.')
+                flash('Votre profil a été retiré du radar de partenaires.')
             ac.close(); return redirect(url_for('partners'))
 
         my_entry=ac.execute('SELECT * FROM partner_directory WHERE organization_id=?',(org['id'],)).fetchone()
@@ -508,8 +508,8 @@ def register(app):
                 {'name':'Créances impayées priorisées','desc':"Score de risque calculé sur montant, retard et historique — pour savoir quoi relancer en premier."},
                 {'name':'Retenues contractuelles','desc':"Suivi des montants retenus et de leur date de libération, avec relance dédiée."},
                 {'name':'Simulateur de caution','desc':"Estime le coût de remplacer une retenue en numéraire par une caution bancaire."},
-                {'name':'Rapprochement bancaire','desc':"Importe un relevé bancaire, ProfitOS propose les correspondances avec les factures ouvertes."},
-                {'name':'Relances email et SMS','desc':"Rédigées automatiquement, jamais envoyées sans ta validation explicite."},
+                {'name':'Rapprochement bancaire','desc':"Importez un relevé bancaire : ProfitOS propose les correspondances avec les factures ouvertes."},
+                {'name':'Relances email et SMS','desc':"Rédigées automatiquement, jamais envoyées sans votre validation explicite."},
                 {'name':'Portail client public','desc':"Lien sécurisé permettant à un client de consulter le statut de sa facture, sans compte."},
                 {'name':'Score de risque partagé','desc':"Signal anonymisé si un acheteur a aussi été signalé en retard par d'autres organisations."},
             ]},
@@ -517,12 +517,12 @@ def register(app):
                 {'name':'Doublons de dépenses','desc':"Détecte les paiements en double au même fournisseur."},
                 {'name':'Hausses fournisseurs','desc':"Repère les augmentations de prix inhabituelles d'un mois sur l'autre."},
                 {'name':'Contrats dormants','desc':"Identifie les abonnements ou contrats payés sans activité récente."},
-                {'name':'Margin Watch','desc':"Suit l'érosion de marge sur tes contrats à prix fixe, avec l'indice de référence de ton choix."},
+                {'name':'Margin Watch','desc':"Suit l'érosion de marge sur vos contrats à prix fixe, avec l'indice de référence de votre choix."},
             ]},
             {'icon':'📈','color':'green','title':'Développement commercial','features':[
-                {'name':'Opportunités de marché','desc':"Appels d'offres publics (BOAMP) correspondant à ton profil d'activité."},
+                {'name':'Opportunités de marché','desc':"Appels d'offres publics (BOAMP) correspondant à votre profil d'activité."},
                 {'name':'Radar de partenaires','desc':"Trouve des entreprises complémentaires pour répondre ensemble à un marché."},
-                {'name':'Filtres avancés','desc':"Recherche par score, montant ou mot-clé sur toutes tes opportunités."},
+                {'name':'Filtres avancés','desc':"Recherche par score, montant ou mot-clé sur toutes vos opportunités."},
             ]},
             {'icon':'🧠','color':'blue','title':'Trésorerie & décisions','features':[
                 {'name':'Prévision de trésorerie','desc':"Projection à 30/60/90 jours, pondérée par la probabilité de chaque opportunité."},
@@ -534,27 +534,27 @@ def register(app):
                 {'name':'Calendrier unifié','desc':"Échéances de factures, retenues et deadlines d'appels d'offres, en un seul endroit."},
                 {'name':'Rapport hebdomadaire','desc':"Résumé automatique des nouveautés RECOVER/SAVE/GROW de la semaine."},
                 {'name':'Rapport mensuel PDF','desc':"Document téléchargeable pour un comité de direction ou une banque."},
-                {'name':'Export vers ton comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement selon la fréquence choisie."},
+                {'name':'Export vers votre comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement selon la fréquence choisie."},
                 {'name':'Journal d\'audit','desc':"Trace exportable de chaque action et changement de statut, utile en cas de contrôle."},
                 {'name':'Performance d\'équipe','desc':"Nombre d'actions traitées par personne, pour objectiver la charge de travail."},
-                {'name':'Benchmark sectoriel','desc':"Compare ton délai de paiement moyen à celui d'autres organisations, anonymisé."},
+                {'name':'Benchmark sectoriel','desc':"Compare votre délai de paiement moyen à celui d'autres organisations, anonymisé."},
             ]},
             {'icon':'👥','color':'teal','title':'Organisation & équipe','features':[
                 {'name':'Rôles par personne','desc':"Propriétaire, administrateur, comptable, commercial — chacun ne voit que ce qui le concerne."},
                 {'name':'Multi-organisation','desc':"Un cabinet comptable gère plusieurs clients depuis un seul compte, avec vue consolidée."},
-                {'name':'Programme de parrainage','desc':"Un mois offert quand une organisation que tu parraines devient cliente."},
+                {'name':'Programme de parrainage','desc':"Un mois offert quand une organisation que vous parrainez devient cliente."},
             ]},
             {'icon':'🔒','color':'red','title':'Sécurité & confiance','features':[
-                {'name':'Export de tes données','desc':"Téléchargement complet de tes données à tout moment, conforme RGPD."},
+                {'name':'Export de vos données','desc':"Téléchargement complet de vos données à tout moment, conforme RGPD."},
                 {'name':'Suppression de compte','desc':"Effacement définitif possible, avec confirmation explicite avant toute suppression."},
-                {'name':'Validation humaine partout','desc':"Aucune relance, aucun envoi, aucune action sensible sans ton approbation."},
+                {'name':'Validation humaine partout','desc':"Aucune relance, aucun envoi, aucune action sensible sans votre approbation."},
                 {'name':'Isolation stricte des données','desc':"Chaque organisation est cloisonnée — aucune donnée financière n'est jamais partagée entre elles."},
             ]},
             {'icon':'🔗','color':'blue','title':'Intégrations & accès','features':[
-                {'name':'API en lecture seule','desc':"Connecte tes propres outils à tes données ProfitOS."},
-                {'name':'Application installable','desc':"Ajoute ProfitOS à ton écran d'accueil, comme une vraie application."},
-                {'name':'Marque personnalisée','desc':"Logo et couleur d'accent adaptables à ton identité, sur les plans concernés."},
-                {'name':'Thème clair ou sombre','desc':"Au choix, selon ta préférence."},
+                {'name':'API en lecture seule','desc':"Connectez vos propres outils à vos données ProfitOS."},
+                {'name':'Application installable','desc':"Ajoutez ProfitOS à votre écran d'accueil, comme une vraie application."},
+                {'name':'Marque personnalisée','desc':"Logo et couleur d'accent adaptables à votre identité visuelle, sur les plans concernés."},
+                {'name':'Thème clair ou sombre','desc':"Au choix, selon votre préférence."},
             ]},
         ]
         return render_template('features_overview.html',categories=categories)
@@ -783,9 +783,9 @@ def register(app):
             if r['kind']=='RETENTION':
                 release=r['retention_release_date']
                 if release and release<=date.today().isoformat():
-                    reasons=[f"Retenue contractuelle libérable depuis le {release}",'contactez le client pour en demander la levée']
+                    reasons=[f"Retenue contractuelle libérable depuis le {fr_date(release)}",'contactez le client pour en demander la levée']
                 elif release:
-                    reasons=[f"Retenue contractuelle libérable le {release}",'pas encore actionnable — visible pour anticipation']
+                    reasons=[f"Retenue contractuelle libérable le {fr_date(release)}",'pas encore actionnable — visible pour anticipation']
                 else:
                     reasons=['Retenue contractuelle sans date de libération connue — à clarifier avec le contrat']
                 o=dict(r); o.update(kind='RECOVER',title=f"Retenue contractuelle — Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue contractuelle suit un régime différent d\'une facture standard'])

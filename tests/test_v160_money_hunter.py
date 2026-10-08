@@ -35,7 +35,8 @@ def test_money_hunter_ui_exists_and_is_linked():
     base=(ROOT/'templates'/'base.html').read_text(encoding='utf-8')
     page=(ROOT/'templates'/'money_hunter.html').read_text(encoding='utf-8')
     assert "url_for('money_hunter')" in base
-    assert 'Money Hunter' in base
+    # Menu traduit en français (v1.8) : le module Money Hunter s'appelle « Gisements de cash ».
+    assert 'Gisements de cash' in base
     assert "Où est l'argent aujourd'hui ?" in page
     assert 'Les prochaines décisions recommandées' in page
 

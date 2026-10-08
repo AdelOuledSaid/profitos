@@ -334,20 +334,33 @@ def register(app):
                   (collab['id'],eid,f"Invitation créée pour {email}",created,current_user()['email']))
         c.commit(); c.close()
         # Token is shown once; no raw invitation token is persisted.
-        flash(f"Invitation créée (valable 7 jours) : {url_for('accountant_invite_accept',token=raw,_external=True)}")
+        flash(f"Invitation créée (valable 7 jours) : {url_for('accountant_invite_accept',org_id=session.get('org_id'),token=raw,_external=True)}")
         return redirect(url_for('accountant_collaboration',review_id=review_id))
 
-    @app.route('/collaboration-comptable/accepter/<token>', methods=['GET','POST'])
+    @app.route('/collaboration-comptable/accepter/<int:org_id>/<token>', methods=['GET','POST'])
     @login_required
-    def accountant_invite_accept(token):
+    def accountant_invite_accept(org_id, token):
+        """Acceptation d'une invitation par l'expert-comptable.
+
+        L'invitation vit dans la base de l'organisation qui l'a émise (org_id, porté par le
+        lien), pas dans l'organisation active de la personne connectée : un cabinet extérieur,
+        connecté sur sa propre organisation, doit pouvoir l'accepter. Le jeton (haché) reste
+        le secret ; org_id seul ne donne accès à rien."""
         import hashlib
         from datetime import datetime
+        from profitos import db as dbmod
         digest=hashlib.sha256(token.encode()).hexdigest()
-        c=cx()
-        inv=c.execute("""SELECT i.*,ac.review_id,ac.status AS collaboration_status
-                         FROM accountant_invitations i
-                         JOIN accountant_collaborations ac ON ac.id=i.collaboration_id
-                         WHERE i.token_hash=?""",(digest,)).fetchone()
+        ac=auth_cx(); org=ac.execute('SELECT id,name FROM organizations WHERE id=?',(org_id,)).fetchone(); ac.close()
+        if not org:
+            abort(404)
+        c=dbmod.connect_tenant(org_id, tenant_db(org_id))
+        try:
+            inv=c.execute("""SELECT i.*,ac.review_id,ac.status AS collaboration_status
+                             FROM accountant_invitations i
+                             JOIN accountant_collaborations ac ON ac.id=i.collaboration_id
+                             WHERE i.token_hash=?""",(digest,)).fetchone()
+        except Exception:
+            inv=None
         if not inv or inv['status']!='pending' or inv['collaboration_status']!='active':
             c.close(); abort(404)
         if inv['expires_at'] <= datetime.utcnow().replace(microsecond=0).isoformat():
@@ -358,20 +371,32 @@ def register(app):
             c.close(); abort(403)
         if request.method=='GET':
             c.close()
-            return render_template('accountant_invite_accept.html',inv=inv,token=token)
-        # Membership lives in the auth DB; entity restriction lives in tenant DB.
+            return render_template('accountant_invite_accept.html',inv=inv,token=token,org=org)
+        # Membership lives in the auth DB; entity restriction lives in the inviting org's tenant DB.
         ac=auth_cx()
         m=ac.execute("SELECT * FROM memberships WHERE user_id=? AND organization_id=?",
-                     (user['id'],session.get('org_id'))).fetchone()
+                     (user['id'],org_id)).fetchone()
+        role=m['role'] if m else 'COMPTABLE'
         if not m:
+            # Cabinet extérieur : nouvelle adhésion limitée à l'entité invitée.
             ac.execute("""INSERT INTO memberships(user_id,organization_id,role,created_at)
-                          VALUES(?,?, 'COMPTABLE',?)""",(user['id'],session.get('org_id'),now()))
+                          VALUES(?,?, 'COMPTABLE',?)""",(user['id'],org_id,now()))
+            c.execute("INSERT INTO user_entity_access(user_id,entity_id,created_at) VALUES(?,?,?)",
+                      (user['id'],inv['entity_id'],now()))
+        elif m['role']=='COMPTABLE':
+            # Déjà comptable de cette organisation : on ajoute l'entité sans retirer les autres.
+            if not c.execute("SELECT 1 FROM user_entity_access WHERE user_id=? AND entity_id IS ?",
+                             (user['id'],inv['entity_id'])).fetchone():
+                c.execute("INSERT INTO user_entity_access(user_id,entity_id,created_at) VALUES(?,?,?)",
+                          (user['id'],inv['entity_id'],now()))
         elif m['role'] not in ('OWNER','ADMIN'):
+            # Membre interne non administrateur : bascule en accès comptable sur la seule entité invitée.
             ac.execute("UPDATE memberships SET role='COMPTABLE' WHERE id=?",(m['id'],))
-        ac.commit(); ac.close()
-        c.execute("DELETE FROM user_entity_access WHERE user_id=?",(user['id'],))
-        c.execute("INSERT INTO user_entity_access(user_id,entity_id) VALUES(?,?)",
-                  (user['id'],inv['entity_id']))
+            role='COMPTABLE'
+            c.execute("DELETE FROM user_entity_access WHERE user_id=?",(user['id'],))
+            c.execute("INSERT INTO user_entity_access(user_id,entity_id,created_at) VALUES(?,?,?)",
+                      (user['id'],inv['entity_id'],now()))
+        # OWNER / ADMIN : accès déjà complet, rien à restreindre.
         c.execute("""UPDATE accountant_invitations
                      SET status='accepted',accepted_at=?,accepted_by_user_id=?
                      WHERE id=? AND status='pending'""",(now(),user['id'],inv['id']))
@@ -379,10 +404,14 @@ def register(app):
                      (collaboration_id,entity_id,event_type,detail,created_at,created_by)
                      VALUES(?,?, 'INVITATION_ACCEPTED',?,?,?)""",
                   (inv['collaboration_id'],inv['entity_id'],f"Accès accepté par {inv['email']}",now(),inv['email']))
+        # Base tenant d'abord : si elle échoue, aucune adhésion n'est créée sans restriction d'entité.
         c.commit(); c.close()
+        ac.commit(); ac.close()
         if hasattr(g,'current_membership'): delattr(g,'current_membership')
-        session['role']='COMPTABLE'
-        flash("Accès comptable activé pour l'entité invitée.")
+        session['org_id']=org_id; session['role']=role; session['current_entity_id']=inv['entity_id']
+        init_tenant_db(org_id)
+        log_activity('ACCOUNTANT_INVITATION_ACCEPTED',f"Accès comptable accepté pour {org['name']}")
+        flash(f"Accès comptable activé pour {org['name']}.")
         return redirect(url_for('reviews_list'))
 
     @app.post('/comptabilite/revision/<int:review_id>/collaboration/invitation/<int:invitation_id>/revoquer')
@@ -400,15 +429,29 @@ def register(app):
             c.close(); abort(404)
         c.execute("""UPDATE accountant_invitations SET status='revoked',revoked_at=?
                      WHERE id=? AND status IN ('pending','accepted')""",(now(),invitation_id))
+        removed_membership=False
         if inv['accepted_by_user_id']:
             c.execute("DELETE FROM user_entity_access WHERE user_id=? AND entity_id IS ?",
                       (inv['accepted_by_user_id'],eid))
+            # Sans aucune ligne user_entity_access, un membre a accès à TOUTES les entités.
+            # Retirer la dernière entité sans retirer l'adhésion ouvrirait donc tout le dossier :
+            # on supprime l'adhésion (hors OWNER/ADMIN) quand plus aucune entité ne reste.
+            remaining=c.execute("SELECT 1 FROM user_entity_access WHERE user_id=? LIMIT 1",
+                                (inv['accepted_by_user_id'],)).fetchone()
+            if not remaining:
+                ac=auth_cx()
+                m=ac.execute("SELECT id,role FROM memberships WHERE user_id=? AND organization_id=?",
+                             (inv['accepted_by_user_id'],session.get('org_id'))).fetchone()
+                if m and m['role'] not in ('OWNER','ADMIN'):
+                    ac.execute("DELETE FROM memberships WHERE id=?",(m['id'],))
+                    ac.commit(); removed_membership=True
+                ac.close()
         c.execute("""INSERT INTO accountant_activity
                      (collaboration_id,entity_id,event_type,detail,created_at,created_by)
                      VALUES(?,?, 'INVITATION_REVOKED',?,?,?)""",
                   (inv['collaboration_id'],eid,f"Accès révoqué pour {inv['email']}",now(),current_user()['email']))
         c.commit(); c.close()
-        flash("Accès comptable révoqué.")
+        flash("Accès comptable révoqué." + (" Le comptable n'a plus accès à l'organisation." if removed_membership else ""))
         return redirect(url_for('accountant_collaboration',review_id=review_id))
 
 

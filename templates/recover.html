@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">RECOVER</div>
-<h1 class="purchase-title">{{ total|fr_number }} € récupérables</h1>
+<div class="purchase-eyebrow">RELANCES CLIENTS</div>
+<h1 class="purchase-title">{{ total|fr_number }}&nbsp;€ récupérables</h1>
 <p class="purchase-subtitle">Montants restant dus sur les factures échues et retenues contractuelles libérables.</p>
 
 <div class="purchase-nav-actions" style="margin:16px 0;">
@@ -23,7 +23,7 @@
   </form>
 </section>
 
-{% if auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% if auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
 <div style="margin:-8px 0 18px;display:flex;gap:8px;">
   <a class="purchase-nav-btn" href="{{ url_for('recover_export',format='xlsx',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (Excel)</a>
   <a class="purchase-nav-btn" href="{{ url_for('recover_export',format='csv',filter=filt,q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to) }}">Exporter (CSV)</a>
@@ -46,16 +46,16 @@
           <td>
             {% if r.kind=='RETENTION' %}
               {% set release=r.retention_release_date %}
-              #{{ r.invoice_number }} · Retenue contractuelle{% if release %} · {% if release>today %}libérable le {{ release }}{% else %}libérable depuis le {{ release }}{% endif %}{% endif %}
+              #{{ r.invoice_number }} · Retenue contractuelle{% if release %} · {% if release>today %}libérable le {{ release|fr_date }}{% else %}libérable depuis le {{ release|fr_date }}{% endif %}{% endif %}
             {% else %}
               #{{ r.invoice_number }} · {{ r.days_overdue }} jours de retard
             {% endif %}
           </td>
-          <td><strong>{{ r.outstanding|fr_number }} €</strong></td>
+          <td><strong>{{ r.outstanding|fr_number }}&nbsp;€</strong></td>
           <td>{{ r.score }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="4" class="purchase-empty">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue contractuelle détectée. Ajoute une colonne "type" (valeur "retenue de garantie" ou "retenue contractuelle") et "retention_release_date" dans ton fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</td></tr>
+        <tr><td colspan="4" class="purchase-empty">{% if q or min_amount or max_amount or date_from or date_to %}Aucun résultat pour ces critères.{% elif filt=='retention' %}Aucune retenue contractuelle détectée. Ajoutez une colonne "type" (valeur "retenue de garantie" ou "retenue contractuelle") et "retention_release_date" dans votre fichier de factures pour les faire apparaître ici.{% else %}Aucune créance échue.{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>

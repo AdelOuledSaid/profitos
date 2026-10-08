@@ -323,7 +323,7 @@ def register(app):
             c.close(); abort(403)
         n_lines = c.execute('SELECT COUNT(*) n FROM expense_report_lines WHERE report_id=?', (report_id,)).fetchone()['n']
         if n_lines == 0:
-            flash("Ajoute au moins une ligne avant de soumettre.")
+            flash("Ajoutez au moins une ligne avant de soumettre.")
         elif report['status'] == 'draft':
             c.execute("UPDATE expense_reports SET status='submitted',submitted_at=? WHERE id=? AND entity_id IS ?", (now(), report_id,current_entity_id()))
             c.commit()

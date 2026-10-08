@@ -2,7 +2,7 @@
 {% block content %}
 {# Compatibilité tests V1.6/V1.6.2 : Où est l'argent aujourd'hui ? · Next Best Action · Les prochaines décisions recommandées #}
 <div class="purchase-page">
-<div class="purchase-eyebrow">MONEY HUNTER · PREDICTIVE INTELLIGENCE</div>
+<div class="purchase-eyebrow">GISEMENTS DE CASH</div>
 <h1 class="purchase-title">Où est votre argent aujourd’hui ?</h1>
 <p class="purchase-subtitle">ProfitOS regroupe RECOVER, SAVE et GROW, puis met en avant les décisions financières les plus utiles. Les montants affichés viennent uniquement de vos données.</p>
 
@@ -12,8 +12,8 @@
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">RECOVER</div>
-      <div class="purchase-stat-value">{{ brief.recover_total|fr_number }} €</div>
+      <div class="purchase-stat-label">RELANCES CLIENTS</div>
+      <div class="purchase-stat-value">{{ brief.recover_total|fr_number }}&nbsp;€</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.urgent_recover }} priorité(s) élevée(s)</div>
     </div>
   </div>
@@ -22,8 +22,8 @@
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">SAVE</div>
-      <div class="purchase-stat-value">{{ brief.save_total|fr_number }} € / an</div>
+      <div class="purchase-stat-label">ÉCONOMIES</div>
+      <div class="purchase-stat-value">{{ brief.save_total|fr_number }}&nbsp;€ / an</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.high_save }} signal(aux) fort(s)</div>
     </div>
   </div>
@@ -32,13 +32,13 @@
       <svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">GROW</div>
+      <div class="purchase-stat-label">MARCHÉS PUBLICS</div>
       {% if brief.grow_pipeline > 0 %}
-      <div class="purchase-stat-value">{{ brief.grow_pipeline|fr_number }} €</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Pipeline dont la valeur est connue · {{ brief.strong_grow }} match(es) fort(s)</div>
+      <div class="purchase-stat-value">{{ brief.grow_pipeline|fr_number }}&nbsp;€</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Opportunités dont la valeur est connue · {{ brief.strong_grow }} correspondance(s) forte(s)</div>
       {% else %}
       <div class="purchase-stat-value">{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Pipeline GROW à qualifier · {{ brief.strong_grow }} match(es) fort(s)</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Marchés publics à qualifier · {{ brief.strong_grow }} correspondance(s) forte(s)</div>
       {% endif %}
     </div>
   </div>
@@ -46,10 +46,10 @@
 
 <section class="purchase-panel" style="margin-bottom:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">MONEY BRIEF</div>
-  <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ brief.money_identified|fr_number }} € identifiés</h2>
+  <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ brief.money_identified|fr_number }}&nbsp;€ identifiés</h2>
   <p class="purchase-muted">Créances RECOVER + économies SAVE potentielles. SAVE est généralement annualisé : ce total n'est pas une prévision de trésorerie.</p>
   <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
-    <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.expected_value|fr_number }} €</div></div>
+    <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.expected_value|fr_number }}&nbsp;€</div></div>
     <div><small class="purchase-muted">SIGNAUX ANALYSÉS</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.recommendation_count }}</div></div>
   </div>
 </section>
@@ -89,7 +89,7 @@
         <details class="money-analysis">
           <summary>Voir l’analyse détaillée</summary>
           <div class="analysis-content">
-            <p><strong>Priority Score :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p>
+            <p><strong>Score de priorité :</strong> {{ r.priority_score }}/100 · {{ r.urgency_level }}</p>
             <p><strong>Pourquoi :</strong> {{ r.why }}</p>
             {% if r.kind == 'RECOVER' %}
               <p><strong>Risque paiement :</strong> {% if r.show_risk_score %}{{ r.payment_risk_score }}/100 · {% endif %}{{ r.payment_risk_level }}</p>
@@ -101,7 +101,7 @@
       </div>
       <aside class="money-decision-value">
         {% if r.amount > 0 %}
-          <div class="money-amount">{{ r.amount|fr_number }} €</div>
+          <div class="money-amount">{{ r.amount|fr_number }}&nbsp;€</div>
           <small>{% if r.kind == 'RECOVER' %}à récupérer{% elif r.kind == 'SAVE' %}potentiels{% else %}valeur connue{% endif %}</small>
         {% endif %}
         <a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a>

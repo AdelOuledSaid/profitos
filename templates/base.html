@@ -17,13 +17,18 @@
   <script src="{{ asset_url('app.js') }}" defer></script>
 </head>
 <body{% if request.endpoint=='home' %} data-tour-auto="1"{% endif %}>
-{% set paid_plan = auth_org and auth_org.plan in ('STARTER','PRO','BUSINESS') %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% set paid_plan = auth_org and auth_org.plan in ('STARTER','PRO','BUSINESS','MULTI') %}
+{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
 
-<aside class="sidebar">
+<header class="mobilebar">
+  <button type="button" class="navtoggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Ouvrir le menu"><span></span><span></span><span></span></button>
+  <a class="brand" href="{{ url_for('home') }}">Profit<span>OS</span></a>
+</header>
+<div class="navscrim" data-nav-close hidden></div>
+<aside class="sidebar" id="sidebar">
   {% if branding and branding.accent_color %}<div style="height:4px;background:{{ branding.accent_color }};margin:-28px -22px 18px;border-radius:0;"></div>{% endif %}
   <div class="brand">{% if branding and branding.logo_url %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}Profit<span>OS</span>{% endif %}</div>
-  <div class="subbrand">Production · V{{ app_version }}</div>
+  <div class="subbrand">Pilotage financier</div>
 
   {% if active_entities and active_entities|length > 1 %}
   <form method="post" action="{{ url_for('entity_switch') }}" style="margin-bottom:18px;">
@@ -34,53 +39,23 @@
   </form>
   {% endif %}
 
-  <nav>
-    <a href="{{ url_for('home') }}">Overview</a>
-
-    <div class="navhead">MONEY</div>
-    {% if paid_plan %}<a href="{{ url_for('money_hunter') }}">Money Hunter</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'advanced_ai') %}<a href="{{ url_for('financial_brain') }}">Financial Brain</a><a href="{{ url_for('cash_intelligence') }}">Cash Intelligence</a><a href="{{ url_for('decision_simulator') }}">AI CFO Planner</a>{% endif %}{% endif %}
-    {% if can_access('recover') %}<a href="{{ url_for('recover') }}" data-tour="recover">Recover</a><a href="{{ url_for('calendar_view') }}">Calendar</a>{% endif %}
-    {% if can_access('save') %}<a href="{{ url_for('save') }}" data-tour="save">Save</a><a href="{{ url_for('margin_watch') }}">Margin Watch</a>{% endif %}
-    {% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}" data-tour="grow">Grow</a><a href="{{ url_for('partners') }}">Partners</a>{% endif %}
-
-    <div class="navhead">OPERATE</div>
-    {% if paid_plan and can_access('actions') %}<a href="{{ url_for('actions') }}" data-tour="actions">Action Center</a>{% endif %}
-    {% if can_access('impact') %}<a href="{{ url_for('impact') }}">Impact</a><a href="{{ url_for('cash_forecast') }}">Cash Forecast</a>{% endif %}
-    {% if can_access('weekly') %}<a href="{{ url_for('weekly_report_preview') }}">Weekly Report</a>{% endif %}
-
-    {% if paid_plan and can_access('uploads') %}
-      <div class="navhead">DATA</div>
-      <a href="{{ url_for('upload_invoices') }}" data-tour="uploads">Importer factures</a>
-      <a href="{{ url_for('upload_expenses') }}">Importer dépenses</a>
-      <a href="{{ url_for('upload_bank_statement') }}">Relevé bancaire</a>
-      {% if auth_org and plan_feature_enabled(auth_org.plan,'banking') %}<a href="{{ url_for('banking') }}">Banques connectées</a>{% endif %}
-    {% endif %}
-
-    <a href="{{ url_for('company') }}">Profil entreprise</a>
-    {% if auth_org and plan_feature_enabled(auth_org.plan,'multi_entity') %}<a href="{{ url_for('entities_list') }}">Entités (multi-société)</a>{% endif %}
-    {% if can_access('invoicing') %}<a href="{{ url_for('invoicing_list') }}">Facturation</a>{% endif %}
-    {% if auth_org and plan_feature_enabled(auth_org.plan,'accounting_core') %}
-    <a href="{{ url_for('accounting_chart') }}">Plan comptable</a>
-    <a href="{{ url_for('accounting_journals_view') }}">Journaux</a>
-    <a href="{{ url_for('payroll_imports_list') }}">Paie Silae / PayFit</a>
-    <a href="{{ url_for('fixed_assets_list') }}">Immobilisations</a>
-    <a href="{{ url_for('vat_summary') }}">Synthèse TVA</a>
-    <a href="{{ url_for('fiscal_workpapers') }}">Dossiers fiscaux</a>
-    <a href="{{ url_for('analytical_axes_list') }}">Comptabilité analytique</a>
-    <a href="{{ url_for('cutoff_list') }}">Cut-off (CCA/FNP/FAE)</a>
-    <a href="{{ url_for('loans_list') }}">Emprunts</a>
-    <a href="{{ url_for('finance_leases_list') }}">Crédit-bail</a>
-    <a href="{{ url_for('reviews_list') }}">Révision comptable</a>
-    <a href="{{ url_for('plaquette') }}">Comptes annuels / Plaquette</a>
-    {% endif %}
-    <a href="{{ url_for('cabinet_portfolio') }}">Portefeuille clients</a>
-    <a href="{{ url_for('ecommerce_settings') }}">Shopify / WooCommerce</a>
-    <a href="{{ url_for('expense_reports_list') }}">Notes de frais</a>
-
-    <div class="navhead">ACCOUNT</div>
-    {% if can_access('team') %}<a href="{{ url_for('team') }}">Team</a><a href="{{ url_for('team_performance') }}">Performance</a>{% endif %}
-    {% if can_access('billing') %}<a href="{{ url_for('billing') }}">Billing</a>{% endif %}
-    {% if can_access('settings') %}<a href="{{ url_for('settings') }}">Settings</a><a href="{{ url_for('swan_settings') }}">Compte Pro</a><a href="{{ url_for('integrations') }}">Integrations</a><a href="{{ url_for('api_keys') }}">API</a><a href="{{ url_for('referral') }}">Referral</a>{% endif %}
+  <nav aria-label="Navigation principale">
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('home') }}"{% if ep=='home' %} class="active" aria-current="page"{% endif %}>Tableau de bord</a>
+    {% set grp_treso %}{% if paid_plan %}{% if auth_org and plan_feature_enabled(auth_org.plan,'advanced_ai') %}<a href="{{ url_for('cash_intelligence') }}"{% if ep=='cash_intelligence' %} class="active" aria-current="page"{% endif %}>Trésorerie &amp; scénarios</a><a href="{{ url_for('decision_simulator') }}"{% if ep=='decision_simulator' %} class="active" aria-current="page"{% endif %}>Simulateur de décision</a><a href="{{ url_for('financial_brain') }}"{% if ep=='financial_brain' %} class="active" aria-current="page"{% endif %}>Diagnostic financier</a>{% endif %}<a href="{{ url_for('money_hunter') }}"{% if ep=='money_hunter' %} class="active" aria-current="page"{% endif %}>Gisements de cash</a>{% endif %}{% if can_access('impact') %}<a href="{{ url_for('cash_forecast') }}"{% if ep=='cash_forecast' %} class="active" aria-current="page"{% endif %}>Flux projetés 90 jours</a>{% endif %}{% endset %}
+    {% if grp_treso|trim %}<details class="navgroup"{% if true or ep=='cash_intelligence' or ep=='decision_simulator' or ep=='financial_brain' or ep=='money_hunter' or ep=='cash_forecast' %} open{% endif %}><summary>Trésorerie</summary>{{ grp_treso }}</details>{% endif %}
+    {% set grp_ventes %}{% if can_access('invoicing') %}<a href="{{ url_for('invoicing_list') }}"{% if ep.startswith('invoicing') or ep.startswith('purchase') or ep.startswith('quote') or ep.startswith('delivery') or ep.startswith('recurring') or ep.startswith('supplier') or ep.startswith('client') %} class="active" aria-current="page"{% endif %}>Facturation</a>{% endif %}{% if can_access('recover') %}<a href="{{ url_for('recover') }}" data-tour="recover"{% if ep.startswith('recover') or ep=='invoice_detail' %} class="active" aria-current="page"{% endif %}>Relances clients</a><a href="{{ url_for('calendar_view') }}"{% if ep=='calendar_view' %} class="active" aria-current="page"{% endif %}>Échéancier</a>{% endif %}{% endset %}
+    {% if grp_ventes|trim %}<details class="navgroup"{% if true or ep.startswith('invoicing') or ep.startswith('purchase') or ep.startswith('quote') or ep.startswith('delivery') or ep.startswith('recurring') or ep.startswith('supplier') or ep.startswith('client') or ep.startswith('recover') or ep=='calendar_view' %} open{% endif %}><summary>Ventes &amp; encaissements</summary>{{ grp_ventes }}</details>{% endif %}
+    {% set grp_depenses %}{% if can_access('save') %}<a href="{{ url_for('save') }}" data-tour="save"{% if ep.startswith('save') or ep.startswith('opportunity') %} class="active" aria-current="page"{% endif %}>Économies</a><a href="{{ url_for('margin_watch') }}"{% if ep=='margin_watch' %} class="active" aria-current="page"{% endif %}>Suivi des marges</a>{% endif %}<a href="{{ url_for('expense_reports_list') }}"{% if ep.startswith('expense_report') %} class="active" aria-current="page"{% endif %}>Notes de frais</a>{% endset %}
+    {% if grp_depenses|trim %}<details class="navgroup"{% if false or ep.startswith('save') or ep=='margin_watch' or ep.startswith('expense_report') or ep.startswith('opportunity') %} open{% endif %}><summary>Dépenses &amp; marges</summary>{{ grp_depenses }}</details>{% endif %}
+    {% set grp_dev %}{% if paid_plan and can_access('actions') %}<a href="{{ url_for('actions') }}" data-tour="actions"{% if ep.startswith('action') %} class="active" aria-current="page"{% endif %}>Centre d'actions</a>{% endif %}{% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}" data-tour="grow"{% if ep.startswith('grow') or ep.startswith('dce') %} class="active" aria-current="page"{% endif %}>Marchés publics</a><a href="{{ url_for('partners') }}"{% if ep.startswith('partner') %} class="active" aria-current="page"{% endif %}>Partenaires</a>{% endif %}{% if can_access('impact') %}<a href="{{ url_for('impact') }}"{% if ep=='impact' %} class="active" aria-current="page"{% endif %}>Gains réalisés</a>{% endif %}{% if can_access('weekly') %}<a href="{{ url_for('weekly_report_preview') }}"{% if ep=='weekly_report_preview' %} class="active" aria-current="page"{% endif %}>Rapport hebdomadaire</a>{% endif %}{% endset %}
+    {% if grp_dev|trim %}<details class="navgroup"{% if false or ep.startswith('action') or ep.startswith('grow') or ep.startswith('dce') or ep.startswith('partner') or ep=='impact' or ep=='weekly_report_preview' %} open{% endif %}><summary>Actions &amp; croissance</summary>{{ grp_dev }}</details>{% endif %}
+    {% set grp_compta %}{% if auth_org and plan_feature_enabled(auth_org.plan,'accounting_core') %}<a href="{{ url_for('accounting_chart') }}"{% if ep=='accounting_chart' %} class="active" aria-current="page"{% endif %}>Plan comptable</a><a href="{{ url_for('accounting_journals_view') }}"{% if ep.startswith('accounting_journal') or ep.startswith('accounting_entry') %} class="active" aria-current="page"{% endif %}>Journaux</a><a href="{{ url_for('vat_summary') }}"{% if ep=='vat_summary' %} class="active" aria-current="page"{% endif %}>Synthèse TVA</a><a href="{{ url_for('reviews_list') }}"{% if ep.startswith('review') or ep.startswith('accountant') %} class="active" aria-current="page"{% endif %}>Révision comptable</a><a href="{{ url_for('plaquette') }}"{% if ep=='plaquette' %} class="active" aria-current="page"{% endif %}>Comptes annuels / Plaquette</a><a href="{{ url_for('fiscal_workpapers') }}"{% if ep=='fiscal_workpapers' %} class="active" aria-current="page"{% endif %}>Dossiers fiscaux</a><a href="{{ url_for('fixed_assets_list') }}"{% if ep.startswith('fixed_asset') %} class="active" aria-current="page"{% endif %}>Immobilisations</a><a href="{{ url_for('loans_list') }}"{% if ep.startswith('loan') %} class="active" aria-current="page"{% endif %}>Emprunts</a><a href="{{ url_for('finance_leases_list') }}"{% if ep.startswith('finance_lease') %} class="active" aria-current="page"{% endif %}>Crédit-bail</a><a href="{{ url_for('cutoff_list') }}"{% if ep.startswith('cutoff') %} class="active" aria-current="page"{% endif %}>Cut-off (CCA/FNP/FAE)</a><a href="{{ url_for('analytical_axes_list') }}"{% if ep.startswith('analytical') %} class="active" aria-current="page"{% endif %}>Comptabilité analytique</a><a href="{{ url_for('payroll_imports_list') }}"{% if ep.startswith('payroll') %} class="active" aria-current="page"{% endif %}>Paie Silae / PayFit</a>{% endif %}<a href="{{ url_for('cabinet_portfolio') }}"{% if ep.startswith('cabinet') %} class="active" aria-current="page"{% endif %}>Portefeuille clients (cabinet)</a>{% endset %}
+    {% if grp_compta|trim %}<details class="navgroup"{% if false or ep.startswith('accounting') or ep=='vat_summary' or ep.startswith('review') or ep.startswith('accountant') or ep=='plaquette' or ep.startswith('fiscal') or ep.startswith('fixed_asset') or ep.startswith('loan') or ep.startswith('finance_lease') or ep.startswith('cutoff') or ep.startswith('analytical') or ep.startswith('payroll') or ep.startswith('cabinet') %} open{% endif %}><summary>Comptabilité</summary>{{ grp_compta }}</details>{% endif %}
+    {% set grp_data %}{% if paid_plan and can_access('uploads') %}<a href="{{ url_for('upload_invoices') }}" data-tour="uploads"{% if ep=='upload_invoices' %} class="active" aria-current="page"{% endif %}>Importer des factures</a><a href="{{ url_for('upload_expenses') }}"{% if ep=='upload_expenses' %} class="active" aria-current="page"{% endif %}>Importer des dépenses</a><a href="{{ url_for('upload_bank_statement') }}"{% if ep=='upload_bank_statement' %} class="active" aria-current="page"{% endif %}>Importer un relevé bancaire</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'banking') %}<a href="{{ url_for('banking') }}"{% if ep.startswith('bank') %} class="active" aria-current="page"{% endif %}>Banques connectées</a>{% endif %}{% endif %}<a href="{{ url_for('ecommerce_settings') }}"{% if ep.startswith('ecommerce') %} class="active" aria-current="page"{% endif %}>Shopify / WooCommerce</a>{% if can_access('settings') %}<a href="{{ url_for('integrations') }}"{% if ep=='integrations' %} class="active" aria-current="page"{% endif %}>Intégrations comptables</a><a href="{{ url_for('api_keys') }}"{% if ep=='api_keys' %} class="active" aria-current="page"{% endif %}>API</a>{% endif %}{% endset %}
+    {% if grp_data|trim %}<details class="navgroup"{% if false or ep.startswith('upload') or ep.startswith('bank') or ep.startswith('ecommerce') or ep=='integrations' or ep=='api_keys' %} open{% endif %}><summary>Données &amp; connexions</summary>{{ grp_data }}</details>{% endif %}
+    {% set grp_entreprise %}<a href="{{ url_for('company') }}"{% if ep=='company' %} class="active" aria-current="page"{% endif %}>Profil entreprise</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'multi_entity') %}<a href="{{ url_for('entities_list') }}"{% if ep.startswith('entit') %} class="active" aria-current="page"{% endif %}>Entités (multi-société)</a>{% endif %}{% if can_access('team') %}<a href="{{ url_for('team') }}"{% if ep=='team' or ep=='team_entity_access' or ep.startswith('team_invite') %} class="active" aria-current="page"{% endif %}>Équipe</a><a href="{{ url_for('team_performance') }}"{% if ep=='team_performance' %} class="active" aria-current="page"{% endif %}>Performance de l'équipe</a>{% endif %}{% if can_access('billing') %}<a href="{{ url_for('billing') }}"{% if ep=='billing' %} class="active" aria-current="page"{% endif %}>Abonnement</a>{% endif %}{% if can_access('settings') %}<a href="{{ url_for('settings') }}"{% if ep=='settings' %} class="active" aria-current="page"{% endif %}>Paramètres</a><a href="{{ url_for('swan_settings') }}"{% if ep.startswith('swan') %} class="active" aria-current="page"{% endif %}>Compte Pro</a><a href="{{ url_for('referral') }}"{% if ep=='referral' %} class="active" aria-current="page"{% endif %}>Parrainage</a>{% endif %}{% endset %}
+    {% if grp_entreprise|trim %}<details class="navgroup"{% if false or ep=='company' or ep.startswith('entit') or ep.startswith('team') or ep.startswith('billing') or ep=='settings' or ep.startswith('swan') or ep=='referral' %} open{% endif %}><summary>Entreprise &amp; compte</summary>{{ grp_entreprise }}</details>{% endif %}
   </nav>
 
   {% if auth_user %}
@@ -134,7 +109,7 @@
       </button>
       <div id="changelog-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);width:340px;background:#0f1c33;border:1px solid #294064;border-radius:10px;padding:10px;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.4);">
         {% for entry in changelog_entries[:6] %}
-        <div style="padding:8px;border-bottom:1px solid #1a2a47;font-size:13px;"><strong style="display:block;color:#8fa9d3;font-size:11px;">{{ entry.date }}</strong>{{ entry.title }}</div>
+        <div style="padding:8px;border-bottom:1px solid #1a2a47;font-size:13px;"><strong style="display:block;color:#8fa9d3;font-size:11px;">{{ entry.date|fr_date }}</strong>{{ entry.title }}</div>
         {% endfor %}
         <form method="post" action="{{ url_for('changelog_seen') }}" style="margin-top:8px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

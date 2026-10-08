@@ -133,7 +133,7 @@ def register(app):
             pdf.cell(63,10,value,border=0)
 
         pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
-        pdf.cell(63,6,'RECOVERABLE'); pdf.cell(63,6,'POTENTIAL SAVINGS'); pdf.cell(63,6,'GROW'); pdf.ln(6)
+        pdf.cell(63,6,'À ENCAISSER'); pdf.cell(63,6,'ÉCONOMIES POTENTIELLES'); pdf.cell(63,6,'MARCHÉS PUBLICS'); pdf.ln(6)
         kpi('recover',pdf_safe(f"{fr_number(recover['t'])} EUR"),(220,38,38))
         kpi('save',pdf_safe(f"{fr_number(save['t'])} EUR/an"),(217,119,6))
         kpi('grow',f"{grow['n']} opportunites",(22,163,74))

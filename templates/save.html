@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">SAVE</div>
-<h1 class="purchase-title">{{ total|fr_number }} € d'économies potentielles</h1>
+<div class="purchase-eyebrow">ÉCONOMIES</div>
+<h1 class="purchase-title">{{ total|fr_number }}&nbsp;€ d'économies potentielles</h1>
 <p class="purchase-subtitle">Signaux à vérifier, pas économies déjà réalisées.</p>
 
 <section class="purchase-panel" style="margin:20px 0;">
@@ -14,7 +14,7 @@
   </form>
 </section>
 
-{% if auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% if auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
 <div style="margin:0 0 18px;display:flex;gap:8px;">
   <a class="purchase-nav-btn" href="{{ url_for('save_export',format='xlsx',q=q,min_value=min_value,max_value=max_value) }}">Exporter (Excel)</a>
   <a class="purchase-nav-btn" href="{{ url_for('save_export',format='csv',q=q,min_value=min_value,max_value=max_value) }}">Exporter (CSV)</a>
@@ -32,7 +32,7 @@
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('detail',kind='SAVE',item_id=r.id) }}"><strong>{{ r.title }}</strong></a></td>
           <td>{{ r.details }}</td>
-          <td><strong>{{ r.value|fr_number }} €</strong></td>
+          <td><strong>{{ r.value|fr_number }}&nbsp;€</strong></td>
           <td>{{ r.score }}%</td>
         </tr>
       {% else %}

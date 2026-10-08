@@ -83,7 +83,7 @@ def register(app):
         )
         c.commit(); c.close()
         log_activity('CLOUD_STORAGE_CONNECTED', f"{PROVIDERS[provider]['label']} connecté")
-        flash(f"{PROVIDERS[provider]['label']} connecté. Configure le dossier à surveiller ci-dessous.")
+        flash(f"{PROVIDERS[provider]['label']} connecté. Configurez le dossier à surveiller ci-dessous.")
         return redirect(url_for('cloud_storage_settings'))
 
     @app.route('/integrations/cloud-storage/<provider>/deconnecter', methods=['POST'])

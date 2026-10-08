@@ -75,7 +75,7 @@
           <td>{{ l.expense_date|fr_date or '—' }}</td>
           <td>{{ category_labels.get(l.category, l.category) }}</td>
           <td>{{ l.description or '—' }}{% if l.receipt_path %} <span class="purchase-muted" style="font-size:11px;">(reçu joint)</span>{% endif %}</td>
-          <td style="text-align:right;"><strong>{{ l.amount|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;"><strong>{{ l.amount|fr_number(2) }}&nbsp;€</strong></td>
           {% if report.status=='draft' %}
           <td><form method="post" action="{{ url_for('expense_report_delete_line',report_id=report.id,line_id=l.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Retirer</button></form></td>
           {% endif %}
@@ -88,7 +88,7 @@
   </div>
   <div class="purchase-total-line" style="margin-top:16px;">
     <span class="purchase-muted">Total</span>
-    <strong>{{ total|fr_number(2) }} €</strong>
+    <strong>{{ total|fr_number(2) }}&nbsp;€</strong>
   </div>
 </section>
 </div>

@@ -17,32 +17,32 @@
 
   <div class="purchase-eyebrow">FACTURATION</div>
   <h1 class="purchase-title">Factures émises</h1>
-  <p class="purchase-subtitle">Crée, envoie et suis tes factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
+  <p class="purchase-subtitle">Créez, envoyez et suivez vos factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
 
   <div class="purchase-stats">
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><path d="M14 3v5a2 2 0 0 0 2 2h5"></path><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">Brouillons</div><div class="purchase-stat-value">{{ totals.draft|fr_number }} €</div></div>
+      <div><div class="purchase-stat-label">Brouillons</div><div class="purchase-stat-value">{{ totals.draft|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">Envoyées</div><div class="purchase-stat-value">{{ totals.sent|fr_number }} €</div></div>
+      <div><div class="purchase-stat-label">Envoyées</div><div class="purchase-stat-value">{{ totals.sent|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ totals.overdue|fr_number }} €</div></div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ totals.overdue|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">Payées</div><div class="purchase-stat-value">{{ totals.paid|fr_number }} €</div></div>
+      <div><div class="purchase-stat-label">Payées</div><div class="purchase-stat-value">{{ totals.paid|fr_number }}&nbsp;€</div></div>
     </div>
   </div>
 
@@ -58,7 +58,7 @@
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}"><strong>{{ r.invoice_number }}</strong></a></td>
             <td>{{ r.client_name }}</td>
             <td>{{ r.issue_date|fr_date }}</td>
-            <td><strong>{{ r.total|fr_number }} €</strong></td>
+            <td><strong>{{ r.total|fr_number }}&nbsp;€</strong></td>
             <td>
               <span class="purchase-status {{ 'paid' if st=='paid' else ('overdue' if st=='overdue' else '') }}">
                 {{ {'draft':'Brouillon','sent':'Envoyée','overdue':'En retard','partially_paid':'Partiellement payée','paid':'Payée','cancelled':'Annulée'}.get(st, st) }}

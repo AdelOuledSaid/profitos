@@ -32,7 +32,7 @@
   {% if accountant_email %}
   <div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08);">
     <h2 style="color:#fff;font-size:16px;margin:0 0 10px;">Envoyer à l'expert-comptable</h2>
-    <p class="purchase-muted" style="font-size:13px;">Envoie un lien de téléchargement sécurisé à <strong style="color:#fff;">{{ accountant_email }}</strong> pour les mêmes dates ci-dessus — le lien régénère l'export à jour à chaque clic, sans pièce jointe.</p>
+    <p class="purchase-muted" style="font-size:13px;">Envoyer un lien de téléchargement sécurisé à <strong style="color:#fff;">{{ accountant_email }}</strong> pour les mêmes dates ci-dessus — le lien régénère l'export à jour à chaque clic, sans pièce jointe.</p>
     <form method="post" action="{{ url_for('accounting_fec_send_accountant') }}" id="fec-accountant-form" data-copy-dates-from="fec-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date_from">
@@ -42,7 +42,7 @@
     </form>
   </div>
   {% else %}
-  <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Renseigne un email de comptable dans <a class="purchase-detail-link" href="{{ url_for('settings') }}">Paramètres</a> pour pouvoir lui envoyer un lien direct.</p>
+  <p class="purchase-muted" style="font-size:12px;margin-top:14px;">Renseignez l'e-mail de votre comptable dans <a class="purchase-detail-link" href="{{ url_for('settings') }}">Paramètres</a> pour pouvoir lui envoyer un lien direct.</p>
   {% endif %}
 </section>
 </div>

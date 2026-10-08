@@ -526,7 +526,7 @@ def register(app):
             if not ok:
                 error = reason
             elif not events:
-                error = "Sélectionne au moins un événement."
+                error = "Sélectionnez au moins un événement."
             else:
                 secret = new_webhook_secret()
                 c.execute(

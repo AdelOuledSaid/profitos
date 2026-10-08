@@ -16,13 +16,13 @@
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">À encaisser</div><div class="purchase-stat-value">{{ "%.2f"|format(total_due) }} €</div></div>
+      <div><div class="purchase-stat-label">À encaisser</div><div class="purchase-stat-value">{{ "%.2f"|format(total_due) }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ "%.2f"|format(overdue_due) }} €</div></div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ "%.2f"|format(overdue_due) }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
@@ -49,8 +49,8 @@
             <td><strong>{{ c.client_name }}</strong></td>
             <td>{{ c.count }}</td>
             <td>
-              <strong>{{ "%.2f"|format(c.total) }} €</strong>
-              {% if c.overdue > 0 %}<span class="purchase-alert-text" style="font-size:12px;"> · {{ "%.2f"|format(c.overdue) }} € en retard</span>{% endif %}
+              <strong>{{ "%.2f"|format(c.total) }}&nbsp;€</strong>
+              {% if c.overdue > 0 %}<span class="purchase-alert-text" style="font-size:12px;"> · {{ "%.2f"|format(c.overdue) }}&nbsp;€ en retard</span>{% endif %}
             </td>
           </tr>
         {% else %}
@@ -75,7 +75,7 @@
               {{ inv.due_date|fr_date or "—" }}
               {% if inv.overdue %}<br><span class="purchase-alert-text" style="font-size:12px;">En retard de {{ inv.days_overdue }} jour{% if inv.days_overdue > 1 %}s{% endif %}</span>{% endif %}
             </td>
-            <td><strong>{{ "%.2f"|format(inv.remaining) }} €</strong></td>
+            <td><strong>{{ "%.2f"|format(inv.remaining) }}&nbsp;€</strong></td>
           </tr>
         {% else %}
           <tr><td colspan="4" class="purchase-empty">Toutes les factures envoyées sont réglées.</td></tr>

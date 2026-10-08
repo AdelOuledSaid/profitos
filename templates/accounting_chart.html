@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">COMPTABILITÉ</div>
     <h1 class="purchase-title">Plan comptable</h1>
-    <p class="purchase-subtitle">Comptes du Plan Comptable Général (PCG) utilisés par ProfitOS. Les comptes par défaut ne peuvent pas être supprimés ; tu peux en ajouter d'autres — partagés entre toutes les entités, ou propres à celle actuellement active{% if active_entity and active_entity.id %} ({{ active_entity.name }}){% endif %}.</p>
+    <p class="purchase-subtitle">Comptes du Plan Comptable Général (PCG) utilisés par ProfitOS. Les comptes par défaut ne peuvent pas être supprimés ; vous pouvez en ajouter d'autres — partagés entre toutes les entités, ou propres à celle actuellement active{% if active_entity and active_entity.id %} ({{ active_entity.name }}){% endif %}.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">Journaux →</a>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_fec_export') }}">Export FEC →</a>

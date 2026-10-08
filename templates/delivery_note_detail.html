@@ -38,16 +38,16 @@
         <tr>
           <td>{{ it.label }}</td>
           <td style="text-align:right;">{{ it.qty }}</td>
-          <td style="text-align:right;">{{ it.unit_price|fr_number(2) }} €</td>
-          <td style="text-align:right;">{{ it.line_total|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ it.unit_price|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;">{{ it.line_total|fr_number(2) }}&nbsp;€</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
   <div class="purchase-total-line" style="margin-top:16px;">
-    <span class="purchase-muted">Total HT {{ subtotal|fr_number(2) }} € · TVA {{ vat_amount|fr_number(2) }} €</span>
-    <strong>{{ total|fr_number(2) }} € TTC</strong>
+    <span class="purchase-muted">Total HT {{ subtotal|fr_number(2) }}&nbsp;€ · TVA {{ vat_amount|fr_number(2) }}&nbsp;€</span>
+    <strong>{{ total|fr_number(2) }}&nbsp;€ TTC</strong>
   </div>
 </section>
 </div>

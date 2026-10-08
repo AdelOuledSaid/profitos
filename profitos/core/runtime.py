@@ -1484,7 +1484,7 @@ def api_write_required(fn):
         if getattr(g, 'api_key_scope', 'read') != 'read_write':
             return jsonify({
                 'error':'insufficient_scope',
-                'message':"Cette clé API est en lecture seule. Crée une clé avec la portée "
+                'message':"Cette clé API est en lecture seule. Créez une clé avec la portée "
                           "'Lecture + écriture' dans Paramètres > Clés API pour utiliser cet endpoint.",
             }),403
         return fn(*args,**kwargs)
@@ -1594,7 +1594,7 @@ def send_accountant_export(org, email, dry_run=None):
     link=f"{base}{url_for('export_download',token=token)}"
     html=render_template('email_transactional.html',title=f"Export ProfitOS — {org['name']}",
         intro=f"Voici le lien pour télécharger l'export des créances de {org['name']}, toujours à jour au moment du clic.",
-        cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien reste valable — contacte l\'organisation si tu n\'es pas concerné(e).')
+        cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien reste valable — contactez l\'organisation si vous n\'êtes pas concerné(e).')
     return send_email(email,f"Export ProfitOS — {org['name']}",html,dry_run=dry_run)
 
 def reward_referrer_if_any(acx, referred_org_id):
@@ -1722,7 +1722,7 @@ def extract_document_text(path):
         doc=Document(str(path)); return '\n'.join(p.text for p in doc.paragraphs)
     if ext in ('.txt','.md'):
         return path.read_text(encoding='utf-8',errors='ignore')
-    raise ValueError('Format non pris en charge. Utilise PDF, DOCX ou TXT.')
+    raise ValueError('Format non pris en charge. Utilisez un fichier PDF, DOCX ou TXT.')
 
 def find_terms(text, terms):
     n=norm(text); return [label for label,patterns in terms.items() if any(norm(p) in n for p in patterns)]

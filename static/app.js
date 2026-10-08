@@ -61,13 +61,15 @@ document.addEventListener('submit', function (event) {
 // ---------------------------------------------------------------------------
 (function () {
   var STEPS = [
-    { selector: '[data-tour="recover"]', title: 'RECOVER', text: "Toutes tes créances échues et retenues de garantie, classées par urgence." },
-    { selector: '[data-tour="save"]', title: 'SAVE', text: "Économies détectées automatiquement : doublons, hausses fournisseurs, contrats dormants." },
-    { selector: '[data-tour="grow"]', title: 'GROW', text: "Appels d'offres publics qui correspondent à ton profil, mis à jour depuis BOAMP." },
-    { selector: '[data-tour="actions"]', title: 'Action Center', text: "Prépare, approuve puis envoie tes relances — rien ne part sans ta validation." },
-    { selector: '[data-tour="uploads"]', title: 'Importer', text: "Uploade tes factures et dépenses Excel/CSV pour lancer ta première analyse." }
+    { selector: '[data-tour="recover"]', title: 'Relances clients', text: "Toutes vos créances échues et retenues de garantie, classées par urgence." },
+    { selector: '[data-tour="save"]', title: 'Économies', text: "Économies détectées automatiquement : doublons, hausses fournisseurs, contrats dormants." },
+    { selector: '[data-tour="grow"]', title: 'Marchés publics', text: "Appels d'offres publics correspondant à votre profil, mis à jour depuis le BOAMP." },
+    { selector: '[data-tour="actions"]', title: "Centre d'actions", text: "Préparez, approuvez puis envoyez vos relances — rien ne part sans votre validation." },
+    { selector: '[data-tour="uploads"]', title: 'Importer vos données', text: "Importez vos factures et dépenses (Excel/CSV) pour lancer votre première analyse." }
   ];
   var STORAGE_KEY = 'profitos_tour_seen';
+  function markSeen() { try { localStorage.setItem(STORAGE_KEY, '1'); } catch (e) {} }
+  function alreadySeen() { try { return !!localStorage.getItem(STORAGE_KEY); } catch (e) { return true; } }
 
   function buildOverlay() {
     var overlay = document.createElement('div');
@@ -79,11 +81,20 @@ document.addEventListener('submit', function (event) {
 
   function showStep(index, overlay) {
     overlay.innerHTML = '';
-    if (index >= STEPS.length) { overlay.remove(); localStorage.setItem(STORAGE_KEY, '1'); return; }
+    if (index >= STEPS.length) { overlay.remove(); markSeen(); return; }
     var step = STEPS[index];
     var el = document.querySelector(step.selector);
     if (!el) { showStep(index + 1, overlay); return; }
+    // La cible peut être dans une rubrique repliée du menu, ou dans le tiroir fermé sur mobile.
+    var group = el.closest('details');
+    if (group) group.open = true;
+    if (window.matchMedia('(max-width: 760px)').matches && !document.body.classList.contains('nav-open')) {
+      var toggle = document.querySelector('[data-nav-toggle]');
+      if (toggle) toggle.click();
+    }
+    el.scrollIntoView({ block: 'center' });
     var rect = el.getBoundingClientRect();
+    if (!rect.width && !rect.height) { showStep(index + 1, overlay); return; }
 
     var highlight = document.createElement('div');
     highlight.style.cssText = 'position:fixed;pointer-events:none;border:2px solid #5fe0ac;border-radius:8px;' +
@@ -93,8 +104,9 @@ document.addEventListener('submit', function (event) {
 
     var card = document.createElement('div');
     card.style.cssText = 'position:fixed;pointer-events:auto;background:#0f1c33;border:1px solid #294064;border-radius:12px;' +
-      'padding:16px;max-width:280px;color:#f6f8fc;font-family:inherit;box-shadow:0 8px 30px rgba(0,0,0,.4);' +
-      'top:' + Math.min(rect.bottom + 12, window.innerHeight - 160) + 'px;left:' + Math.min(rect.left, window.innerWidth - 300) + 'px;';
+      'padding:16px;width:' + Math.min(280, window.innerWidth - 24) + 'px;color:#f6f8fc;font-family:inherit;box-shadow:0 8px 30px rgba(0,0,0,.4);' +
+      'top:' + Math.max(12, Math.min(rect.bottom + 12, window.innerHeight - 180)) + 'px;' +
+      'left:' + Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(280, window.innerWidth - 24) - 12)) + 'px;';
     card.innerHTML = '<div style="font-size:11px;color:#8fa9d3;text-transform:uppercase;letter-spacing:.05em;">Étape ' + (index + 1) + '/' + STEPS.length + '</div>' +
       '<div style="font-weight:700;margin:4px 0 6px;">' + step.title + '</div>' +
       '<div style="font-size:13px;color:#c4d3ef;margin-bottom:12px;">' + step.text + '</div>' +
@@ -105,7 +117,7 @@ document.addEventListener('submit', function (event) {
     overlay.appendChild(card);
 
     card.querySelector('[data-tour-next]').addEventListener('click', function () { showStep(index + 1, overlay); });
-    card.querySelector('[data-tour-skip]').addEventListener('click', function () { overlay.remove(); localStorage.setItem(STORAGE_KEY, '1'); });
+    card.querySelector('[data-tour-skip]').addEventListener('click', function () { overlay.remove(); markSeen(); });
   }
 
   function startTour() {
@@ -116,7 +128,7 @@ document.addEventListener('submit', function (event) {
   window.profitosStartTour = startTour; // exposé pour le lien "Revoir la visite" dans Settings
 
   document.addEventListener('DOMContentLoaded', function () {
-    if (document.body.dataset.tourAuto === '1' && !localStorage.getItem(STORAGE_KEY)) {
+    if (document.body.dataset.tourAuto === '1' && !alreadySeen()) {
       setTimeout(startTour, 600);
     }
   });
@@ -242,3 +254,29 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 
+
+// Menu mobile : tiroir latéral (aucun script inline, compatible CSP).
+(function () {
+  function setNav(open) {
+    document.body.classList.toggle('nav-open', open);
+    var t = document.querySelector('[data-nav-toggle]');
+    if (t) {
+      t.setAttribute('aria-expanded', open ? 'true' : 'false');
+      t.setAttribute('aria-label', open ? 'Fermer le menu' : 'Ouvrir le menu');
+    }
+    var scrim = document.querySelector('[data-nav-close]');
+    if (scrim) scrim.hidden = !open;
+  }
+  document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-nav-toggle]')) {
+      setNav(!document.body.classList.contains('nav-open'));
+      return;
+    }
+    if (event.target.closest('[data-nav-close]') || (document.body.classList.contains('nav-open') && event.target.closest('#sidebar nav a'))) {
+      setNav(false);
+    }
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && document.body.classList.contains('nav-open')) setNav(false);
+  });
+})();

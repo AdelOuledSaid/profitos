@@ -9,7 +9,7 @@
 {% if not powens_configured %}
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="color:#fff;">Connexion bancaire indisponible</h2>
-  <p class="purchase-muted">La connexion bancaire automatique n'est pas encore activée pour ton compte. Contacte le support si tu souhaites y accéder.</p>
+  <p class="purchase-muted">La connexion bancaire automatique n'est pas encore activée pour votre compte. Contactez le support si vous souhaitez y accéder.</p>
 </section>
 {% endif %}
 
@@ -54,7 +54,7 @@
           <td>{{ a.provider|upper }}</td>
           <td>{{ a.account_type or '—' }}</td>
           <td>{{ a.currency or 'EUR' }}</td>
-          <td><strong>{{ a.balance or 0|fr_number(2) }} €</strong></td>
+          <td><strong>{{ a.balance or 0|fr_number(2) }}&nbsp;€</strong></td>
           <td><span class="purchase-status {{ '' if a.disabled else 'paid' }}">{{ 'Désactivé' if a.disabled else 'Actif' }}</span></td>
           {% if active_entities and active_entities|length > 1 %}
           <td>
@@ -75,7 +75,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="purchase-primary-btn primary">Utiliser ces soldes dans le pilotage</button>
   </form>
-  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Cette action met à jour le solde de départ utilisé par Cash Intelligence, Financial Brain et AI CFO. Elle n'est jamais exécutée automatiquement.</p>
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Cette action met à jour le solde de départ utilisé par la trésorerie, le diagnostic financier et le simulateur de décision. Elle n'est jamais exécutée automatiquement.</p>
 </section>
 {% endif %}
 
@@ -91,7 +91,7 @@
       {% for m in reconciliation_suggestions %}
         <tr>
           <td>{{ m.transaction.transaction_date|fr_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
-          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }} €</strong><br><span class="purchase-muted">Disponible : {{ m.transaction_available|fr_number(2) }} €</span></td>
+          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }}&nbsp;€</strong><br><span class="purchase-muted">Disponible : {{ m.transaction_available|fr_number(2) }}&nbsp;€</span></td>
           <td>{{ m.invoice.invoice_number }}</td>
           <td>{{ m.invoice.client_name }}</td>
           <td><strong>{{ m.confidence }}</strong><br><span class="purchase-muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
@@ -123,7 +123,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number }}</td>
           <td>{{ r.client_name }}</td>
-          <td><strong>{{ r.matched_amount or 0|fr_number(2) }} €</strong></td>
+          <td><strong>{{ r.matched_amount or 0|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -146,7 +146,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number }}</td>
           <td>{{ r.supplier_name }}</td>
-          <td><strong>{{ r.matched_amount or 0|fr_number(2) }} €</strong></td>
+          <td><strong>{{ r.matched_amount or 0|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -173,7 +173,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number or '—' }}</td>
           <td>{{ r.client_name or '—' }}</td>
-          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }} €</strong></td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -193,7 +193,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number or '—' }}</td>
           <td>{{ r.supplier_name or '—' }}</td>
-          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }} €</strong></td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -213,10 +213,10 @@
     {% if suggestions %}
       {% set ns.found = true %}
       <div style="padding:12px 0;border-top:1px solid rgba(255,255,255,.08);">
-        <strong>{{ tx.transaction_date|fr_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }} €</strong>
+        <strong>{{ tx.transaction_date|fr_date }} · {{ tx.label }} · {{ '%.2f'|format(tx.amount) }}&nbsp;€</strong>
         {% for s in suggestions[:3] %}
           <div style="margin-top:8px;">
-            {{ s.purchase.invoice_number }} · {{ s.purchase.supplier_name }} · {{ '%.2f'|format(s.purchase.total) }} €
+            {{ s.purchase.invoice_number }} · {{ s.purchase.supplier_name }} · {{ '%.2f'|format(s.purchase.total) }}&nbsp;€
             · Confiance {{ s.confidence }} ({{ s.score }}/125) · {{ s.reasons }}
             <form method="post" action="{{ url_for('confirm_purchase_reconciliation') }}" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -226,7 +226,7 @@
               <button type="submit" class="purchase-primary-btn secondary">Confirmer le paiement fournisseur</button>
               {% if s.remaining_after > 0.005 %}
                 <small style="display:block;margin-top:5px;opacity:.8;">
-                  Après ce rapprochement : {{ '%.2f'|format(s.remaining_after) }} € resteront à traiter sur le mouvement bancaire.
+                  Après ce rapprochement : {{ '%.2f'|format(s.remaining_after) }}&nbsp;€ resteront à traiter sur le mouvement bancaire.
                   {% if s.small_difference %}
                     <strong>Petit écart / frais bancaire possible — à comptabiliser séparément.</strong>
                     <form method="post" action="{{ url_for('banking_transaction_book_fee',tx_id=tx.id) }}" style="display:inline;margin-left:8px;">
@@ -278,7 +278,7 @@
         <tr>
           <td>{{ t.transaction_date|fr_date or '—' }}</td>
           <td>{{ t.label or '—' }}</td>
-          <td><strong>{{ t.amount or 0|fr_number(2) }} €</strong></td>
+          <td><strong>{{ t.amount or 0|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             {% set wf = transaction_states.get(t.id, {'state':'pending','remaining':0}) %}
             {% if wf.state == 'reconciled' %}
@@ -294,7 +294,7 @@
               </form>
             {% else %}
               <strong>À traiter</strong>
-              <small style="display:block;opacity:.75;">Reste : {{ wf.remaining|fr_number(2) }} €</small>
+              <small style="display:block;opacity:.75;">Reste : {{ wf.remaining|fr_number(2) }}&nbsp;€</small>
               <form method="post" action="{{ url_for('banking_transaction_ignore',tx_id=t.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-secondary" type="submit" style="font-size:11px;padding:3px 6px;">Ignorer</button>

@@ -617,9 +617,10 @@ def _purchase_ai_extract(file_bytes, mime_type):
     sans changement au reste du flux d'import."""
     if not ANTHROPIC_API_KEY:
         raise ValueError(
-            "Ce document ne contient pas de texte exploitable et la lecture automatique "
-            "des PDF scannés et des photos n'est pas disponible pour le moment. "
-            "Saisissez la facture manuellement."
+            "Ce document n'a pas de texte exploitable et l'extraction par IA n'est "
+            "pas configurée (ANTHROPIC_API_KEY absente côté serveur). Saisis la "
+            "facture manuellement, ou configure la clé pour activer l'extraction "
+            "automatique des PDF scannés et des photos."
         )
     content_type = 'document' if mime_type == 'application/pdf' else 'image'
     b64 = base64.b64encode(file_bytes).decode('utf-8')
@@ -671,11 +672,11 @@ def _purchase_ai_extract(file_bytes, mime_type):
     if vat_amount is None: missing.append("TVA")
     if total is None: missing.append("TTC")
     if missing:
-        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ". Saisissez la facture manuellement.")
+        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ". Saisis la facture manuellement.")
     try:
         subtotal, vat_amount, total = round(float(subtotal), 2), round(float(vat_amount), 2), round(float(total), 2)
     except (TypeError, ValueError):
-        raise ValueError("Montants détectés par l'IA illisibles. Saisissez la facture manuellement.")
+        raise ValueError("Montants détectés par l'IA illisibles. Saisis la facture manuellement.")
     if abs(round(subtotal + vat_amount - total, 2)) > 0.02:
         raise ValueError("Les montants HT + TVA ne correspondent pas au TTC (extraction IA). Import refusé par sécurité.")
     try:
@@ -1657,7 +1658,7 @@ def register(app):
         try:
             stored,mime=_save_purchase_document(uploaded)
             if not stored:
-                raise ValueError("Sélectionnez un fichier PDF ou une photo.")
+                raise ValueError("Sélectionne un fichier PDF ou une photo.")
             path=_purchase_pdf_dir()/stored
             if mime=='application/pdf':
                 try:
@@ -2488,7 +2489,7 @@ def register(app):
             selected_ids = [int(x) for x in request.form.getlist('purchase_id')]
             if len(selected_ids) == 0:
                 c.close()
-                flash("Sélectionnez au moins une facture à inclure dans le virement groupé.")
+                flash("Sélectionne au moins une facture à inclure dans le virement groupé.")
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
             placeholders = ','.join('?' * len(selected_ids))
             # Filtre aussi sur l'entité choisie — une remise SEPA n'a qu'un seul débiteur (compte
@@ -2643,7 +2644,7 @@ def register(app):
                 lines.append((desc, qty, price))
             if not lines:
                 c.close()
-                flash("Ajoutez au moins une ligne avec une quantité positive.")
+                flash("Ajoute au moins une ligne avec une quantité positive.")
                 return redirect(url_for('purchase_order_new'))
 
             year = date.today().year
@@ -2861,7 +2862,7 @@ def register(app):
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         if not company_row or not company_row['name']:
             c.close()
-            flash("Complétez d'abord votre profil entreprise (nom, adresse, SIRET) avant de créer une facture.")
+            flash("Complète d'abord ton profil entreprise (nom, adresse, SIRET) avant de créer une facture.")
             return redirect(url_for('company'))
 
         if request.method=='POST':

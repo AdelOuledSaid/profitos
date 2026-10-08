@@ -3,7 +3,7 @@
 <link rel="stylesheet" href="{{ asset_url('billing-v178.css') }}">
 <div class="page billing-shell">
   <section class="billing-hero">
-    <div class="eyebrow green">PLANS & BILLING</div>
+    <div class="eyebrow green">ABONNEMENT</div>
     <h1>Choisissez le niveau de pilotage financier adapté à votre entreprise.</h1>
     <p class="billing-lead">ProfitOS réunit recouvrement, trésorerie, économies, marge et aide à la décision dans un même système. Commencez avec l'essentiel, puis augmentez les volumes et l'automatisation lorsque votre équipe grandit.</p>
     <div class="billing-pills">
@@ -18,7 +18,7 @@
   <section class="panel">
     <div class="eyebrow">FACTURATION</div>
     <h2>Facturation indisponible pour l'instant</h2>
-    <p class="muted">Contacte le support si tu as besoin d'y accéder.</p>
+    <p class="muted">Contactez le support si vous avez besoin d'y accéder.</p>
   </section>
   {% else %}
 
@@ -107,7 +107,7 @@
         <div class="billing-plan-head">
           <div class="billing-plan-code">{{ code }}</div>
           <h2>{{ p.name }}</h2>
-          <div class="billing-price">{{ p.price_eur }} € <small>/ mois</small></div>
+          <div class="billing-price">{{ p.price_eur }}&nbsp;€ <small>/ mois</small></div>
           {% if code=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent piloter cash, impayés, dépenses et décisions au quotidien.</p>
           {% elif code=='PRO' %}<p class="billing-for">Pour les PME qui utilisent ProfitOS régulièrement et veulent automatiser davantage leurs workflows.</p>
           {% elif code=='BUSINESS' %}<p class="billing-for">Pour les PME qui veulent l’IA financière et le pilotage avancé.</p>{% else %}<p class="billing-for">Pour groupes, holdings, cabinets et structures multi-entités.</p>{% endif %}
@@ -115,11 +115,11 @@
 
         <div class="billing-feature-group">
           <div class="billing-feature-title">PILOTAGE FINANCIER</div>
-          <div class="billing-feature"><span class="tick">✓</span><span>Money Hunter, Recover & Save</span></div>
-          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>Financial Brain & Cash Intelligence</span></div>
-          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>AI CFO Planner</span></div>
-          <div class="billing-feature"><span class="tick">✓</span><span>Cash Forecast, Margin Watch, Calendar & GROW</span></div>
-          <div class="billing-feature"><span class="tick">✓</span><span>Action Center et imports de données</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Gisements de cash, relances et économies</span></div>
+          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>Diagnostic financier et trésorerie</span></div>
+          <div class="billing-feature {% if not plan_limits[code].advanced_ai %}off{% endif %}"><span class="tick">{{ '✓' if plan_limits[code].advanced_ai else '—' }}</span><span>Simulateur de décision</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Flux projetés, suivi des marges, échéancier et marchés publics</span></div>
+          <div class="billing-feature"><span class="tick">✓</span><span>Centre d'actions et imports de données</span></div>
         </div>
 
         <div class="billing-feature-group">

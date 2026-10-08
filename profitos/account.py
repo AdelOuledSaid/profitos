@@ -334,7 +334,7 @@ def register(app):
         org=current_org()
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close()
         if not s or not s['accountant_email']:
-            flash("Renseignez d'abord l'e-mail de votre comptable dans Paramètres."); return redirect(url_for('settings'))
+            flash("Renseigne d'abord l'email de ton comptable dans Settings."); return redirect(url_for('settings'))
         result=send_accountant_export(org,s['accountant_email'])
         if result.get('dry_run'):
             flash(f"SMTP/Resend non configuré — email non envoyé (mode simulation) à {s['accountant_email']}.")
@@ -507,7 +507,7 @@ def register(app):
                 other_owners=ac.execute("SELECT COUNT(*) c FROM memberships WHERE organization_id=? AND role='OWNER' AND user_id!=?",(org['id'],user['id'])).fetchone()['c']
                 if other_owners==0:
                     ac.close()
-                    flash("Vous êtes le seul propriétaire de cette organisation. Attribuez d'abord le rôle Propriétaire à un autre membre (page Équipe) avant de partir.")
+                    flash("Tu es le seul propriétaire de cette organisation. Promeus d'abord quelqu'un d'autre au rôle Propriétaire (page Team) avant de partir.")
                     return redirect(url_for('team'))
 
             if member_count==1:
@@ -592,7 +592,7 @@ def register(app):
             else:
                 log_activity('ACCOUNT_LEFT_ORG',f"Utilisateur retiré de l'organisation : {user['email']}")
             session.clear()
-            flash('Toutes les données ont été supprimées.' if remaining_members==0 else 'Vous avez quitté cette organisation.')
+            flash('Toutes les données ont été supprimées.' if remaining_members==0 else 'Tu as quitté cette organisation.')
             return redirect(url_for('login'))
 
         ac.close()
@@ -740,7 +740,7 @@ def register(app):
                 if cancellation_scheduled:
                     if cancellation_date:
                         flash(
-                            f"Annulation programmée le {fr_date(cancellation_date)}. "
+                            f"Annulation programmée le {cancellation_date}. "
                             "Vous conservez l'accès à votre abonnement jusqu'à cette date."
                         )
                     else:

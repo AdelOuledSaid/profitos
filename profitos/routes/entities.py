@@ -20,7 +20,7 @@ def register(app):
             return redirect(url_for('home'))
         if not user_can_access_entity(c, session.get('user_id'), entity_id):
             c.close()
-            flash("Tu n'as pas accès à cette entité.")
+            flash("Vous n'avez pas accès à cette entité.")
             return redirect(url_for('home'))
         c.close()
         if entity_id:

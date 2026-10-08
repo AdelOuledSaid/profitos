@@ -89,3 +89,32 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0a0a0a;border:1px sol
 
 /* V1.6.4 — Cash Intelligence */
 .cash-balance-card{display:grid;grid-template-columns:1fr 420px;gap:28px;align-items:end}.cash-balance-form{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.cash-balance-form label{font-size:11px;color:#91a7c8}.cash-balance-form input{display:block;width:100%;margin-top:6px}.cash-alert{display:flex;gap:12px;align-items:center;margin:18px 0;padding:14px 16px;border-radius:12px;border:1px solid #1e1e1e;background:#10203a}.cash-alert strong{font-size:11px;letter-spacing:.08em;color:#f6f8fc}.cash-alert.alerte{border-color:#7a3340;background:#321b24}.cash-alert.vigilance{border-color:#6b5522;background:#302719}.cash-alert.stable{border-color:#2d6b59;background:#102b27}.scenario-panel{margin-top:20px;border-color:#356b61}.scenario-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.scenario-grid>div{background:#0a0a0a;border:1px solid #1e1e1e;border-radius:12px;padding:16px}.scenario-grid small,.scenario-grid strong,.scenario-grid span{display:block}.scenario-grid strong{font-size:25px;margin:7px 0}.scenario-grid span{font-size:12px;color:#91a7c8}@media(max-width:950px){.cash-balance-card{grid-template-columns:1fr}.scenario-grid{grid-template-columns:1fr}.cash-balance-form{grid-template-columns:1fr}.cash-kpis{grid-template-columns:1fr 1fr}}@media(max-width:650px){.cash-kpis{grid-template-columns:1fr}}
+
+/* ---- Navigation v2 : rubriques repliables, lien actif, tiroir mobile ---- */
+.subbrand{letter-spacing:.02em}
+nav{gap:2px}
+nav>a{font-weight:700}
+nav a{display:block;font-size:14px;padding:9px 12px;line-height:1.3}
+nav a.active{background:#10241a;color:#3ddc84;box-shadow:inset 3px 0 0 #3ddc84}
+.navgroup{margin-top:10px}
+.navgroup>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:.13em;font-weight:900;text-transform:uppercase;color:#3ddc84;padding:8px 12px;border-radius:8px;user-select:none}
+.navgroup>summary::-webkit-details-marker{display:none}
+.navgroup>summary::after{content:'';width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s ease;opacity:.7}
+.navgroup[open]>summary::after{transform:rotate(45deg)}
+.navgroup>summary:hover{background:#141414}
+.navgroup>summary:focus-visible,nav a:focus-visible,.navtoggle:focus-visible{outline:2px solid #3ddc84;outline-offset:2px}
+.mobilebar,.navscrim{display:none}
+@media(max-width:760px){
+  .mobilebar{display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:60;background:#0a0a0a;border-bottom:1px solid #1e1e1e;padding:10px 16px}
+  .mobilebar .brand{font-size:22px;color:#f6f8fc;text-decoration:none}
+  .navtoggle{display:inline-flex;flex-direction:column;justify-content:center;gap:4px;width:42px;height:42px;padding:0 10px;border-radius:10px;background:#141414;border:1px solid #262626}
+  .navtoggle span{display:block;height:2px;background:#f6f8fc;border-radius:2px}
+  .navtoggle:hover{transform:none;box-shadow:none}
+  .sidebar{position:fixed;inset:0 auto 0 0;width:min(300px,86vw);z-index:80;transform:translateX(-100%);transition:transform .2s ease;box-shadow:none}
+  body.nav-open .sidebar{transform:none;box-shadow:0 0 40px rgba(0,0,0,.6)}
+  body.nav-open .navscrim{display:block;position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55)}
+  body.nav-open{overflow:hidden}
+  main{padding:18px 16px}
+  h1{font-size:30px}
+}
+@media(prefers-reduced-motion:reduce){.sidebar,.navgroup>summary::after{transition:none}}

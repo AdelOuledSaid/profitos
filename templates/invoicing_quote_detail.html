@@ -13,7 +13,7 @@
       <h1 class="purchase-title" style="margin-bottom:6px;">{{ q.quote_number }}</h1>
       <p class="purchase-subtitle" style="margin:0;">{{ q.client_name }} · {{ q.issue_date|fr_date }}{% if q.valid_until %} · valable jusqu'au {{ q.valid_until|fr_date }}{% endif %}</p>
     </div>
-    <div class="heroScore">{{ q.total|fr_number(2) }} €<span>TTC</span></div>
+    <div class="heroScore">{{ q.total|fr_number(2) }}&nbsp;€<span>TTC</span></div>
   </div>
 
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
@@ -48,17 +48,17 @@
           <tr>
             <td>{{ it.label }}</td>
             <td>{{ it.qty }}</td>
-            <td>{{ it.unit_price|fr_number(2) }} €</td>
+            <td>{{ it.unit_price|fr_number(2) }}&nbsp;€</td>
             <td>{{ it.vat_rate }}%</td>
-            <td><strong>{{ it.line_total|fr_number(2) }} €</strong></td>
+            <td><strong>{{ it.line_total|fr_number(2) }}&nbsp;€</strong></td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
     <div class="purchase-total-line" style="margin-top:16px;">
-      <span class="purchase-muted">Sous-total HT : {{ q.subtotal|fr_number(2) }} € · TVA : {{ q.vat_amount|fr_number(2) }} €</span>
-      <strong>{{ q.total|fr_number(2) }} € TTC</strong>
+      <span class="purchase-muted">Sous-total HT : {{ q.subtotal|fr_number(2) }}&nbsp;€ · TVA : {{ q.vat_amount|fr_number(2) }}&nbsp;€</span>
+      <strong>{{ q.total|fr_number(2) }}&nbsp;€ TTC</strong>
     </div>
     {% if q.notes %}<p class="purchase-muted" style="margin-top:14px;">{{ q.notes }}</p>{% endif %}
   </section>

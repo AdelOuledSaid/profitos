@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">LETTRAGE</div>
     <h1 class="purchase-title">{{ account.code }} — {{ account.label }}</h1>
-    <p class="purchase-subtitle">Coche des lignes non lettrées d'un même tiers dont le débit et le crédit s'équilibrent exactement, puis valide pour les rapprocher.</p>
+    <p class="purchase-subtitle">Cochez des lignes non lettrées d'un même tiers dont le débit et le crédit s'équilibrent exactement, puis validez pour les rapprocher.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_chart') }}">← Plan comptable</a>
 </div>
@@ -27,8 +27,8 @@
             <td>{{ l.piece_number }}</td>
             <td>{{ l.entry_date|fr_date }}</td>
             <td>{{ l.entry_label }}</td>
-            <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }} €{% endif %}</td>
-            <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }} €{% endif %}</td>
+            <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }}&nbsp;€{% endif %}</td>
+            <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }}&nbsp;€{% endif %}</td>
             <td>{% if l.lettrage_code %}<span class="purchase-status paid">{{ l.lettrage_code }}</span>{% endif %}</td>
           </tr>
         {% endfor %}

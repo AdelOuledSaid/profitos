@@ -11,7 +11,7 @@
   <div style="padding:24px 32px;">
     <div style="background:#f4f6fb;border-radius:10px;padding:18px;margin-bottom:16px;">
       <div style="font-size:12px;color:#8894ac;">MONTANT RESTANT DÛ</div>
-      <div style="font-size:28px;font-weight:800;color:#0f1c33;">{{ inv.outstanding|fr_number }} €</div>
+      <div style="font-size:28px;font-weight:800;color:#0f1c33;">{{ inv.outstanding|fr_number }}&nbsp;€</div>
     </div>
 
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid #e6ebf5;">
@@ -22,7 +22,7 @@
       <span style="color:#8894ac;">Échéance</span><strong style="color:#0f1c33;">{{ inv.due_date|fr_date }}</strong>
     </div>{% endif %}
     {% if inv.kind=='RETENTION' and inv.retention_release_date %}<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;">
-      <span style="color:#8894ac;">Retenue libérable le</span><strong style="color:#0f1c33;">{{ inv.retention_release_date }}</strong>
+      <span style="color:#8894ac;">Retenue libérable le</span><strong style="color:#0f1c33;">{{ inv.retention_release_date|fr_date }}</strong>
     </div>{% endif %}
 
     <p style="margin-top:20px;font-size:12px;color:#8894ac;">En cas de question sur cette facture, merci de contacter directement {{ org_name }}.</p>
