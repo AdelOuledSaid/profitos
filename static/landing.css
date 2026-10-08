@@ -32,3 +32,16 @@ a{color:inherit}
 @media(max-width:980px){.landing-hero,.landing-decision-showcase,.landing-trust-panel{grid-template-columns:1fr}.landing-hero{padding-top:60px}.landing-hero h1{font-size:52px}.landing-capability-grid{grid-template-columns:1fr 1fr}.landing-proof-grid{grid-template-columns:repeat(2,1fr)}.landing-proof-grid div{border-right:0;border-bottom:1px solid #1b3150;padding:13px}.landing-footer .landing-shell{grid-template-columns:1fr 1fr}.landing-final-cta .landing-shell{align-items:flex-start;flex-direction:column}}
 @media(max-width:700px){.landing-shell{width:min(100% - 28px,1180px)}.landing-header{width:calc(100% - 28px);height:68px}.landing-nav-links{display:none}.landing-brand{font-size:26px}.landing-hero{padding:48px 0 55px;gap:38px}.landing-hero h1{font-size:40px;letter-spacing:-1.8px}.landing-hero-copy>p{font-size:16px}.landing-cta-row{align-items:stretch;flex-direction:column}.landing-btn{width:100%}.preview-score-row,.preview-mini-grid{flex-direction:column}.landing-proof-grid,.landing-capability-grid,.landing-steps,.landing-trust-cards,.landing-ops-grid{grid-template-columns:1fr}.landing-section{padding:68px 0}.landing-section-heading h2,.landing-decision-copy h2,.landing-trust-panel h2,.landing-final-cta h2{font-size:32px}.landing-before-after{grid-template-columns:1fr}.ba-arrow{transform:rotate(90deg)}.ba-saving{grid-column:1}.landing-checks{grid-template-columns:1fr}.landing-footer .landing-shell{grid-template-columns:1fr}.landing-footer nav{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}.landing-fade-in,.landing-reveal{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+
+/* Haut de page vidéo : titre à gauche dans la zone sombre, l'homme qui marche à droite */
+.landing-hero--video{grid-template-columns:minmax(0,660px) 1fr;min-height:min(84vh,820px)}
+.landing-hero--video:before{background:linear-gradient(90deg,rgba(0,0,0,.94) 0%,rgba(0,0,0,.80) 34%,rgba(0,0,0,.32) 60%,rgba(0,0,0,.10) 100%),linear-gradient(0deg,#000 0%,rgba(0,0,0,0) 22%)}
+.landing-hero-video{position:absolute;top:0;bottom:0;left:50%;width:100vw;height:100%;transform:translateX(-50%);object-fit:cover;object-position:74% 42%;z-index:-2;background:#000 url("/static/video/hero-homme.jpg") 74% 42%/cover no-repeat;pointer-events:none}
+@media(max-width:980px){.landing-hero--video{grid-template-columns:1fr;min-height:0}.landing-hero--video:before{background:linear-gradient(90deg,rgba(0,0,0,.90) 0%,rgba(0,0,0,.70) 60%,rgba(0,0,0,.45) 100%),linear-gradient(0deg,#000 0%,rgba(0,0,0,0) 25%)}.landing-hero-video{object-position:66% 40%}}
+
+/* Aperçu produit déplacé sous le haut de page */
+.landing-preview-section{padding-top:84px}
+.landing-preview-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:56px;align-items:center}
+.landing-preview-copy h2{font-size:40px;line-height:1.08;letter-spacing:-1px;margin:0 0 18px;max-width:520px}
+.landing-preview-copy p{font-size:18px;color:#b4b4b4;max-width:520px;margin:0 0 26px}
+@media(max-width:980px){.landing-preview-grid{grid-template-columns:1fr;gap:34px}.landing-preview-copy h2{font-size:32px}}

@@ -38,7 +38,11 @@
 </header>
 
 <main>
-<section class="landing-hero landing-shell">
+<section class="landing-hero landing-hero--video landing-shell">
+  <video class="landing-hero-video" data-hero-video muted loop playsinline preload="none" poster="{{ url_for('static', filename='video/hero-homme.jpg') }}" aria-hidden="true" tabindex="-1">
+    <source src="{{ url_for('static', filename='video/hero-homme.webm') }}" type="video/webm">
+    <source src="{{ url_for('static', filename='video/hero-homme.mp4') }}" type="video/mp4">
+  </video>
   <div class="landing-hero-copy landing-fade-in">
     <div class="landing-kicker"><span></span> FINANCIAL OPERATING SYSTEM POUR VOTRE ENTREPRISE</div>
     <div class="landing-float-arrow" aria-hidden="true">↙</div>
@@ -51,6 +55,25 @@
     <div class="landing-trust-line"><span>✓ 14 jours d'essai</span><span>✓ Sans carte bancaire</span><span>✓ Vos actions restent sous votre contrôle</span></div>
   </div>
 
+</section>
+
+<section class="landing-proof-strip">
+  <div class="landing-shell landing-proof-grid">
+    <div><strong>RELANCES CLIENTS</strong><span>Prioriser les créances à encaisser</span></div>
+    <div><strong>ÉCONOMIES</strong><span>Repérer les dépenses évitables</span></div>
+    <div><strong>TRÉSORERIE</strong><span>Anticiper la trésorerie à 90 jours</span></div>
+    <div><strong>DÉCISIONS</strong><span>Tester une décision avant de payer</span></div>
+    <div><strong>MARCHÉS PUBLICS</strong><span>Identifier les opportunités pertinentes</span></div>
+  </div>
+</section>
+
+<section class="landing-section landing-preview-section">
+  <div class="landing-shell landing-preview-grid">
+    <div class="landing-preview-copy">
+      <h2>Chaque matin, la décision qui protège le plus votre trésorerie.</h2>
+      <p>ProfitOS croise vos factures, vos dépenses et votre solde bancaire pour vous indiquer quoi faire en premier : quel client relancer, quelle dépense revoir, quel risque anticiper.</p>
+      <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Essayer sur mes données</a>
+    </div>
   <div class="landing-product-preview landing-fade-in landing-fade-in-2" aria-label="Aperçu de ProfitOS">
     <div class="preview-topbar"><div><strong>ProfitOS</strong><span>Diagnostic financier</span></div><span class="preview-live"><span class="preview-live-dot"></span> LIVE</span></div>
     <div class="preview-score-row">
@@ -66,15 +89,6 @@
     <div class="preview-mini-grid"><div><small>RELANCES CLIENTS</small><strong><span data-count-to="28100" data-count-suffix=" €">0</span></strong></div><div><small>ÉCONOMIES / MOIS</small><strong><span data-count-to="700" data-count-suffix=" €">0</span></strong></div><div><small>TRÉSORERIE J+90</small><strong><span data-count-to="35423" data-count-suffix=" €">0</span></strong></div></div>
     <p>Exemple illustratif — les résultats dépendent des données de votre entreprise.</p>
   </div>
-</section>
-
-<section class="landing-proof-strip">
-  <div class="landing-shell landing-proof-grid">
-    <div><strong>RELANCES CLIENTS</strong><span>Prioriser les créances à encaisser</span></div>
-    <div><strong>ÉCONOMIES</strong><span>Repérer les dépenses évitables</span></div>
-    <div><strong>TRÉSORERIE</strong><span>Anticiper la trésorerie à 90 jours</span></div>
-    <div><strong>DÉCISIONS</strong><span>Tester une décision avant de payer</span></div>
-    <div><strong>MARCHÉS PUBLICS</strong><span>Identifier les opportunités pertinentes</span></div>
   </div>
 </section>
 

@@ -280,3 +280,28 @@ document.addEventListener('DOMContentLoaded', function () {
     if (event.key === 'Escape' && document.body.classList.contains('nav-open')) setNav(false);
   });
 })();
+
+// Vidéo du haut de page (accueil public) : lecture seulement sur grand écran, sans
+// économie de données ni préférence « réduire les animations ». Sinon l'image fixe reste.
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var video = document.querySelector('[data-hero-video]');
+    if (!video) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+    var saveData = navigator.connection && navigator.connection.saveData;
+    if (reduce || narrow || saveData) return;
+    video.preload = 'auto';
+    var p = video.play();
+    if (p && p.catch) p.catch(function () {});
+    // Pause quand le haut de page n'est plus visible (économie de batterie)
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { var q = video.play(); if (q && q.catch) q.catch(function () {}); }
+          else { video.pause(); }
+        });
+      }, { threshold: 0.1 }).observe(video);
+    }
+  });
+})();
