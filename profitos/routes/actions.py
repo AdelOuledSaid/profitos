@@ -57,7 +57,7 @@ def register(app):
         ).fetchone()
         if active_action:
             c.close()
-            flash("Une action est déjà en cours pour cet élément. Ouvrez Action Center pour la gérer.")
+            flash("Une action est déjà en cours pour cet élément. Ouvrez le centre d'actions pour la gérer.")
             return redirect(url_for('detail',kind=kind,item_id=item_id))
 
         if kind=='RECOVER' and not force_new:
@@ -109,7 +109,7 @@ def register(app):
             if kind=='SAVE':
                 title=f"Vérifier — {o['title']}"
                 draft=(
-                    f"Signal SAVE : {o['title']}\n"
+                    f"Signal d'économie : {o['title']}\n"
                     f"Valeur potentielle : {fr_number(o['value'],2)} €\n"
                     f"Confiance : {o['score']} %\n\n"
                     "Vérifier les pièces sources avant toute action."
@@ -248,7 +248,7 @@ def register(app):
             return redirect(url_for('actions'))
         if a['kind']!='RECOVER':
             c.close()
-            flash("L'envoi par email n'est disponible que pour les actions RECOVER.")
+            flash("L'envoi par email n'est disponible que pour les relances clients.")
             return redirect(url_for('actions'))
 
         inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
@@ -297,7 +297,7 @@ def register(app):
         if a['status']!='APPROVED':
             c.close(); flash("Cette action doit d'abord être approuvée avant envoi."); return redirect(url_for('actions'))
         if a['kind']!='RECOVER':
-            c.close(); flash("L'envoi par SMS n'est disponible que pour les actions RECOVER."); return redirect(url_for('actions'))
+            c.close(); flash("L'envoi par SMS n'est disponible que pour les relances clients."); return redirect(url_for('actions'))
 
         inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
         c.close()

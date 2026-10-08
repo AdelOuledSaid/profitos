@@ -768,7 +768,7 @@ def register(app):
 
             if urgent['n']:
                 notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
-            msg=f'Factures analysées · {signals} signaux RECOVER.'
+            msg=f'Factures analysées · {signals} créance(s) à relancer détectée(s).'
             if retentions: msg+=f' Dont {retentions} retenue(s) de garantie détectée(s).'
             flash(msg)
             if anomalies:

@@ -107,7 +107,7 @@ def register(app):
             c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,siret,address,vat_number,postal_code,iban,bic,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,siret=excluded.siret,address=excluded.address,vat_number=excluded.vat_number,postal_code=excluded.postal_code,iban=excluded.iban,bic=excluded.bic,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
             org=current_org()
             if org and feature_enabled(org['plan'],'advanced_features'):
-                try:flash(f'GROW actualisé : {sync_grow()} opportunités pertinentes.')
+                try:flash(f'Marchés publics actualisés : {sync_grow()} opportunité(s) pertinente(s).')
                 except Exception as e:flash(f'Profil enregistré, mais BOAMP est indisponible : {e}')
             return redirect(url_for('grow'))
         p=c.execute('SELECT * FROM company WHERE id=1').fetchone()
@@ -517,7 +517,7 @@ def register(app):
                 {'name':'Doublons de dépenses','desc':"Détecte les paiements en double au même fournisseur."},
                 {'name':'Hausses fournisseurs','desc':"Repère les augmentations de prix inhabituelles d'un mois sur l'autre."},
                 {'name':'Contrats dormants','desc':"Identifie les abonnements ou contrats payés sans activité récente."},
-                {'name':'Margin Watch','desc':"Suit l'érosion de marge sur vos contrats à prix fixe, avec l'indice de référence de votre choix."},
+                {'name':'Suivi des marges','desc':"Suit l'érosion de marge sur vos contrats à prix fixe, avec l'indice de référence de votre choix."},
             ]},
             {'icon':'📈','color':'green','title':'Développement commercial','features':[
                 {'name':'Opportunités de marché','desc':"Appels d'offres publics (BOAMP) correspondant à votre profil d'activité."},
@@ -527,12 +527,12 @@ def register(app):
             {'icon':'🧠','color':'blue','title':'Trésorerie & décisions','features':[
                 {'name':'Prévision de trésorerie','desc':"Projection à 30/60/90 jours, pondérée par la probabilité de chaque opportunité."},
                 {'name':'Simulateur de décision','desc':"Compare un scénario avant/après optimisation, avec les hypothèses toujours visibles."},
-                {'name':'Financial Brain','desc':"Score de contrôle financier consolidé, recalculé à chaque nouvelle donnée importée."},
+                {'name':'Diagnostic financier','desc':"Score de contrôle financier consolidé, recalculé à chaque nouvelle donnée importée."},
                 {'name':'Garde-fou de cohérence','desc':"N'invente jamais un revenu ou une charge non déclarée dans les recommandations."},
             ]},
             {'icon':'📅','color':'purple','title':'Pilotage & reporting','features':[
                 {'name':'Calendrier unifié','desc':"Échéances de factures, retenues et deadlines d'appels d'offres, en un seul endroit."},
-                {'name':'Rapport hebdomadaire','desc':"Résumé automatique des nouveautés RECOVER/SAVE/GROW de la semaine."},
+                {'name':'Rapport hebdomadaire','desc':"Résumé automatique des nouveautés de la semaine : créances, économies et marchés publics."},
                 {'name':'Rapport mensuel PDF','desc':"Document téléchargeable pour un comité de direction ou une banque."},
                 {'name':'Export vers votre comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement selon la fréquence choisie."},
                 {'name':'Journal d\'audit','desc':"Trace exportable de chaque action et changement de statut, utile en cas de contrôle."},

@@ -146,7 +146,7 @@ def register(app):
             pdf.set_font('Helvetica','B',13); pdf.set_text_color(17,24,39); pdf.cell(0,10,title,ln=1)
             pdf.set_draw_color(229,231,235); pdf.line(pdf.get_x(),pdf.get_y(),pdf.get_x()+180,pdf.get_y()); pdf.ln(3)
 
-        section('RECOVER - creances prioritaires')
+        section('Relances clients - créances prioritaires')
         if top_recover:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for r in top_recover:
@@ -155,22 +155,22 @@ def register(app):
             pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune creance en retard.',ln=1)
         pdf.ln(4)
 
-        section('SAVE - economies detectees')
+        section('Économies détectées')
         if top_save:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for s in top_save:
                 pdf.cell(0,7,pdf_safe(f"- {s['title']} - {fr_number(s['value'])} EUR/an"),ln=1)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun signal SAVE ouvert.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune économie détectée.',ln=1)
         pdf.ln(4)
 
-        section('GROW - opportunites de marche')
+        section('Marchés publics - opportunités')
         if top_grow:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for g in top_grow:
                 pdf.cell(0,7,pdf_safe(f"- {g['title']} - {g['buyer'] or ''}"),ln=1)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune opportunite GROW ouverte.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun marché public ouvert.',ln=1)
 
         pdf_bytes=bytes(pdf.output(dest='S'))
         filename=f"profitos-rapport-{datetime.now(timezone.utc).strftime('%Y-%m')}.pdf"

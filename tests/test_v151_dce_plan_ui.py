@@ -19,7 +19,7 @@ def test_dce_upload_form_preserved():
 
 def test_dce_results_inside_advanced_plan_gate():
     t=(ROOT/'templates'/'detail.html').read_text(encoding='utf-8')
-    dce_marker=t.index("TENDER INTELLIGENCE")
+    dce_marker=t.index("ANALYSE D'APPEL D'OFFRES")
     gate=t.index("{% if advanced_plan %}", dce_marker)
     results=t.index("{% for d in dce_items %}")
     assert gate < results

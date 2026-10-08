@@ -35,7 +35,7 @@
     {% endif %}
     {% if digest.save_count %}
     <div style="padding:14px 16px;background:#fffbeb;border-left:4px solid #d97706;border-radius:6px;margin-bottom:10px;">
-      <div style="font-size:20px;font-weight:700;color:#111827;">{{ digest.save_count }} signal(aux) SAVE</div>
+      <div style="font-size:20px;font-weight:700;color:#111827;">{{ digest.save_count }} signal(aux) d'économie</div>
       <div style="font-size:13px;color:#6b7280;">économie potentielle détectée : {{ digest.save_total|fr_number }}&nbsp;€/an</div>
       {% for s in digest.save_top %}<div style="font-size:13px;color:#374151;margin-top:4px;">• {{ s.title }}</div>{% endfor %}
     </div>

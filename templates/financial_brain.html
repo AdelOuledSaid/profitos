@@ -3,7 +3,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">DIAGNOSTIC FINANCIER</div>
 <h1 class="purchase-title">Quelle décision protège le plus votre argent ?</h1>
-<p class="purchase-subtitle">ProfitOS croise RECOVER, SAVE, GROW, Margin Watch et le solde bancaire enregistré dans Cash Intelligence. Aucune donnée financière manquante n'est inventée.</p>
+<p class="purchase-subtitle">ProfitOS croise vos créances à encaisser, vos économies potentielles, les marchés publics, le suivi des marges et le solde bancaire enregistré dans Trésorerie &amp; scénarios. Aucune donnée financière manquante n'est inventée.</p>
 
 <div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
   <div class="purchase-stat">
@@ -31,9 +31,9 @@
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">RECOVERY ATTENDU</div>
+      <div class="purchase-stat-label">ENCAISSEMENT ATTENDU</div>
       <div class="purchase-stat-value">{{ brain.expected_recovery|fr_number }}&nbsp;€</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Estimation prudente issue de RECOVER</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Estimation prudente issue des relances clients</div>
     </div>
   </div>
   <div class="purchase-stat">
@@ -41,7 +41,7 @@
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">SAVE MENSUEL</div>
+      <div class="purchase-stat-label">ÉCONOMIES MENSUELLES</div>
       <div class="purchase-stat-value">{{ brain.save_monthly|fr_number }}&nbsp;€</div>
       <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Équivalent mensuel des économies annualisées détectées</div>
     </div>
@@ -52,7 +52,7 @@
 <section class="purchase-panel brain-next">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">PROCHAINE MEILLEURE DÉCISION</div>
   <div class="brain-next-grid">
-    <div><span class="type {{ brain.best_decision.kind|lower }}">{{ brain.best_decision.kind }}</span><h2 style="color:#fff;">{{ brain.best_decision.title }}</h2><p>{{ brain.best_decision.brain_reason }}</p><div class="recommendation-box"><small>ACTION</small><strong>{{ brain.best_decision.brain_action }}</strong></div></div>
+    <div><span class="type {{ brain.best_decision.kind|lower }}">{{ brain.best_decision.kind|label }}</span><h2 style="color:#fff;">{{ brain.best_decision.title }}</h2><p>{{ brain.best_decision.brain_reason }}</p><div class="recommendation-box"><small>ACTION</small><strong>{{ brain.best_decision.brain_action }}</strong></div></div>
     <div class="brain-next-value">{% if brain.best_decision.amount > 0 %}<strong>{{ brain.best_decision.amount|fr_number }}&nbsp;€</strong>{% endif %}<a class="purchase-primary-btn secondary" href="{{ url_for('detail',kind=brain.best_decision.url_kind,item_id=brain.best_decision.item_id) }}">Agir maintenant</a></div>
   </div>
 </section>
@@ -60,12 +60,12 @@
 
 <section class="purchase-panel" style="margin-top:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">ARBITRAGE</div><h2 style="color:#fff;">Décisions classées par impact</h2>
-  {% for d in brain.decisions %}<div class="brain-row"><div><span class="type {{ d.kind|lower }}">{{ d.kind }}</span><strong>{{ d.title }}</strong><small>{{ d.brain_reason }}</small></div><div><strong>{% if d.financial_impact>0 %}{{ d.financial_impact|fr_number }}&nbsp;€{% else %}À qualifier{% endif %}</strong><small>impact de décision</small></div></div>{% else %}<p class="purchase-empty">Pas encore assez de signaux pour classer une décision.</p>{% endfor %}
+  {% for d in brain.decisions %}<div class="brain-row"><div><span class="type {{ d.kind|lower }}">{{ d.kind|label }}</span><strong>{{ d.title }}</strong><small>{{ d.brain_reason }}</small></div><div><strong>{% if d.financial_impact>0 %}{{ d.financial_impact|fr_number }}&nbsp;€{% else %}À qualifier{% endif %}</strong><small>impact de décision</small></div></div>{% else %}<p class="purchase-empty">Pas encore assez de signaux pour classer une décision.</p>{% endfor %}
 </section>
 
 <section class="purchase-panel" style="margin-top:20px;">
-  <div class="purchase-eyebrow" style="margin-bottom:8px;">GROW · FINANCIAL CHECK</div><h2 style="color:#fff;">Peut-on financièrement prendre ce marché ?</h2>
-  {% for g in brain.grow_checks %}<div class="brain-grow"><div><strong>{{ g.title }}</strong><small>{{ g.buyer or 'Acheteur non précisé' }} · Match {{ g.score }}/100</small></div><span class="status">{{ g.decision }}</span><p>{{ g.reason }}</p><p class="purchase-muted"><strong style="color:inherit;">Données requises :</strong> {{ g.missing|join(', ') }}</p><a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=g.id) }}">Ouvrir le marché →</a></div>{% else %}<p class="purchase-empty">Aucune opportunité GROW ouverte.</p>{% endfor %}
+  <div class="purchase-eyebrow" style="margin-bottom:8px;">MARCHÉS PUBLICS · CONTRÔLE FINANCIER</div><h2 style="color:#fff;">Peut-on financièrement prendre ce marché ?</h2>
+  {% for g in brain.grow_checks %}<div class="brain-grow"><div><strong>{{ g.title }}</strong><small>{{ g.buyer or 'Acheteur non précisé' }} · Match {{ g.score }}/100</small></div><span class="status">{{ g.decision }}</span><p>{{ g.reason }}</p><p class="purchase-muted"><strong style="color:inherit;">Données requises :</strong> {{ g.missing|join(', ') }}</p><a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=g.id) }}">Ouvrir le marché →</a></div>{% else %}<p class="purchase-empty">Aucun marché public ouvert.</p>{% endfor %}
 </section>
 
 <section class="purchase-panel brain-gaps" style="margin-top:20px;">

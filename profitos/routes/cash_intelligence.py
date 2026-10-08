@@ -296,5 +296,5 @@ def register(app):
                 custom=_simulate_curve(cash['cash_balance'],daily_burn,cash['receivables'],scheduled_outflows=cash.get('scheduled_outflows',[]),mode='probable',top_delay=mapping[raw_delay])
                 custom['label']={'today':"Aujourd'hui",'7':'Sous 7 jours','30':'Sous 30 jours','60':'Sous 60 jours','never':"Pas d'encaissement sur 90 j"}[raw_delay]
                 custom['choice']=raw_delay
-        log_activity('CASH_INTELLIGENCE_VIEW','Consultation de Cash Intelligence')
+        log_activity('CASH_INTELLIGENCE_VIEW','Consultation de Trésorerie & scénarios')
         return render_template('cash_intelligence.html',cash=cash,custom=custom)

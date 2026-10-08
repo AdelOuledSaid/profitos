@@ -13,7 +13,7 @@
         <tr>
           <td>
             <a class="purchase-detail-link" href="{{ url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
-              <span class="purchase-status">{{ e.type }}</span>
+              <span class="purchase-status">{{ e.type|label }}</span>
               <strong style="margin-left:8px;">{{ e.label }}</strong>
             </a><br>
             <small class="purchase-muted">{{ e.date|fr_date }}</small>

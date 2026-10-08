@@ -14,7 +14,7 @@
 <section class="purchase-panel" style="margin-bottom:16px;">
   <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
     <div><strong style="color:#fff;">{{ e.piece_number }}</strong> · {{ e.entry_date|fr_date }} · {{ e.label }}</div>
-    {% if e.source_type %}<span class="purchase-muted" style="font-size:12px;">{{ e.source_type }} #{{ e.source_id }}</span>{% endif %}
+    {% if e.source_type %}<span class="purchase-muted" style="font-size:12px;">{{ e.source_type|label }} #{{ e.source_id }}</span>{% endif %}
   </div>
   <div class="purchase-table-wrap" style="margin-top:10px;">
     <table class="purchase-table">

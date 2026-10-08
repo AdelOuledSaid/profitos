@@ -68,7 +68,7 @@
       <tbody>
       {% for r in top %}
         <tr>
-          <td><a class="purchase-detail-link" href="{{ url_for('detail',kind=r.type,item_id=r.id) }}"><span class="purchase-status">{{ r.type }}</span> <strong>{{ r.title }}</strong></a><br><small class="purchase-muted">{{ r.subtitle }}</small></td>
+          <td><a class="purchase-detail-link" href="{{ url_for('detail',kind=r.type,item_id=r.id) }}"><span class="purchase-status">{{ r.type|label }}</span> <strong>{{ r.title }}</strong></a><br><small class="purchase-muted">{{ r.subtitle }}</small></td>
           <td style="text-align:right;">{% if r.value %}<strong>{{ r.value|fr_number }}&nbsp;€</strong>{% else %}—{% endif %}</td>
           <td style="text-align:right;">{{ r.score }}/100</td>
         </tr>

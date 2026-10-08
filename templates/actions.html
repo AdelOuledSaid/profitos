@@ -13,7 +13,7 @@
 <section class="purchase-panel actioncard">
   <div class="actionhead">
     <div>
-      <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
+      <div class="type {{ a.kind|lower }}">{{ a.kind|label }}</div>
       <h2>{{ a.title }}</h2>
     </div>
     <span class="status">{{ a.status }}</span>
@@ -83,7 +83,7 @@
     <section class="purchase-panel actioncard">
       <div class="actionhead">
         <div>
-          <div class="type {{ a.kind|lower }}">{{ a.kind }}</div>
+          <div class="type {{ a.kind|lower }}">{{ a.kind|label }}</div>
           <h2>{{ a.title }}</h2>
         </div>
         <span class="status">{{ a.status }}</span>

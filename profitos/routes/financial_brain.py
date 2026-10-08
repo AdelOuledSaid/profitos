@@ -9,7 +9,7 @@ def _margin_risk(c):
     readings=c.execute("SELECT * FROM price_index_readings WHERE index_name=? ORDER BY reading_date ASC",(index_name,)).fetchall()
     contracts=c.execute("SELECT * FROM fixed_price_contracts WHERE status='ACTIVE' ORDER BY signed_date DESC").fetchall()
     if len(readings)<2 or not contracts:
-        return {'total':0.0,'contracts':0,'available':False,'index_name':index_name,'note':f'Ajoutez des contrats et au moins deux relevés {index_name} dans Margin Watch.'}
+        return {'total':0.0,'contracts':0,'available':False,'index_name':index_name,'note':f'Ajoutez des contrats et au moins deux relevés {index_name} dans Suivi des marges.'}
     latest=readings[-1]
     total=0.0; exposed=0
     for ct in contracts:
@@ -91,9 +91,9 @@ def build_financial_brain():
 
     cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None else _safe_float(financial_settings['cash_balance'])
     data_gaps=[]
-    if cash_balance is None: data_gaps.append('Solde bancaire actuel non renseigné. Saisissez-le dans Cash Intelligence ou importez un relevé contenant une colonne solde.')
+    if cash_balance is None: data_gaps.append('Solde bancaire actuel non renseigné. Saisissez-le dans Trésorerie & scénarios ou importez un relevé contenant une colonne solde.')
     if not margin['available']: data_gaps.append('Risque de marge incomplet : historique de l’indice de référence / contrats insuffisant.')
-    if not grows: data_gaps.append('Aucune opportunité GROW ouverte à tester.')
+    if not grows: data_gaps.append('Aucun marché public ouvert à tester.')
 
     return {
         'money':money,'cash_balance':cash_balance,'cash_as_of':(financial_settings['cash_as_of'] if financial_settings else None),
@@ -116,5 +116,5 @@ def register(app):
     @requires_feature('advanced_ai')
     def financial_brain():
         brain=build_financial_brain()
-        log_activity('FINANCIAL_BRAIN_VIEW','Consultation du Financial Brain')
+        log_activity('FINANCIAL_BRAIN_VIEW','Consultation du diagnostic financier')
         return render_template('financial_brain.html',brain=brain)

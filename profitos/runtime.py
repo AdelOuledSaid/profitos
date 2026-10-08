@@ -2794,6 +2794,29 @@ def asset_url(filename):
         v = 0
     return url_for('static', filename=filename, v=v)
 
+# Libellés affichés pour les valeurs internes (types de signaux, sources d'écritures).
+# Les valeurs elles-mêmes (RECOVER, SAVE, GROW...) restent inchangées dans la logique.
+DISPLAY_LABELS = {
+    'RECOVER': 'Relance client', 'SAVE': 'Économie', 'GROW': 'Marché public', 'RETENTION': 'Retenue',
+    'outgoing_invoice': 'Facture client', 'outgoing_credit_note': 'Avoir client',
+    'customer_deposit_invoice': "Facture d'acompte", 'customer_final_invoice': 'Facture de solde',
+    'outgoing_invoice_payment': 'Règlement client', 'outgoing_invoice_payment_v2': 'Règlement client',
+    'purchase_invoice': 'Facture fournisseur', 'purchase_credit_note': 'Avoir fournisseur',
+    'purchase_invoice_payment': 'Règlement fournisseur', 'purchase_invoice_payment_v2': 'Règlement fournisseur',
+    'bank_categorization': 'Opération bancaire', 'bank_fee': 'Frais bancaires',
+    'expense_report': 'Note de frais', 'expense_report_reimbursement': 'Remboursement de note de frais',
+    'cutoff': 'Cut-off', 'cutoff_reversal': 'Extourne de cut-off',
+    'loan_drawdown': "Déblocage d'emprunt", 'loan_installment': "Échéance d'emprunt",
+    'finance_lease_payment': 'Loyer de crédit-bail', 'payroll_import': 'Import de paie',
+}
+
+def display_label(value):
+    """Libellé français d'une valeur interne ; la valeur brute si elle est inconnue."""
+    if value is None:
+        return ''
+    return DISPLAY_LABELS.get(str(value), DISPLAY_LABELS.get(str(value).upper(), value))
+
+
 def fr_number(value, decimals=0):
     """Formate un nombre à la française : espace insécable pour les milliers,
     virgule pour la décimale (ex. 4800.5 -> "4 800,5"). Remplace les usages
@@ -2842,6 +2865,7 @@ def init_runtime(app):
     app.jinja_env.globals['asset_url'] = asset_url
     app.jinja_env.filters['fr_number'] = fr_number
     app.jinja_env.filters['fr_date'] = fr_date
+    app.jinja_env.filters['label'] = display_label
     from profitos.sepa import format_iban
     app.jinja_env.filters['format_iban'] = format_iban
     app.before_request(csrf_protect)

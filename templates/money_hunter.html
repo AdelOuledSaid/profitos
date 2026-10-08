@@ -4,7 +4,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">GISEMENTS DE CASH</div>
 <h1 class="purchase-title">Où est votre argent aujourd’hui ?</h1>
-<p class="purchase-subtitle">ProfitOS regroupe RECOVER, SAVE et GROW, puis met en avant les décisions financières les plus utiles. Les montants affichés viennent uniquement de vos données.</p>
+<p class="purchase-subtitle">ProfitOS regroupe vos créances à encaisser, vos économies potentielles et les marchés publics, puis met en avant les décisions financières les plus utiles. Les montants affichés viennent uniquement de vos données.</p>
 
 <div class="purchase-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:24px 0;">
   <div class="purchase-stat">
@@ -45,9 +45,9 @@
 </div>
 
 <section class="purchase-panel" style="margin-bottom:20px;">
-  <div class="purchase-eyebrow" style="margin-bottom:8px;">MONEY BRIEF</div>
+  <div class="purchase-eyebrow" style="margin-bottom:8px;">SYNTHÈSE</div>
   <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ brief.money_identified|fr_number }}&nbsp;€ identifiés</h2>
-  <p class="purchase-muted">Créances RECOVER + économies SAVE potentielles. SAVE est généralement annualisé : ce total n'est pas une prévision de trésorerie.</p>
+  <p class="purchase-muted">Créances à encaisser + économies potentielles. Les économies sont généralement annualisées : ce total n'est pas une prévision de trésorerie.</p>
   <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
     <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.expected_value|fr_number }}&nbsp;€</div></div>
     <div><small class="purchase-muted">SIGNAUX ANALYSÉS</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.recommendation_count }}</div></div>
@@ -62,7 +62,7 @@
     <article class="money-decision">
       <div class="money-decision-main">
         <div class="money-badges">
-          <span class="money-kind type {{ r.kind|lower }}">{{ r.kind }}</span>
+          <span class="money-kind type {{ r.kind|lower }}">{{ r.kind|label }}</span>
           <span class="priority-badge">{{ r.urgency_level }}</span>
         </div>
         <h3>{{ r.title }}</h3>
@@ -108,7 +108,7 @@
       </aside>
     </article>
   {% else %}
-    <p class="muted">Aucun signal financier disponible. Importez des factures ou des dépenses, ou configurez votre profil GROW.</p>
+    <p class="muted">Aucun signal financier disponible. Importez des factures ou des dépenses, ou complétez votre profil entreprise pour les marchés publics.</p>
   {% endfor %}
 </section>
 </div>
