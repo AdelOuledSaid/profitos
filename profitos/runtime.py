@@ -2125,9 +2125,11 @@ def invoice_score(amount,days,paid=0):
     due=max(0,money(amount)-money(paid))
     return min(100,min(40,int(due/20000*40))+min(45,int(max(days,0)/90*45))+15)
 
-def sparkline_svg(values,width=260,height=56,color='#5fe0ac'):
+def sparkline_svg(values,width=260,height=56,color='#5fe0ac',stretch=False):
     """Petite courbe SVG en ligne, générée côté serveur (pas de lib JS de chart).
-    values : liste de nombres (chronologique, le plus ancien en premier)."""
+    values : liste de nombres (chronologique, le plus ancien en premier).
+    stretch=True : la courbe occupe toute la largeur disponible (sinon elle reste
+    à sa taille, centrée, et paraît minuscule dans un grand panneau)."""
     if not values or len(values)<2:
         return None
     lo,hi=min(values),max(values)
@@ -2140,6 +2142,12 @@ def sparkline_svg(values,width=260,height=56,color='#5fe0ac'):
         pts.append(f"{x:.1f},{y:.1f}")
     path='M'+' L'.join(pts)
     last_x,last_y=pts[-1].split(',')
+    if stretch:
+        return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" preserveAspectRatio="none" '
+                f'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Évolution sur la période">'
+                f'<line x1="0" y1="{height-1}" x2="{width}" y2="{height-1}" stroke="#262626" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+                f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linecap="round" '
+                f'stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>')
     return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
             f'xmlns="http://www.w3.org/2000/svg"><path d="{path}" fill="none" stroke="{color}" '
             f'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'

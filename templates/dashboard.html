@@ -51,10 +51,11 @@
 {% if dso_svg %}
 <section class="purchase-panel" style="margin-bottom:24px;">
   <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-    <div><h2 style="margin-bottom:4px;color:#fff;">Tendance DSO</h2><p class="purchase-muted" style="margin:0;">Délai moyen de retard sur les créances échues (jours)</p></div>
+    <div><h2 style="margin-bottom:4px;color:#fff;">Retard moyen de paiement</h2><p class="purchase-muted" style="margin:0;">Nombre moyen de jours de retard sur vos factures clients échues{% if dso_delta is not none and dso_delta!=0 %} · évolution depuis le relevé précédent{% endif %}</p></div>
     <div style="text-align:right;"><div style="font-size:32px;font-weight:800;color:#fff;margin:0;">{{ dso_current }} j{% if dso_delta is not none and dso_delta!=0 %}<span style="font-size:15px;margin-left:8px;" class="{{ 'purchase-alert-text' if dso_delta>0 else 'purchase-ok-text' }}">{{ '+' if dso_delta>0 else '' }}{{ dso_delta }} j</span>{% endif %}</div></div>
   </div>
   <div style="margin-top:14px;">{{ dso_svg|safe }}</div>
+  {% if dso_period %}<div class="purchase-muted" style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;"><span>{{ dso_period[0] }}</span><span>{{ dso_period[1] }}</span></div>{% endif %}
   {% if sector_benchmark %}
   <p class="purchase-muted" style="margin-top:10px;font-size:13px;">Moyenne des {{ sector_benchmark.org_count }} autre(s) organisation(s) ProfitOS : <strong class="{{ 'purchase-ok-text' if dso_current<=sector_benchmark.avg_days else 'purchase-alert-text' }}">{{ sector_benchmark.avg_days }} j</strong> {% if dso_current<=sector_benchmark.avg_days %}— vous êtes sous la moyenne du secteur.{% else %}— vous êtes au-dessus de la moyenne du secteur.{% endif %}</p>
   {% endif %}

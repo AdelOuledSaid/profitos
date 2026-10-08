@@ -56,8 +56,10 @@ def register(app):
         if not snaps and not eid:
             snaps=c.execute('SELECT * FROM dso_snapshots ORDER BY snapshot_date ASC LIMIT 30').fetchall()
         c.close(); top.sort(key=lambda x:x['score'],reverse=True)
-        dso_values=[s['avg_days_overdue'] or 0 for s in snaps][-12:]
-        dso_svg=sparkline_svg(dso_values) if len(dso_values)>=2 else None
+        recent_snaps=list(snaps)[-12:]
+        dso_values=[s['avg_days_overdue'] or 0 for s in recent_snaps]
+        dso_svg=sparkline_svg(dso_values,width=900,height=72,stretch=True) if len(dso_values)>=2 else None
+        dso_period=(fr_date(str(recent_snaps[0]['snapshot_date'])[:10]),fr_date(str(recent_snaps[-1]['snapshot_date'])[:10])) if len(recent_snaps)>=2 else None
         dso_current=round(dso_values[-1]) if dso_values else None
         dso_delta=round(dso_values[-1]-dso_values[-2]) if len(dso_values)>=2 else None
         try: sector_benchmark=sector_dso_benchmark(session['org_id']) if dso_current is not None else None
@@ -89,7 +91,7 @@ def register(app):
             save=save if can_access('save') else None,
             grow=grow if can_access('grow') else None,
             pending=pending,verified=verified,top=top[:6],
-            dso_svg=dso_svg if can_access('recover') else None,dso_current=dso_current,dso_delta=dso_delta,
+            dso_svg=dso_svg if can_access('recover') else None,dso_current=dso_current,dso_delta=dso_delta,dso_period=dso_period,
             sector_benchmark=sector_benchmark if can_access('recover') else None,
             onboarding_steps=onboarding_steps,onboarding_done=onboarding_done,show_onboarding=show_onboarding)
 
