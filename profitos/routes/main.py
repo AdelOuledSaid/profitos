@@ -86,6 +86,34 @@ def register(app):
         onboarding_done=sum(1 for s in onboarding_steps if s['done'])
         show_onboarding=onboarding_done<len(onboarding_steps)
 
+        # Pouls de trésorerie : même moteur que Trésorerie & scénarios (scénario probable).
+        # Affiché seulement si le plan inclut la fonctionnalité ; une erreur ici ne doit
+        # jamais empêcher l'affichage du tableau de bord.
+        cash_pulse=None
+        org=current_org()
+        if org and feature_enabled(org['plan'],'advanced_ai') and current_plan_is_paid():
+            try:
+                from profitos.routes.cash_intelligence import build_cash_intelligence
+                ci=build_cash_intelligence()
+                probable=next((x for x in ci.get('curves',[]) if x['mode']=='probable'),None)
+                cash_pulse={'balance':ci['cash_balance'],'as_of':ci['cash_as_of'],'stale':ci.get('balance_stale'),
+                    'level':ci['alert_level'],'alert':ci['alert'],'h30':ci['horizons'][30],'h90':ci['horizons'][90],
+                    'min_cash':ci['min_cash'],'min_day':ci['min_day'],
+                    'svg':sparkline_svg(probable['values'],width=600,height=64,stretch=True,
+                                        color={'ALERTE':'#ff6e78','VIGILANCE':'#ffc861'}.get(ci['alert_level'],'#3ddc84')) if probable else None}
+            except Exception as e:
+                current_app.logger.warning('Pouls de trésorerie indisponible : %s', e)
+                cash_pulse=None
+
+        # En-tête : date en toutes lettres et phrase du jour, à partir des vraies données.
+        today_d=date.today()
+        jours=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
+        mois=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+        today_label=f"{jours[today_d.weekday()]} {today_d.day} {mois[today_d.month-1]} {today_d.year}"
+        urgent_count=sum(1 for r in top if r['type']=='RECOVER' and (r['score'] or 0)>=80)
+        user=current_user() or {}
+        first_name=((user.get('full_name') or '').strip().split(' ') or [''])[0]
+
         return render_template('dashboard.html',
             recover=recover if can_access('recover') else None,
             save=save if can_access('save') else None,
@@ -93,7 +121,8 @@ def register(app):
             pending=pending,verified=verified,top=top[:6],
             dso_svg=dso_svg if can_access('recover') else None,dso_current=dso_current,dso_delta=dso_delta,dso_period=dso_period,
             sector_benchmark=sector_benchmark if can_access('recover') else None,
-            onboarding_steps=onboarding_steps,onboarding_done=onboarding_done,show_onboarding=show_onboarding)
+            onboarding_steps=onboarding_steps,onboarding_done=onboarding_done,show_onboarding=show_onboarding,
+            cash_pulse=cash_pulse,today_label=today_label,urgent_count=urgent_count,first_name=first_name)
 
     @app.route('/company',methods=['GET','POST'])
     @login_required

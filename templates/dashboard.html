@@ -1,84 +1,136 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="purchase-page">
+<link rel="stylesheet" href="{{ asset_url('dashboard.css') }}">
+<div class="purchase-page db">
+
+<header class="db-head">
+  <p class="db-date">{{ today_label|capitalize }}</p>
+  <h1 class="db-hello">Bonjour{% if first_name %} {{ first_name }}{% endif %}.</h1>
+  <p class="db-brief">
+    {%- if recover is not none and recover > 0 -%}
+      <strong>{{ recover|fr_number }}&nbsp;€</strong> restent à encaisser sur vos factures échues{% if urgent_count %}, dont {{ urgent_count }} relance{{ 's' if urgent_count > 1 }} urgente{{ 's' if urgent_count > 1 }}{% endif %}.
+    {%- elif recover is not none -%}
+      Aucune facture client en retard aujourd'hui.
+    {%- else -%}
+      Votre situation financière en un coup d'œil.
+    {%- endif %}
+    {% if pending %} {{ pending }} action{{ 's' if pending > 1 }} attend{{ 'ent' if pending > 1 }} votre validation.{% endif %}
+  </p>
+</header>
 
 {% if show_onboarding %}
-<section class="purchase-panel" style="margin-bottom:20px;">
-  <h2 style="margin-bottom:10px;color:#fff;">Premiers pas ({{ onboarding_done }}/{{ onboarding_steps|length }})</h2>
-  {% for s in onboarding_steps %}
-  <a href="{{ s.url }}" class="simpleline" style="text-decoration:none;color:inherit;display:flex;justify-content:space-between;">
-    <span>{{ '✓' if s.done else '○' }} {{ s.label }}</span>
-    {% if not s.done %}<span class="purchase-detail-link">Faire maintenant →</span>{% endif %}
-  </a>
-  {% endfor %}
+<section class="db-onboard" aria-label="Premiers pas">
+  <div class="db-onboard-top">
+    <h2>Premiers pas</h2>
+    <span class="db-onboard-count">{{ onboarding_done }} sur {{ onboarding_steps|length }}</span>
+  </div>
+  <div class="db-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ onboarding_steps|length }}" aria-valuenow="{{ onboarding_done }}"><span style="width:{{ (onboarding_done / onboarding_steps|length * 100)|round|int }}%"></span></div>
+  <ul class="db-steps">
+    {% for s in onboarding_steps %}
+    <li class="{{ 'done' if s.done }}">{% if s.done %}<span class="db-step-mark" aria-hidden="true">✓</span>{{ s.label }}{% else %}<a href="{{ s.url }}"><span class="db-step-mark" aria-hidden="true"></span>{{ s.label }}</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
 </section>
 {% endif %}
 
-<div class="purchase-eyebrow">VUE D'ENSEMBLE</div>
-<h1 class="purchase-title">Voici ce que ProfitOS surveille.</h1>
-<p class="purchase-subtitle">Chaque euro est séparé par niveau de certitude.</p>
-
-<div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
-  {% if recover is not none %}
-  <div class="purchase-stat">
-    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg></div>
-    <div><div class="purchase-stat-label">À ENCAISSER</div><div class="purchase-stat-value">{{ recover|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Créances échues</div></div>
+{% if cash_pulse %}
+<section class="db-pulse lvl-{{ cash_pulse.level|lower }}" aria-label="Trésorerie">
+  {% if cash_pulse.balance is not none %}
+  <div class="db-pulse-main">
+    <h2>Trésorerie</h2>
+    <p class="db-pulse-balance"><span data-count-to="{{ cash_pulse.balance|round|int }}">{{ cash_pulse.balance|fr_number }}</span>&nbsp;€</p>
+    <p class="db-pulse-asof">Solde déclaré le {{ cash_pulse.as_of|fr_date }}{% if cash_pulse.stale %} · <a href="{{ url_for('cash_intelligence') }}">à mettre à jour</a>{% endif %}</p>
+    <p class="db-pulse-status"><span class="db-dot" aria-hidden="true"></span>{{ cash_pulse.alert }}</p>
   </div>
+  <div class="db-pulse-chart">
+    {{ cash_pulse.svg|safe }}
+    <div class="db-pulse-axis"><span>Aujourd'hui</span><span>Dans 90 jours</span></div>
+  </div>
+  <dl class="db-pulse-figures">
+    <div><dt>Dans 30 jours</dt><dd>{{ cash_pulse.h30|fr_number }}&nbsp;€</dd></div>
+    <div><dt>Dans 90 jours</dt><dd>{{ cash_pulse.h90|fr_number }}&nbsp;€</dd></div>
+    <div><dt>Point bas</dt><dd>{{ cash_pulse.min_cash|fr_number }}&nbsp;€{% if cash_pulse.min_day %} <small>dans {{ cash_pulse.min_day }} j</small>{% endif %}</dd></div>
+  </dl>
+  <a class="db-pulse-link" href="{{ url_for('cash_intelligence') }}">Voir les scénarios</a>
+  {% else %}
+  <div class="db-pulse-empty">
+    <h2>Trésorerie</h2>
+    <p>Indiquez votre solde bancaire pour voir votre trésorerie projetée à 30 et 90 jours.</p>
+    <a class="purchase-primary-btn primary" href="{{ url_for('cash_intelligence') }}">Renseigner mon solde</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="db-kpis">
+  {% if recover is not none %}
+  <a class="db-kpi k-recover" href="{{ url_for('recover') }}">
+    <span class="db-kpi-label">À encaisser</span>
+    <span class="db-kpi-value"><span data-count-to="{{ recover|round|int }}">{{ recover|fr_number }}</span>&nbsp;€</span>
+    <span class="db-kpi-note">Factures clients échues</span>
+  </a>
   {% endif %}
   {% if save is not none %}
-  <div class="purchase-stat">
-    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></div>
-    <div><div class="purchase-stat-label">ÉCONOMIES POTENTIELLES</div><div class="purchase-stat-value">{{ save|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Économies estimées</div></div>
-  </div>
+  <a class="db-kpi k-save" href="{{ url_for('save') }}">
+    <span class="db-kpi-label">Économies potentielles</span>
+    <span class="db-kpi-value"><span data-count-to="{{ save|round|int }}">{{ save|fr_number }}</span>&nbsp;€</span>
+    <span class="db-kpi-note">Dépenses à revoir</span>
+  </a>
   {% endif %}
   {% if grow is not none %}
-  <div class="purchase-stat">
-    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg></div>
-    <div><div class="purchase-stat-label">MARCHÉS PUBLICS</div><div class="purchase-stat-value">{{ grow }}</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Marchés pertinents</div></div>
-  </div>
+  <a class="db-kpi k-grow" href="{{ url_for('grow') }}">
+    <span class="db-kpi-label">Marchés publics</span>
+    <span class="db-kpi-value"><span data-count-to="{{ grow }}">{{ grow }}</span></span>
+    <span class="db-kpi-note">Appels d'offres pertinents</span>
+  </a>
   {% endif %}
-  <div class="purchase-stat">
-    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></div>
-    <div><div class="purchase-stat-label">GAINS VÉRIFIÉS</div><div class="purchase-stat-value">{{ verified|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Résultats validés</div></div>
-  </div>
+  {% set impact_tag = 'a' if can_access('impact') else 'div' %}
+  <{{ impact_tag }} class="db-kpi k-impact"{% if impact_tag == 'a' %} href="{{ url_for('impact') }}"{% endif %}>
+    <span class="db-kpi-label">Gains vérifiés</span>
+    <span class="db-kpi-value"><span data-count-to="{{ verified|round|int }}">{{ verified|fr_number }}</span>&nbsp;€</span>
+    <span class="db-kpi-note">Résultats confirmés</span>
+  </{{ impact_tag }}>
 </div>
 
-<div class="purchase-total-line" style="margin-bottom:20px;">
-  <span class="purchase-muted">{{ pending }} actions en attente</span>
-  <a class="purchase-detail-link" href="{{ url_for('actions') }}">Ouvrir le centre d'actions →</a>
+<div class="db-grid">
+  <section class="db-panel db-priorities" aria-label="Priorités">
+    <div class="db-panel-head">
+      <h2>À traiter en priorité</h2>
+      <a href="{{ url_for('actions') }}">Centre d'actions{% if pending %} ({{ pending }}){% endif %}</a>
+    </div>
+    <ul class="db-prio-list">
+    {% for r in top %}
+      <li class="t-{{ r.type|lower }}">
+        <a href="{{ url_for('detail',kind=r.type,item_id=r.id) }}">
+          <span class="db-prio-kind">{{ r.type|label }}</span>
+          <span class="db-prio-title">{{ r.title }}</span>
+          {% if r.subtitle %}<span class="db-prio-sub">{{ r.subtitle }}</span>{% endif %}
+          <span class="db-prio-value">{% if r.value %}{{ r.value|fr_number }}&nbsp;€{% else %}—{% endif %}</span>
+          <span class="db-prio-score" title="Score de priorité : {{ r.score }}/100"><span class="db-meter"><span style="width:{{ r.score|int }}%"></span></span>{{ r.score|int }}</span>
+        </a>
+      </li>
+    {% else %}
+      <li class="db-prio-empty">Rien d'urgent. Importez vos factures et vos dépenses pour que ProfitOS repère les priorités.
+        <a class="purchase-primary-btn secondary" href="{{ url_for('upload_invoices') }}">Importer des factures</a></li>
+    {% endfor %}
+    </ul>
+  </section>
+
+  {% if dso_svg %}
+  <section class="db-panel db-delay" aria-label="Retard moyen de paiement">
+    <div class="db-panel-head">
+      <h2>Retard moyen de paiement</h2>
+    </div>
+    <p class="db-delay-value">{{ dso_current }}&nbsp;j{% if dso_delta is not none and dso_delta != 0 %} <span class="{{ 'up' if dso_delta > 0 else 'down' }}">{{ '+' if dso_delta > 0 else '' }}{{ dso_delta }}&nbsp;j</span>{% endif %}</p>
+    <p class="db-delay-note">Jours de retard en moyenne sur vos factures échues.</p>
+    <div class="db-delay-chart">{{ dso_svg|safe }}</div>
+    {% if dso_period %}<div class="db-pulse-axis"><span>{{ dso_period[0] }}</span><span>{{ dso_period[1] }}</span></div>{% endif %}
+    {% if sector_benchmark %}
+    <p class="db-delay-note">Moyenne des autres entreprises ProfitOS : <strong>{{ sector_benchmark.avg_days }}&nbsp;j</strong>, {% if dso_current <= sector_benchmark.avg_days %}vous êtes en dessous.{% else %}vous êtes au-dessus.{% endif %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
 </div>
 
-{% if dso_svg %}
-<section class="purchase-panel" style="margin-bottom:24px;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-    <div><h2 style="margin-bottom:4px;color:#fff;">Retard moyen de paiement</h2><p class="purchase-muted" style="margin:0;">Nombre moyen de jours de retard sur vos factures clients échues{% if dso_delta is not none and dso_delta!=0 %} · évolution depuis le relevé précédent{% endif %}</p></div>
-    <div style="text-align:right;"><div style="font-size:32px;font-weight:800;color:#fff;margin:0;">{{ dso_current }} j{% if dso_delta is not none and dso_delta!=0 %}<span style="font-size:15px;margin-left:8px;" class="{{ 'purchase-alert-text' if dso_delta>0 else 'purchase-ok-text' }}">{{ '+' if dso_delta>0 else '' }}{{ dso_delta }} j</span>{% endif %}</div></div>
-  </div>
-  <div style="margin-top:14px;">{{ dso_svg|safe }}</div>
-  {% if dso_period %}<div class="purchase-muted" style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;"><span>{{ dso_period[0] }}</span><span>{{ dso_period[1] }}</span></div>{% endif %}
-  {% if sector_benchmark %}
-  <p class="purchase-muted" style="margin-top:10px;font-size:13px;">Moyenne des {{ sector_benchmark.org_count }} autre(s) organisation(s) ProfitOS : <strong class="{{ 'purchase-ok-text' if dso_current<=sector_benchmark.avg_days else 'purchase-alert-text' }}">{{ sector_benchmark.avg_days }} j</strong> {% if dso_current<=sector_benchmark.avg_days %}— vous êtes sous la moyenne du secteur.{% else %}— vous êtes au-dessus de la moyenne du secteur.{% endif %}</p>
-  {% endif %}
-</section>
-{% endif %}
-
-<section class="purchase-panel">
-  <h2 style="color:#fff;">Priorités</h2>
-  <div class="purchase-table-wrap">
-    <table class="purchase-table">
-      <tbody>
-      {% for r in top %}
-        <tr>
-          <td><a class="purchase-detail-link" href="{{ url_for('detail',kind=r.type,item_id=r.id) }}"><span class="purchase-status">{{ r.type|label }}</span> <strong>{{ r.title }}</strong></a><br><small class="purchase-muted">{{ r.subtitle }}</small></td>
-          <td style="text-align:right;">{% if r.value %}<strong>{{ r.value|fr_number }}&nbsp;€</strong>{% else %}—{% endif %}</td>
-          <td style="text-align:right;">{{ r.score }}/100</td>
-        </tr>
-      {% else %}
-        <tr><td colspan="3" class="purchase-empty">Importez vos données et complétez votre profil.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
 </div>
 {% endblock %}
