@@ -160,6 +160,52 @@ document.addEventListener('submit', function (event) {
 })();
 
 // ---------------------------------------------------------------------------
+// Explorateur de la plateforme (landing) : onglets accessibles. Sans JS, tous
+// les domaines restent affichés les uns sous les autres.
+// ---------------------------------------------------------------------------
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var root = document.querySelector('[data-tabs]');
+    if (!root) return;
+    var list = root.querySelector('[role="tablist"]');
+    var tabs = Array.prototype.slice.call(root.querySelectorAll('[role="tab"]'));
+    var panels = Array.prototype.slice.call(root.querySelectorAll('[data-panel]'));
+    if (!list || !tabs.length) return;
+    root.classList.add('is-tabbed');
+    list.hidden = false;
+    function select(name, focus) {
+      tabs.forEach(function (t) {
+        var on = t.getAttribute('data-tab') === name;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        if (on && focus) t.focus();
+      });
+      panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { select(t.getAttribute('data-tab')); });
+      t.addEventListener('keydown', function (e) {
+        var k = e.key, n = null;
+        if (k === 'ArrowRight') n = tabs[(i + 1) % tabs.length];
+        else if (k === 'ArrowLeft') n = tabs[(i - 1 + tabs.length) % tabs.length];
+        else if (k === 'Home') n = tabs[0];
+        else if (k === 'End') n = tabs[tabs.length - 1];
+        if (n) { e.preventDefault(); select(n.getAttribute('data-tab'), true); }
+      });
+    });
+    document.querySelectorAll('[data-tab-link]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        select(a.getAttribute('data-tab-link'));
+        list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+    var initial = (location.hash || '').replace('#domaine-', '');
+    select(tabs.some(function (t) { return t.getAttribute('data-tab') === initial; }) ? initial : tabs[0].getAttribute('data-tab'));
+  });
+})();
+
+// ---------------------------------------------------------------------------
 // Compteurs animés — éléments [data-count-to] comptent de 0 jusqu'à leur
 // valeur cible dès qu'ils entrent dans l'écran. Dégradation silencieuse :
 // sans IntersectionObserver, la valeur finale s'affiche directement.

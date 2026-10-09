@@ -107,7 +107,7 @@
         {% if detected %}
         <div class="purchase-total-line">
           <span class="muted">Total TTC détecté</span>
-          <strong>{{ '%.2f'|format(detected.total) }}&nbsp;€</strong>
+          <strong>{{ (detected.total)|fr_number(2) }}&nbsp;€</strong>
         </div>
         {% endif %}
       </div>

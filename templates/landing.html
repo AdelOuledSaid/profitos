@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ProfitOS — Le copilote financier de votre entreprise</title>
-  <meta name="description" content="ProfitOS centralise recouvrement, économies, trésorerie, décisions financières et opportunités commerciales pour aider les entreprises à protéger leur cash et décider plus vite.">
+  <title>ProfitOS — Facturation, achats, trésorerie et comptabilité réunis</title>
+  <meta name="description" content="ProfitOS réunit facturation électronique, achats, trésorerie, comptabilité et pilotage financier dans une seule plateforme pour les PME, les groupes et les cabinets d'expertise comptable.">
   <meta name="theme-color" content="#07101f">
   <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ProfitOS">
-  <meta property="og:title" content="ProfitOS — Le copilote financier de votre entreprise">
-  <meta property="og:description" content="Recouvrement, économies, prévision de trésorerie et décisions financières simulées, réunis dans une seule plateforme.">
-  <meta property="og:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
+  <meta property="og:title" content="ProfitOS — Toute la gestion financière de votre entreprise">
+  <meta property="og:description" content="Facturer, payer, piloter la trésorerie, tenir la comptabilité et trouver de nouveaux marchés, dans une seule plateforme.">
+  <meta property="og:image" content="{{ url_for('static',filename='landing/tableau-de-bord.webp',_external=True) }}">
   <meta property="og:url" content="{{ request.url_root }}">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="ProfitOS — Le copilote financier de votre entreprise">
-  <meta name="twitter:description" content="Recouvrement, économies, prévision de trésorerie et décisions financières simulées, réunis dans une seule plateforme.">
-  <meta name="twitter:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ProfitOS — Toute la gestion financière de votre entreprise">
+  <meta name="twitter:description" content="Facturer, payer, piloter la trésorerie, tenir la comptabilité et trouver de nouveaux marchés, dans une seule plateforme.">
+  <meta name="twitter:image" content="{{ url_for('static',filename='landing/tableau-de-bord.webp',_external=True) }}">
 
   <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
 </head>
@@ -28,8 +28,9 @@
   <nav class="landing-nav" aria-label="Navigation principale">
     <div class="landing-nav-links">
       <a href="#plateforme">Plateforme</a>
-      <a href="#comment">Comment ça marche</a>
-      <a href="#securite">Confiance</a>
+      <a href="#facture-electronique">Facture électronique</a>
+      <a href="#pour-qui">Pour qui</a>
+      <a href="#integrations">Intégrations</a>
       <a href="{{ url_for('pricing') }}">Tarifs</a>
       <a href="{{ url_for('login') }}">Connexion</a>
     </div>
@@ -45,31 +46,161 @@
   </video>
   <div class="landing-hero-copy landing-fade-in">
     <div class="landing-kicker"><span></span> FINANCIAL OPERATING SYSTEM POUR VOTRE ENTREPRISE</div>
-    <div class="landing-float-arrow" aria-hidden="true">↙</div>
-    <h1>Protégez votre cash.<br><em>Décidez avec des chiffres.</em></h1>
-    <p>ProfitOS réunit recouvrement, économies, prévision de trésorerie, pilotage des marges et simulation de décisions dans une seule plateforme pensée pour protéger la trésorerie de votre entreprise.</p>
+    <h1>Toute la finance de votre entreprise.<br><em>Une seule plateforme.</em></h1>
+    <p>Facturez et encaissez, payez vos fournisseurs, anticipez votre trésorerie, tenez votre comptabilité et trouvez de nouveaux marchés. ProfitOS relie tout et vous dit chaque jour quelle décision protège le mieux votre cash.</p>
     <div class="landing-cta-row">
       <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Commencer gratuitement</a>
       <a class="landing-btn landing-btn-secondary" href="{{ url_for('request_demo') }}">Voir une démo</a>
     </div>
-    <div class="landing-trust-line"><span>✓ 14 jours d'essai</span><span>✓ Sans carte bancaire</span><span>✓ Vos actions restent sous votre contrôle</span></div>
-  </div>
-
-</section>
-
-<section class="landing-proof-strip">
-  <div class="landing-shell landing-proof-grid">
-    <div><strong>RELANCES CLIENTS</strong><span>Prioriser les créances à encaisser</span></div>
-    <div><strong>ÉCONOMIES</strong><span>Repérer les dépenses évitables</span></div>
-    <div><strong>TRÉSORERIE</strong><span>Anticiper la trésorerie à 90 jours</span></div>
-    <div><strong>DÉCISIONS</strong><span>Tester une décision avant de payer</span></div>
-    <div><strong>MARCHÉS PUBLICS</strong><span>Identifier les opportunités pertinentes</span></div>
+    <div class="landing-trust-line"><span>✓ 14 jours d'essai</span><span>✓ Sans carte bancaire</span><span>✓ Prêt pour la facture électronique</span></div>
   </div>
 </section>
 
-<section class="landing-section landing-preview-section">
+<section class="landing-domain-strip" aria-label="Les domaines couverts par ProfitOS">
+  <div class="landing-shell landing-domain-grid">
+    <a href="#domaine-encaisser" data-tab-link="encaisser"><b>01</b><strong>Encaisser</strong><span>Devis, factures, relances, paiements</span></a>
+    <a href="#domaine-payer" data-tab-link="payer"><b>02</b><strong>Payer</strong><span>Achats, validation, virements, budgets</span></a>
+    <a href="#domaine-piloter" data-tab-link="piloter"><b>03</b><strong>Piloter</strong><span>Trésorerie 90 jours, marges, décisions</span></a>
+    <a href="#domaine-comptabiliser" data-tab-link="comptabiliser"><b>04</b><strong>Comptabiliser</strong><span>Écritures, banque, TVA, FEC, clôture</span></a>
+    <a href="#domaine-developper" data-tab-link="developper"><b>05</b><strong>Développer</strong><span>Marchés publics, partenaires, GO/NO-GO</span></a>
+  </div>
+</section>
+
+<section id="plateforme" class="landing-section landing-shell landing-explorer" data-tabs>
+  <div class="landing-section-heading landing-reveal" data-reveal>
+    <div class="landing-kicker"><span></span> LA PLATEFORME</div>
+    <h2>Cinq métiers de la finance. Un seul outil, des données qui se parlent.</h2>
+    <p>Une facture émise alimente la comptabilité, la prévision de trésorerie et les relances. Une facture fournisseur part en validation, puis en virement, puis dans le grand livre. Vous ne ressaisissez rien.</p>
+  </div>
+
+  <div class="landing-tablist" role="tablist" aria-label="Domaines de la plateforme" hidden>
+    <button type="button" role="tab" id="tab-encaisser" aria-controls="domaine-encaisser" data-tab="encaisser" aria-selected="true">Encaisser</button>
+    <button type="button" role="tab" id="tab-payer" aria-controls="domaine-payer" data-tab="payer" aria-selected="false" tabindex="-1">Payer</button>
+    <button type="button" role="tab" id="tab-piloter" aria-controls="domaine-piloter" data-tab="piloter" aria-selected="false" tabindex="-1">Piloter</button>
+    <button type="button" role="tab" id="tab-comptabiliser" aria-controls="domaine-comptabiliser" data-tab="comptabiliser" aria-selected="false" tabindex="-1">Comptabiliser</button>
+    <button type="button" role="tab" id="tab-developper" aria-controls="domaine-developper" data-tab="developper" aria-selected="false" tabindex="-1">Développer</button>
+  </div>
+
+  <article class="landing-domain" id="domaine-encaisser" role="tabpanel" aria-labelledby="tab-encaisser" data-panel="encaisser">
+    <div class="landing-domain-copy">
+      <small>ENCAISSER</small>
+      <h3>Facturez en conformité, faites-vous payer plus vite.</h3>
+      <p>Du devis à l'encaissement, chaque étape est suivie. ProfitOS repère les clients à risque et prépare les relances, que vous validez avant envoi.</p>
+      <ul class="landing-feature-list">
+        <li>Devis, factures, acomptes et avoirs</li>
+        <li>Factures récurrentes et bons de livraison</li>
+        <li>Factur-X et émission via plateforme agréée</li>
+        <li>Portail client pour suivre ses factures</li>
+        <li>Prélèvement SEPA avec GoCardless</li>
+        <li>Relances email et SMS validées par vous</li>
+        <li>Retenues de garantie suivies jusqu'à libération</li>
+        <li>Score de risque et retard moyen par client</li>
+      </ul>
+    </div>
+    <figure class="landing-shot">
+      <div class="landing-shot-bar"><i></i><i></i><i></i><span>Facture FA-2026-001</span></div>
+      <img src="{{ url_for('static', filename='landing/encaisser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Fiche facture ProfitOS : montant TTC, règlement partiel enregistré et reste à payer">
+      <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
+    </figure>
+  </article>
+
+  <article class="landing-domain" id="domaine-payer" role="tabpanel" aria-labelledby="tab-payer" data-panel="payer">
+    <div class="landing-domain-copy">
+      <small>PAYER</small>
+      <h3>Des factures fournisseurs lues, validées et payées sans ressaisie.</h3>
+      <p>Envoyez un PDF ou une photo : ProfitOS en extrait les montants, vérifie les doublons et vous montre ce qui arrive à échéance.</p>
+      <ul class="landing-feature-list">
+        <li>Lecture automatique des factures (PDF, photo)</li>
+        <li>Boîte mail fournisseurs dédiée</li>
+        <li>Import depuis Dropbox et Google Drive</li>
+        <li>Circuit de validation et bons de commande</li>
+        <li>Virements groupés SEPA</li>
+        <li>Budgets et charges récurrentes</li>
+        <li>Notes de frais et indemnités kilométriques</li>
+        <li>Alertes doublons, hausses et contrats dormants</li>
+      </ul>
+    </div>
+    <figure class="landing-shot">
+      <div class="landing-shot-bar"><i></i><i></i><i></i><span>Achats &amp; fournisseurs</span></div>
+      <img src="{{ url_for('static', filename='landing/payer.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Liste des factures fournisseurs ProfitOS avec montants à payer, en retard et échéances">
+      <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
+    </figure>
+  </article>
+
+  <article class="landing-domain" id="domaine-piloter" role="tabpanel" aria-labelledby="tab-piloter" data-panel="piloter">
+    <div class="landing-domain-copy">
+      <small>PILOTER</small>
+      <h3>Voyez votre trésorerie à 90 jours avant qu'elle ne vous surprenne.</h3>
+      <p>Trois scénarios construits sur vos vraies échéances, un simulateur pour tester une décision, et un diagnostic qui classe les actions par impact.</p>
+      <ul class="landing-feature-list">
+        <li>Prévision 30, 60 et 90 jours en trois scénarios</li>
+        <li>Simulateur d'investissement, d'embauche, de dépense</li>
+        <li>Diagnostic financier et prochaine meilleure décision</li>
+        <li>Suivi des marges par projet et par client</li>
+        <li>Échéancier clients et fournisseurs</li>
+        <li>Rapport hebdomadaire et rapport mensuel PDF</li>
+        <li>Comparaison avec votre secteur</li>
+        <li>Centre d'actions et suivi des gains obtenus</li>
+      </ul>
+    </div>
+    <figure class="landing-shot">
+      <div class="landing-shot-bar"><i></i><i></i><i></i><span>Trésorerie &amp; scénarios</span></div>
+      <img src="{{ url_for('static', filename='landing/piloter.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Prévision de trésorerie ProfitOS à 30, 60 et 90 jours avec scénarios">
+      <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
+    </figure>
+  </article>
+
+  <article class="landing-domain" id="domaine-comptabiliser" role="tabpanel" aria-labelledby="tab-comptabiliser" data-panel="comptabiliser">
+    <div class="landing-domain-copy">
+      <small>COMPTABILISER</small>
+      <h3>Une comptabilité tenue au fil de l'eau, prête pour votre expert-comptable.</h3>
+      <p>Chaque facture, achat et mouvement bancaire génère son écriture. Votre expert-comptable travaille dans le même outil, avec son propre accès.</p>
+      <ul class="landing-feature-list">
+        <li>Écritures automatiques, plan comptable, journaux</li>
+        <li>Rapprochement bancaire et lettrage</li>
+        <li>Préparation TVA CA3 et CA12</li>
+        <li>Export FEC</li>
+        <li>Immobilisations, emprunts et crédit-bail</li>
+        <li>Cut-off et comptabilité analytique</li>
+        <li>Import de la paie Silae et PayFit</li>
+        <li>Révision, comptes annuels et plaquette</li>
+      </ul>
+    </div>
+    <figure class="landing-shot">
+      <div class="landing-shot-bar"><i></i><i></i><i></i><span>TVA &amp; dossier déclaratif</span></div>
+      <img src="{{ url_for('static', filename='landing/comptabiliser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Préparation de la TVA dans ProfitOS : TVA collectée, déductible et à décaisser">
+      <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
+    </figure>
+  </article>
+
+  <article class="landing-domain" id="domaine-developper" role="tabpanel" aria-labelledby="tab-developper" data-panel="developper">
+    <div class="landing-domain-copy">
+      <small>DÉVELOPPER</small>
+      <h3>Trouvez les marchés publics faits pour vous, et décidez vite d'y aller.</h3>
+      <p>ProfitOS surveille les avis BOAMP selon vos métiers et vos départements, note chaque opportunité et vous aide à répondre au bon moment.</p>
+      <ul class="landing-feature-list">
+        <li>Veille des marchés publics BOAMP</li>
+        <li>Score de pertinence et suivi des dates limites</li>
+        <li>Analyse du DCE et recommandation GO / NO-GO</li>
+        <li>Radar de partenaires pour répondre à plusieurs</li>
+        <li>Impact du marché simulé sur votre trésorerie</li>
+        <li>Exports Excel et CSV</li>
+      </ul>
+    </div>
+    <figure class="landing-shot">
+      <div class="landing-shot-bar"><i></i><i></i><i></i><span>Marchés publics</span></div>
+      <img src="{{ url_for('static', filename='landing/developper.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Opportunités de marchés publics notées par ProfitOS avec dates limites">
+      <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
+    </figure>
+  </article>
+
+  <p class="landing-explorer-more"><a href="{{ url_for('features_overview') }}">Voir toutes les fonctionnalités →</a></p>
+</section>
+
+<section class="landing-section landing-preview-section landing-section-alt">
   <div class="landing-shell landing-preview-grid">
     <div class="landing-preview-copy">
+      <div class="landing-kicker"><span></span> LE COPILOTE AU-DESSUS DE VOS CHIFFRES</div>
       <h2>Chaque matin, la décision qui protège le plus votre trésorerie.</h2>
       <p>ProfitOS croise vos factures, vos dépenses et votre solde bancaire pour vous indiquer quoi faire en premier : quel client relancer, quelle dépense revoir, quel risque anticiper.</p>
       <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Essayer sur mes données</a>
@@ -92,11 +223,11 @@
   </div>
 </section>
 
-<section id="plateforme" class="landing-section landing-shell">
+<section id="intelligence" class="landing-section landing-shell">
   <div class="landing-section-heading landing-reveal" data-reveal>
-    <div class="landing-kicker"><span></span> UNE PLATEFORME, PLUSIEURS LEVIERS</div>
-    <h2>Tout ce qu'il faut pour piloter l'argent de l'entreprise.</h2>
-    <p>ProfitOS transforme vos données opérationnelles en priorités, scénarios et actions compréhensibles.</p>
+    <div class="landing-kicker"><span></span> AU-DELÀ DE LA GESTION</div>
+    <h2>Un logiciel de gestion qui vous aide aussi à décider.</h2>
+    <p>Au-delà de la tenue des comptes, ProfitOS transforme vos données en priorités, en scénarios et en actions compréhensibles.</p>
   </div>
   <div class="landing-capability-grid">
     <article class="landing-capability landing-reveal" data-reveal><div class="cap-icon cap-red">€</div><small>RELANCES CLIENTS</small><h3>Recouvrement intelligent</h3><p>Classez les factures en retard, suivez les retenues contractuelles et préparez les relances prioritaires.</p><ul><li>Scores de priorité</li><li>Calendrier des échéances</li><li>Actions et suivi d'impact</li></ul></article>
@@ -105,6 +236,26 @@
     <article class="landing-capability landing-reveal" data-reveal><div class="cap-icon cap-green">◆</div><small>SIMULATEUR DE DÉCISION</small><h3>Décisions financières simulées</h3><p>Testez un investissement, une embauche ou un nouveau marché avant d'engager votre trésorerie.</p><ul><li>Réserve minimale</li><li>Plafond de financement</li><li>Report et fractionnement</li></ul></article>
     <article class="landing-capability landing-reveal" data-reveal><div class="cap-icon cap-purple">◎</div><small>DIAGNOSTIC FINANCIER</small><h3>Une priorité claire</h3><p>Croisez relances clients, économies, marchés publics et suivi des marges pour savoir quelle décision protège le mieux votre argent.</p><ul><li>Score de maîtrise financière</li><li>Capital à risque</li><li>Prochaine meilleure décision</li></ul></article>
     <article class="landing-capability landing-reveal" data-reveal><div class="cap-icon cap-teal">↗</div><small>MARCHÉS PUBLICS &amp; PARTENAIRES</small><h3>Développement commercial</h3><p>Centralisez les opportunités commerciales et repérez des partenaires complémentaires pour vos marchés.</p><ul><li>Opportunités de marchés publics</li><li>Radar de partenaires</li><li>Suivi des deadlines</li></ul></article>
+  </div>
+</section>
+
+<section id="facture-electronique" class="landing-reform">
+  <div class="landing-shell landing-reform-grid">
+    <div class="landing-reform-copy landing-reveal" data-reveal>
+      <div class="landing-kicker"><span></span> RÉFORME DE LA FACTURATION ÉLECTRONIQUE</div>
+      <h2>La facture électronique devient obligatoire. Vous êtes déjà prêt.</h2>
+      <p>Depuis le 1<sup>er</sup> septembre 2026, toutes les entreprises doivent pouvoir recevoir des factures électroniques. L'émission devient obligatoire pour les PME et les micro-entreprises le 1<sup>er</sup> septembre 2027. ProfitOS vous y prépare sans changer vos habitudes.</p>
+    </div>
+    <ol class="landing-reform-timeline landing-reveal" data-reveal>
+      <li class="is-done"><b>Septembre 2026</b><strong>Réception obligatoire pour toutes les entreprises</strong><span>Émission obligatoire pour les grandes entreprises et les ETI.</span></li>
+      <li><b>Septembre 2027</b><strong>Émission obligatoire pour les PME et micro-entreprises</strong><span>Ainsi que la transmission des données de transaction (e-reporting).</span></li>
+    </ol>
+    <div class="landing-reform-cards">
+      <div class="landing-reveal" data-reveal><strong>Factur-X natif</strong><span>Chaque facture est générée au format Factur-X, lisible par l'humain et par la machine.</span></div>
+      <div class="landing-reveal" data-reveal><strong>Plateforme agréée connectée</strong><span>Émission et réception via une plateforme agréée partenaire, depuis ProfitOS.</span></div>
+      <div class="landing-reveal" data-reveal><strong>Statuts suivis</strong><span>Déposée, prise en charge, approuvée, refusée, payée : le cycle de vie de chaque facture est visible.</span></div>
+      <div class="landing-reveal" data-reveal><strong>Mentions vérifiées</strong><span>SIREN, nature de l'opération, adresse de livraison : ProfitOS signale ce qui manque avant l'envoi.</span></div>
+    </div>
   </div>
 </section>
 
@@ -125,34 +276,86 @@
   </div>
 </section>
 
+<section id="pour-qui" class="landing-section landing-shell">
+  <div class="landing-section-heading landing-reveal" data-reveal>
+    <div class="landing-kicker"><span></span> POUR QUI</div>
+    <h2>Pensé pour ceux qui portent la responsabilité du cash.</h2>
+  </div>
+  <div class="landing-persona-grid">
+    <article class="landing-persona landing-reveal" data-reveal>
+      <small>DIRIGEANTS DE TPE ET PME</small>
+      <h3>Savoir où vous en êtes, sans être comptable.</h3>
+      <ul><li>Un tableau de bord lisible en deux minutes</li><li>Les clients à relancer, classés par enjeu</li><li>Une alerte avant la tension de trésorerie</li></ul>
+    </article>
+    <article class="landing-persona landing-reveal" data-reveal>
+      <small>DIRECTION FINANCIÈRE</small>
+      <h3>Automatiser la production, garder la main sur l'analyse.</h3>
+      <ul><li>Achats validés et payés en lots SEPA</li><li>Marges, budgets et scénarios à jour</li><li>Rapports hebdomadaires et mensuels prêts</li></ul>
+    </article>
+    <article class="landing-persona landing-reveal" data-reveal>
+      <small>EXPERTS-COMPTABLES ET CABINETS</small>
+      <h3>Tous vos dossiers clients dans un portefeuille.</h3>
+      <ul><li>Accès invité pour l'expert-comptable externe</li><li>Révision, lettrage et FEC dans le même outil</li><li>Vue portefeuille de toutes les entreprises suivies</li></ul>
+    </article>
+    <article class="landing-persona landing-reveal" data-reveal>
+      <small>GROUPES ET HOLDINGS</small>
+      <h3>Plusieurs sociétés, une vue consolidée.</h3>
+      <ul><li>Multi-entités avec données séparées</li><li>Consolidation de la trésorerie du groupe</li><li>Rôles et droits par société</li></ul>
+    </article>
+  </div>
+</section>
+
+<section id="integrations" class="landing-section landing-section-alt">
+  <div class="landing-shell">
+    <div class="landing-section-heading landing-reveal" data-reveal>
+      <div class="landing-kicker"><span></span> INTÉGRATIONS</div>
+      <h2>Branché sur votre banque et vos outils.</h2>
+      <p>Connectez ce que vous utilisez déjà. Pour le reste, l'import Excel et CSV reste disponible partout.</p>
+    </div>
+    <div class="landing-integration-grid">
+      <div class="landing-reveal" data-reveal><b>BQ</b><strong>Synchronisation bancaire</strong><span>Open Banking via Powens</span></div>
+      <div class="landing-reveal" data-reveal><b>PA</b><strong>Plateforme agréée</strong><span>Émission et réception de factures électroniques</span></div>
+      <div class="landing-reveal" data-reveal><b>GC</b><strong>GoCardless</strong><span>Prélèvement SEPA de vos clients</span></div>
+      <div class="landing-reveal" data-reveal><b>RH</b><strong>Silae et PayFit</strong><span>Import des journaux de paie</span></div>
+      <div class="landing-reveal" data-reveal><b>CL</b><strong>Dropbox et Google Drive</strong><span>Collecte des factures fournisseurs</span></div>
+      <div class="landing-reveal" data-reveal><b>@</b><strong>Boîte mail dédiée</strong><span>Transférez vos factures, elles sont lues</span></div>
+      <div class="landing-reveal" data-reveal><b>EC</b><strong>Shopify et WooCommerce</strong><span>Commandes importées en factures <em>bêta</em></span></div>
+      <div class="landing-reveal" data-reveal><b>&lt;/&gt;</b><strong>API et webhooks</strong><span>Vos données ProfitOS dans vos outils</span></div>
+    </div>
+    <p class="landing-integration-note">Connexions aux logiciels comptables Pennylane, QuickBooks et Sage : prochainement.</p>
+  </div>
+</section>
+
 <section id="comment" class="landing-section landing-shell">
-  <div class="landing-section-heading landing-reveal" data-reveal><div class="landing-kicker"><span></span> SIMPLE À METTRE EN ROUTE</div><h2>Des données à la décision en trois étapes.</h2></div>
+  <div class="landing-section-heading landing-reveal" data-reveal><div class="landing-kicker"><span></span> SIMPLE À METTRE EN ROUTE</div><h2>Opérationnel le jour même.</h2></div>
   <div class="landing-steps">
-    <article class="landing-reveal" data-reveal><b>01</b><h3>Importez</h3><p>Chargez vos factures, dépenses et relevés au format Excel ou CSV.</p></article>
-    <article class="landing-reveal" data-reveal><b>02</b><h3>Analysez</h3><p>ProfitOS identifie les signaux financiers importants et les classe par priorité.</p></article>
-    <article class="landing-reveal" data-reveal><b>03</b><h3>Décidez</h3><p>Validez une action, testez un scénario ou suivez l'impact financier obtenu.</p></article>
+    <article class="landing-reveal" data-reveal><b>01</b><h3>Connectez</h3><p>Reliez votre banque ou importez vos factures, dépenses et relevés au format Excel ou CSV.</p></article>
+    <article class="landing-reveal" data-reveal><b>02</b><h3>Travaillez</h3><p>Facturez, validez vos achats, rapprochez la banque : la comptabilité et la prévision se mettent à jour seules.</p></article>
+    <article class="landing-reveal" data-reveal><b>03</b><h3>Décidez</h3><p>Suivez les priorités du jour, testez un scénario et mesurez l'impact des actions prises.</p></article>
   </div>
 </section>
 
 <section id="securite" class="landing-section landing-section-alt">
   <div class="landing-shell landing-trust-panel landing-reveal" data-reveal>
-    <div><div class="landing-kicker"><span></span> CONÇU POUR RESTER SOUS VOTRE CONTRÔLE</div><h2>Une aide à la décision, pas une boîte noire.</h2><p>ProfitOS distingue les données connues des estimations, signale les informations manquantes et ne déclenche pas une relance client sans votre validation.</p></div>
-    <div class="landing-trust-cards"><div><strong>Validation humaine</strong><span>Vous gardez la main sur les actions sensibles.</span></div><div><strong>Données explicites</strong><span>Les limites et hypothèses du calcul restent visibles.</span></div><div><strong>Accès par rôle</strong><span>Les équipes voient les modules qui les concernent.</span></div><div><strong>Suivi d'impact</strong><span>Mesurez les résultats des décisions prises.</span></div></div>
+    <div><div class="landing-kicker"><span></span> CONÇU POUR RESTER SOUS VOTRE CONTRÔLE</div><h2>Une aide à la décision, pas une boîte noire.</h2><p>ProfitOS distingue les données connues des estimations, signale les informations manquantes et n'envoie jamais une relance client sans votre validation.</p></div>
+    <div class="landing-trust-cards"><div><strong>Validation humaine</strong><span>Vous gardez la main sur les actions sensibles.</span></div><div><strong>Données isolées</strong><span>Chaque entreprise dispose de son propre espace de données.</span></div><div><strong>Accès par rôle</strong><span>Chacun voit les modules qui le concernent.</span></div><div><strong>Vos données vous appartiennent</strong><span>Export complet à tout moment, FEC compris.</span></div></div>
   </div>
 </section>
 
 <section class="landing-section landing-shell">
   <div class="landing-section-heading landing-reveal" data-reveal><div class="landing-kicker"><span></span> AU-DELÀ DU TABLEAU DE BORD</div><h2>Un système de pilotage financier opérationnel.</h2></div>
   <div class="landing-ops-grid">
-    <div><strong>Centre d'actions</strong><span>Préparer, valider et suivre les actions.</span></div><div><strong>Rapport hebdomadaire</strong><span>Partager les signaux importants avec l'équipe.</span></div><div><strong>Portefeuille</strong><span>Piloter plusieurs organisations depuis un compte.</span></div><div><strong>Exports</strong><span>Excel, CSV et rapports selon votre formule.</span></div><div><strong>API</strong><span>Lire les données ProfitOS depuis vos outils.</span></div><div><strong>Équipe</strong><span>Rôles et accès adaptés à l'organisation.</span></div>
+    <div><strong>Centre d'actions</strong><span>Préparer, valider et suivre les actions.</span></div><div><strong>Rapport hebdomadaire</strong><span>Partager les signaux importants avec l'équipe.</span></div><div><strong>Portefeuille</strong><span>Piloter plusieurs organisations depuis un compte.</span></div><div><strong>Exports</strong><span>Excel, CSV, PDF et FEC selon votre formule.</span></div><div><strong>Application installable</strong><span>Sur ordinateur, tablette et téléphone.</span></div><div><strong>Équipe</strong><span>Rôles et accès adaptés à l'organisation.</span></div>
   </div>
 </section>
 
 <section id="faq" class="landing-section landing-shell landing-faq">
   <div class="landing-section-heading"><h2>Questions fréquentes</h2></div>
   <details><summary>Faut-il une carte bancaire pour essayer ProfitOS ?</summary><p>Non. L'essai peut démarrer sans carte bancaire.</p></details>
+  <details><summary>ProfitOS est-il prêt pour la facture électronique ?</summary><p>Oui. Les factures sont produites au format Factur-X et peuvent être émises et reçues via une plateforme agréée connectée à ProfitOS. Les mentions obligatoires manquantes sont signalées avant l'envoi.</p></details>
+  <details><summary>Mon expert-comptable peut-il travailler dans ProfitOS ?</summary><p>Oui. Vous l'invitez avec un accès dédié : il consulte les écritures, révise, lettre et exporte le FEC sans que vous ayez à lui envoyer vos pièces.</p></details>
   <details><summary>ProfitOS envoie-t-il automatiquement des relances à mes clients ?</summary><p>Non. Une relance doit être validée par vous avant son envoi.</p></details>
-  <details><summary>Quels fichiers puis-je importer ?</summary><p>Les flux d'import principaux acceptent Excel et CSV pour les données métier prévues par l'application.</p></details>
+  <details><summary>Quels fichiers puis-je importer ?</summary><p>Les flux d'import principaux acceptent Excel et CSV. Les factures fournisseurs peuvent aussi être envoyées en PDF ou en photo.</p></details>
   <details><summary>Les prévisions inventent-elles des revenus futurs ?</summary><p>Non. Les modules de trésorerie et de décision signalent leurs hypothèses et n'ajoutent pas artificiellement des recettes inconnues.</p></details>
 </section>
 

@@ -74,25 +74,25 @@
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 9h18"></path><path d="M16 13h3"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">À payer</div><div class="purchase-stat-value">{{ '%.2f'|format(unpaid_amount) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">À payer</div><div class="purchase-stat-value">{{ (unpaid_amount)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ '%.2f'|format(overdue_amount) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ (overdue_amount)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">À 7 jours</div><div class="purchase-stat-value">{{ '%.2f'|format(due_7_amount) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">À 7 jours</div><div class="purchase-stat-value">{{ (due_7_amount)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">À 30 jours</div><div class="purchase-stat-value">{{ '%.2f'|format(due_30_amount) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">À 30 jours</div><div class="purchase-stat-value">{{ (due_30_amount)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">
@@ -160,7 +160,7 @@
               {% if inv.validation_status=='pending' %}<br><span class="purchase-status-warn" style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:11px;">⏳ À valider</span>
               {% elif inv.validation_status=='rejected' %}<br><span class="purchase-alert-text" style="font-size:11px;">✗ Rejetée</span>{% endif %}
             </td>
-            <td><strong>{{ '%.2f'|format(inv.total or 0) }}&nbsp;€</strong></td>
+            <td><strong>{{ (inv.total or 0)|fr_number(2) }}&nbsp;€</strong></td>
           </tr>
         {% else %}
           <tr><td colspan="6" class="purchase-empty">Aucune facture fournisseur enregistrée.</td></tr>

@@ -52,9 +52,9 @@
           <tr>
             <td><span class="purchase-link">{{ r.supplier }}</span></td>
             <td>{{ r.category }}</td>
-            <td>{{ '%.2f'|format(r.usual_amount) }}&nbsp;€</td>
+            <td>{{ (r.usual_amount)|fr_number(2) }}&nbsp;€</td>
             <td>{{ r.frequency }}</td>
-            <td>{{ r.last_date|fr_date }}<div class="purchase-muted">{{ '%.2f'|format(r.last_amount) }}&nbsp;€</div></td>
+            <td>{{ r.last_date|fr_date }}<div class="purchase-muted">{{ (r.last_amount)|fr_number(2) }}&nbsp;€</div></td>
             <td>{{ r.next_due_estimate|fr_date }}</td>
             <td><strong>{{ r.annual_cost_estimate|fr_number }}&nbsp;€</strong></td>
             <td>

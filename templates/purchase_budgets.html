@@ -41,11 +41,11 @@
         {% for row in overview %}
           <tr>
             <td>{{ row.label }}</td>
-            <td>{% if row.has_budget %}{{ '%.2f'|format(row.budget) }}&nbsp;€{% else %}<span class="purchase-muted">Non défini</span>{% endif %}</td>
-            <td>{{ '%.2f'|format(row.consumed) }}&nbsp;€</td>
+            <td>{% if row.has_budget %}{{ (row.budget)|fr_number(2) }}&nbsp;€{% else %}<span class="purchase-muted">Non défini</span>{% endif %}</td>
+            <td>{{ (row.consumed)|fr_number(2) }}&nbsp;€</td>
             <td>
               {% if row.has_budget %}
-                <strong style="color:{{ '#ff8b8b' if row.remaining < 0 else '#67f0aa' }};">{{ '%.2f'|format(row.remaining) }}&nbsp;€</strong>
+                <strong style="color:{{ '#ff8b8b' if row.remaining < 0 else '#67f0aa' }};">{{ (row.remaining)|fr_number(2) }}&nbsp;€</strong>
               {% else %}<span class="purchase-muted">—</span>{% endif %}
             </td>
             <td>{% if row.has_budget %}{{ row.pct }}%{% else %}<span class="purchase-muted">—</span>{% endif %}</td>

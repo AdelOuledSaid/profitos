@@ -20,13 +20,13 @@
 
   <div class="purchase-stats">
     <div class="purchase-stat">
-      <div><div class="purchase-stat-label">Montant HT</div><div class="purchase-stat-value">{{ '%.2f'|format(total_ht) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">Montant HT</div><div class="purchase-stat-value">{{ (total_ht)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
-      <div><div class="purchase-stat-label">TVA</div><div class="purchase-stat-value">{{ '%.2f'|format(total_vat) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">TVA</div><div class="purchase-stat-value">{{ (total_vat)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
-      <div><div class="purchase-stat-label">Total TTC</div><div class="purchase-stat-value">{{ '%.2f'|format(total_ttc) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">Total TTC</div><div class="purchase-stat-value">{{ (total_ttc)|fr_number }}&nbsp;€</div></div>
     </div>
     <div class="purchase-stat">
       <div><div class="purchase-stat-label">Factures</div><div class="purchase-stat-value">{{ invoice_count }}</div></div>
@@ -63,7 +63,7 @@
         {% for cat in category_rows %}
           <tr>
             <td>{{ cat.label }}</td>
-            <td><strong>{{ '%.2f'|format(cat.ttc) }}&nbsp;€</strong></td>
+            <td><strong>{{ (cat.ttc)|fr_number(2) }}&nbsp;€</strong></td>
             <td>{{ cat.pct }}%</td>
           </tr>
         {% else %}
@@ -92,9 +92,9 @@
           <tr>
             <td><span class="purchase-link">{{ s.name }}</span></td>
             <td>{{ s.count }}</td>
-            <td>{{ '%.2f'|format(s.ht) }}&nbsp;€</td>
-            <td>{{ '%.2f'|format(s.vat) }}&nbsp;€</td>
-            <td><strong>{{ '%.2f'|format(s.ttc) }}&nbsp;€</strong></td>
+            <td>{{ (s.ht)|fr_number(2) }}&nbsp;€</td>
+            <td>{{ (s.vat)|fr_number(2) }}&nbsp;€</td>
+            <td><strong>{{ (s.ttc)|fr_number(2) }}&nbsp;€</strong></td>
           </tr>
         {% else %}
           <tr><td colspan="5" class="purchase-empty">Aucune donnée sur cette période.</td></tr>

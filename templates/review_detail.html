@@ -37,7 +37,7 @@
     {% for d in diag_issues %}
       <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
         <strong>{{ '⛔ Blocage' if d.severity=='blocker' else '⚠ Alerte' }} — {{ d.label }}</strong>
-        <div class="purchase-muted" style="font-size:12px;">{{ d.item_count }} élément(s){% if d.amount %} · montant indicatif {{ '%.2f'|format(d.amount) }}&nbsp;€{% endif %}</div>
+        <div class="purchase-muted" style="font-size:12px;">{{ d.item_count }} élément(s){% if d.amount %} · montant indicatif {{ (d.amount)|fr_number(2) }}&nbsp;€{% endif %}</div>
       </div>
     {% endfor %}
     </div>
