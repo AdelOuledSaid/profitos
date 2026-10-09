@@ -147,3 +147,53 @@ a{color:inherit}
   .landing-reform-cards,.landing-persona-grid,.landing-integration-grid{grid-template-columns:1fr}
   .landing-explorer-more{text-align:left}
 }
+
+/* Sections claires : alternance avec les sections sombres (page plus rythmée, textes longs plus lisibles) */
+.landing-light{--l-bg:#f5f6f2;--l-card:#fff;--l-line:#e1e6df;--l-text:#0d1510;--l-muted:#4f5b53;--l-green:#11804a;background:var(--l-bg);color:var(--l-text);border-top:0;border-bottom:0}
+.landing-light--tint{--l-bg:#ebf1ea}
+.landing-light .landing-kicker{color:var(--l-green)}
+.landing-light .landing-kicker span{background:var(--l-green);box-shadow:none}
+.landing-light .landing-section-heading h2,.landing-light h2,.landing-light h3,.landing-light strong{color:var(--l-text)}
+.landing-light .landing-section-heading p,.landing-light p{color:var(--l-muted)}
+/* Pour qui */
+.landing-light .landing-persona{background:var(--l-card);border-color:var(--l-line);box-shadow:0 1px 2px rgba(13,21,16,.04)}
+.landing-light .landing-persona:hover{border-color:var(--l-green);box-shadow:0 14px 34px rgba(13,21,16,.08)}
+.landing-light .landing-persona small{color:var(--l-green)}
+.landing-light .landing-persona li{color:var(--l-muted);border-top-color:#eef1ec}
+/* Intégrations */
+.landing-light .landing-integration-grid div{background:var(--l-card);border-color:var(--l-line)}
+.landing-light .landing-integration-grid b{background:#e3f5ea;color:var(--l-green)}
+.landing-light .landing-integration-grid span{color:var(--l-muted)}
+.landing-light .landing-integration-grid em{color:#8a5a00;border-color:#e8c574;background:#fff7e3}
+.landing-light .landing-integration-note{color:#6b766e}
+/* Réforme facture électronique */
+.landing-reform.landing-light{background:radial-gradient(circle at 88% 12%,rgba(61,220,132,.16),transparent 38%),var(--l-bg)}
+.landing-light .landing-reform-copy p{color:var(--l-muted)}
+.landing-light .landing-reform-timeline{border-left-color:#c9dccf}
+.landing-light .landing-reform-timeline li:before{background:var(--l-bg);border-color:var(--l-green)}
+.landing-light .landing-reform-timeline li.is-done:before{background:var(--l-green);box-shadow:0 0 0 4px rgba(17,128,74,.15)}
+.landing-light .landing-reform-timeline b{color:var(--l-green)}
+.landing-light .landing-reform-timeline span{color:var(--l-muted)}
+.landing-light .landing-reform-cards div{background:var(--l-card);border-color:var(--l-line)}
+.landing-light .landing-reform-cards span{color:var(--l-muted)}
+/* Au-delà du tableau de bord */
+.landing-light .landing-ops-grid div{background:var(--l-card);border-color:var(--l-line)}
+.landing-light .landing-ops-grid span{color:var(--l-muted)}
+.landing-light--ops{padding-bottom:40px}
+/* FAQ */
+.landing-faq-section{padding-top:40px}
+.landing-light .landing-faq details{background:var(--l-card);border-color:var(--l-line)}
+.landing-light .landing-faq details:hover{border-color:#c6d2c8}
+.landing-light .landing-faq details[open]{border-color:var(--l-green)}
+.landing-light .landing-faq summary{color:var(--l-text)}
+.landing-light .landing-faq summary:after{color:var(--l-green)}
+.landing-light .landing-faq p{color:var(--l-muted)}
+.landing-light a:not(.landing-btn){color:var(--l-green)}
+
+/* Pied de page : slogan lisible, liens juridiques sur une ligne à part */
+@media(min-width:981px){
+  .landing-footer .landing-shell{grid-template-columns:auto 1fr auto;row-gap:18px}
+  .landing-footer .landing-legal-links{grid-column:1/3;grid-row:2}
+  .landing-footer .landing-legal-links a{font-size:13px;font-weight:500;color:#8a8a8a}
+  .landing-footer .landing-shell>span{grid-column:3;grid-row:2;justify-self:end}
+}
