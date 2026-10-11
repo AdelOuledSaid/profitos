@@ -42,11 +42,6 @@ USE_POSTGRES = bool(DATABASE_URL)
 if USE_POSTGRES:
     import psycopg2  # noqa: à ajouter dans requirements.txt (psycopg2-binary) avant déploiement
 
-# Violation de contrainte (doublon, clé unique...) quel que soit le backend. Attraper
-# uniquement sqlite3.IntegrityError laissait passer l'erreur psycopg2 en production
-# (erreur 500 au lieu du message prévu, ex. « Ce règlement a déjà été enregistré »).
-IntegrityError = (sqlite3.IntegrityError,) + ((psycopg2.IntegrityError,) if USE_POSTGRES else ())
-
 
 class Row(dict):
     """Ligne de résultat supportant à la fois l'accès par nom (row['col'], comme
@@ -128,18 +123,6 @@ def _translate_statement(sql):
             (table,),
         )
 
-    # SQLite « BEGIN IMMEDIATE » prend le verrou d'écriture de toute la base pour la
-    # transaction. Équivalent PostgreSQL : un verrou consultatif de transaction propre au
-    # schéma du client (libéré automatiquement au COMMIT/ROLLBACK). Sans cette traduction,
-    # la création d'un avoir levait une erreur de syntaxe en production.
-    if re.match(r'^BEGIN\s+(IMMEDIATE|EXCLUSIVE)\s*;?$', stripped, re.I):
-        return 'SELECT pg_advisory_xact_lock(hashtext(current_schema()))'
-
-    # Les colonnes REAL de SQLite sont des flottants 64 bits ; « REAL » en PostgreSQL est
-    # un float4 (≈ 7 chiffres) qui arrondit les montants (1 234 567,89 -> 1 234 567,9).
-    if re.match(r'^(CREATE\s+TABLE|ALTER\s+TABLE)\b', stripped, re.I):
-        stripped = re.sub(r'\bREAL\b', 'DOUBLE PRECISION', stripped, flags=re.I)
-
     if stripped.upper().startswith('INSERT OR IGNORE INTO'):
         # "INSERT OR IGNORE INTO t(...) VALUES(...)" -> "INSERT INTO t(...) VALUES(...) ON CONFLICT DO NOTHING"
         rewritten = re.sub(r'^INSERT\s+OR\s+IGNORE\s+INTO', 'INSERT INTO', stripped, flags=re.I)
@@ -166,24 +149,7 @@ def _translate_ddl(script):
     """Traduit un script executescript() (CREATE TABLE ...) vers une syntaxe
     compatible PostgreSQL."""
     script = re.sub(r'INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY', script, flags=re.I)
-    # REAL (float4 en PostgreSQL) arrondit les montants : on garde la précision 64 bits de SQLite.
-    script = re.sub(r'\bREAL\b', 'DOUBLE PRECISION', script, flags=re.I)
     return script
-
-
-def upgrade_real_columns(conn):
-    """Migration PostgreSQL : convertit en DOUBLE PRECISION les colonnes créées en REAL
-    (float4) par les versions précédentes, dans le schéma courant. Sans effet sous SQLite."""
-    if not isinstance(conn, PGConnection):
-        return 0
-    rows = conn.execute(
-        "SELECT table_name, column_name FROM information_schema.columns "
-        "WHERE table_schema=current_schema() AND data_type='real'").fetchall()
-    for r in rows:
-        t = re.sub(r'[^A-Za-z0-9_]', '', r['table_name']); col = re.sub(r'[^A-Za-z0-9_]', '', r['column_name'])
-        conn.execute(f'ALTER TABLE "{t}" ALTER COLUMN "{col}" TYPE DOUBLE PRECISION')
-    conn.commit()
-    return len(rows)
 
 
 class PGCursorResult:
@@ -222,222 +188,24 @@ class PGCursorResult:
         return raw[0] if raw else None
 
 
-# ---------------------------------------------------------------------------
-# Pool de connexions PostgreSQL.
-#
-# Avant : une connexion psycopg2 neuve par appel à cx()/auth_cx() (11 à 14 par
-# page), un CREATE SCHEMA IF NOT EXISTS + COMMIT à chaque ouverture et un
-# SET search_path avant chaque requête.
-#
-# Maintenant :
-#   - un ThreadedConnectionPool par process (taille PG_POOL_MAX, défaut 10) ;
-#   - CREATE SCHEMA exécuté une seule fois par process et par schéma ;
-#   - SET search_path exécuté (et commité, pour survivre à un rollback) une
-#     seule fois à chaque sortie du pool ;
-#   - pendant une requête Flask (ou un app_context de job), une connexion
-#     fermée par le code applicatif (`c.close()`) n'est pas rendue au pool :
-#     elle est annulée (rollback, comme un vrai close) puis gardée dans
-#     `flask.g` pour être réutilisée par le prochain cx() du même schéma.
-#     Toutes les connexions de la requête sont rendues au pool au teardown.
-#     Deux connexions ouvertes simultanément restent deux connexions
-#     distinctes : la sémantique transactionnelle de SQLite est conservée.
-#   - hors contexte Flask (scripts, cron), close() rend directement la
-#     connexion au pool ; `pg_connection()` offre un context manager.
-#
-# PG_SEARCH_PATH_EACH_QUERY=1 restaure l'ancien comportement (SET avant chaque
-# requête) si un pooler externe en mode "transaction" est intercalé.
-# ---------------------------------------------------------------------------
-import threading
-from contextlib import contextmanager
-
-PG_POOL_MIN = max(0, int(os.environ.get('PG_POOL_MIN', '1') or 1))
-PG_POOL_MAX = max(1, int(os.environ.get('PG_POOL_MAX', '10') or 10))
-PG_SEARCH_PATH_EACH_QUERY = os.environ.get('PG_SEARCH_PATH_EACH_QUERY', '').strip().lower() in ('1', 'true', 'yes')
-
-_pool = None
-_pool_lock = threading.Lock()
-_ensured_schemas = set()
-_schema_lock = threading.Lock()
-_G_KEY = '_profitos_pg_idle'
-
-
-def _safe_schema(schema):
-    return re.sub(r'[^a-zA-Z0-9_]', '', schema) if schema else None
-
-
-def _make_pool():
-    from psycopg2 import pool as pg_pool
-    return pg_pool.ThreadedConnectionPool(
-        min(PG_POOL_MIN, PG_POOL_MAX), PG_POOL_MAX, DATABASE_URL,
-        connect_timeout=PG_CONNECT_TIMEOUT, application_name=PG_APPLICATION_NAME,
-    )
-
-
-def get_pool():
-    global _pool
-    if _pool is None:
-        with _pool_lock:
-            if _pool is None:
-                _pool = _make_pool()
-    return _pool
-
-
-def reset_pool():
-    """Ferme le pool (tests, fin de job). Le prochain accès en recrée un."""
-    global _pool
-    with _pool_lock:
-        p, _pool = _pool, None
-    with _schema_lock:
-        _ensured_schemas.clear()
-    if p is not None:
-        try:
-            p.closeall()
-        except Exception:
-            pass
-
-
-def _flask_g():
-    try:
-        from flask import g, has_app_context
-        return g if has_app_context() else None
-    except Exception:
-        return None
-
-
-def _ensure_schema(raw, schema):
-    if not schema or schema == 'public' or schema in _ensured_schemas:
-        return
-    cur = raw.cursor()
-    try:
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-        raw.commit()
-    finally:
-        cur.close()
-    with _schema_lock:
-        _ensured_schemas.add(schema)
-
-
-def _apply_search_path(raw, schema):
-    if not schema:
-        return
-    cur = raw.cursor()
-    try:
-        cur.execute(f'SET search_path TO "{schema}", public')
-        raw.commit()  # un SET non commité serait annulé par le prochain rollback
-    finally:
-        cur.close()
-
-
-def _is_pool_exhausted(exc):
-    return exc.__class__.__name__ == 'PoolError'
-
-
-def _checkout(schema):
-    """Retourne (connexion brute, origine) avec le search_path déjà positionné."""
-    g = _flask_g()
-    if g is not None:
-        idle = getattr(g, _G_KEY, None)
-        if idle and idle.get(schema):
-            return idle[schema].pop(), 'pool'
-    origin = 'pool'
-    try:
-        pool = get_pool()
-        raw = pool.getconn()
-        if getattr(raw, 'closed', 0):
-            pool.putconn(raw, close=True)
-            raw = pool.getconn()
-    except Exception as exc:
-        # Pool saturé : on préfère servir la requête avec une connexion directe
-        # (fermée à la libération) plutôt que d'échouer.
-        if not _is_pool_exhausted(exc):
-            raise
-        import logging
-        logging.getLogger('profitos.db').warning('PG pool saturé (PG_POOL_MAX=%s) : connexion directe', PG_POOL_MAX)
-        raw = psycopg2.connect(DATABASE_URL, connect_timeout=PG_CONNECT_TIMEOUT, application_name=PG_APPLICATION_NAME)
-        origin = 'direct'
-    try:
-        _ensure_schema(raw, schema)
-        _apply_search_path(raw, schema)
-    except Exception:
-        _discard(raw, origin)
-        raise
-    return raw, origin
-
-
-def _discard(raw, origin):
-    try:
-        if origin == 'pool' and _pool is not None:
-            _pool.putconn(raw, close=True)
-        else:
-            raw.close()
-    except Exception:
-        pass
-
-
-def _give_back(raw, origin):
-    """Rend une connexion au pool (ou la ferme si elle n'en vient pas)."""
-    if origin != 'pool' or _pool is None or getattr(raw, 'closed', 0):
-        _discard(raw, origin)
-        return
-    try:
-        raw.rollback()
-    except Exception:
-        _discard(raw, origin)
-        return
-    try:
-        _pool.putconn(raw)
-    except Exception:
-        _discard(raw, origin)
-
-
-def _release(raw, schema, origin):
-    """Appelé par PGConnection.close()."""
-    try:
-        raw.rollback()  # même sémantique qu'un close() : le non-commité est perdu
-    except Exception:
-        _discard(raw, origin)
-        return
-    g = _flask_g()
-    if g is not None and origin == 'pool':
-        idle = getattr(g, _G_KEY, None)
-        if idle is None:
-            idle = {}
-            setattr(g, _G_KEY, idle)
-        idle.setdefault(schema, []).append(raw)
-        return
-    _give_back(raw, origin)
-
-
-def release_request_connections(exc=None):
-    """Teardown Flask : rend au pool toutes les connexions de la requête."""
-    g = _flask_g()
-    if g is None:
-        return
-    idle = getattr(g, _G_KEY, None)
-    if not idle:
-        return
-    setattr(g, _G_KEY, {})
-    for conns in idle.values():
-        for raw in conns:
-            _give_back(raw, 'pool')
-
-
-def init_app(app):
-    """Branche la libération des connexions en fin de requête / d'app_context."""
-    app.teardown_appcontext(release_request_connections)
-
-
 class PGConnection:
-    def __init__(self, dsn=None, schema=None):
-        # `dsn` est conservé pour compatibilité de signature : le pool utilise DATABASE_URL.
-        self._schema = _safe_schema(schema)
-        self._conn, self._origin = _checkout(self._schema)
-        self._closed = False
+    def __init__(self, dsn, schema=None):
+        self._conn = psycopg2.connect(dsn, connect_timeout=PG_CONNECT_TIMEOUT, application_name=PG_APPLICATION_NAME)
+        self._schema = re.sub(r'[^a-zA-Z0-9_]', '', schema) if schema else None
+        if self._schema:
+            cur = self._conn.cursor()
+            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{self._schema}"')
+            self._conn.commit()  # commité immédiatement : certains poolers (ex. PgBouncer en mode
+                                  # transaction, utilisé par défaut sur les connexions "pooled" de Neon)
+                                  # peuvent réattribuer la connexion physique entre deux transactions,
+                                  # donc on ne peut pas compter sur un simple SET/CREATE non committé.
+            cur.close()
+            self._set_search_path()
 
     def _set_search_path(self):
-        """Réapplique le schéma actif. Par défaut le search_path est positionné
-        une seule fois à la sortie du pool ; PG_SEARCH_PATH_EACH_QUERY=1 force
-        l'ancien comportement (utile derrière un pooler en mode transaction)."""
+        """Réapplique le schéma actif. Appelé avant chaque requête (pas seulement à l'ouverture
+        de la connexion) car un pooler en mode transaction peut faire perdre un SET search_path
+        entre deux transactions sur ce qui semble être "la même" connexion côté client."""
         if self._schema:
             cur = self._conn.cursor()
             cur.execute(f'SET search_path TO "{self._schema}", public')
@@ -450,8 +218,7 @@ class PGConnection:
             params = extra_params
         else:
             pg_sql = _sqlite_placeholders_to_pg(translated)
-        if PG_SEARCH_PATH_EACH_QUERY:
-            self._set_search_path()
+        self._set_search_path()
         cur = self._conn.cursor()
         try:
             cur.execute(pg_sql, params)
@@ -465,8 +232,7 @@ class PGConnection:
         script = _translate_ddl(script)
         stmts = [s.strip() for s in script.split(';') if s.strip()]
         for stmt in stmts:
-            if PG_SEARCH_PATH_EACH_QUERY:
-                self._set_search_path()
+            self._set_search_path()
             cur = self._conn.cursor()
             try:
                 cur.execute(stmt)
@@ -485,17 +251,7 @@ class PGConnection:
         self._conn.rollback()
 
     def close(self):
-        if self._closed:
-            return
-        self._closed = True
-        _release(self._conn, self._schema, self._origin)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()
-        return False
+        self._conn.close()
 
 
 class SQLiteCursorResult:
@@ -517,22 +273,10 @@ class SQLiteCursorResult:
     def fetchall(self):
         return [self._wrap(r) for r in self._cur.fetchall()]
 
-    @property
-    def lastrowid(self):
-        # Même interface que PGCursorResult.lastrowid : sans elle, l'enregistrement d'un
-        # règlement (et 6 autres écrans) levait AttributeError en local sur SQLite.
-        return self._cur.lastrowid
-
 
 class SQLiteConnection:
     def __init__(self, path):
         self._conn = sqlite3.connect(path)
-        # LEFT(texte, n) existe sous PostgreSQL mais pas sous SQLite. La révision comptable
-        # l'utilise (comptes 401/411/471...) : sans cet équivalent, le diagnostic et la
-        # clôture d'une révision levaient « no such function: LEFT » en local.
-        self._conn.create_function(
-            'LEFT', 2, lambda value, n: None if value is None else str(value)[:max(int(n or 0), 0)],
-            deterministic=True)
 
     def execute(self, sql, params=()):
         cur = self._conn.cursor()
@@ -564,19 +308,6 @@ def connect_tenant(org_id, sqlite_path):
     return SQLiteConnection(sqlite_path)
 
 
-@contextmanager
-def pg_connection(org_id=None, sqlite_path=None):
-    """Context manager pour les jobs et scripts hors requête HTTP.
-
-    org_id=None -> base AUTH (schéma public). La connexion est toujours
-    libérée (rendue au pool en PostgreSQL, fermée en SQLite)."""
-    conn = connect_auth(sqlite_path) if org_id is None else connect_tenant(org_id, sqlite_path)
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
 def delete_tenant_storage(org_id, sqlite_path):
     """Supprime définitivement le stockage privé d'une organisation.
 
@@ -600,8 +331,6 @@ def delete_tenant_storage(org_id, sqlite_path):
             try:
                 cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
                 conn.commit()
-                with _schema_lock:
-                    _ensured_schemas.discard(schema)
             finally:
                 cur.close()
         except Exception:

@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_billing_advanced_ai_is_conditional():
     text = (ROOT / "templates" / "billing.html").read_text(encoding="utf-8")
     assert "plan_limits[code].advanced_ai" in text
-    assert "Diagnostic financier, trésorerie &amp; scénarios" in text
-    assert "Simulateur de décision" in text
+    assert "Financial Brain & Cash Intelligence" in text
+    assert "AI CFO Planner" in text
     assert "{{ '✓' if plan_limits[code].advanced_ai else '—' }}" in text
 
 

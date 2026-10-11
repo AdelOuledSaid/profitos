@@ -15,10 +15,9 @@ def test_swan_account_query_reads_balances_and_recent_transactions():
     assert "statusInfo { status }" in S
 
 def test_sandbox_accounts_visible_but_live_stays_locally_scoped():
-    # v4xx : plus d'exception Sandbox — seuls les comptes rattachés à l'organisation
-    # sont visibles, quel que soit l'environnement.
-    assert "remote_accounts = all_remote_accounts" not in R
-    assert "allowed_remote_ids = bound_account_ids(session['org_id'])" in R
+    assert "if current_environment() == 'sandbox':" in R
+    assert "remote_accounts = all_remote_accounts" in R
+    assert "allowed_remote_ids" in R
 
 def test_ui_shows_account_balance_transactions_and_refresh():
     assert "Mon compte Swan" in T

@@ -32,44 +32,60 @@ def register(app):
         SAVE : pondéré par le score, classé selon la facilité présumée de mise en œuvre.
         GROW : exclu du chiffrage 90 jours (cycle de marché public trop long), affiché à part
         comme pipeline indicatif au-delà de l'horizon."""
-        # Même base que Trésorerie & scénarios (scénario probable) : créances émises ET importées,
-        # factures fournisseurs restant à payer (à leur échéance), dépenses futures, dépense
-        # courante observée. Les économies potentielles ne sont PAS des encaissements : elles
-        # sont affichées à part et jamais ajoutées aux flux.
-        from profitos.routes.cash_intelligence import build_cash_intelligence
-        ci=build_cash_intelligence()
-        today=date.today()
-        labels=('0-30j','31-60j','61-90j')
-        def bucket(day):
-            return '0-30j' if day<=30 else ('31-60j' if day<=60 else '61-90j')
-        inflows={k:0.0 for k in labels}
-        for r in ci['receivables_in_horizon']:
-            try: d=datetime.strptime(r['expected_date'],'%Y-%m-%d').date()
-            except Exception: continue
-            inflows[bucket(max(1,(d-today).days))]+=r['expected_amount']
-        supplier_out={k:0.0 for k in labels}; expense_out={k:0.0 for k in labels}
-        for o in ci['scheduled_outflows']:
-            target=supplier_out if o.get('source')=='purchase_invoice' else expense_out
-            target[bucket(max(1,int(o.get('day') or 0)))]+=o['amount']
-        burn={k:round(ci['daily_burn']*30,2) for k in labels}
-        net={k:round(inflows[k]-supplier_out[k]-expense_out[k]-burn[k],2) for k in labels}
-        cumulative=[]; running=0.0
-        for k in labels:
-            running+=net[k]; cumulative.append((k,round(running,2)))
         c=cx()
-        saves=c.execute("SELECT title,value FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchall()
-        grow_total=c.execute("SELECT COUNT(*) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['n']
+        invoices=c.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchall()
+        saves=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchall()
+        grow_total=c.execute("SELECT COALESCE(SUM(1),0) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['n']
+        future_expenses=c.execute(
+            "SELECT vendor,description,category,amount,expense_date FROM expenses "
+            "WHERE expense_date IS NOT NULL AND expense_date>? AND expense_date<=? ORDER BY expense_date" ,
+            (date.today().isoformat(),(date.today()+timedelta(days=90)).isoformat())
+        ).fetchall()
         c.close()
-        from profitos.routes.money_hunter import split_save_totals
-        save_one_off,save_annual=split_save_totals(saves)
-        chart=bars_svg([(k,net[k]) for k in labels])
-        return render_template('forecast.html',ci=ci,labels=labels,inflows=inflows,supplier_out=supplier_out,
-            expense_out=expense_out,burn=burn,net=net,cumulative=cumulative,total_90j=round(running,2),chart=chart,
-            grow_total=grow_total,save_count=len(saves),save_one_off=save_one_off,save_annual=save_annual,
-            invoice_count=len(ci['receivables_in_horizon']),
-            gross_expected=round(sum(inflows.values()),2),
-            planned_outflows=round(sum(supplier_out.values())+sum(expense_out.values()),2),
-            supplier_payables_total=round(sum(supplier_out.values()),2))
+
+        buckets={'0-30j':0.0,'31-60j':0.0,'61-90j':0.0}
+        for inv in invoices:
+            weight=(inv['score'] or 0)/100
+            expected=inv['outstanding']*weight
+            days=inv['days_overdue'] or 0
+            if days<=30: buckets['0-30j']+=expected
+            elif days<=60: buckets['31-60j']+=expected
+            else: buckets['61-90j']+=expected  # créance déjà ancienne : horizon repoussé par prudence
+
+        for s in saves:
+            weight=(s['score'] or 0)/100
+            expected=(s['value'] or 0)*weight
+            if s['score']>=80: buckets['0-30j']+=expected
+            elif s['score']>=50: buckets['31-60j']+=expected
+            else: buckets['61-90j']+=expected
+
+        gross_expected=sum(buckets.values())
+        obligation_buckets={'0-30j':0.0,'31-60j':0.0,'61-90j':0.0}
+        today=date.today()
+        for e in future_expenses:
+            try: d=datetime.strptime(str(e['expense_date'])[:10],'%Y-%m-%d').date()
+            except Exception: continue
+            days=(d-today).days
+            amount=max(0.0,float(e['amount'] or 0))
+            if days<=30: key='0-30j'
+            elif days<=60: key='31-60j'
+            else: key='61-90j'
+            obligation_buckets[key]+=amount
+            buckets[key]-=amount
+
+        planned_outflows=sum(obligation_buckets.values())
+        total_90j=sum(buckets.values())
+        chart=bars_svg(list(buckets.items()))
+        cumulative=[]
+        running=0
+        for label,v in buckets.items():
+            running+=v; cumulative.append((label,round(running)))
+
+        return render_template('forecast.html',buckets=buckets,total_90j=total_90j,chart=chart,
+            cumulative=cumulative,grow_total=grow_total,
+            invoice_count=len(invoices),save_count=len(saves),
+            gross_expected=gross_expected,planned_outflows=planned_outflows,
+            obligation_buckets=obligation_buckets,future_expense_count=len(future_expenses))
 
     @app.route('/reports/monthly.pdf')
     @login_required
@@ -88,22 +104,20 @@ def register(app):
         try:
             from fpdf import FPDF
         except ImportError:
-            flash("La génération du rapport PDF est momentanément indisponible. Réessayez plus tard ou contactez le support.")
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
             return redirect(url_for('impact'))
 
         c=cx()
-        from profitos.receivables import open_receivables
-        overdue_rows=sorted((r for r in open_receivables(c) if r['overdue']),key=lambda r:r['score'],reverse=True)
-        recover={'t':sum(r['outstanding'] for r in overdue_rows),'n':len(overdue_rows)}
+        recover=c.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()
         save=c.execute("SELECT COALESCE(SUM(value),0) t,COUNT(*) n FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()
         grow=c.execute("SELECT COUNT(*) n FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()
         verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()
-        top_recover=overdue_rows[:8]
+        top_recover=c.execute("SELECT invoice_number,customer,MAX(amount-paid_amount,0) outstanding,days_overdue FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC LIMIT 8").fetchall()
         top_save=c.execute("SELECT title,value FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC LIMIT 5").fetchall()
         top_grow=c.execute("SELECT title,buyer FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 5").fetchall()
         c.close()
 
-        period=fr_month(datetime.now(PARIS).strftime('%Y-%m'))
+        period=datetime.now(timezone.utc).strftime('%B %Y')
         pdf=FPDF(orientation='P',unit='mm',format='A4')
         pdf.set_auto_page_break(auto=True,margin=18)
         pdf.add_page()
@@ -119,7 +133,7 @@ def register(app):
             pdf.cell(63,10,value,border=0)
 
         pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
-        pdf.cell(63,6,'À ENCAISSER'); pdf.cell(63,6,'ÉCONOMIES POTENTIELLES'); pdf.cell(63,6,'MARCHÉS PUBLICS'); pdf.ln(6)
+        pdf.cell(63,6,'RECOVERABLE'); pdf.cell(63,6,'POTENTIAL SAVINGS'); pdf.cell(63,6,'GROW'); pdf.ln(6)
         kpi('recover',pdf_safe(f"{fr_number(recover['t'])} EUR"),(220,38,38))
         kpi('save',pdf_safe(f"{fr_number(save['t'])} EUR/an"),(217,119,6))
         kpi('grow',f"{grow['n']} opportunites",(22,163,74))
@@ -132,7 +146,7 @@ def register(app):
             pdf.set_font('Helvetica','B',13); pdf.set_text_color(17,24,39); pdf.cell(0,10,title,ln=1)
             pdf.set_draw_color(229,231,235); pdf.line(pdf.get_x(),pdf.get_y(),pdf.get_x()+180,pdf.get_y()); pdf.ln(3)
 
-        section('Relances clients - créances prioritaires')
+        section('RECOVER - creances prioritaires')
         if top_recover:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for r in top_recover:
@@ -141,22 +155,22 @@ def register(app):
             pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune creance en retard.',ln=1)
         pdf.ln(4)
 
-        section('Économies détectées')
+        section('SAVE - economies detectees')
         if top_save:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for s in top_save:
                 pdf.cell(0,7,pdf_safe(f"- {s['title']} - {fr_number(s['value'])} EUR/an"),ln=1)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune économie détectée.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun signal SAVE ouvert.',ln=1)
         pdf.ln(4)
 
-        section('Marchés publics - opportunités')
+        section('GROW - opportunites de marche')
         if top_grow:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for g in top_grow:
                 pdf.cell(0,7,pdf_safe(f"- {g['title']} - {g['buyer'] or ''}"),ln=1)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun marché public ouvert.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune opportunite GROW ouverte.',ln=1)
 
         pdf_bytes=bytes(pdf.output(dest='S'))
         filename=f"profitos-rapport-{datetime.now(timezone.utc).strftime('%Y-%m')}.pdf"
@@ -188,9 +202,9 @@ def register(app):
             record_usage('reports_per_month',organization_id=org['id'])
             flash(f"Rapport hebdomadaire envoyé à {result['to']}.")
         elif result.get('dry_run'):
-            flash(f"Service e-mail non configuré — e-mail non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
+            flash(f"Service email non configuré — email non envoyé (mode simulation). Destinataire prévu : {result['to']}.")
         elif result.get('reason')=='no_owner_email':
-            flash("Impossible d'envoyer le rapport : aucun propriétaire avec e-mail trouvé.")
+            flash("Impossible d'envoyer le rapport : aucun propriétaire avec email trouvé.")
         else:
             flash("Impossible d'envoyer le rapport pour le moment. Réessayez dans quelques minutes.")
         return redirect(url_for('weekly_report_preview'))

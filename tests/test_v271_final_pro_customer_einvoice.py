@@ -13,7 +13,6 @@ def test_final_customer_einvoice_ui():
     assert "Actualiser le statut" in T
 
 def test_due_date_guard_create_and_edit():
-    # v421 : contrôle commun à la création et à la modification (_parse_invoice_header).
-    assert "La date d'échéance ne peut pas être antérieure à la date d'émission." in R
-    assert "v['due_date'] < str(issue_date)[:10]" in R
-    assert R.count("_parse_invoice_header(request.form,paris_today().isoformat())") >= 2
+    assert R.count("La date d'échéance ne peut pas être antérieure à la date d'émission.") >= 2
+    assert "date.fromisoformat(due_date) < date.fromisoformat(issue_date)" in R
+    assert "date.fromisoformat(due_date) < date.fromisoformat(inv['issue_date'])" in R

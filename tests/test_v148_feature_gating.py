@@ -17,12 +17,10 @@ def test_grow_refresh_is_protected():
     assert "@requires_feature('advanced_features')" in block
 
 
-def test_company_save_does_not_call_boamp():
-    # L'enregistrement du profil n'attend plus BOAMP (jusqu'à 20 s) : actualisation par
-    # la tâche quotidienne ou le bouton de Marchés publics (lui-même soumis à la formule).
+def test_company_save_does_not_bypass_feature_gate():
     t=(ROOT/'profitos'/'routes'/'main.py').read_text(encoding='utf-8')
-    company=t.split("def company():",1)[1].split("@app.route",1)[0]
-    assert 'sync_grow()' not in company
+    assert "feature_enabled(org['plan'],'advanced_features')" in t
+    assert 'sync_grow()' in t
 
 
 def test_dce_history_hidden_without_advanced_features():

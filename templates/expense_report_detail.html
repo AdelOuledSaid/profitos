@@ -27,7 +27,7 @@
   <form method="post" action="{{ url_for('expense_report_reject',report_id=report.id) }}" style="display:flex;gap:8px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="rejection_reason" placeholder="Motif (optionnel)" style="width:200px;">
-    <button type="submit" class="purchase-primary-btn secondary" data-confirm="Rejeter ce document ?">Rejeter</button>
+    <button type="submit" class="purchase-primary-btn secondary">Rejeter</button>
   </form>
   {% elif report.status=='approved' and current_role() in ('OWNER','ADMIN','COMPTABLE') %}
   <form method="post" action="{{ url_for('expense_report_reimburse',report_id=report.id) }}">
@@ -53,7 +53,6 @@
 
     <label class="wide" data-expense-field="regular">Reçu — photo ou fichier (PDF/JPEG/PNG, analysé automatiquement)<input type="file" name="receipt" accept=".pdf,.jpg,.jpeg,.png" capture="environment"></label>
     <label data-expense-field="regular">Montant TTC (€) — laisser vide si reçu joint<input type="number" name="amount" step="0.01" min="0"></label>
-    <label data-expense-field="regular">dont TVA récupérable (€)<input type="text" inputmode="decimal" name="vat_amount" placeholder="0,00"></label>
     <label class="wide" data-expense-field="regular">Description<input type="text" name="description" placeholder="ex: Déjeuner client"></label>
 
     <label data-expense-field="kilometrique" style="display:none;">Puissance fiscale (CV)
@@ -76,9 +75,9 @@
           <td>{{ l.expense_date|fr_date or '—' }}</td>
           <td>{{ category_labels.get(l.category, l.category) }}</td>
           <td>{{ l.description or '—' }}{% if l.receipt_path %} <span class="purchase-muted" style="font-size:11px;">(reçu joint)</span>{% endif %}</td>
-          <td style="text-align:right;"><strong>{{ l.amount|fr_number(2) }}&nbsp;€</strong></td>
+          <td style="text-align:right;"><strong>{{ l.amount|fr_number(2) }} €</strong></td>
           {% if report.status=='draft' %}
-          <td><form method="post" action="{{ url_for('expense_report_delete_line',report_id=report.id,line_id=l.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Retirer cette ligne de la note de frais ?">Retirer</button></form></td>
+          <td><form method="post" action="{{ url_for('expense_report_delete_line',report_id=report.id,line_id=l.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Retirer</button></form></td>
           {% endif %}
         </tr>
       {% else %}
@@ -89,7 +88,7 @@
   </div>
   <div class="purchase-total-line" style="margin-top:16px;">
     <span class="purchase-muted">Total</span>
-    <strong>{{ total|fr_number(2) }}&nbsp;€</strong>
+    <strong>{{ total|fr_number(2) }} €</strong>
   </div>
 </section>
 </div>

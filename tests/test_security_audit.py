@@ -7,10 +7,7 @@ def test_security_event_schema_and_logger_exist():
     assert "CREATE TABLE IF NOT EXISTS security_events" in text
     assert "def log_security_event(" in text
     assert "ip_hash" in text
-    # L'IP vient de request.remote_addr corrigé par ProxyFix : un en-tête client
-    # (CF-Connecting-IP, X-Forwarded-For brut) ne doit plus pouvoir l'imposer.
-    body=text.split("def _audit_ip_hash",1)[1].split("\ndef ",1)[0]
-    assert "request.remote_addr" in body and "CF-Connecting-IP" not in body
+    assert "CF-Connecting-IP" in text
 
 def test_security_log_does_not_store_raw_ip_column():
     text=(ROOT/"profitos"/"runtime.py").read_text(encoding="utf-8")

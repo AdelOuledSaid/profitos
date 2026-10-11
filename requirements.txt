@@ -1,13 +1,8 @@
 Flask==3.0.3
-# Versions alignées sur l'environnement testé (dépendances de Flask épinglées).
-Werkzeug==3.1.8
-Jinja2==3.1.6
 pandas==2.2.3
 openpyxl==3.1.5
-requests==2.32.4
-# pypdf 6.x : corrige des boucles infinies / consommations mémoire sur PDF malveillants
-# (API utilisée inchangée : PdfReader, pages, extract_text, errors.PyPdfError).
-pypdf==6.0.0
+requests==2.32.3
+pypdf==5.9.0
 python-docx==1.2.0
 
 # Requis uniquement en production, quand DATABASE_URL pointe vers PostgreSQL.
@@ -24,12 +19,9 @@ stripe==10.12.0
 # Génération des rapports PDF mensuels téléchargeables.
 fpdf2>=2.8.7
 
-gunicorn==23.0.0
-waitress==3.0.2
-
-# Chiffrement authentifié (AES-GCM) des identifiants d'intégration stockés en base
-# (profitos/crypto.py). Clé : variable d'environnement PROFITOS_DATA_KEY.
-cryptography==50.0.1
+gunicorn==22.0.0
+waitress==3.0.0
+pytest==8.3.5
 
 # Lecture sécurisée des anciens fichiers Excel .xls.
 xlrd==2.0.1
@@ -44,5 +36,3 @@ Flask-Limiter[redis]==4.1.1
 twilio==9.3.7
 
 svix==2.5.0
-# Suivi des erreurs (optionnel : actif seulement si SENTRY_DSN est défini).
-sentry-sdk[flask]==2.19.2

@@ -17,7 +17,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="formgrid">
         <label class="wide">Nom / raison sociale<input name="name" required value="{{ client.name }}"></label>
-        <label>E-mail<input type="email" name="email" value="{{ client.email or '' }}"></label>
+        <label>Email<input type="email" name="email" value="{{ client.email or '' }}"></label>
         <label>Téléphone<input name="phone" value="{{ client.phone or '' }}"></label>
         <label class="wide">Adresse<input name="address" value="{{ client.address or '' }}"></label>
         <label>SIREN<input name="siren" maxlength="11" value="{{ client.siren or '' }}" placeholder="9 chiffres"></label>
@@ -38,16 +38,16 @@
         <tbody>
         {% for i in invoices %}
           <tr>
-            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=i.id) }}"><strong>{{ i|invoice_label }}</strong></a></td>
-            <td>{{ i.status|invoice_status_label }}</td>
-            <td><strong>{{ (i.total or 0)|fr_number(2) }}&nbsp;€</strong></td>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=i.id) }}"><strong>{{ i.invoice_number }}</strong></a></td>
+            <td>{{ i.status }}</td>
+            <td><strong>{{ i.total or 0|fr_number(2) }} €</strong></td>
           </tr>
         {% endfor %}
         {% for a in credits %}
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_credit_detail',credit_id=a.id) }}"><strong>{{ a.credit_number }}</strong></a></td>
             <td>Avoir</td>
-            <td><strong>-{{ (a.total or 0)|fr_number(2) }}&nbsp;€</strong></td>
+            <td><strong>-{{ a.total or 0|fr_number(2) }} €</strong></td>
           </tr>
         {% endfor %}
         {% if not invoices and not credits %}

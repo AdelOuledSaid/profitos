@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">PARTENAIRES</div>
+<div class="purchase-eyebrow">PARTNERS</div>
 <h1 class="purchase-title">Radar de partenaires</h1>
-<p class="purchase-subtitle">Trouvez des entreprises complémentaires (autre activité) pour candidater ensemble à un marché trop gros seul. Repose sur un répertoire partagé entre organisations ProfitOS, uniquement pour celles qui ont activé le partage.</p>
+<p class="purchase-subtitle">Trouve des entreprises complémentaires (autre activité) pour candidater ensemble à un marché trop gros seul. Repose sur un répertoire partagé entre organisations ProfitOS, uniquement pour celles qui ont activé le partage.</p>
 
 <section class="purchase-panel" style="margin:20px 0;">
   {% if my_entry and my_entry.opted_in %}
-    <p>Votre profil est visible par les autres organisations ProfitOS ayant aussi activé le partage : <strong>{{ my_entry.company_name }} · {{ my_entry.department or 'département non précisé' }}</strong>.</p>
-    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="opt_out"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Retirer votre profil du répertoire des partenaires ?">Retirer mon profil du répertoire</button></form>
+    <p>Ton profil est visible par les autres organisations ProfitOS ayant aussi activé le partage : <strong>{{ my_entry.company_name }} · {{ my_entry.department or 'département non précisé' }}</strong>.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="opt_out"><button type="submit" class="purchase-primary-btn secondary">Retirer mon profil du répertoire</button></form>
   {% else %}
-    <p>Votre profil n'est pas visible pour l'instant. Activez le partage pour apparaître dans le radar des autres organisations — et voir les leurs en retour. Seuls le nom de votre entreprise, votre département et vos corps de métier sont partagés (jamais vos données financières).</p>
+    <p>Ton profil n'est pas visible pour l'instant. Active le partage pour apparaître dans le radar des autres organisations — et voir les leurs en retour. Seuls le nom de ton entreprise, ton département et tes corps de métier sont partagés (jamais tes données financières).</p>
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="opt_in">
-      <label>E-mail de contact affiché aux autres<input type="email" name="contact_email" placeholder="{{ session.get('email','') }}"></label>
+      <label>Email de contact affiché aux autres<input type="email" name="contact_email" placeholder="{{ session.get('email','') }}"></label>
       <button class="purchase-primary-btn primary">Activer le partage de mon profil</button>
     </form>
   {% endif %}
@@ -32,7 +32,7 @@
           <td style="text-align:right;"><a class="purchase-detail-link" href="mailto:{{ m.org.contact_email }}">Contacter →</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="2" class="purchase-empty">Aucun partenaire complémentaire trouvé pour l'instant — revenez quand d'autres organisations auront activé le partage.</td></tr>
+        <tr><td colspan="2" class="purchase-empty">Aucun partenaire complémentaire trouvé pour l'instant — reviens quand d'autres organisations auront activé le partage.</td></tr>
       {% endfor %}
       </tbody>
     </table>

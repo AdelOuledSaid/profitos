@@ -69,8 +69,7 @@ def register(app):
         c.close()
         paid_capital = sum(i['capital_amount'] for i in installments if i['paid'])
         paid_interest = sum(i['interest_amount'] for i in installments if i['paid'])
-        from profitos.accounting import paris_today
-        return render_template('loan_detail.html', loan=loan, installments=installments, today=paris_today().isoformat(),
+        return render_template('loan_detail.html', loan=loan, installments=installments,
                                 paid_capital=paid_capital, paid_interest=paid_interest)
 
     @app.route('/comptabilite/emprunts/echeance/<int:installment_id>/payer', methods=['POST'])
@@ -85,10 +84,8 @@ def register(app):
         if not installment:
             c.close(); abort(404)
         try:
-            payment_date = _payment_date_from_form(request.form)
-            pay_installment(c, installment_id, entity_id=current_entity_id(), created_by=current_user()['email'],
-                            payment_date=payment_date)
-        except (AccountingError, ValueError) as e:
+            pay_installment(c, installment_id, entity_id=current_entity_id(), created_by=current_user()['email'])
+        except AccountingError as e:
             c.rollback()
             c.close()
             flash(f"Règlement impossible : {e}")
@@ -97,16 +94,3 @@ def register(app):
         log_activity('LOAN_INSTALLMENT_PAID', f"Échéance d'emprunt #{installment_id} réglée")
         flash("Échéance réglée, écriture comptable générée.")
         return redirect(url_for('loan_detail', loan_id=installment['loan_id']))
-
-
-def _payment_date_from_form(form):
-    """Date de règlement saisie (jj/mm/aaaa via champ date ISO) : None si vide,
-    ValueError si invalide ou future."""
-    from profitos.accounting import paris_today
-    raw = (form.get('payment_date') or '').strip()
-    if not raw:
-        return None
-    d = date.fromisoformat(raw)
-    if d > paris_today():
-        raise ValueError("La date de règlement ne peut pas être dans le futur.")
-    return d.isoformat()

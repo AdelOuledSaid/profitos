@@ -1,61 +1,51 @@
 {% extends "base.html" %}
 {% block content %}
-{% set bucket_names = {'0-30j': '0–30 jours', '31-60j': '31–60 jours', '61-90j': '61–90 jours'} %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">FLUX PROJETÉS</div>
-<h1 class="purchase-title">{{ total_90j|fr_signed }}&nbsp;€ de flux nets sur 90 jours</h1>
-<p class="purchase-subtitle">Encaissements attendus moins décaissements prévus, avec les mêmes données que <a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">Trésorerie &amp; scénarios</a> (scénario probable). Estimation indicative, pas une garantie de trésorerie.</p>
-
-<div class="purchase-stats" style="margin:20px 0;">
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Encaissements attendus</div><div class="purchase-stat-value">{{ gross_expected|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">{{ pluralize(invoice_count, 'facture client', 'factures clients') }} (émises et importées)</div></div></div>
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Factures fournisseurs à payer</div><div class="purchase-stat-value">{{ supplier_payables_total|fr_signed }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">déduites à leur échéance</div></div></div>
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Solde de départ</div><div class="purchase-stat-value">{% if ci.cash_balance is not none %}{{ ci.cash_balance|fr_number }}&nbsp;€{% else %}—{% endif %}</div><div class="purchase-muted" style="font-size:12px;">{% if ci.cash_as_of %}déclaré le {{ ci.cash_as_of|fr_date }}{% else %}<a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">à renseigner</a>{% endif %}</div></div></div>
-</div>
+<div class="purchase-eyebrow">CASH FORECAST</div>
+<h1 class="purchase-title">{{ total_90j|fr_number }} € nets projetés sur 90 jours</h1>
+<p class="purchase-subtitle">Estimation indicative — pas une garantie de trésorerie. Ressources pondérées : {{ gross_expected|fr_number }} €. Sorties futures importées : {{ planned_outflows|fr_number }} € ({{ future_expense_count }} échéance(s)).</p>
 
 {% if chart %}
 <section class="purchase-panel" style="margin:20px 0;">
-  <h2>Flux nets par période</h2>
+  <h2 style="color:#fff;">Répartition par horizon</h2>
   {{ chart|safe }}
 </section>
 {% endif %}
 
 <section class="purchase-panel">
-  <h2>Détail par période</h2>
+  <h2 style="color:#fff;">Détail cumulé</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Période</th><th style="text-align:right;">Encaissements</th><th style="text-align:right;">Fournisseurs</th><th style="text-align:right;">Autres sorties datées</th><th style="text-align:right;">Dépenses courantes</th><th style="text-align:right;">Flux net</th></tr></thead>
       <tbody>
-      {% for k in labels %}
-        <tr>
-          <td>{{ bucket_names[k] }}</td>
-          <td style="text-align:right;">{{ inflows[k]|fr_number }}&nbsp;€</td>
-          <td style="text-align:right;">{% if supplier_out[k] %}{{ (-supplier_out[k])|fr_signed }}&nbsp;€{% else %}—{% endif %}</td>
-          <td style="text-align:right;">{% if expense_out[k] %}{{ (-expense_out[k])|fr_signed }}&nbsp;€{% else %}—{% endif %}</td>
-          <td style="text-align:right;">{% if burn[k] %}{{ (-burn[k])|fr_signed }}&nbsp;€{% else %}—{% endif %}</td>
-          <td style="text-align:right;"><strong class="{{ 'purchase-alert-text' if net[k] < 0 }}">{{ net[k]|fr_signed }}&nbsp;€</strong></td>
-        </tr>
+      {% for label, cum in cumulative %}
+        <tr><td>D'ici {{ label }}</td><td style="text-align:right;"><strong>{{ cum|fr_number }} € cumulés</strong></td></tr>
       {% endfor %}
-      {% for label, cum in cumulative %}{% if loop.last %}
-        <tr><td><strong>Cumul 90 jours</strong></td><td colspan="4"></td><td style="text-align:right;"><strong>{{ cum|fr_signed }}&nbsp;€</strong></td></tr>
-      {% endif %}{% endfor %}
       </tbody>
     </table>
   </div>
-  {% if ci.cash_balance is not none %}
-  <p class="purchase-muted" style="margin-top:12px;">Solde projeté : {{ ci.horizons[30]|fr_signed }}&nbsp;€ à 30 jours, {{ ci.horizons[60]|fr_signed }}&nbsp;€ à 60 jours, {{ ci.horizons[90]|fr_signed }}&nbsp;€ à 90 jours — les mêmes montants que dans Trésorerie &amp; scénarios.</p>
-  {% endif %}
-  {% if ci.held_receivables %}<p class="purchase-muted">{{ pluralize(ci.held_receivables|length, 'créance retenue', 'créances retenues') }} (refusée, en litige ou suspendue) : {{ ci.held_receivables_total|fr_number }}&nbsp;€ non comptés.</p>{% endif %}
-  {% if ci.receivables_beyond %}<p class="purchase-muted">{{ pluralize(ci.receivables_beyond|length, 'facture attendue', 'factures attendues') }} après 90 jours : {{ ci.receivables_beyond_total|fr_number }}&nbsp;€ non comptés.</p>{% endif %}
 </section>
 
 <section class="purchase-panel" style="margin-top:20px;">
-  <h2>Non compté dans les flux</h2>
-  <p class="purchase-muted">Économies potentielles : {{ (save_one_off + save_annual)|fr_number }}&nbsp;€ ({{ pluralize(save_count, 'signal', 'signaux') }} à vérifier). Ce sont des pistes d'économie, pas des encaissements : elles ne sont jamais ajoutées à la trésorerie projetée. Voir <a class="purchase-detail-link" href="{{ url_for('save') }}">Économies</a>.</p>
-  <p class="purchase-muted">Marchés publics : {{ pluralize(grow_total, 'opportunité ouverte', 'opportunités ouvertes') }}, cycle de décision généralement supérieur à 90 jours. Voir <a class="purchase-detail-link" href="{{ url_for('grow') }}">Marchés publics</a>.</p>
+  <h2 style="color:#fff;">Sorties planifiées intégrées</h2>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <tbody>
+        <tr><td>0–30 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['0-30j']|fr_number }} €</strong></td></tr>
+        <tr><td>31–60 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['31-60j']|fr_number }} €</strong></td></tr>
+        <tr><td>61–90 jours</td><td style="text-align:right;"><strong class="purchase-alert-text">−{{ obligation_buckets['61-90j']|fr_number }} €</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="purchase-muted" style="margin-top:12px;">Inclut les dépenses futures importées : factures fournisseurs, URSSAF, TVA, impôts et autres charges datées dans les 90 prochains jours.</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;">Pipeline GROW (hors horizon 90 jours)</h2>
+  <p class="purchase-muted">{{ grow_total }} opportunité(s) de marché public ouvertes — cycle de décision généralement supérieur à 90 jours, donc non inclus dans le chiffrage ci-dessus. Consulte <a class="purchase-detail-link" href="{{ url_for('grow') }}">GROW</a> pour le détail.</p>
 </section>
 
 <p class="purchase-muted" style="margin-top:20px;font-size:12px;">
-Méthode : les factures clients restant dues (émises dans ProfitOS ou importées) sont comptées à 100 % à leur date d'échéance (une facture déjà échue est attendue sous 7 à 45 jours selon son retard). Les factures fournisseurs non réglées sont déduites à leur échéance, les autres dépenses datées à leur date, et la dépense courante moyenne des 90 derniers jours est répartie sur chaque période. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
+Méthode : RECOVER est pondéré par le score de chaque créance. SAVE est pondéré par le score et classé selon la facilité présumée de mise en œuvre. Les dépenses futures importées sont soustraites à leur date d'échéance. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
 </p>
 </div>
 {% endblock %}

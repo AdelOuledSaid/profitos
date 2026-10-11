@@ -1,15 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">ÉQUIPE</div>
+<div class="purchase-eyebrow">TEAM</div>
 <h1 class="purchase-title">Utilisateurs</h1>
-{% set overage = plan_overage(auth_org) if auth_org else none %}
-{% if overage and overage.members %}
-<div class="flash" role="status" style="background:#fffbeb;border-color:#fde68a;color:#78350f;">
-  Votre formule actuelle autorise {{ pluralize(overage.team_limit, 'utilisateur') }}. Au-delà de cette limite : {{ overage.members|join(', ') }}.
-  Aucune donnée n'est supprimée, mais aucun nouvel utilisateur ne peut être invité tant que l'équipe dépasse la formule.
-</div>
-{% endif %}
 
 <section class="purchase-panel">
   <div class="purchase-table-wrap">
@@ -25,10 +18,9 @@
                 <select name="role" data-auto-submit>{% for r in ROLES %}<option value="{{ r }}" {% if r==m.role %}selected{% endif %}>{{ ROLE_LABELS[r] }}</option>{% endfor %}</select>
               </form>
               {% if m.user_id!=session.user_id %}
-              <form method="post" action="{{ url_for('team_remove',uid=m.user_id) }}" style="display:inline-flex;gap:6px;align-items:center;">
+              <form method="post" action="{{ url_for('team_remove',uid=m.user_id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="password" name="current_password" placeholder="Votre mot de passe" aria-label="Votre mot de passe pour confirmer" required style="max-width:170px;">
-                <button type="submit" class="purchase-primary-btn secondary" data-confirm="Retirer ce membre de l'équipe ? Il perdra immédiatement l'accès à l'organisation.">Retirer</button>
+                <button type="submit" class="purchase-primary-btn secondary">Retirer</button>
               </form>
               {% endif %}
               {% if active_entities and active_entities|length > 1 %}
@@ -45,42 +37,16 @@
   </div>
 </section>
 
-{% if session.role=='OWNER' and pending_invites %}
-<section class="purchase-panel" style="margin-top:20px;">
-  <h2 style="color:#fff;">Invitations en attente</h2>
-  <div class="purchase-table-wrap">
-    <table class="purchase-table"><tbody>
-    {% for i in pending_invites %}
-      <tr>
-        <td><strong>{{ i.email }}</strong><br><small class="purchase-muted">{{ ROLE_LABELS.get(i.role,i.role) }} — expire le {{ i.expires_at|fr_date }}</small></td>
-        <td style="text-align:right;">
-          <form method="post" action="{{ url_for('team_invite_revoke',invite_id=i.id) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="purchase-primary-btn secondary" data-confirm="Révoquer définitivement ? Cette action est irréversible.">Révoquer</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody></table>
-  </div>
-</section>
-{% endif %}
-
 {% if session.role=='OWNER' %}
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="color:#fff;">Inviter un membre</h2>
   <form method="post" action="{{ url_for('team_invite') }}" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>E-mail<input type="email" name="email" required></label>
+    <label>Email<input type="email" name="email" required></label>
     <label>Rôle<select name="role">{% for r in ROLES %}{% if r!='OWNER' %}<option value="{{ r }}">{{ ROLE_LABELS[r] }}</option>{% endif %}{% endfor %}</select></label>
     <button class="purchase-primary-btn primary">Envoyer l'invitation</button>
   </form>
-  <p class="purchase-muted" style="margin-top:10px;">La personne reçoit un lien valable 7 jours : elle rejoint l'équipe seulement après avoir accepté (en se connectant avec cette adresse, ou en créant son compte).</p>
-  <form method="post" action="{{ url_for('org_require_two_factor') }}" style="margin-top:12px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="require" value="{{ '0' if require_2fa else '1' }}">
-    <button class="purchase-primary-btn secondary">{{ "Ne plus exiger la double authentification" if require_2fa else "Exiger la double authentification pour tous les membres" }}</button>
-  </form>
+  <p class="purchase-muted" style="margin-top:10px;">Si la personne n'a pas encore de compte, elle recevra un email pour définir son mot de passe.</p>
 </section>
 {% endif %}
 </div>

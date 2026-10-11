@@ -1,6 +1,5 @@
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
-from profitos.receivables import detail_url as receivable_detail_url
 
 
 def _safe_float(value):
@@ -15,57 +14,6 @@ def _confidence(score):
         return max(0, min(100, int(score or 0)))
     except (TypeError, ValueError):
         return 0
-
-
-# Nature d'un signal d'économie, déduite du titre posé par le moteur d'analyse des dépenses
-# (routes/imports.py) : un doublon est un montant PONCTUEL à récupérer ; une hausse fournisseur
-# est une projection ANNUALISÉE (nouveau tarif maintenu 12 mois) ; un contrat à vérifier
-# porte le montant de la dernière échéance, à renégocier.
-SAVE_NATURES = {
-    'duplicate': {'prefix': 'Doublon', 'label': 'montant ponctuel', 'annual': False,
-                  'rule': 'même fournisseur, même montant, même date'},
-    'price_rise': {'prefix': 'Hausse fournisseur', 'label': 'hausse annualisée estimée', 'annual': True,
-                   'rule': 'hausse de plus de 20 % entre les deux derniers mois'},
-    'contract': {'prefix': 'Contrat', 'label': 'dernière échéance à renégocier', 'annual': False,
-                 'rule': 'abonnement récurrent sans dépense depuis plus de 11 mois'},
-}
-
-
-def save_nature(title):
-    t = str(title or '')
-    for key, meta in SAVE_NATURES.items():
-        if t.startswith(meta['prefix']):
-            return key
-    return 'other'
-
-
-def save_nature_label(title):
-    return SAVE_NATURES.get(save_nature(title), {}).get('label', 'montant estimé')
-
-
-def reliability_label(score):
-    """Niveau de fiabilité QUALITATIF d'une règle d'analyse : jamais un faux pourcentage.
-    Le score sert au classement ; l'interface n'affiche que « élevée / moyenne / faible »."""
-    score = _confidence(score)
-    if score >= 85:
-        return 'élevée'
-    if score >= 65:
-        return 'moyenne'
-    return 'faible'
-
-
-def split_save_totals(rows):
-    """(ponctuel, annualisé) : ne jamais additionner un doublon ponctuel à une hausse annualisée
-    sans le dire."""
-    one_off = 0.0
-    annual = 0.0
-    for r in rows:
-        value = _safe_float(r['value'])
-        if SAVE_NATURES.get(save_nature(r['title']), {}).get('annual'):
-            annual += value
-        else:
-            one_off += value
-    return round(one_off, 2), round(annual, 2)
 
 
 def _clamp(value, low=0, high=100):
@@ -89,27 +37,24 @@ def _intelligence(kind, amount, confidence, days_overdue=0, deadline=None):
             level, action = 'MOYENNE', 'Planifier une relance'
         else:
             level, action = 'FAIBLE', 'Surveiller la créance'
-        why = f"{int(days_overdue or 0)} jours de retard · {fr_number(amount)} € exposés · score de la créance {confidence}/100 (montant et ancienneté)"
+        why = f"{int(days_overdue or 0)} jours de retard · {fr_number(amount)} € exposés · confiance {confidence}/100"
         return priority, level, action, why
 
     if kind == 'SAVE':
-        # Une hausse fournisseur est annualisée (impact mensuel = /12) ; un doublon est ponctuel.
-        nature = save_nature(deadline)
-        meta = SAVE_NATURES.get(nature, {})
-        monthly = amount / 12.0 if meta.get('annual') else amount
-        impact = min(100, monthly / 50.0)  # 5 k€ atteint le plafond.
+        # La valeur SAVE est annualisée : on compare son impact mensuel.
+        monthly = amount / 12.0
+        impact = min(100, monthly / 50.0)  # 5 k€/mois atteint le plafond.
         priority = _clamp(0.65 * confidence + 0.35 * impact)
         level = 'ÉLEVÉE' if priority >= 70 else ('MOYENNE' if priority >= 45 else 'FAIBLE')
         action = 'Vérifier la dépense et décider' if priority >= 45 else 'Garder sous surveillance'
-        rule = meta.get('rule', "règle d'analyse des dépenses")
-        why = f"{fr_number(amount)} € ({meta.get('label', 'montant estimé')}) · fiabilité {reliability_label(confidence)} (règle : {rule})"
+        why = f"{fr_number(amount)} € / an potentiels · confiance {confidence}/100"
         return priority, level, action, why
 
     # GROW : sans montant fiable, aucune valeur financière n'est fabriquée.
     priority = _clamp(confidence)
     level = 'ÉLEVÉE' if priority >= 75 else ('MOYENNE' if priority >= 50 else 'FAIBLE')
     action = 'Évaluer le GO / NO-GO'
-    why = f"Correspondance avec votre profil : {reliability_label(confidence)}" + (f" · échéance {fr_date(deadline)}" if deadline else '')
+    why = f"Match {confidence}/100" + (f" · échéance {deadline}" if deadline else '')
     return priority, level, action, why
 
 
@@ -183,9 +128,9 @@ def _payment_intelligence(customer, customer_stats, action_stats, base_confidenc
     # pour le classement, tandis que l'interface affiche d'abord un niveau.
     show_risk_score = evidence != 'INSUFFISANT'
 
-    learning_note = f"{pluralize(sent, 'relance envoyée', 'relances envoyées')}"
+    learning_note = f'{sent} relance(s) envoyée(s)'
     if resolved:
-        learning_note += f" · {done}/{resolved} action{'s' if resolved > 1 else ''} clôturée{'s' if resolved > 1 else ''} positivement"
+        learning_note += f' · {done}/{resolved} action(s) clôturée(s) positivement'
     else:
         learning_note += ' · pas encore assez de résultats clôturés'
 
@@ -217,10 +162,13 @@ def build_money_brief():
         eid = current_entity_id()
         ef = 'entity_id=?' if eid else 'entity_id IS NULL'
         ep = (eid,) if eid else ()
-        # Créances échues : vue unique factures émises + importées (profitos/receivables.py).
-        from profitos.receivables import open_receivables
-        invoices = sorted((r for r in open_receivables(c, eid) if r['overdue']),
-                          key=lambda r: r['score'], reverse=True)
+        invoices = c.execute(
+            "SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding,"
+            "days_overdue,score,kind,due_date FROM invoices "
+            f"WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} "
+            "ORDER BY score DESC",
+            ep,
+        ).fetchall()
         saves = c.execute(
             "SELECT id,title,value,score,details FROM opportunities "
             f"WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC",
@@ -281,8 +229,7 @@ def build_money_brief():
         recommendations.append({
             'kind': 'RECOVER',
             'title': f"Relancer {row['customer']}",
-            'detail': f"Facture #{row['invoice_number']} ({row['source_label']}) · {pluralize(row['days_overdue'], 'jour')} de retard",
-            'url': receivable_detail_url(row),
+            'detail': f"Facture #{row['invoice_number']} · {row['days_overdue']} jours de retard",
             'amount': amount,
             'confidence': score,
             'expected': expected,
@@ -302,13 +249,12 @@ def build_money_brief():
         expected = amount * score / 100.0
         save_total += amount
         save_expected += expected
-        priority_score, urgency_level, action, why = _intelligence('SAVE', amount, score, deadline=row['title'])
+        priority_score, urgency_level, action, why = _intelligence('SAVE', amount, score)
         recommendations.append({
             'kind': 'SAVE',
             'title': row['title'],
             'detail': row['details'] or 'Économie potentielle détectée par ProfitOS',
             'amount': amount,
-            'amount_label': save_nature_label(row['title']),
             'confidence': score,
             'expected': expected,
             'priority': priority_score,
@@ -331,7 +277,7 @@ def build_money_brief():
         recommendations.append({
             'kind': 'GROW',
             'title': row['title'],
-            'detail': (row['buyer'] or 'Acheteur non précisé') + (f" · échéance {fr_date(row['deadline'])}" if row['deadline'] else ''),
+            'detail': (row['buyer'] or 'Acheteur non précisé') + (f" · échéance {row['deadline']}" if row['deadline'] else ''),
             'amount': amount,
             'confidence': score,
             'expected': 0.0,
@@ -355,10 +301,7 @@ def build_money_brief():
     high_save = sum(1 for r in saves if _confidence(r['score']) >= 80)
     strong_grow = sum(1 for r in grows if _confidence(r['score']) >= 75)
 
-    save_one_off, save_annual = split_save_totals(saves)
     return {
-        'save_one_off': save_one_off,
-        'save_annual': save_annual,
         'recover_total': round(recover_total, 2),
         'recover_expected': round(recover_expected, 2),
         'save_total': round(save_total, 2),
@@ -384,5 +327,5 @@ def register(app):
     @requires_paid_plan
     def money_hunter():
         brief = build_money_brief()
-        log_activity('MONEY_HUNTER_VIEW','Consultation des gisements de cash')
+        log_activity('MONEY_HUNTER_VIEW','Consultation du Money Brief')
         return render_template('money_hunter.html', brief=brief)

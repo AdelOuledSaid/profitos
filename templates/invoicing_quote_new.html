@@ -24,24 +24,13 @@
             <label>Client enregistré
               <select id="saved-client">
                 <option value="">— Saisie manuelle —</option>
-                {% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}" data-siren="{{ (c.siren or '')|e }}">{{ c.name }}</option>{% endfor %}
+                {% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}">{{ c.name }}</option>{% endfor %}
               </select>
             </label>
           </div>
           <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
-          <label>E-mail du client<input id="invoice-client-email" name="client_email" type="email"></label>
-          <label class="wide">Adresse du client<textarea id="invoice-client-address" name="client_address" rows="3"></textarea></label>
-          <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres"></label>
-          <label>N° TVA intracommunautaire du client<input name="client_vat_number" maxlength="40"></label>
-          <label>Pays du client (ISO 2)<input name="counterparty_country" maxlength="2" placeholder="FR"></label>
-          <label>Nature de l'opération
-            <select name="operation_nature">
-              <option value="services">Prestation de services</option>
-              <option value="biens">Livraison de biens</option>
-              <option value="mixte">Mixte (biens + services)</option>
-            </select>
-          </label>
-          <label class="wide">Adresse de livraison (si différente)<textarea name="delivery_address" rows="2"></textarea></label>
+          <label>Email du client<input id="invoice-client-email" name="client_email" type="email"></label>
+          <label class="wide">Adresse du client<input id="invoice-client-address" name="client_address"></label>
           <label>Valable jusqu'au<input name="valid_until" type="date"></label>
         </div>
       </div>
@@ -53,15 +42,14 @@
         </h4>
         <div class="purchase-table-wrap">
           <table class="purchase-table">
-            <thead><tr><th>Description</th><th>Nature</th><th>Quantité</th><th>Prix unitaire HT (€)</th><th>TVA (%)</th></tr></thead>
+            <thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (€)</th><th>TVA (%)</th></tr></thead>
             <tbody>
             {% for i in range(1,9) %}
               <tr>
                 <td><input name="label_{{ i }}" placeholder="Description"></td>
-                <td><select name="nature_{{ i }}"><option value="">Selon l'opération</option><option value="services">Service</option><option value="biens">Bien</option></select></td>
-                <td><input name="qty_{{ i }}" type="text" inputmode="decimal" value="1"></td>
-                <td><input name="price_{{ i }}" type="text" inputmode="decimal" placeholder="0,00"></td>
-                <td><input name="vat_{{ i }}" type="text" inputmode="decimal" value="20"></td>
+                <td><input name="qty_{{ i }}" type="number" step="0.01" min="0" value="1"></td>
+                <td><input name="price_{{ i }}" type="number" step="0.01" min="0" value="0.00"></td>
+                <td><input name="vat_{{ i }}" type="number" step="0.1" min="0" value="20"></td>
               </tr>
             {% endfor %}
             </tbody>

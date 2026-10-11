@@ -57,7 +57,7 @@ def register(app):
         ).fetchone()
         if active_action:
             c.close()
-            flash("Une action est déjà en cours pour cet élément. Ouvrez le centre d'actions pour la gérer.")
+            flash("Une action est déjà en cours pour cet élément. Ouvrez Action Center pour la gérer.")
             return redirect(url_for('detail',kind=kind,item_id=item_id))
 
         if kind=='RECOVER' and not force_new:
@@ -109,7 +109,7 @@ def register(app):
             if kind=='SAVE':
                 title=f"Vérifier — {o['title']}"
                 draft=(
-                    f"Signal d'économie : {o['title']}\n"
+                    f"Signal SAVE : {o['title']}\n"
                     f"Valeur potentielle : {fr_number(o['value'],2)} €\n"
                     f"Confiance : {o['score']} %\n\n"
                     "Vérifier les pièces sources avant toute action."
@@ -248,7 +248,7 @@ def register(app):
             return redirect(url_for('actions'))
         if a['kind']!='RECOVER':
             c.close()
-            flash("L'envoi par e-mail n'est disponible que pour les relances clients.")
+            flash("L'envoi par email n'est disponible que pour les actions RECOVER.")
             return redirect(url_for('actions'))
 
         inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
@@ -256,25 +256,21 @@ def register(app):
         if not inv or not inv['customer_email']:
             flash(
                 f"Aucun email connu pour {inv['customer'] if inv else 'ce client'}. "
-                'Ajoutez une colonne "customer_email" dans votre fichier de factures pour activer l’envoi.'
+                'Ajoute une colonne "customer_email" dans ton fichier de factures pour activer l’envoi.'
             )
             return redirect(url_for('actions'))
 
-        quota_error=check_outbound_email_quota('action')
-        if quota_error:
-            flash(quota_error)
-            return redirect(url_for('actions'))
         subject,body=parse_email_draft(a['draft'])
         safe_body=body.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
         html=(
             '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
             'font-size:14px;color:#111827;white-space:pre-wrap;">'+safe_body+'</div>'
         )
-        result=send_email(inv['customer_email'],subject,html,on_behalf_of_org=current_org())
+        result=send_email(inv['customer_email'],subject,html)
 
         if not result.get('sent'):
             if result.get('dry_run'):
-                flash(f"Service e-mail non configuré — e-mail non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
+                flash(f"Service email non configuré — email non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
             else:
                 flash("Échec de l'envoi de l'email. L'action reste approuvée et peut être réessayée.")
             return redirect(url_for('actions'))
@@ -285,7 +281,7 @@ def register(app):
         c2.close()
 
         log_status_change('ACTION',a['opportunity_id'],a['kind'],'APPROVED','SENT',note=f"Email envoyé à {inv['customer_email']}")
-        flash(f"E-mail envoyé à {inv['customer_email']}.")
+        flash(f"Email envoyé à {inv['customer_email']}.")
         return redirect(url_for('actions'))
 
     @app.route('/actions/<int:aid>/send-sms',methods=['POST'])
@@ -301,14 +297,14 @@ def register(app):
         if a['status']!='APPROVED':
             c.close(); flash("Cette action doit d'abord être approuvée avant envoi."); return redirect(url_for('actions'))
         if a['kind']!='RECOVER':
-            c.close(); flash("L'envoi par SMS n'est disponible que pour les relances clients."); return redirect(url_for('actions'))
+            c.close(); flash("L'envoi par SMS n'est disponible que pour les actions RECOVER."); return redirect(url_for('actions'))
 
         inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
         c.close()
         if not inv or not inv['customer_phone']:
             flash(
                 f"Aucun téléphone connu pour {inv['customer'] if inv else 'ce client'}. "
-                'Ajoutez une colonne "customer_phone" dans votre fichier de factures pour activer l’envoi.'
+                'Ajoute une colonne "customer_phone" dans ton fichier de factures pour activer l’envoi.'
             )
             return redirect(url_for('actions'))
 

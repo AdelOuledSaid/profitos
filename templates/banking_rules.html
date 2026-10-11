@@ -29,7 +29,7 @@
 
 {% if uncategorized_count %}
 <section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
-  <p style="margin:0;">{{ pluralize(uncategorized_count, 'transaction') }} sans catégorie actuellement.</p>
+  <p style="margin:0;">{{ uncategorized_count }} transaction(s) sans catégorie actuellement.</p>
   <form method="post" action="{{ url_for('banking_rules_apply') }}" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="purchase-primary-btn secondary">Appliquer les règles aux transactions existantes</button>
@@ -50,7 +50,7 @@
           <td style="text-align:right;">
             <form method="post" action="{{ url_for('banking_rule_delete',rule_id=r.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="purchase-primary-btn secondary" data-confirm="Supprimer définitivement cet élément ? Cette action est irréversible.">Supprimer</button>
+              <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
             </form>
           </td>
         </tr>

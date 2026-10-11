@@ -14,10 +14,10 @@ def test_friendly_application_precheck_is_retained():
 
 def test_integrity_collision_rolls_back_atomic_workflow():
     route=B.split("def banking_transaction_categorize(tx_id):",1)[1]
-    assert "except BANK_DB_INTEGRITY_ERRORS + (ValueError, AccountingError) as e:" in route
+    assert "except BANK_DB_INTEGRITY_ERRORS + (ValueError,) as e:" in route
     assert "c.rollback()" in route
 
 def test_learning_is_after_bankcat_insert_and_same_transaction():
     route=B.split("def banking_transaction_categorize(tx_id):",1)[1]
-    assert route.index("create_entry(c,'BQ'") < route.index("INSERT INTO bank_accounting_validations")
+    assert route.index("INSERT INTO accounting_entries") < route.index("INSERT INTO bank_accounting_validations")
     assert route.index("INSERT INTO bank_accounting_validations") < route.index("c.commit()")

@@ -4,12 +4,9 @@ CASH=(ROOT/'profitos/routes/cash_intelligence.py').read_text(encoding='utf-8')
 TPL=(ROOT/'templates/cash_intelligence.html').read_text(encoding='utf-8')
 
 def test_forecast_uses_real_sales_and_payment_ledger():
-    # v43x : les créances viennent de la vue unique (factures émises + importées).
-    helper=(ROOT/'profitos/receivables.py').read_text(encoding='utf-8')
-    assert 'open_receivables(c,eid)' in CASH
-    assert 'FROM outgoing_invoices oi' in helper
-    assert 'outgoing_invoice_payments' in helper
-    assert "oi.entity_id IS ?" in helper
+    assert 'FROM outgoing_invoices oi' in CASH
+    assert 'outgoing_invoice_payments' in CASH
+    assert "oi.entity_id IS ?" in CASH
     assert "amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total']),2))" in CASH
 
 def test_forecast_uses_supplier_open_balance_and_payment_ledger():

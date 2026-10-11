@@ -9,7 +9,7 @@ calcul du barème kilométrique.
 """
 from datetime import datetime, date
 
-from profitos.accounting import create_entry, AccountingError, paris_today
+from profitos.accounting import create_entry, AccountingError
 
 # --- Catégories de notes de frais -> compte de charge par défaut ----------
 DEFAULT_EXPENSE_REPORT_CATEGORIES = [
@@ -94,15 +94,6 @@ def _entry_already_exists(conn, source_type, source_id, entity_id=None):
     return row is not None
 
 
-def _expense_report_date(conn, report):
-    """Date de l'écriture d'une note de frais : dernière dépense de la note (période
-    réelle des charges), au plus tard aujourd'hui."""
-    row = conn.execute('SELECT MAX(expense_date) d FROM expense_report_lines WHERE report_id=?', (report['id'],)).fetchone()
-    today = paris_today().isoformat()
-    d = str(row['d'] or '')[:10] if row else ''
-    return d if d and d <= today else today
-
-
 def generate_expense_report_entry(conn, report):
     """Génère l'écriture comptable (journal OD) quand une note de frais est
     approuvée : un débit par compte de charge concerné (regroupé par
@@ -112,37 +103,27 @@ def generate_expense_report_entry(conn, report):
     if _entry_already_exists(conn, 'expense_report', report['id'], report['entity_id']):
         return None
     lines = conn.execute(
-        'SELECT category,SUM(amount) as total,SUM(COALESCE(vat_amount,0)) as vat FROM expense_report_lines WHERE report_id=? GROUP BY category',
+        'SELECT category,SUM(amount) as total FROM expense_report_lines WHERE report_id=? GROUP BY category',
         (report['id'],),
     ).fetchall()
     if not lines:
         raise AccountingError("Cette note de frais n'a aucune ligne de dépense.")
     total = 0.0
     entry_lines = []
-    vat_total = 0.0
     for l in lines:
         account = EXPENSE_REPORT_CATEGORY_ACCOUNTS.get(l['category'], '606800')
-        ttc = round(float(l['total'] or 0), 2)
-        # TVA récupérable du justificatif (montant TTC saisi) : isolée en 445660,
-        # jamais pour les indemnités kilométriques (pas de TVA).
-        vat = round(float(l['vat'] or 0), 2) if l['category'] != 'kilometrique' else 0.0
-        vat = min(max(vat, 0.0), ttc)
-        entry_lines.append({'account_code': account, 'debit': round(ttc - vat, 2),
+        entry_lines.append({'account_code': account, 'debit': l['total'],
                              'label': EXPENSE_REPORT_CATEGORY_LABELS.get(l['category'], l['category'])})
-        vat_total = round(vat_total + vat, 2)
-        total += ttc
-    if vat_total:
-        entry_lines.append({'account_code': '445660', 'debit': vat_total, 'label': 'TVA déductible — note de frais'})
-    entry_lines = [x for x in entry_lines if x.get('debit')]
-    entry_lines.append({'account_code': '421000', 'credit': round(total, 2), 'auxiliary_name': report['employee_email']})
+        total += l['total']
+    entry_lines.append({'account_code': '421000', 'credit': total, 'auxiliary_name': report['employee_email']})
     return create_entry(
-        conn, 'OD', _expense_report_date(conn, report),
+        conn, 'OD', date.today(),
         f"Note de frais {report['employee_email']} — {report['period_label'] or ''}".strip(),
         entry_lines, source_type='expense_report', source_id=report['id'], entity_id=report['entity_id'],
     )
 
 
-def generate_expense_reimbursement_entry(conn, report, reimbursement_date=None):
+def generate_expense_reimbursement_entry(conn, report):
     """Génère l'écriture de remboursement (journal BQ) quand une note de
     frais est marquée remboursée : Personnel (421) au débit (la dette envers
     l'employé est soldée), Banque (512) au crédit. Idempotent."""
@@ -153,7 +134,7 @@ def generate_expense_reimbursement_entry(conn, report, reimbursement_date=None):
         'SELECT SUM(amount) t FROM expense_report_lines WHERE report_id=?', (report['id'],)
     ).fetchone()['t'] or 0
     return create_entry(
-        conn, 'BQ', reimbursement_date or paris_today(),
+        conn, 'BQ', date.today(),
         f"Remboursement note de frais {report['employee_email']}",
         [
             {'account_code': '421000', 'debit': total, 'auxiliary_name': report['employee_email']},

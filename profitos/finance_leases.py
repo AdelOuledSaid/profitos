@@ -9,20 +9,18 @@ vraie immobilisation ordinaire (liée à fixed_assets via source_type=
 """
 from datetime import datetime
 
-from profitos.accounting import create_entry, AccountingError, paris_today
-from profitos.invoice_amounts import money
+from profitos.accounting import create_entry, AccountingError
 from profitos.loans import _add_months
 
 LEASE_EXPENSE_ACCOUNT = '612000'
 BANK_ACCOUNT = '512000'
-DEDUCTIBLE_VAT_ACCOUNT = '445660'
 
 PERIODICITY_MONTHS = {'monthly': 1, 'quarterly': 3, 'annual': 12}
 
 
 def create_finance_lease(conn, lessor_name, asset_description, asset_value, redevance_amount,
                           periodicity, start_date, duration_months, purchase_option_amount=0,
-                          entity_id=None, notes='', created_by=None, vat_rate=None):
+                          entity_id=None, notes='', created_by=None):
     """Crée un contrat de crédit-bail et son échéancier de redevances.
     periodicity : 'monthly', 'quarterly' ou 'annual' — détermine
     l'intervalle entre deux redevances, pas la durée totale du contrat
@@ -48,10 +46,8 @@ def create_finance_lease(conn, lessor_name, asset_description, asset_value, rede
          start_date_obj.isoformat(), duration_months, purchase_option_amount, notes,
          datetime.utcnow().isoformat(), created_by),
     )
-    lease_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    if vat_rate is not None:
-        conn.execute('UPDATE finance_leases SET vat_rate=? WHERE id=?', (float(vat_rate), lease_id))
     conn.commit()
+    lease_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
     n_payments = duration_months // step
     for k in range(1, n_payments + 1):
@@ -64,7 +60,7 @@ def create_finance_lease(conn, lessor_name, asset_description, asset_value, rede
     return lease_id
 
 
-def pay_lease_payment(conn, payment_id, entity_id=None, created_by=None, payment_date=None):
+def pay_lease_payment(conn, payment_id, entity_id=None, created_by=None):
     """Enregistre le règlement d'une redevance de crédit-bail : débite la
     charge (612000), crédite la banque (512000). Idempotent — refuse si
     déjà réglée."""
@@ -77,26 +73,13 @@ def pay_lease_payment(conn, payment_id, entity_id=None, created_by=None, payment
     if not lease or str(lease['entity_id'] or '') != str(entity_id or ''):
         raise AccountingError("Cette redevance n'appartient pas à l'entité active.")
 
-    entry_date = payment_date or min(str(payment['due_date'])[:10], paris_today().isoformat())
-    # Redevance TTC : la TVA déductible (445660) est isolée quand le contrat porte un
-    # taux de TVA ; contrats antérieurs sans taux : redevance entière en charge.
-    try:
-        vat_rate = float(lease['vat_rate'] or 0) if 'vat_rate' in lease.keys() else 0.0
-    except (TypeError, ValueError):
-        vat_rate = 0.0
-    ttc = round(float(payment['amount']), 2)
-    lines = []
-    if vat_rate > 0:
-        ht = money(ttc / (1 + vat_rate / 100))
-        lines.append({'account_code': LEASE_EXPENSE_ACCOUNT, 'debit': ht})
-        lines.append({'account_code': DEDUCTIBLE_VAT_ACCOUNT, 'debit': round(ttc - ht, 2), 'vat_rate': vat_rate, 'vat_base': ht})
-    else:
-        lines.append({'account_code': LEASE_EXPENSE_ACCOUNT, 'debit': ttc})
-    lines.append({'account_code': BANK_ACCOUNT, 'credit': ttc})
     entry_id = create_entry(
-        conn, 'BQ', entry_date,
+        conn, 'BQ', datetime.utcnow().date(),
         f"Redevance {payment['payment_number']} — crédit-bail {lease['lessor_name']} ({lease['asset_description']})",
-        lines,
+        [
+            {'account_code': LEASE_EXPENSE_ACCOUNT, 'debit': payment['amount']},
+            {'account_code': BANK_ACCOUNT, 'credit': payment['amount']},
+        ],
         source_type='finance_lease_payment', source_id=payment_id,
         entity_id=entity_id, created_by=created_by, commit=False,
     )
@@ -157,7 +140,7 @@ def exercise_purchase_option(conn, lease_id, exercise_date, useful_life_years,
         "SELECT COUNT(*) n FROM finance_lease_payments WHERE lease_id=? AND paid=0", (lease_id,)
     ).fetchone()['n']
     if unpaid > 0:
-        raise AccountingError(f"{unpaid} redevance(s) encore impayée(s) : réglez-les avant de lever l'option d'achat.")
+        raise AccountingError(f"{unpaid} redevance(s) encore impayée(s) — règle-les avant de lever l'option d'achat.")
     if not lease['purchase_option_amount'] or lease['purchase_option_amount'] <= 0:
         raise AccountingError("Aucun montant de levée d'option n'a été renseigné pour ce contrat.")
 

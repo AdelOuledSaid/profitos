@@ -9,7 +9,7 @@
 
   <div class="purchase-eyebrow">FACTURATION</div>
   <h1 class="purchase-title">Nouvelle facture fournisseur</h1>
-  <p class="purchase-subtitle">Importez un document ou saisissez les informations à la main — les deux mènent au même formulaire de vérification.</p>
+  <p class="purchase-subtitle">Importe un document ou saisis les informations à la main — les deux mènent au même formulaire de vérification.</p>
 
   <section class="purchase-panel">
     <div class="purchase-panel-head"><h2>Importer un document</h2></div>
@@ -20,7 +20,7 @@
           <svg viewBox="0 0 24 24"><path d="M12 16V4M12 4l-4 4M12 4l4 4"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
         </span>
         <div>
-          <strong class="purchase-strong-heading" style="font-size:16px;">Déposez un PDF ou une photo</strong>
+          <strong class="purchase-strong-heading" style="font-size:16px;">Dépose un PDF ou une photo</strong>
           <p class="muted" style="margin:6px 0 0;font-size:13px;">Un PDF avec texte est lu gratuitement ; un PDF scanné ou une photo passe par une extraction IA.</p>
         </div>
         <input type="file" name="document" accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp" capture="environment" required>
@@ -40,7 +40,7 @@
       </span>
       <div>
         <strong class="purchase-strong-heading">Document analysé</strong>
-        <p class="muted" style="margin:4px 0 0;font-size:13px;">Vérifiez et corrigez si besoin, puis enregistrez la facture.</p>
+        <p class="muted" style="margin:4px 0 0;font-size:13px;">Vérifie et corrige si besoin, puis enregistre la facture.</p>
       </div>
     </div>
     {% endif %}
@@ -90,7 +90,7 @@
             </select>
           </label>
           {% endif %}
-          <label>Date de facture<input name="issue_date" type="date" required value="{{ detected.issue_date if detected else '' }}"></label>
+          <label>Date de facture<input name="issue_date" type="date" value="{{ detected.issue_date if detected else '' }}"></label>
           <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
         </div>
       </div>
@@ -101,13 +101,13 @@
           Montants
         </h4>
         <div class="formgrid">
-          <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected and detected.subtotal is not none else '' }}"></label>
-          <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected and detected.vat_amount is not none else '0' }}"></label>
+          <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected else '' }}"></label>
+          <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected else '0' }}"></label>
         </div>
         {% if detected %}
         <div class="purchase-total-line">
           <span class="muted">Total TTC détecté</span>
-          <strong>{{ (detected.total)|fr_number(2) }}&nbsp;€</strong>
+          <strong>{{ '%.2f'|format(detected.total) }} €</strong>
         </div>
         {% endif %}
       </div>
@@ -116,9 +116,6 @@
         <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
       </div>
 
-      {% if duplicate_warning %}
-      <label class="checkbox-label" style="margin-top:12px;"><input type="checkbox" name="confirm_duplicate" value="1"> Enregistrer malgré tout (il s'agit bien d'une autre facture)</label>
-      {% endif %}
       <div style="margin-top:24px;">
         <button type="submit" class="purchase-primary-btn primary">Enregistrer la facture</button>
       </div>

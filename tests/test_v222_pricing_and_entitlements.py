@@ -49,12 +49,10 @@ def test_pass43_backend_routes_are_gated():
 
 def test_pass43_public_pricing_shows_four_offers():
     t = (ROOT / "templates/pricing.html").read_text(encoding="utf-8")
-    # V4 : prix affichés HT et formule renommée en français.
-    assert "Starter<br>9 € HT" in t
-    assert "Pro<br>19 € HT" in t
-    assert "Business<br>49 € HT" in t
-    assert "Multi-sociétés<br>199 € HT" in t
-    assert "Multi-Entity" not in t
+    assert "Starter<br>9 €" in t
+    assert "Pro<br>19 €" in t
+    assert "Business<br>49 €" in t
+    assert "Multi-Entity<br>199 €" in t
 
 
 def test_pass43_navigation_hides_locked_modules():

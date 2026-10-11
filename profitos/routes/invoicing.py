@@ -8,15 +8,12 @@ import hashlib
 from pypdf.errors import PyPdfError
 from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 from profitos.runtime import *
-from profitos import db as dbmod
-from profitos import invoice_amounts as amounts
-from profitos.accounting import paris_today
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 from profitos.entities import current_entity_id
 from profitos.accounting import (generate_sale_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry,
     generate_sale_credit_entry, generate_customer_deposit_entry, generate_customer_final_entry, generate_purchase_entry, generate_purchase_credit_entry,
-    generate_purchase_payment_entry, generate_purchase_partial_payment_entry, reverse_purchase_entry, AccountingError)
+    generate_purchase_payment_entry, generate_purchase_partial_payment_entry, AccountingError)
 from profitos.webhooks_outbound import deliver_webhook
 from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     invoice_status_from_timeline, sandbox_force_invoice_status,
@@ -24,283 +21,63 @@ from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
     get_inbound_invoice_content, download_inbound_invoice_readable, download_inbound_invoice_original, apply_inbound_lifecycle_action)
 
 
-# --- Facturation électronique : statuts qui retiennent un paiement ou une relance --------------------
-# Le cycle de vie WeInvoice est volontairement séparé de l'état de paiement ProfitOS. Conséquence : une
-# facture refusée, contestée ou suspendue restait « à payer » (achats) ou « à encaisser » (ventes). Ces
-# helpers rendent la situation visible et bloquent les deux actions risquées : payer par virement SEPA
-# une facture d'achat contestée, et relancer un client qui a refusé la facture.
-_EINVOICE_HOLD_BY_STATUS = {
-    'REFUSED': 'refusée', 'IN_DISPUTE': 'en litige', 'DISPUTED': 'en litige',
-    'SUSPENDED': 'suspendue', 'REJECTED': 'rejetée',
-}
-_EINVOICE_HOLD_BY_CODE = {'210': 'refusée', '207': 'en litige', '208': 'suspendue', '213': 'rejetée'}
-
-
-def _einvoice_hold(row):
-    """Libellé (« refusée », « en litige », « suspendue » ou « rejetée ») si le statut de facturation
-    électronique de la facture interdit de la payer ou de la relancer, sinon None. Le statut textuel
-    prime ; le code réglementaire ne sert que lorsque le statut est absent."""
-    keys = row.keys() if hasattr(row, 'keys') else []
-    status = str((row['weinvoice_status'] if 'weinvoice_status' in keys else '') or '').strip().upper()
-    if status:
-        return _EINVOICE_HOLD_BY_STATUS.get(status)
-    code = str((row['weinvoice_regulatory_code'] if 'weinvoice_regulatory_code' in keys else '') or '').strip()
-    return _EINVOICE_HOLD_BY_CODE.get(code)
-
-
 def _compute_line_items(form):
-    """Lit jusqu'à 8 lignes de facture depuis le formulaire (libellé, nature, quantité,
-    prix unitaire, taux de TVA). Les lignes vides sont ignorées — pas de JS dynamique
+    """Lit jusqu'à 8 lignes de facture depuis le formulaire (libellé, quantité, prix
+    unitaire, taux de TVA). Les lignes vides sont ignorées — pas de JS dynamique
     nécessaire, conforme à la politique de sécurité stricte de l'app (pas de script
-    inline). Saisie française acceptée (« 12,345 », « 1 000 »)."""
+    inline)."""
     items=[]
     for i in range(1,9):
         label=form.get(f'label_{i}','').strip()
         if not label: continue
-        qty=amounts.parse_number(form.get(f'qty_{i}','1'),1.0)
-        unit_price=amounts.parse_number(form.get(f'price_{i}','0'),0.0)
-        vat_rate=amounts.parse_number(form.get(f'vat_{i}','20'),20.0)
-        # Quantité et prix unitaire conservés à 4 décimales au plus ; total de ligne
-        # arrondi au centime au demi supérieur (3 × 12,345 € = 37,04 €, jamais 37,035).
-        qty=amounts.quantize(qty,4)
-        unit_price=amounts.quantize(unit_price,4)
-        line_total=amounts.line_total(qty,unit_price)
-        item={'label':label,'qty':qty,'unit_price':unit_price,'vat_rate':amounts.rate_key(vat_rate),'line_total':line_total}
-        nature=(form.get(f'nature_{i}') or '').strip()
-        if nature in ('biens','services'):
-            item['nature']=nature
-        items.append(item)
+        try: qty=float(form.get(f'qty_{i}','1').replace(',','.'))
+        except ValueError: qty=1
+        try: unit_price=float(form.get(f'price_{i}','0').replace(',','.'))
+        except ValueError: unit_price=0
+        try: vat_rate=float(form.get(f'vat_{i}','20').replace(',','.'))
+        except ValueError: vat_rate=20
+        line_total=qty*unit_price
+        items.append({'label':label,'qty':qty,'unit_price':unit_price,'vat_rate':vat_rate,'line_total':line_total})
     return items
 
 
-# Taux de TVA applicables en France (métropole, Corse, DROM). Un taux hors liste est
-# presque toujours une faute de frappe (ex. 200 au lieu de 20).
-ALLOWED_VAT_RATES=(0.0,0.9,1.05,1.75,2.1,5.5,8.5,10.0,13.0,20.0)
-
-
-def _line_items_error(items):
-    """Message d'erreur si les lignes saisies ne peuvent pas produire un document valide,
-    sinon None. Une ligne de remise négative reste possible, mais le total HT doit rester
-    strictement positif (une facture négative se fait par avoir)."""
-    for it in items:
-        if it['qty']<=0:
-            return f"Quantité invalide sur la ligne « {it['label']} » : elle doit être supérieure à 0."
-        if not any(abs(it['vat_rate']-r)<1e-9 for r in ALLOWED_VAT_RATES):
-            rates=', '.join(f"{r:g}".replace('.',',') for r in ALLOWED_VAT_RATES)
-            return f"Taux de TVA invalide sur la ligne « {it['label']} » ({amounts.fr_rate(it['vat_rate'])}). Taux acceptés : {rates} %."
-    if round(sum(it['line_total'] for it in items),2)<=0:
-        return "Le total HT doit être positif. Pour annuler ou rembourser une facture, émettez un avoir."
-    return None
-
-
 def _totals(items):
-    """Totaux arrondis au centime, calculés comme la facture électronique : TVA calculée
-    une fois par taux sur la base HT de ce taux, puis additionnée (BR-CO-14/17). Une TVA
-    calculée ligne à ligne donnait 1,56 € pour 0,55 € + 1,00 € par taux : la facture
-    Factur-X était rejetée et l'écriture ne correspondait pas au PDF."""
-    return amounts.totals(items)
-
-
-def _g(row, key, default=None):
-    """Lecture tolérante d'un champ (sqlite Row, Row ProfitOS ou dict)."""
-    if row is None:
-        return default
-    try:
-        keys = row.keys()
-    except AttributeError:
-        return default
-    value = row[key] if key in keys else default
-    return default if value is None else value
-
-
-from profitos.company_profile import (LEGAL_FORMS, LEGAL_FORMS_WITH_CAPITAL, LEGAL_FORMS_WITHOUT_REGISTRY,
-    DEFAULT_LATE_PENALTY, DEFAULT_ESCOMPTE)
-
-from profitos.invoice_compliance import (VAT_TREATMENTS, VAT_TREATMENT_LABELS, OPERATION_NATURE_LABELS,
-    vat_category as _vat_category, vat_exemption as _vat_exemption, legal_mentions as _legal_mentions,
-    seller_legal_footer as _seller_legal_footer)
-
-
-INVOICE_HEADER_COLUMNS = ('client_name','client_address','client_email','client_siren','client_vat_number',
-    'counterparty_country','client_is_public','due_date','service_date','operation_nature','vat_treatment',
-    'vat_exemption_reason','delivery_address','vat_on_debits','ereporting_scope','ereporting_category')
-
-
-def _parse_invoice_header(form, issue_date=None):
-    """En-tête d'une facture (création ou modification d'un brouillon) : retourne
-    (valeurs, message d'erreur ou None). Contrôle SIREN (clé de Luhn), n° de TVA client,
-    pays, dates et périmètre e-reporting."""
-    v={}
-    v['client_name']=(form.get('client_name') or '').strip()
-    v['client_address']=(form.get('client_address') or '').strip().replace('\r\n','\n')
-    v['client_email']=(form.get('client_email') or '').strip()
-    v['client_siren']=re.sub(r'\D','',form.get('client_siren') or '')[:9] or None
-    v['client_vat_number']=re.sub(r'[\s.\-]','',form.get('client_vat_number') or '').upper() or None
-    v['counterparty_country']=(form.get('counterparty_country') or '').strip().upper() or None
-    v['client_is_public']='1' if form.get('client_is_public') in ('on','1') else None
-    v['due_date']=(form.get('due_date') or '').strip() or None
-    v['service_date']=(form.get('service_date') or '').strip() or None
-    nature=form.get('operation_nature','services')
-    v['operation_nature']=nature if nature in ('biens','services','mixte') else 'services'
-    treatment=form.get('vat_treatment') or 'standard'
-    v['vat_treatment']=treatment if treatment in VAT_TREATMENTS and treatment!='franchise' else 'standard'
-    v['vat_exemption_reason']=(form.get('vat_exemption_reason') or '').strip()[:200] or None
-    v['delivery_address']=(form.get('delivery_address') or '').strip().replace('\r\n','\n') or None
-    v['vat_on_debits']=1 if form.get('vat_on_debits') in ('on','1') else 0
-    v['ereporting_scope']=(form.get('ereporting_scope') or '').strip() or None
-    v['ereporting_category']=(form.get('ereporting_category') or '').strip() or None
-    if v['client_siren'] and not siren_is_valid(v['client_siren']):
-        return v,"SIREN client invalide : 9 chiffres avec une clé de contrôle correcte (laissez vide si inconnu)."
-    if v['client_vat_number'] and not fr_vat_is_valid(v['client_vat_number'], v['client_siren'] if (v['client_vat_number'] or '').startswith('FR') else None):
-        return v,"N° de TVA intracommunautaire du client invalide (vérifiez le préfixe pays et la clé)."
-    if v['counterparty_country'] and not re.fullmatch(r'[A-Z]{2}',v['counterparty_country']):
-        return v,"Pays du client : code ISO à 2 lettres (FR, DE, BE…)."
-    if v['ereporting_scope'] not in (None,'b2c','international_b2b'):
-        return v,"Périmètre e-reporting invalide."
-    if v['ereporting_scope']=='b2c' and v['ereporting_category'] not in ('TLB1','TPS1','TNT1','TMA1'):
-        return v,"Catégorie e-reporting B2C requise."
-    if v['ereporting_scope']=='international_b2b' and (not v['counterparty_country'] or v['counterparty_country']=='FR'):
-        return v,"Pays étranger (code ISO à 2 lettres) requis pour une vente B2B internationale."
-    for key,label in (('due_date',"Date d'échéance"),('service_date',"Date de la vente ou de la prestation")):
-        if v[key]:
-            try: date.fromisoformat(v[key])
-            except ValueError: return v,f"{label} invalide."
-    if v['due_date'] and issue_date and v['due_date'] < str(issue_date)[:10]:
-        return v,"La date d'échéance ne peut pas être antérieure à la date d'émission."
-    return v,None
-
-
-def _insert_draft_invoice(c, values):
-    """Insère un brouillon de facture (sans numéro : attribué à l'émission). values :
-    colonnes de outgoing_invoices. Retourne (id, jeton public)."""
-    data=dict(values)
-    data.setdefault('status','draft')
-    data.setdefault('created_at',now())
-    data.setdefault('issue_date',paris_today().isoformat())
-    data.setdefault('public_token',secrets.token_urlsafe(20))
-    data['invoice_number']=None
-    cols=list(data)
-    c.execute(f"INSERT INTO outgoing_invoices({','.join(cols)}) VALUES({','.join('?' for _ in cols)})",[data[k] for k in cols])
-    new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-    return new_id,data['public_token']
-
-
-def _quote_invoice_base(q, eid):
-    """Champs de facture repris d'un devis : client, SIREN, n° de TVA, pays, nature de
-    l'opération et adresse de livraison."""
-    return {'client_name':q['client_name'],'client_address':q['client_address'],'client_email':q['client_email'],
-            'client_siren':_g(q,'client_siren'),'client_vat_number':_g(q,'client_vat_number'),
-            'counterparty_country':_g(q,'counterparty_country'),'operation_nature':_g(q,'operation_nature','services') or 'services',
-            'delivery_address':_g(q,'delivery_address'),'entity_id':eid,
-            'due_date':(paris_today()+timedelta(days=30)).isoformat(),'source_quote_id':q['id']}
-
-
-def _seller_identity(c, entity_id):
-    """Identité complète de l'émetteur d'un document : la société mère ou la filiale
-    à laquelle appartient la facture (jamais la société mère par défaut), avec ses
-    mentions légales (forme, capital, RCS, régime de TVA, conditions de paiement)."""
-    from profitos.entities import resolve_entity
-    ident = dict(resolve_entity(c, entity_id))
-    table, key = ('company', 1) if not entity_id else ('entities', entity_id)
-    try:
-        row = c.execute(f'SELECT * FROM {table} WHERE id=?', (key,)).fetchone()
-    except Exception:
-        row = None
-    for field in ('city', 'legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
-                  'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country'):
-        ident[field] = str(_g(row, field, '') or '')
-    ident['country'] = (ident['country'] or 'FR').upper()
-    return ident
-
-
-def _seller_vat_franchise(company):
-    return (_g(company, 'vat_regime', '') or '') == 'franchise_293B'
-
-
-def _invoice_vat_treatment(inv, company=None):
-    if company is not None and _seller_vat_franchise(company):
-        return 'franchise'
-    t = (_g(inv, 'vat_treatment', '') or 'standard')
-    return t if t in VAT_TREATMENTS else 'standard'
-
-
-def _client_country(inv):
-    country = (_g(inv, 'counterparty_country', '') or '').strip().upper()
-    return country if len(country) == 2 else 'FR'
-
-
-def _is_french_b2b(inv):
-    return _client_country(inv) == 'FR' and (_g(inv, 'ereporting_scope', '') or '') != 'b2c'
-
-
-def _mention(checks, label, ok, scope):
-    checks.append({'label': label, 'ok': bool(ok), 'scope': scope})
+    subtotal=sum(i['line_total'] for i in items)
+    vat_amount=sum(i['line_total']*i['vat_rate']/100 for i in items)
+    return subtotal,vat_amount,subtotal+vat_amount
 
 
 def _check_mandatory_mentions(inv,company):
-    """Mentions obligatoires d'une facture française (CGI art. 242 nonies A, C. com.
-    art. L441-9 et R123-237, réforme de la facturation électronique 2026).
-
-    Chaque contrôle porte un « scope » : 'seller' (profil entreprise), 'buyer' (fiche
-    client / facture) ou 'invoice'. Le numéro et la date d'émission sont attribués
-    automatiquement à l'émission : ils ne bloquent jamais un brouillon. Cette liste est
-    BLOQUANTE à l'émission, à l'envoi et à la transmission électronique."""
+    """Vérification des mentions obligatoires les plus courantes pour une facture
+    française (Code de commerce art. L441-9, CGI). Vérification indicative — ne
+    remplace pas un avis juridique ou comptable professionnel, et ne constitue pas
+    une certification de conformité Factur-X."""
     checks=[]
-    is_draft = (_g(inv, 'status', 'draft') == 'draft')
-    legal_form = _g(company, 'legal_form', '')
-    _mention(checks, "Nom (dénomination) de l'émetteur", _g(company, 'name'), 'seller')
-    _mention(checks, "Adresse de l'émetteur", _g(company, 'address'), 'seller')
-    postal = re.sub(r'\s', '', str(_g(company, 'postal_code', '') or ''))
-    seller_country = (_g(company, 'country', '') or 'FR').upper()
-    postal_ok = bool(re.fullmatch(r'\d{5}', postal)) if seller_country == 'FR' else bool(postal)
-    _mention(checks, "Code postal et ville de l'émetteur", postal_ok and _g(company, 'city'), 'seller')
-    siret=re.sub(r'\D','',str(_g(company, 'siret', '') or ''))
-    _mention(checks, "SIRET de l'émetteur (14 chiffres)", re.fullmatch(r'\d{14}', siret) and siret_is_valid(siret), 'seller')
-    _mention(checks, "Forme juridique de l'émetteur", legal_form, 'seller')
-    if legal_form in LEGAL_FORMS_WITH_CAPITAL:
-        _mention(checks, "Capital social de l'émetteur", _g(company, 'share_capital'), 'seller')
-    if legal_form not in LEGAL_FORMS_WITHOUT_REGISTRY:
-        _mention(checks, "Immatriculation (RCS + ville, ou répertoire des métiers)",
-                 _g(company, 'rcs_city') or _g(company, 'rm_number'), 'seller')
-    if not _seller_vat_franchise(company):
-        _mention(checks, "N° TVA intracommunautaire de l'émetteur", _g(company, 'vat_number'), 'seller')
-    _mention(checks, 'Nom du client', _g(inv, 'client_name'), 'buyer')
-    _mention(checks, 'Adresse du client', _g(inv, 'client_address'), 'buyer')
-    if _is_french_b2b(inv):
-        siren=str(_g(inv, 'client_siren', '') or '')
-        _mention(checks, 'SIREN du client (9 chiffres)', re.fullmatch(r'\d{9}', siren) and siren_is_valid(siren), 'buyer')
-    treatment = _invoice_vat_treatment(inv, company)
-    if treatment in ('intra_eu_goods', 'intra_eu_services', 'reverse_charge_fr'):
-        _mention(checks, "N° TVA intracommunautaire du client (autoliquidation / opération intracommunautaire)",
-                 _g(inv, 'client_vat_number'), 'buyer')
-    if treatment == 'exempt':
-        _mention(checks, "Motif d'exonération de TVA (article du CGI)", _g(inv, 'vat_exemption_reason'), 'invoice')
-    _mention(checks, 'Numéro de facture unique' + (' (attribué à l’émission)' if is_draft else ''),
-             is_draft or _g(inv, 'invoice_number'), 'invoice')
-    _mention(checks, "Date d'émission" + (' (date du jour à l’émission)' if is_draft else ''),
-             is_draft or _g(inv, 'issue_date'), 'invoice')
-    _mention(checks, "Date d'échéance / conditions de règlement", _g(inv, 'due_date'), 'invoice')
-    op_nature = _g(inv, 'operation_nature')
-    _mention(checks, "Nature de l'opération (biens / services / mixte)", op_nature in ('biens', 'services', 'mixte'), 'invoice')
+    checks.append({'label':"Nom de l'émetteur",'ok':bool(company and company['name'])})
+    checks.append({'label':"Adresse de l'émetteur",'ok':bool(company and company['address'])})
+    siret=(company['siret'] if company else '') or ''
+    checks.append({'label':"SIRET de l'émetteur (14 chiffres)",'ok':bool(re.fullmatch(r'\d{14}',re.sub(r'\D','',siret)))})
+    checks.append({'label':"N° TVA intracommunautaire de l'émetteur",'ok':bool(company and company['vat_number'])})
+    checks.append({'label':'Nom du client','ok':bool(inv['client_name'])})
+    checks.append({'label':'Adresse du client','ok':bool(inv['client_address'])})
+    siren=(inv['client_siren'] if 'client_siren' in inv.keys() else '') or ''
+    checks.append({'label':'SIREN du client (9 chiffres)','ok':bool(re.fullmatch(r'\d{9}',siren))})
+    checks.append({'label':'Numéro de facture unique','ok':bool(inv['invoice_number'])})
+    checks.append({'label':"Date d'émission",'ok':bool(inv['issue_date'])})
+    checks.append({'label':"Date d'échéance / conditions de règlement",'ok':bool(inv['due_date'])})
+    op_nature=inv['operation_nature'] if 'operation_nature' in inv.keys() else None
+    checks.append({'label':"Nature de l'opération (biens / services / mixte)",'ok':bool(op_nature)})
+    if op_nature in ('biens','mixte'):
+        delivery=inv['delivery_address'] if 'delivery_address' in inv.keys() else None
+        checks.append({'label':'Adresse de livraison (requise pour une livraison de biens)','ok':bool(delivery)})
     try:
-        items=json.loads(_g(inv, 'line_items') or '[]')
+        items=json.loads(inv['line_items'] or '[]')
     except (json.JSONDecodeError,TypeError):
         items=[]
-    _mention(checks, 'Au moins une ligne avec désignation, quantité, prix unitaire et taux de TVA', items, 'invoice')
-    if items:
-        if treatment == 'standard':
-            _mention(checks, 'Taux de TVA renseigné sur chaque ligne (0 % : choisir un régime d’exonération)',
-                     all(float(it.get('vat_rate') or 0) > 0 for it in items), 'invoice')
-        else:
-            _mention(checks, 'Taux de TVA à 0 % sur chaque ligne (opération sans TVA française)',
-                     all(float(it.get('vat_rate') or 0) == 0 for it in items), 'invoice')
-    _mention(checks, 'Montants HT et TTC calculés', _g(inv, 'subtotal') is not None and _g(inv, 'total') is not None, 'invoice')
+    checks.append({'label':'Au moins une ligne avec désignation, quantité, prix unitaire et taux de TVA','ok':bool(items)})
+    checks.append({'label':'Montants HT et TTC calculés','ok':(inv['subtotal'] is not None and inv['total'] is not None)})
     missing=[c['label'] for c in checks if not c['ok']]
     return checks,missing
-
-
-from profitos.fr_identifiers import (siren_is_valid, siret_is_valid, fr_vat_is_valid, iban_is_valid,
-    fr_postal_code_is_valid, split_address as _split_address)
 
 
 _CII_NS = {
@@ -328,217 +105,154 @@ def _cii_amount(el_parent, tag, value, ns, currency=None):
     return el
 
 
-def _cii_price(value):
-    """Prix unitaire : 2 décimales, jusqu'à 4 si nécessaires (12.345)."""
-    text = f"{amounts.quantize(value, 4):.4f}"
-    return text[:-2] if text.endswith('00') else text
-
-
-def _cii_qty(value):
-    return amounts.fr_qty(value).replace(' ','').replace(',','.') or '0'
-
-
-def _cii_el(parent, tag, text=None, **attrs):
-    el = ET.SubElement(parent, f'{{{_CII_NS["ram"]}}}{tag}')
-    for k, v in attrs.items():
-        el.set(k, v)
-    if text is not None:
-        el.text = str(text)
-    return el
-
-
-def _cii_datetime(parent, tag, iso_date, qualified=False):
-    holder = _cii_el(parent, tag)
-    ns = _CII_NS['qdt'] if qualified else _CII_NS['udt']
-    d = ET.SubElement(holder, f'{{{ns}}}DateTimeString')
-    d.set('format', '102')
-    d.text = _cii_date(str(iso_date)[:10]) or ''
-    return holder
-
-
-def _cii_address(parent, address_text, country, postal_code=None, city=None):
-    """PostalTradeAddress dans l'ordre du schéma CII : PostcodeCode, LineOne, LineTwo,
-    LineThree, CityName, CountryID."""
-    parts = _split_address(address_text)
-    postcode = postal_code or parts['postcode']
-    city_name = city or parts['city']
-    street = [l for l in parts['street'] if l and l != city_name]
-    addr = _cii_el(parent, 'PostalTradeAddress')
-    if postcode:
-        _cii_el(addr, 'PostcodeCode', postcode)
-    for tag, line in zip(('LineOne', 'LineTwo', 'LineThree'), street[:3]):
-        _cii_el(addr, tag, line)
-    if city_name:
-        _cii_el(addr, 'CityName', city_name)
-    _cii_el(addr, 'CountryID', (country or 'FR').upper())
-    return addr
-
-
-def _facturx_notes(inv, company):
-    """Notes réglementaires françaises (BR-FR-05) : PMT (indemnité forfaitaire de
-    recouvrement), PMD (pénalités de retard), AAB (escompte)."""
-    from profitos.company_profile import DEFAULT_LATE_PENALTY, DEFAULT_ESCOMPTE
-    penalty = (_g(company, 'late_penalty_rate', '') or '').strip() or DEFAULT_LATE_PENALTY
-    escompte = (_g(company, 'escompte_text', '') or '').strip() or DEFAULT_ESCOMPTE
-    notes = [
-        ('PMT', "Indemnité forfaitaire pour frais de recouvrement en cas de retard de paiement : 40 € (art. L441-10 et D441-5 du Code de commerce)."),
-        ('PMD', f"Pénalités de retard exigibles dès le lendemain de l'échéance : {penalty}."),
-        ('AAB', escompte),
-    ]
-    if _g(inv, 'notes'):
-        notes.append(('AAI', str(_g(inv, 'notes'))[:1000]))
-    return notes
-
-
-def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, prepaid=0.0, payment_terms_text=None):
-    """XML Cross Industry Invoice (CII D16B), profil EN 16931, pour Factur-X.
-
-    - montants : mêmes chiffres que la base, le PDF et l'écriture (TVA calculée une fois
-      par taux sur la base arrondie, TVA totale = somme des taux, BR-CO-14) ;
-    - vendeur = entité émettrice de la facture (filiale ou société mère), avec code
-      postal, ville, n° de TVA et mentions de forme/capital (BT-33) ;
-    - acheteur : SIREN, pays, n° de TVA (autoliquidation), adresse structurée ;
-    - catégories de TVA S, Z, E (motif), AE, K, G ; franchise 293 B = E ;
-    - notes PMT / PMD / AAB ; conditions et échéance si un montant reste dû ;
-    - avoir (381) : InvoiceReferencedDocument APRÈS la MonetarySummation (ordre D16B).
-    Non validé ici contre le XSD/Schematron officiels (non embarqués) : contrôle externe
-    recommandé (FNFE-MPE, plateforme agréée)."""
+def generate_facturx_xml(inv, items, company):
+    """Génère le XML Cross Industry Invoice (CII), profil EN16931, encapsulable dans
+    un PDF/A-3 pour former un fichier Factur-X. Les données proviennent uniquement
+    de la facture et du profil entreprise déjà enregistrés dans ProfitOS — aucune
+    valeur n'est inventée. Structure vérifiée (espaces de noms, imbrication, valeurs
+    XSD `decimal`/`date`) mais non testée contre un validateur officiel (FNFE-MPE,
+    Chorus Pro) : une vérification externe reste nécessaire avant mise en production.
+    """
     ns = _CII_NS
     for prefix, uri in ns.items():
         ET.register_namespace(prefix, uri)
-    items = [dict(it) for it in (items or [])]
-    subtotal, vat_total, grand_total = amounts.totals(items)
-    breakdown = amounts.vat_breakdown(items)
 
     root = ET.Element(f'{{{ns["rsm"]}}}CrossIndustryInvoice')
+
     ctx = ET.SubElement(root, f'{{{ns["rsm"]}}}ExchangedDocumentContext')
-    guideline = _cii_el(ctx, 'GuidelineSpecifiedDocumentContextParameter')
-    _cii_el(guideline, 'ID', 'urn:cen.eu:en16931:2017')
+    guideline = ET.SubElement(ctx, f'{{{ns["ram"]}}}GuidelineSpecifiedDocumentContextParameter')
+    ET.SubElement(guideline, f'{{{ns["ram"]}}}ID').text = 'urn:cen.eu:en16931:2017'
 
     doc = ET.SubElement(root, f'{{{ns["rsm"]}}}ExchangedDocument')
-    _cii_el(doc, 'ID', _g(inv, 'invoice_number', '') or '')
-    _cii_el(doc, 'TypeCode', type_code)
-    _cii_datetime(doc, 'IssueDateTime', _g(inv, 'issue_date', ''))
-    for subject, content in _facturx_notes(inv, company):
-        note = _cii_el(doc, 'IncludedNote')
-        _cii_el(note, 'Content', content)
-        _cii_el(note, 'SubjectCode', subject)
+    ET.SubElement(doc, f'{{{ns["ram"]}}}ID').text = inv['invoice_number'] or ''
+    ET.SubElement(doc, f'{{{ns["ram"]}}}TypeCode').text = '380'  # 380 = facture commerciale
+    issue = ET.SubElement(doc, f'{{{ns["ram"]}}}IssueDateTime')
+    issue_str = ET.SubElement(issue, f'{{{ns["udt"]}}}DateTimeString')
+    issue_str.set('format', '102')
+    issue_str.text = _cii_date(inv['issue_date']) or ''
 
     txn = ET.SubElement(root, f'{{{ns["rsm"]}}}SupplyChainTradeTransaction')
+
+    # --- Lignes de facture ---
     for idx, it in enumerate(items, start=1):
-        rate = amounts.rate_key(it.get('vat_rate', 0))
-        category = _vat_category(inv, company, rate)
-        line = _cii_el(txn, 'IncludedSupplyChainTradeLineItem')
-        _cii_el(_cii_el(line, 'AssociatedDocumentLineDocument'), 'LineID', str(idx))
-        _cii_el(_cii_el(line, 'SpecifiedTradeProduct'), 'Name', it.get('label', '') or '')
-        agreement = _cii_el(line, 'SpecifiedLineTradeAgreement')
-        price = _cii_el(agreement, 'NetPriceProductTradePrice')
-        # BR-27 : prix net jamais négatif — une déduction se porte en quantité négative.
-        unit_price = abs(float(it.get('unit_price', 0) or 0))
-        _cii_el(price, 'ChargeAmount', _cii_price(unit_price))
-        qty = float(it.get('qty', 1) or 0)
-        if float(it.get('unit_price', 0) or 0) < 0 and qty > 0:
-            qty = -qty
-        _cii_el(_cii_el(line, 'SpecifiedLineTradeDelivery'), 'BilledQuantity', _cii_qty(qty), unitCode='C62')
-        settlement = _cii_el(line, 'SpecifiedLineTradeSettlement')
-        tax = _cii_el(settlement, 'ApplicableTradeTax')
-        _cii_el(tax, 'TypeCode', 'VAT')
-        _cii_el(tax, 'CategoryCode', category)
-        _cii_el(tax, 'RateApplicablePercent', f"{(rate if category in ('S',) else 0):g}")
-        summation = _cii_el(settlement, 'SpecifiedTradeSettlementLineMonetarySummation')
-        _cii_el(summation, 'LineTotalAmount', f"{amounts.money(it.get('line_total', 0)):.2f}")
+        line = ET.SubElement(txn, f'{{{ns["ram"]}}}IncludedSupplyChainTradeLineItem')
+        doc_line = ET.SubElement(line, f'{{{ns["ram"]}}}AssociatedDocumentLineDocument')
+        ET.SubElement(doc_line, f'{{{ns["ram"]}}}LineID').text = str(idx)
+        product = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedTradeProduct')
+        ET.SubElement(product, f'{{{ns["ram"]}}}Name').text = it.get('label', '')
+        agreement = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeAgreement')
+        price = ET.SubElement(agreement, f'{{{ns["ram"]}}}NetPriceProductTradePrice')
+        _cii_amount(price, 'ChargeAmount', it.get('unit_price', 0), ns)
+        delivery = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeDelivery')
+        qty = ET.SubElement(delivery, f'{{{ns["ram"]}}}BilledQuantity')
+        qty.set('unitCode', 'C62')  # C62 = unité, pièce
+        qty.text = f'{it.get("qty", 0):g}'
+        settlement = ET.SubElement(line, f'{{{ns["ram"]}}}SpecifiedLineTradeSettlement')
+        tax = ET.SubElement(settlement, f'{{{ns["ram"]}}}ApplicableTradeTax')
+        ET.SubElement(tax, f'{{{ns["ram"]}}}TypeCode').text = 'VAT'
+        ET.SubElement(tax, f'{{{ns["ram"]}}}CategoryCode').text = 'S'  # S = taux standard
+        ET.SubElement(tax, f'{{{ns["ram"]}}}RateApplicablePercent').text = f'{it.get("vat_rate", 0):g}'
+        line_summation = ET.SubElement(settlement, f'{{{ns["ram"]}}}SpecifiedTradeSettlementLineMonetarySummation')
+        _cii_amount(line_summation, 'LineTotalAmount', it.get('line_total', 0), ns)
 
-    # --- Vendeur / acheteur ----------------------------------------------------------------
-    agreement = _cii_el(txn, 'ApplicableHeaderTradeAgreement')
-    seller = _cii_el(agreement, 'SellerTradeParty')
-    _cii_el(seller, 'Name', _g(company, 'name', '') or '')
-    legal_info = _seller_legal_footer(company)
-    if _g(company, 'legal_form'):
-        _cii_el(seller, 'Description', legal_info)
-    seller_siret = re.sub(r'\D', '', str(_g(company, 'siret', '') or ''))
+    # --- Vendeur / Acheteur ---
+    agreement = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeAgreement')
+    seller = ET.SubElement(agreement, f'{{{ns["ram"]}}}SellerTradeParty')
+    ET.SubElement(seller, f'{{{ns["ram"]}}}Name').text = (company['name'] if company else '') or ''
+    seller_siret = re.sub(r'\D', '', (company['siret'] if company else '') or '')
     if len(seller_siret) == 14:
-        org = _cii_el(seller, 'SpecifiedLegalOrganization')
-        _cii_el(org, 'ID', seller_siret[:9], schemeID='0002')
-    _cii_address(seller, _g(company, 'address', ''), _g(company, 'country', 'FR') or 'FR',
-                 postal_code=re.sub(r'\s', '', str(_g(company, 'postal_code', '') or '')) or None,
-                 city=_g(company, 'city') or None)
+        seller_org = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedLegalOrganization')
+        seller_id = ET.SubElement(seller_org, f'{{{ns["ram"]}}}ID')
+        seller_id.set('schemeID', '0002')  # 0002 = SIRENE (France)
+        seller_id.text = seller_siret[:9]  # SIREN = 9 premiers chiffres du SIRET
+    seller_addr = ET.SubElement(seller, f'{{{ns["ram"]}}}PostalTradeAddress')
+    ET.SubElement(seller_addr, f'{{{ns["ram"]}}}LineOne').text = (company['address'] if company else '') or ''
+    ET.SubElement(seller_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    # BT-34 — adresse électronique vendeur, pour le routage via une plateforme agréée.
+    # Adresse "bare-SIREN" : schemeID 0225 (confirmé par WeInvoice, erreur BR-FR-21 —
+    # ne pas confondre avec le schemeID 0002 utilisé pour SpecifiedLegalOrganization,
+    # qui identifie l'entité légale, pas l'adresse de routage).
     if len(seller_siret) == 14:
-        # BT-34 — adresse électronique de routage « bare-SIREN » : schemeID 0225
-        # (confirmé par WeInvoice, erreur BR-FR-21).
-        _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', seller_siret[:9], schemeID='0225')
-    if _g(company, 'vat_number'):
-        _cii_el(_cii_el(seller, 'SpecifiedTaxRegistration'), 'ID', _g(company, 'vat_number'), schemeID='VA')
+        seller_uri = ET.SubElement(seller, f'{{{ns["ram"]}}}URIUniversalCommunication')
+        seller_uri_id = ET.SubElement(seller_uri, f'{{{ns["ram"]}}}URIID')
+        seller_uri_id.set('schemeID', '0225')
+        seller_uri_id.text = seller_siret[:9]
+    if company and company['vat_number']:
+        seller_tax = ET.SubElement(seller, f'{{{ns["ram"]}}}SpecifiedTaxRegistration')
+        seller_vat = ET.SubElement(seller_tax, f'{{{ns["ram"]}}}ID')
+        seller_vat.set('schemeID', 'VA')
+        seller_vat.text = company['vat_number']
 
-    buyer = _cii_el(agreement, 'BuyerTradeParty')
-    _cii_el(buyer, 'Name', _g(inv, 'client_name', '') or '')
-    client_siren = re.sub(r'\D', '', str(_g(inv, 'client_siren', '') or ''))
-    if len(client_siren) == 9:
-        org = _cii_el(buyer, 'SpecifiedLegalOrganization')
-        _cii_el(org, 'ID', client_siren, schemeID='0002')
-    buyer_country = (_g(inv, 'counterparty_country', '') or 'FR').upper()
-    _cii_address(buyer, _g(inv, 'client_address', ''), buyer_country)
-    if len(client_siren) == 9:
-        _cii_el(_cii_el(buyer, 'URIUniversalCommunication'), 'URIID', client_siren, schemeID='0225')
-    if _g(inv, 'client_vat_number'):
-        _cii_el(_cii_el(buyer, 'SpecifiedTaxRegistration'), 'ID', _g(inv, 'client_vat_number'), schemeID='VA')
+    buyer = ET.SubElement(agreement, f'{{{ns["ram"]}}}BuyerTradeParty')
+    ET.SubElement(buyer, f'{{{ns["ram"]}}}Name').text = inv['client_name'] or ''
+    client_siren = inv['client_siren'] if 'client_siren' in inv.keys() else None
+    if client_siren and re.fullmatch(r'\d{9}', client_siren):
+        buyer_org = ET.SubElement(buyer, f'{{{ns["ram"]}}}SpecifiedLegalOrganization')
+        buyer_id = ET.SubElement(buyer_org, f'{{{ns["ram"]}}}ID')
+        buyer_id.set('schemeID', '0002')
+        buyer_id.text = client_siren
+    buyer_addr = ET.SubElement(buyer, f'{{{ns["ram"]}}}PostalTradeAddress')
+    ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}LineOne').text = inv['client_address'] or ''
+    ET.SubElement(buyer_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    # BT-49 — adresse électronique acheteur, même logique que BT-34 côté vendeur
+    # (schemeID 0225, pas 0002 — voir commentaire ci-dessus).
+    if client_siren and re.fullmatch(r'\d{9}', client_siren):
+        buyer_uri = ET.SubElement(buyer, f'{{{ns["ram"]}}}URIUniversalCommunication')
+        buyer_uri_id = ET.SubElement(buyer_uri, f'{{{ns["ram"]}}}URIID')
+        buyer_uri_id.set('schemeID', '0225')
+        buyer_uri_id.text = client_siren
 
-    # --- Livraison -------------------------------------------------------------------------
-    delivery_hdr = _cii_el(txn, 'ApplicableHeaderTradeDelivery')
-    delivery_address = _g(inv, 'delivery_address')
+    # --- Livraison (uniquement si une adresse de livraison est renseignée) ---
+    delivery_address = inv['delivery_address'] if 'delivery_address' in inv.keys() else None
     if delivery_address:
-        ship_to = _cii_el(delivery_hdr, 'ShipToTradeParty')
-        _cii_address(ship_to, delivery_address, buyer_country)
-    if _g(inv, 'service_date'):
-        event = _cii_el(delivery_hdr, 'ActualDeliverySupplyChainEvent')
-        _cii_datetime(event, 'OccurrenceDateTime', _g(inv, 'service_date'))
+        delivery_hdr = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeDelivery')
+        ship_to = ET.SubElement(delivery_hdr, f'{{{ns["ram"]}}}ShipToTradeParty')
+        ship_addr = ET.SubElement(ship_to, f'{{{ns["ram"]}}}PostalTradeAddress')
+        ET.SubElement(ship_addr, f'{{{ns["ram"]}}}LineOne').text = delivery_address
+        ET.SubElement(ship_addr, f'{{{ns["ram"]}}}CountryID').text = 'FR'
+    else:
+        ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeDelivery')
 
-    # --- Règlement -------------------------------------------------------------------------
-    settlement_hdr = _cii_el(txn, 'ApplicableHeaderTradeSettlement')
-    _cii_el(settlement_hdr, 'InvoiceCurrencyCode', 'EUR')
-    iban = re.sub(r'\s', '', str(_g(company, 'iban', '') or ''))
-    due_amount = round(grand_total - float(prepaid or 0), 2)
-    if iban and type_code == '380' and due_amount > 0:
-        means = _cii_el(settlement_hdr, 'SpecifiedTradeSettlementPaymentMeans')
-        _cii_el(means, 'TypeCode', '58')  # virement SEPA
-        _cii_el(_cii_el(means, 'PayeePartyCreditorFinancialAccount'), 'IBANID', iban)
-    exemption_reason, exemption_code = _vat_exemption(inv, company)
-    on_collection = (_g(inv, 'operation_nature', 'services') or 'services') == 'services' and not int(_g(inv, 'vat_on_debits', 0) or 0)
-    for b in breakdown:
-        category = _vat_category(inv, company, b['rate'])
-        tax = _cii_el(settlement_hdr, 'ApplicableTradeTax')
-        _cii_el(tax, 'CalculatedAmount', f"{b['vat']:.2f}")
-        _cii_el(tax, 'TypeCode', 'VAT')
-        if category in ('E', 'AE', 'K', 'G') and exemption_reason:
-            _cii_el(tax, 'ExemptionReason', exemption_reason)
-        _cii_el(tax, 'BasisAmount', f"{b['base']:.2f}")
-        _cii_el(tax, 'CategoryCode', category)
-        if category in ('E', 'AE', 'K', 'G') and exemption_code:
-            _cii_el(tax, 'ExemptionReasonCode', exemption_code)
-        if category == 'S':
-            # BT-8 : 5 = TVA exigible à la date de facture (débits), 72 = à l'encaissement.
-            _cii_el(tax, 'DueDateTypeCode', '72' if on_collection else '5')
-        _cii_el(tax, 'RateApplicablePercent', f"{(b['rate'] if category == 'S' else 0):g}")
-    terms_text = payment_terms_text or _g(company, 'payment_terms')
-    if due_amount > 0 and (_g(inv, 'due_date') or terms_text):
-        terms = _cii_el(settlement_hdr, 'SpecifiedTradePaymentTerms')
-        if terms_text:
-            _cii_el(terms, 'Description', terms_text)
-        if _g(inv, 'due_date'):
-            _cii_datetime(terms, 'DueDateDateTime', _g(inv, 'due_date'))
-    summation = _cii_el(settlement_hdr, 'SpecifiedTradeSettlementHeaderMonetarySummation')
-    _cii_el(summation, 'LineTotalAmount', f"{subtotal:.2f}")
-    _cii_el(summation, 'TaxBasisTotalAmount', f"{subtotal:.2f}")
-    _cii_el(summation, 'TaxTotalAmount', f"{vat_total:.2f}", currencyID='EUR')
-    _cii_el(summation, 'GrandTotalAmount', f"{grand_total:.2f}")
-    if prepaid:
-        _cii_el(summation, 'TotalPrepaidAmount', f"{float(prepaid):.2f}")
-    _cii_el(summation, 'DuePayableAmount', f"{max(due_amount, 0):.2f}")
-    if referenced:
-        ref = _cii_el(settlement_hdr, 'InvoiceReferencedDocument')
-        _cii_el(ref, 'IssuerAssignedID', referenced.get('number') or '')
-        if referenced.get('issue_date'):
-            _cii_datetime(ref, 'FormattedIssueDateTime', referenced['issue_date'], qualified=True)
-    return b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
+    # --- Règlement : devise, TVA par taux, échéance, totaux ---
+    # Ordre imposé par le schéma CII (xs:sequence) : ApplicableTradeTax doit précéder
+    # SpecifiedTradePaymentTerms, qui doit lui-même précéder MonetarySummation.
+    settlement_hdr = ET.SubElement(txn, f'{{{ns["ram"]}}}ApplicableHeaderTradeSettlement')
+    ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}InvoiceCurrencyCode').text = 'EUR'
+
+    # Regroupe les lignes par taux de TVA (une ram:ApplicableTradeTax par taux distinct).
+    by_rate = {}
+    for it in items:
+        rate = it.get('vat_rate', 0)
+        by_rate.setdefault(rate, {'basis': 0.0, 'tax': 0.0})
+        by_rate[rate]['basis'] += it.get('line_total', 0)
+        by_rate[rate]['tax'] += it.get('line_total', 0) * rate / 100
+    for rate, sums in sorted(by_rate.items()):
+        tax_el = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}ApplicableTradeTax')
+        _cii_amount(tax_el, 'CalculatedAmount', sums['tax'], ns)
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}TypeCode').text = 'VAT'
+        _cii_amount(tax_el, 'BasisAmount', sums['basis'], ns)
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}CategoryCode').text = 'S'
+        ET.SubElement(tax_el, f'{{{ns["ram"]}}}RateApplicablePercent').text = f'{rate:g}'
+
+    if inv['due_date']:
+        terms = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradePaymentTerms')
+        due = ET.SubElement(terms, f'{{{ns["ram"]}}}DueDateDateTime')
+        due_str = ET.SubElement(due, f'{{{ns["udt"]}}}DateTimeString')
+        due_str.set('format', '102')
+        due_str.text = _cii_date(inv['due_date']) or ''
+
+    summation = ET.SubElement(settlement_hdr, f'{{{ns["ram"]}}}SpecifiedTradeSettlementHeaderMonetarySummation')
+    subtotal = float(inv['subtotal'] or 0)
+    vat_amount = float(inv['vat_amount'] or 0)
+    total = float(inv['total'] or 0)
+    _cii_amount(summation, 'LineTotalAmount', subtotal, ns)
+    _cii_amount(summation, 'TaxBasisTotalAmount', subtotal, ns)
+    _cii_amount(summation, 'TaxTotalAmount', vat_amount, ns, currency='EUR')
+    _cii_amount(summation, 'GrandTotalAmount', total, ns)
+    _cii_amount(summation, 'DuePayableAmount', total, ns)
+
+    xml_bytes = b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8')
+    return xml_bytes
 
 
 # Sous-ensemble des règles métier EN16931 (BR-*) les plus fréquemment citées comme
@@ -547,202 +261,111 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
 # une vérification raisonnable, pas une garantie de conformité complète.
 def validate_facturx_business_rules(inv, items, company):
     """Vérifie un sous-ensemble de règles métier EN16931 directement sur les données
-    de la facture (avant génération XML). Retourne (règles, échecs) où chaque règle est
-    {code, label, ok}. Python pur — vérifiable sans fpdf2 ni validateur externe."""
+    de la facture (avant génération XML). Retourne une liste de dicts
+    {code, label, ok}. Écrite et testée entièrement en Python pur — sans dépendance
+    à fpdf2 ni à un validateur externe, donc vérifiable dans n'importe quel
+    environnement, contrairement à l'encapsulation PDF/A-3."""
     rules = []
 
     def check(code, label, ok):
         rules.append({'code': code, 'label': label, 'ok': bool(ok)})
 
-    items = items or []
-    check('BR-01', "Identifiant de spécification présent (profil EN16931)", True)
-    check('BR-02', 'Numéro de facture renseigné (BT-1)', bool(_g(inv, 'invoice_number')))
-    check('BR-03', "Date d'émission renseignée (BT-2)", bool(_g(inv, 'issue_date')))
+    check('BR-01', "Identifiant de spécification présent (profil EN16931)", True)  # toujours injecté par generate_facturx_xml
+    check('BR-02', 'Numéro de facture renseigné (BT-1)', bool(inv['invoice_number']))
+    check('BR-03', "Date d'émission renseignée (BT-2)", bool(inv['issue_date']))
     check('BR-05', 'Code devise renseigné (BT-5 = EUR)', True)
-    check('BR-06', 'Nom du vendeur renseigné (BT-27)', bool(_g(company, 'name')))
-    check('BR-07', "Nom de l'acheteur renseigné (BT-44)", bool(_g(inv, 'client_name')))
-    check('BR-08', "Adresse postale du vendeur (BG-5)", bool(_g(company, 'address')))
-    check('BR-09', "Adresse postale de l'acheteur (BG-8)", bool(_g(inv, 'client_address')))
+    check('BR-06', 'Nom du vendeur renseigné (BT-27)', bool(company and company['name']))
+    check('BR-07', 'Nom de l\'acheteur renseigné (BT-44)', bool(inv['client_name']))
+    check('BR-08', "Code pays vendeur renseigné (adresse postale)", bool(company and company['address']))
+    check('BR-09', "Code pays acheteur renseigné (adresse postale)", bool(inv['client_address']))
     check('BR-16', 'Au moins une ligne de facture (BG-25)', bool(items))
-    check('BR-27', 'Aucun prix unitaire net négatif (déductions en quantité négative)',
-          all(float(it.get('unit_price', 0) or 0) >= 0 for it in items))
-    line_sum = round(sum(amounts.money(it.get('line_total', 0)) for it in items), 2)
-    subtotal = round(float(_g(inv, 'subtotal', 0) or 0), 2)
-    check('BR-CO-10', f"Somme des lignes HT ({fr_number(line_sum,2)} €) = total HT facture ({fr_number(subtotal,2)} €)",
-          abs(line_sum - subtotal) < 0.005)
-    breakdown = amounts.vat_breakdown(items)
-    vat_sum = round(sum(b['vat'] for b in breakdown), 2)
-    vat_amount = round(float(_g(inv, 'vat_amount', 0) or 0), 2)
-    check('BR-CO-14', f"TVA totale ({fr_number(vat_amount,2)} €) = somme des TVA par taux ({fr_number(vat_sum,2)} €)",
-          abs(vat_sum - vat_amount) < 0.005)
-    rate_ok = all(abs(b['vat'] - amounts.money(b['base'] * b['rate'] / 100)) < 0.005 for b in breakdown)
-    check('BR-CO-17', 'TVA de chaque taux = base du taux × taux, arrondie au centime', rate_ok)
-    total = round(float(_g(inv, 'total', 0) or 0), 2)
-    check('BR-CO-15', f"Total TTC ({fr_number(total,2)} €) = HT + TVA ({fr_number(subtotal + vat_amount,2)} €)",
-          abs(total - round(subtotal + vat_amount, 2)) < 0.005)
-    check('BR-CO-25', "Échéance ou conditions de paiement présentes (montant dû positif)",
-          total <= 0 or bool(_g(inv, 'due_date')) or bool(_g(company, 'payment_terms')))
-    categories = {_vat_category(inv, company, it.get('vat_rate', 0)) for it in items}
-    if 'AE' in categories:
-        check('BR-AE-02', "Autoliquidation : n° de TVA du vendeur et de l'acheteur renseignés",
-              bool(_g(company, 'vat_number')) and bool(_g(inv, 'client_vat_number')))
-    if 'K' in categories:
-        check('BR-IC-02', "Livraison intracommunautaire : n° de TVA du vendeur et de l'acheteur renseignés",
-              bool(_g(company, 'vat_number')) and bool(_g(inv, 'client_vat_number')))
-    if categories & {'E', 'AE', 'K', 'G'}:
-        reason, _ = _vat_exemption(inv, company)
-        check('BR-E-10', "Motif d'exonération de TVA renseigné (BT-120)", bool(reason))
-        check('BR-E-05', "Taux de TVA nul pour les lignes exonérées / autoliquidées",
-              all(float(it.get('vat_rate', 0) or 0) == 0 for it in items))
-    check('BR-S-05', "Taux positif pour toute ligne en catégorie S", True)
+
+    # BR-CO-10 : la somme des montants nets de ligne doit correspondre au sous-total HT.
+    line_sum = round(sum(it.get('line_total', 0) for it in items), 2)
+    subtotal = round(float(inv['subtotal'] or 0), 2)
+    check('BR-CO-10', f'Somme des lignes HT ({line_sum:.2f} €) = sous-total facture ({subtotal:.2f} €)',
+          abs(line_sum - subtotal) < 0.01)
+
+    # BR-CO-14 : la TVA totale doit correspondre à la somme des TVA par taux.
+    vat_sum = round(sum(it.get('line_total', 0) * it.get('vat_rate', 0) / 100 for it in items), 2)
+    vat_amount = round(float(inv['vat_amount'] or 0), 2)
+    check('BR-CO-14', f'TVA calculée depuis les lignes ({vat_sum:.2f} €) = TVA facture ({vat_amount:.2f} €)',
+          abs(vat_sum - vat_amount) < 0.01)
+
+    # BR-CO-15 : total TTC = total HT + TVA.
+    total = round(float(inv['total'] or 0), 2)
+    check('BR-CO-15', f'Total TTC ({total:.2f} €) = HT + TVA ({subtotal + vat_amount:.2f} €)',
+          abs(total - round(subtotal + vat_amount, 2)) < 0.01)
+
+    # BR-CO-16 : montant dû = total TTC (aucun acompte/arrondi géré dans cette version).
+    check('BR-CO-16', 'Montant dû cohérent avec le total TTC (aucun acompte)', True)
+
+    # BR-S-* : si une ligne applique un taux de TVA standard (catégorie S), le taux
+    # doit être strictement positif — un taux à 0% doit utiliser une autre catégorie
+    # (exonération, autoliquidation...), non gérée par cette version simplifiée.
+    zero_rate_as_standard = any(it.get('vat_rate', 0) == 0 for it in items)
+    check('BR-S-08', "Aucune ligne à 0% de TVA classée par erreur en taux standard", not zero_rate_as_standard)
+
     missing = [r for r in rules if not r['ok']]
     return rules, missing
+
 
 
 def _display_status(inv):
     status=inv['status']
     if status in ('sent','partially_paid') and inv['due_date']:
         try:
-            if date.fromisoformat(inv['due_date']) < paris_today():
+            if date.fromisoformat(inv['due_date']) < date.today():
                 return 'overdue'
         except (TypeError,ValueError):
             pass
     return status
 
 
-def invoice_label(inv):
-    """Numéro affichable : le numéro légal d'une facture émise, « Brouillon n°<id> » pour
-    un brouillon (le numéro n'est attribué qu'à l'émission)."""
-    number = _g(inv, 'invoice_number')
-    if number:
-        return number
-    return f"Brouillon n°{_g(inv, 'id', '')}"
-
-
-from profitos.invoice_numbering import SeriesLockTimeout
-
-
-def _next_invoice_number(c, entity_id=None, issue_date=None):
-    """Numéro légal suivant de la série de l'entité, réservé sous verrou dans la
-    transaction en cours (voir profitos/invoice_numbering.py). À n'appeler qu'à
-    l'émission, dans la même transaction que la mise à jour de la facture."""
-    from profitos.invoice_numbering import next_document_number
-    return next_document_number(c, 'invoice', entity_id, issue_date or paris_today().isoformat())
-
-
-def _is_public_buyer(inv):
-    """Acheteur public (État, collectivités, établissements publics) : SIREN commençant
-    par 1 ou 2, ou case cochée. Ses factures doivent être déposées sur Chorus Pro."""
-    if str(_g(inv, 'client_is_public', '') or '') in ('1', 'on', 'true'):
-        return True
-    siren = re.sub(r'\D', '', str(_g(inv, 'client_siren', '') or ''))
-    return len(siren) == 9 and siren[0] in '12'
-
-
-class InvoiceIssueError(Exception):
-    """Émission refusée. missing : mentions obligatoires manquantes (liste)."""
-    def __init__(self, message, missing=None):
-        super().__init__(message)
-        self.missing = missing or []
-
-
-def _register_public_token(org_id, invoice_id, token):
-    """Inscrit le lien public d'une facture dans la base partagée (idempotent)."""
-    if not token or not org_id:
-        return
-    ac=auth_cx()
-    try:
-        ac.execute('INSERT OR IGNORE INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
-                   (token,org_id,invoice_id,now()))
-        ac.commit()
-    finally:
-        ac.close()
-
-
-def _sale_entry_for(c, inv):
-    kind=_g(inv,'invoice_kind','standard') or 'standard'
-    if kind=='deposit':
-        return generate_customer_deposit_entry(c,inv,commit=False)
-    if kind=='final':
-        return generate_customer_final_entry(c,inv,commit=False)
-    return generate_sale_entry(c,inv,commit=False)
-
-
-def issue_invoice(c, invoice_id, entity_id, org_id=None):
-    """Émet un brouillon : contrôle des mentions obligatoires, numéro légal attribué sous
-    verrou (année d'émission en heure de Paris), date d'émission du jour, montants
-    recalculés depuis les lignes, écriture de vente — le tout dans UNE transaction.
-    Si l'écriture est refusée (période clôturée…), rien n'est conservé : la facture reste
-    un brouillon sans numéro. Retourne la facture émise ; lève InvoiceIssueError.
-    Le lien public est inscrit après validation (base partagée)."""
-    inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,entity_id)).fetchone()
-    if not inv:
-        raise InvoiceIssueError("Facture introuvable.")
-    if inv['status']!='draft':
-        raise InvoiceIssueError("Seule une facture en brouillon peut être émise.")
-    try:
-        items=json.loads(inv['line_items'] or '[]')
-    except (TypeError, ValueError):
-        items=[]
-    if not items:
-        raise InvoiceIssueError("La facture ne contient aucune ligne.")
-    if (_g(inv,'invoice_kind','standard') or 'standard')!='final':
-        items_error=_line_items_error(items)
-        if items_error:
-            raise InvoiceIssueError(items_error)
-    issue_date=paris_today().isoformat()
-    if inv['due_date'] and str(inv['due_date'])[:10] < issue_date:
-        raise InvoiceIssueError("L'échéance de ce brouillon est déjà passée : modifiez-la avant d'émettre la facture.")
-    seller=_seller_identity(c,entity_id)
-    _, missing=_check_mandatory_mentions(inv,seller)
-    if missing:
-        raise InvoiceIssueError(f"Émission impossible : {len(missing)} mention(s) obligatoire(s) manquante(s).", missing)
-    subtotal,vat_amount,total=_totals(items)
-    try:
-        number=_next_invoice_number(c,entity_id,issue_date)
-        cur=c.execute("""UPDATE outgoing_invoices SET status='sent',invoice_number=?,issue_date=?,sent_at=?,
-                         subtotal=?,vat_amount=?,total=?,public_token=COALESCE(public_token,?)
-                         WHERE id=? AND entity_id IS ? AND status='draft'""",
-                      (number,issue_date,now(),subtotal,vat_amount,total,secrets.token_urlsafe(20),invoice_id,entity_id))
-        if getattr(cur,'rowcount',1)==0:
-            raise InvoiceIssueError("La facture a déjà été émise entre-temps.")
-        issued=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,entity_id)).fetchone()
-        _sale_entry_for(c,issued)
-        c.commit()
-    except InvoiceIssueError:
-        c.rollback(); raise
-    except AccountingError as e:
-        c.rollback()
-        log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
-        raise InvoiceIssueError(f"Facture non émise : l'écriture comptable a été refusée ({e}).")
-    except dbmod.IntegrityError:
-        c.rollback()
-        log_ops_event('INVOICE_NUMBER_CONFLICT',outcome='ERROR',detail=f"facture {invoice_id}")
-        raise InvoiceIssueError("Facture non émise : conflit de numérotation. Réessayez.")
-    except SeriesLockTimeout:
-        c.rollback()
-        log_ops_event('INVOICE_NUMBER_LOCK_TIMEOUT',outcome='WARNING',detail=f"facture {invoice_id}")
-        raise InvoiceIssueError("Facture non émise : une autre émission est en cours. Réessayez dans quelques secondes.")
-    if issued['public_token']:
+def _next_invoice_number(c, entity_id=None):
+    year=datetime.now(timezone.utc).year
+    # Comportement inchangé pour la société mère (entity_id=None) — aucune
+    # facture existante ne change de format. Une filiale reçoit sa propre
+    # séquence, indépendante, avec un préfixe distinct (obligation légale :
+    # chaque entité doit avoir sa propre numérotation continue de factures).
+    prefix=f"FA-{year}-" if not entity_id else f"FA-E{entity_id}-{year}-"
+    rows=c.execute("SELECT invoice_number FROM outgoing_invoices WHERE invoice_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
         try:
-            _register_public_token(org_id or session.get('org_id'),invoice_id,issued['public_token'])
-        except Exception:
-            log_ops_event('INVOICE_PUBLIC_TOKEN_FAILED',outcome='WARNING',detail=f"facture {invoice_id}")
-    return issued
+            highest=max(highest,int((row['invoice_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    candidate=highest+1
+    while c.execute("SELECT 1 FROM outgoing_invoices WHERE invoice_number=?",(f"{prefix}{candidate:03d}",)).fetchone():
+        candidate+=1
+    return f"{prefix}{candidate:03d}"
 
 
-def _next_credit_number(c, entity_id=None, issue_date=None):
-    """Numéro d'avoir : série propre à l'entité, réservée sous verrou (voir
-    profitos/invoice_numbering.py)."""
-    from profitos.invoice_numbering import next_document_number
-    return next_document_number(c, 'credit', entity_id, issue_date or paris_today().isoformat())
+def _next_credit_number(c, entity_id=None):
+    year=datetime.now(timezone.utc).year
+    prefix=f"AV-{year}-" if not entity_id else f"AV-E{entity_id}-{year}-"
+    rows=c.execute("SELECT credit_number FROM outgoing_credit_notes WHERE credit_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['credit_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    return f"{prefix}{highest+1:03d}"
 
 
-def _next_delivery_number(c, entity_id=None, delivery_date=None):
-    """Numéro de bon de livraison : série BL propre à l'entité et à l'année (heure de
-    Paris), réservée sous verrou comme les factures (voir profitos/invoice_numbering.py)."""
-    from profitos.invoice_numbering import next_document_number
-    return next_document_number(c, 'delivery', entity_id, delivery_date or paris_today().isoformat())
+def _next_delivery_number(c):
+    year=datetime.now(timezone.utc).year
+    prefix=f"BL-{year}-"
+    rows=c.execute("SELECT delivery_number FROM delivery_notes WHERE delivery_number LIKE ?",(prefix+'%',)).fetchall()
+    highest=0
+    for row in rows:
+        try:
+            highest=max(highest,int((row['delivery_number'] or '').rsplit('-',1)[1]))
+        except (ValueError,IndexError):
+            pass
+    return f"{prefix}{highest+1:03d}"
 
 
 def _credited_total(c, invoice_id, entity_id=None):
@@ -754,11 +377,7 @@ def _invoice_paid_total(c, invoice_id, entity_id=None):
     return round(float(row['n'] or 0),2)
 
 def _invoice_balance(c, invoice):
-    """Reste dû = TTC − encaissements − avoirs émis. Sans la déduction des avoirs, une facture
-    créditée restait « à payer » et « Marquer payée » passait un encaissement fictif en banque."""
-    paid=_invoice_paid_total(c,invoice['id'],invoice['entity_id'])
-    credited=_credited_total(c,invoice['id'],invoice['entity_id'])
-    return max(0.0, round(float(invoice['total'] or 0)-paid-credited,2))
+    return max(0.0, round(float(invoice['total'] or 0)-_invoice_paid_total(c,invoice['id'],invoice['entity_id']),2))
 
 
 def _record_einvoice_event(c, invoice, event_type, *, remote_id=None, status=None, regulatory_code=None, idempotency_key=None, detail=None):
@@ -774,7 +393,7 @@ def _stage_ereporting_record(c, invoice, record_type='transaction'):
     """Prépare les données à remettre à une plateforme agréée; n'envoie jamais directement à la DGFiP."""
     c.execute("""INSERT OR IGNORE INTO ereporting_records(entity_id,record_type,source_type,source_id,period_date,amount_ht,vat_amount,amount_ttc,payment_amount,operation_nature,status,created_at,updated_at)
                  VALUES(?,?,?,?,?,?,?,?,?,?, 'pending',?,?)""",
-              (invoice['entity_id'],record_type,'outgoing_invoice',invoice['id'],invoice['issue_date'] or paris_today().isoformat(),
+              (invoice['entity_id'],record_type,'outgoing_invoice',invoice['id'],invoice['issue_date'] or date.today().isoformat(),
                float(invoice['subtotal'] or 0),float(invoice['vat_amount'] or 0),float(invoice['total'] or 0),0.0,
                invoice['operation_nature'] if 'operation_nature' in invoice.keys() else None,now(),now()))
 
@@ -800,7 +419,7 @@ def _current_credit(c, credit_id):
 
 
 def _next_quote_number(c, entity_id=None):
-    year=paris_today().year
+    year=datetime.now(timezone.utc).year
     prefix=f"DEV-{year}-" if not entity_id else f"DEV-E{entity_id}-{year}-"
     rows=c.execute("SELECT quote_number FROM outgoing_quotes WHERE quote_number LIKE ?",(prefix+'%',)).fetchall()
     highest=0
@@ -837,7 +456,7 @@ def _purchase_form_date(raw, label):
     try:
         return date.fromisoformat(value).isoformat()
     except (TypeError, ValueError):
-        raise ValueError(f"{label} invalide : saisissez une date valide (jj/mm/aaaa).")
+        raise ValueError(f"{label} invalide. Utilisez une date valide au format AAAA-MM-JJ.")
 
 
 def _purchase_pdf_date(raw):
@@ -950,11 +569,11 @@ def _purchase_ai_extract(file_bytes, mime_type):
     sans changement au reste du flux d'import."""
     if not ANTHROPIC_API_KEY:
         raise ValueError(
-            "Ce document ne contient pas de texte exploitable et la lecture automatique "
-            "des PDF scannés et des photos n'est pas disponible pour le moment. "
-            "Saisissez la facture manuellement."
+            "Ce document n'a pas de texte exploitable et l'extraction par IA n'est "
+            "pas configurée (ANTHROPIC_API_KEY absente côté serveur). Saisis la "
+            "facture manuellement, ou configure la clé pour activer l'extraction "
+            "automatique des PDF scannés et des photos."
         )
-    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
     content_type = 'document' if mime_type == 'application/pdf' else 'image'
     b64 = base64.b64encode(file_bytes).decode('utf-8')
     headers = {
@@ -990,7 +609,7 @@ def _purchase_ai_extract(file_bytes, mime_type):
         text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
         parsed = json.loads(text_out)
     except (ValueError, KeyError, AttributeError) as e:
-        raise ValueError("Réponse d'extraction IA illisible — réessayez ou saisissez la facture manuellement.") from e
+        raise ValueError("Réponse d'extraction IA illisible — réessaie ou saisis la facture manuellement.") from e
 
     supplier_name = (parsed.get('supplier_name') or '').strip()
     invoice_number = (parsed.get('invoice_number') or '').strip()
@@ -1005,11 +624,11 @@ def _purchase_ai_extract(file_bytes, mime_type):
     if vat_amount is None: missing.append("TVA")
     if total is None: missing.append("TTC")
     if missing:
-        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ". Saisissez la facture manuellement.")
+        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ". Saisis la facture manuellement.")
     try:
         subtotal, vat_amount, total = round(float(subtotal), 2), round(float(vat_amount), 2), round(float(total), 2)
     except (TypeError, ValueError):
-        raise ValueError("Montants détectés par l'IA illisibles. Saisissez la facture manuellement.")
+        raise ValueError("Montants détectés par l'IA illisibles. Saisis la facture manuellement.")
     if abs(round(subtotal + vat_amount - total, 2)) > 0.02:
         raise ValueError("Les montants HT + TVA ne correspondent pas au TTC (extraction IA). Import refusé par sécurité.")
     try:
@@ -1218,7 +837,7 @@ def _recurring_add_period(iso_date, frequency, interval_count=1):
 
 def _generate_due_recurring_invoices(c, entity_id, through_date=None):
     """Génère les brouillons dus pour une entité. Idempotence garantie en base."""
-    through=through_date or paris_today().isoformat()
+    through=through_date or date.today().isoformat()
     entity_key=int(entity_id or 0)
     templates=c.execute("""SELECT * FROM recurring_invoice_templates
         WHERE entity_id IS ? AND status='active' AND next_run_date<=?
@@ -1232,16 +851,18 @@ def _generate_due_recurring_invoices(c, entity_id, through_date=None):
             if not exists:
                 items=json.loads(tpl['line_items'] or '[]')
                 subtotal,vat_amount,total=_totals(items)
+                number=_next_invoice_number(c,entity_id)
                 due=(date.fromisoformat(run_date)+timedelta(days=max(0,int(tpl['due_days'] or 0)))).isoformat()
-                # Brouillon sans numéro : le numéro légal est attribué à l'émission.
-                invoice_id,token=_insert_draft_invoice(c,{
-                    'client_name':tpl['client_name'],'client_address':tpl['client_address'],'client_email':tpl['client_email'],
-                    'issue_date':run_date,'due_date':due,'line_items':tpl['line_items'],'subtotal':subtotal,
-                    'vat_amount':vat_amount,'total':total,'notes':tpl['notes'],'client_siren':tpl['client_siren'],
-                    'operation_nature':tpl['operation_nature'],'vat_on_debits':tpl['vat_on_debits'],
-                    'delivery_address':tpl['delivery_address'],'entity_id':entity_id,'recurring_template_id':tpl['id'],
-                    'recurring_run_date':run_date})
-                number=f"Brouillon n°{invoice_id}"
+                token=secrets.token_urlsafe(20)
+                c.execute("""INSERT INTO outgoing_invoices(
+                    invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,
+                    subtotal,vat_amount,total,notes,status,public_token,created_at,client_siren,operation_nature,
+                    vat_on_debits,delivery_address,entity_id,recurring_template_id,recurring_run_date)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?)""",
+                    (number,tpl['client_name'],tpl['client_address'],tpl['client_email'],run_date,due,tpl['line_items'],
+                     subtotal,vat_amount,total,tpl['notes'],token,now(),tpl['client_siren'],tpl['operation_nature'],
+                     tpl['vat_on_debits'],tpl['delivery_address'],entity_id,tpl['id'],run_date))
+                invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
                 c.execute("INSERT INTO recurring_invoice_runs(template_id,entity_key,run_date,invoice_id,created_at) VALUES(?,?,?,?,?)",
                           (tpl['id'],entity_key,run_date,invoice_id,now()))
                 created.append((invoice_id,number,token))
@@ -1260,176 +881,6 @@ from profitos.weinvoice import (
     get_ereporting_transmission, get_ereporting_proof,
     validate_ereporting_fiscal_readiness, production_readiness,
 )
-
-WEINVOICE_MANUAL_SYNC_MAX=15  # factures traitées par clic (le reste : job horaire)
-
-
-def _inbound_original_reference(raw):
-    """Extrait la facture précédente d'un UBL/CII entrant."""
-    try: root=ET.fromstring(raw)
-    except Exception: return None
-    for parent_name,id_name in (('BillingReference','ID'),('InvoiceReferencedDocument','IssuerAssignedID')):
-        for el in root.iter():
-            if el.tag.rsplit('}',1)[-1] == parent_name:
-                for child in el.iter():
-                    if child.tag.rsplit('}',1)[-1] == id_name and (child.text or '').strip():
-                        return child.text.strip()
-    return None
-
-def _is_inbound_credit_note(item, raw):
-    kind=str(item.get('type') or '').upper().replace('-','_')
-    if 'CREDIT' in kind or 'AVOIR' in kind: return True
-    try:
-        root=ET.fromstring(raw)
-        if root.tag.rsplit('}',1)[-1].upper() == 'CREDITNOTE': return True
-        for el in root.iter():
-            if el.tag.rsplit('}',1)[-1] in ('TypeCode','InvoiceTypeCode','CreditNoteTypeCode'):
-                if (el.text or '').strip() in {'261','381','396','502','503'}: return True
-    except Exception: pass
-    return False
-
-
-class WeInvoiceInboundNotConfigured(Exception):
-    """Aucune société WeInvoice n'est rattachée à l'entité."""
-
-
-def sync_weinvoice_inbound(c, eid, org_id, max_items=None):
-    """Lot F1 — importe les factures électroniques INBOUND WeInvoice d'une entité.
-
-    Appelée par le bouton « Synchroniser » (plafonnée via max_items pour rester
-    sous le timeout gunicorn) et par le job planifié einvoice_inbound_sync
-    (profitos/jobs.py, sans plafond). Idempotence par (entity_id,
-    eInvoicingId). Le document PDF lisible est conservé comme justificatif;
-    l'écriture comptable est générée dans la même transaction que la facture
-    locale. Lève WeInvoiceInboundNotConfigured, WeInvoiceAPIError ou
-    WeInvoiceConfigError.
-    """
-    settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
-    if not settings or not settings['weinvoice_company_id']:
-        raise WeInvoiceInboundNotConfigured()
-    org_remote=settings['weinvoice_company_id']
-    # Parcourt toutes les pages WeInvoice. La limite de 100 est celle
-    # d'une page API, pas celle d'une synchronisation ProfitOS.
-    inbound_items=[]; page=1; page_size=100
-    while True:
-        payload=list_inbound_invoices(org_remote,page=page,page_size=page_size)
-        batch=payload.get('invoices',[])
-        inbound_items.extend(batch)
-        total=payload.get('total')
-        if isinstance(total,int):
-            if len(inbound_items) >= total: break
-        elif len(batch) < page_size:
-            break
-        if not batch: break
-        page += 1
-        if page > 1000:
-            raise WeInvoiceAPIError("Pagination WeInvoice anormalement longue.")
-    created=0; skipped=0; ignored=0; failed=[]
-    pdf_dir=_purchase_pdf_dir_for_org(org_id)
-    processed=0; remaining=0
-    for item in inbound_items:
-        stored=None
-        remote_id=str(item.get('id') or '').strip()
-        if not remote_id or str(item.get('direction') or '').upper()!='INBOUND':
-            continue
-        if (c.execute('SELECT 1 FROM purchase_invoices WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()
-            or c.execute('SELECT 1 FROM purchase_credit_notes WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()):
-            skipped+=1; continue
-        if max_items is not None and processed>=max_items:
-            remaining+=1
-            continue
-        processed+=1
-        # Un document terminalement rejeté n'est pas une facture fournisseur
-        # importable. Il reste visible chez WeInvoice mais ne doit pas être
-        # compté comme une panne de synchronisation ProfitOS.
-        status=str(item.get('status') or '').upper()
-        regulatory=str(item.get('regulatoryStatusCode') or item.get('cdvCode') or '').strip()
-        if status in {'REJECTED','REJETEE','REJETÉE'} or regulatory == '213':
-            ignored+=1
-            continue
-        try:
-            # Le contenu structure est la source metier indispensable.
-            # Le socle original et le lisible sont des enrichissements :
-            # leur indisponibilite ne doit pas bloquer une facture valide.
-            content=get_inbound_invoice_content(org_remote,remote_id)
-            raw_original=b''
-            try:
-                raw_original=download_inbound_invoice_original(org_remote,remote_id)
-            except WeInvoiceAPIError as exc:
-                log_ops_event('WEINVOICE_INBOUND_ORIGINAL_UNAVAILABLE','WARNING',
-                              detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
-            subtotal=float(content.get('totalHt') if content.get('totalHt') is not None else (item.get('totalHt') or 0))
-            vat=float(content.get('totalVat') or item.get('totalVat') or 0)
-            total=float(content.get('totalTtc') if content.get('totalTtc') is not None else subtotal+vat)
-            if not all(math.isfinite(v) and v>=0 for v in (subtotal,vat,total)):
-                raise ValueError('montants non valides')
-            number=str(item.get('number') or remote_id)[:100]
-            supplier=str(item.get('vendorName') or item.get('vendorSiren') or 'Fournisseur électronique')[:255]
-            issue=str(item.get('date') or '')[:10] or None
-            due=str(item.get('dueDate') or '')[:10] or None
-            if _is_inbound_credit_note(item,raw_original):
-                original_number=_inbound_original_reference(raw_original)
-                if not original_number: raise ValueError("avoir fournisseur sans référence à la facture d'origine")
-                original=c.execute('SELECT * FROM purchase_invoices WHERE entity_id IS ? AND invoice_number=? ORDER BY id DESC LIMIT 1',(eid,original_number)).fetchone()
-                if not original: raise ValueError("facture fournisseur d'origine introuvable")
-                # Comme pour une facture normale, le PDF lisible est un
-                # enrichissement documentaire et non une condition d'import.
-                try:
-                    pdf=download_inbound_invoice_readable(org_remote,remote_id)
-                except WeInvoiceAPIError as exc:
-                    pdf=None
-                    log_ops_event('WEINVOICE_INBOUND_CREDIT_READABLE_UNAVAILABLE','WARNING',
-                                  detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
-                if pdf:
-                    stored=f"weinvoice_credit_{hashlib.sha256((str(eid)+':'+remote_id).encode()).hexdigest()[:24]}.pdf"
-                    (pdf_dir/stored).write_bytes(pdf)
-                c.execute("""INSERT INTO purchase_credit_notes(
-                    entity_id,original_purchase_id,original_invoice_number,credit_number,supplier_name,issue_date,
-                    subtotal,vat_amount,total,category,notes,document_path,weinvoice_invoice_id,weinvoice_status,
-                    weinvoice_regulatory_code,weinvoice_last_sync_at,created_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (eid,original['id'],original_number,number,supplier,issue,subtotal,vat,total,
-                     original['category'] or 'autre','Avoir reçu par facturation électronique WeInvoice',stored,
-                     remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now(),now()))
-                credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-                credit=c.execute('SELECT * FROM purchase_credit_notes WHERE id=? AND entity_id IS ?',(credit_id,eid)).fetchone()
-                generate_purchase_credit_entry(c,credit,commit=False)
-                c.commit(); created+=1
-                continue
-            try:
-                pdf=download_inbound_invoice_readable(org_remote,remote_id)
-            except WeInvoiceAPIError as exc:
-                pdf=None
-                log_ops_event('WEINVOICE_INBOUND_READABLE_UNAVAILABLE','WARNING',
-                              detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
-            if pdf:
-                stored=f"weinvoice_{hashlib.sha256(remote_id.encode()).hexdigest()[:24]}.pdf"
-                (pdf_dir/stored).write_bytes(pdf)
-            validation='pending'
-            settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
-            if not (settings_row and settings_row['require_purchase_validation']): validation='approved'
-            c.execute("""INSERT INTO purchase_invoices(
-                supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
-                notes,created_at,document_path,category,validation_status,entity_id,
-                weinvoice_invoice_id,weinvoice_status,weinvoice_regulatory_code,weinvoice_last_sync_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (supplier,number,issue,due,subtotal,vat,total,'unpaid','Reçue par facturation électronique WeInvoice',now(),stored,'autre',validation,eid,
-                 remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now()))
-            new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-            if validation=='approved':
-                purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(new_id,eid)).fetchone()
-                generate_purchase_entry(c,purchase_row,commit=False)
-            c.commit(); created+=1
-        except Exception as exc:
-            c.rollback()
-            try:
-                if stored: (pdf_dir/stored).unlink(missing_ok=True)
-            except Exception: pass
-            failed.append(f"{remote_id}: {type(exc).__name__}")
-            log_ops_event('WEINVOICE_INBOUND_IMPORT_FAILED','ERROR',detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
-    log_ops_event('WEINVOICE_INBOUND_SYNC','INFO' if not failed else 'WARNING',detail=f'entity={eid} created={created} skipped={skipped} ignored={ignored} failed={len(failed)}')
-    return {'created':created,'skipped':skipped,'ignored':ignored,'failed':failed,'remaining':remaining}
-
 
 def register(app):
     @app.route('/facturation/clients')
@@ -1462,7 +913,7 @@ def register(app):
                 return redirect(url_for('invoicing_client_new'))
             siren=re.sub(r'\D','',request.form.get('siren','').strip())[:9]
             if siren and len(siren)!=9:
-                flash('Le SIREN doit comporter exactement 9 chiffres (laissez vide si inconnu).')
+                flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
                 return redirect(url_for('invoicing_client_new'))
             c=cx()
             c.execute("""INSERT INTO invoicing_clients(name,email,address,siret,vat_number,phone,notes,created_at,updated_at,siren,entity_id)
@@ -1493,7 +944,7 @@ def register(app):
                 return redirect(url_for('invoicing_client_detail',client_id=client_id))
             siren=re.sub(r'\D','',request.form.get('siren','').strip())[:9]
             if siren and len(siren)!=9:
-                c.close(); flash('Le SIREN doit comporter exactement 9 chiffres (laissez vide si inconnu).')
+                c.close(); flash('Le SIREN doit comporter exactement 9 chiffres (laisse vide si inconnu).')
                 return redirect(url_for('invoicing_client_detail',client_id=client_id))
             c.execute("""UPDATE invoicing_clients SET name=?,email=?,address=?,siret=?,vat_number=?,phone=?,notes=?,updated_at=?,siren=? WHERE id=? AND entity_id IS ?""",
               (name,request.form.get('email','').strip(),request.form.get('address','').strip(),
@@ -1538,31 +989,20 @@ def register(app):
             if not items:
                 c.close(); flash("Au moins une ligne de devis est requise.")
                 return redirect(url_for('invoicing_quote_new'))
-            items_error=_line_items_error(items)
-            if items_error:
-                c.close(); flash(items_error)
-                return redirect(url_for('invoicing_quote_new'))
-            subtotal,vat_amount,total=_totals(items)
+            subtotal=round(sum(x['line_total'] for x in items),2)
+            vat_amount=round(sum(x['line_total']*x['vat_rate']/100 for x in items),2)
+            total=round(subtotal+vat_amount,2)
+            from profitos.entities import current_entity_id
             entity_id=current_entity_id()
             quote_number=_next_quote_number(c,entity_id)
-            siren=re.sub(r'\D','',request.form.get('client_siren') or '')[:9]
-            if siren and not siren_is_valid(siren):
-                c.close(); flash("SIREN client invalide : 9 chiffres avec une clé de contrôle correcte.")
-                return redirect(url_for('invoicing_quote_new'))
-            nature=request.form.get('operation_nature') or 'services'
-            if nature not in ('biens','services','mixte'): nature='services'
             c.execute("""INSERT INTO outgoing_quotes
               (quote_number,client_name,client_address,client_email,issue_date,valid_until,line_items,
-               subtotal,vat_amount,total,notes,status,created_at,entity_id,client_siren,operation_nature,delivery_address,
-               client_vat_number,counterparty_country)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)""",
+               subtotal,vat_amount,total,notes,status,created_at,entity_id)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?)""",
               (quote_number,client_name,request.form.get('client_address','').strip(),
-               request.form.get('client_email','').strip(),paris_today().isoformat(),
+               request.form.get('client_email','').strip(),date.today().isoformat(),
                request.form.get('valid_until') or None,json.dumps(items,ensure_ascii=False),
-               subtotal,vat_amount,total,request.form.get('notes','').strip(),now(),entity_id,
-               siren or None,nature,(request.form.get('delivery_address') or '').strip() or None,
-               re.sub(r'[\s.\-]','',request.form.get('client_vat_number') or '').upper() or None,
-               (request.form.get('counterparty_country') or '').strip().upper()[:2] or None))
+               subtotal,vat_amount,total,request.form.get('notes','').strip(),now(),entity_id))
             c.commit()
             quote_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
@@ -1575,7 +1015,7 @@ def register(app):
             flash(f"Devis {quote_number} créé en brouillon.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
         c.close()
-        return render_template('invoicing_quote_new.html',company=company_row,clients=clients,today=paris_today().isoformat())
+        return render_template('invoicing_quote_new.html',company=company_row,clients=clients,today=date.today().isoformat())
 
     @app.route('/facturation/devis/<int:quote_id>')
     @login_required
@@ -1607,7 +1047,7 @@ def register(app):
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
         if not q['client_email']:
             c.close()
-            flash("Aucun e-mail client renseigné pour ce devis.")
+            flash("Aucun email client renseigné pour ce devis.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
 
         ac=auth_cx()
@@ -1627,7 +1067,7 @@ def register(app):
         ac.close()
 
         org=current_org()
-        base=app_base_url()
+        base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
         link=f"{base}{url_for('public_quote_view',token=quote_token)}"
         html=render_template(
             'email_transactional.html',
@@ -1637,10 +1077,10 @@ def register(app):
             cta_url=link,
             footer="Vous pouvez accepter ou refuser ce devis depuis la page sécurisée."
         )
-        result=send_email(q['client_email'],f"Devis {q['quote_number']} — {org['name']}",html,on_behalf_of_org=org)
+        result=send_email(q['client_email'],f"Devis {q['quote_number']} — {org['name']}",html)
 
         if result.get('dry_run'):
-            flash(f"Service e-mail non configuré — devis non envoyé réellement (mode simulation) à {q['client_email']}.")
+            flash(f"Service email non configuré — devis non envoyé réellement (mode simulation) à {q['client_email']}.")
         elif result.get('sent'):
             c.execute("UPDATE outgoing_quotes SET status='sent',sent_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
             c.commit()
@@ -1717,18 +1157,12 @@ def register(app):
             c.close(); flash("Le cumul des acomptes dépasserait le montant du devis."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
         src=json.loads(q['line_items'] or '[]'); items=[]
         for it in src:
-            # Même quantité, prix unitaire au prorata (4 décimales) : quantité × prix = total
-            # de ligne, comme l'exige la facture électronique.
-            x=dict(it); x['qty']=float(it.get('qty',1) or 1)
-            x['unit_price']=amounts.quantize(float(it.get('unit_price',0))*percent/100,4)
-            x['line_total']=amounts.line_total(x['qty'],x['unit_price']); items.append(x)
-        subtotal,vat_amount,total=_totals(items)
-        base=_quote_invoice_base(q,eid)
-        base.update(line_items=json.dumps(items,ensure_ascii=False),subtotal=subtotal,vat_amount=vat_amount,total=total,
-                    notes=f"Facture d'acompte de {fr_number(percent,2).rstrip('0').rstrip(',')} % sur le devis {q['quote_number']}.",
-                    invoice_kind='deposit',deposit_percent=percent)
-        invoice_id,_token=_insert_draft_invoice(c,base); c.commit(); c.close()
-        log_activity('DEPOSIT_INVOICE_CREATED',f"Acompte (brouillon n°{invoice_id}) créé depuis {q['quote_number']}"); flash(f"Facture d'acompte créée en brouillon (Brouillon n°{invoice_id}).")
+            x=dict(it); x['qty']=float(it.get('qty',1)); x['unit_price']=round(float(it.get('unit_price',0))*percent/100,6); x['line_total']=round(float(it.get('line_total',0))*percent/100,2); items.append(x)
+        subtotal,vat_amount,total=_totals(items); number=_next_invoice_number(c,eid); token=secrets.token_urlsafe(24); due=(date.today()+timedelta(days=30)).isoformat()
+        c.execute("""INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id,invoice_kind,source_quote_id,deposit_percent) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?)""",
+          (number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,f"Facture d'acompte de {percent:g}% sur le devis {q['quote_number']}.",token,now(),eid,'deposit',quote_id,percent))
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]; c.commit(); c.close()
+        log_activity('DEPOSIT_INVOICE_CREATED',f"Acompte {number} créé depuis {q['quote_number']}"); flash(f"Facture d'acompte {number} créée en brouillon.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.post('/facturation/devis/<int:quote_id>/facture-finale')
@@ -1759,21 +1193,16 @@ def register(app):
                 rate=float(it.get('vat_rate',0)); deposit_by_rate[rate]=deposit_by_rate.get(rate,0.0)+float(it.get('line_total',0))
         for rate, amount in sorted(deposit_by_rate.items()):
             if round(amount,2):
-                # Déduction en quantité négative (prix unitaire positif) : une facture
-                # électronique n'admet pas de prix unitaire négatif (BR-27).
-                final_items.append({'label':f"Déduction des acomptes déjà facturés — TVA {amounts.fr_rate(rate)}",'qty':-1.0,
-                                    'unit_price':round(amount,2),'vat_rate':rate,'line_total':-round(amount,2),
-                                    'deposit_deduction':True})
-        net_ht,net_vat,net_total=_totals(final_items)
+                final_items.append({'label':f'Déduction acomptes déjà facturés — TVA {rate:g}%','qty':1.0,'unit_price':-round(amount,2),'vat_rate':rate,'line_total':-round(amount,2)})
         if net_total< -0.01:
             c.close(); flash("Les acomptes dépassent le montant du devis."); return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        base=_quote_invoice_base(q,eid)
-        base.update(line_items=json.dumps(final_items,ensure_ascii=False),subtotal=net_ht,vat_amount=net_vat,total=net_total,
-                    notes=f"Facture finale du devis {q['quote_number']}. Acomptes déjà facturés : {fr_number(dep_ht+dep_vat,2)} € TTC.",
-                    invoice_kind='final',deposit_applied_subtotal=dep_ht,deposit_applied_vat=dep_vat)
-        invoice_id,_token=_insert_draft_invoice(c,base)
+        number=_next_invoice_number(c,eid); token=secrets.token_urlsafe(24); due=(date.today()+timedelta(days=30)).isoformat()
+        notes=f"Facture finale du devis {q['quote_number']}. Acomptes déjà facturés : {dep_ht+dep_vat:.2f} € TTC."
+        c.execute("""INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id,invoice_kind,source_quote_id,deposit_applied_subtotal,deposit_applied_vat) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)""",
+          (number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,json.dumps(final_items,ensure_ascii=False),net_ht,net_vat,net_total,notes,token,now(),eid,'final',quote_id,dep_ht,dep_vat))
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
         c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=? AND entity_id IS ?",(invoice_id,quote_id,eid)); c.commit(); c.close()
-        log_activity('FINAL_INVOICE_CREATED',f"Facture finale (brouillon n°{invoice_id}) créée depuis {q['quote_number']}"); flash(f"Facture finale créée en brouillon (Brouillon n°{invoice_id}).")
+        log_activity('FINAL_INVOICE_CREATED',f"Facture finale {number} créée depuis {q['quote_number']}"); flash(f"Facture finale {number} créée en brouillon.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.post('/facturation/devis/<int:quote_id>/convertir')
@@ -1789,14 +1218,23 @@ def register(app):
         if q['status']!='accepted' or q['converted_invoice_id']:
             c.close(); flash("Seul un devis accepté et non encore facturé peut être converti.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        base=_quote_invoice_base(q,eid)
-        notes=f"Créée depuis le devis {q['quote_number']}." + (("\n"+q['notes']) if q['notes'] else "")
-        base.update(line_items=q['line_items'],subtotal=q['subtotal'],vat_amount=q['vat_amount'],total=q['total'],notes=notes)
-        invoice_id,_token=_insert_draft_invoice(c,base)
+        invoice_number=_next_invoice_number(c,eid)
+        token=secrets.token_urlsafe(24)
+        due=(date.today()+timedelta(days=30)).isoformat()
+        c.execute("""INSERT INTO outgoing_invoices
+          (invoice_number,client_name,client_address,client_email,issue_date,due_date,line_items,
+           subtotal,vat_amount,total,notes,status,public_token,created_at,entity_id)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)""",
+          (invoice_number,q['client_name'],q['client_address'],q['client_email'],date.today().isoformat(),due,
+           q['line_items'],q['subtotal'],q['vat_amount'],q['total'],
+           f"Créée depuis le devis {q['quote_number']}." + (("\\n"+q['notes']) if q['notes'] else ""),
+           token,now(),eid))
+        c.commit()
+        invoice_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
         c.execute("UPDATE outgoing_quotes SET status='converted',converted_invoice_id=? WHERE id=? AND entity_id IS ?",(invoice_id,quote_id,eid))
         c.commit(); c.close()
-        log_activity('QUOTE_CONVERTED',f"Devis {q['quote_number']} converti en facture (brouillon n°{invoice_id})")
-        flash(f"Devis {q['quote_number']} converti en facture brouillon (Brouillon n°{invoice_id}). Le lien public sera actif dès l'émission.")
+        log_activity('QUOTE_CONVERTED',f"Devis {q['quote_number']} converti en {invoice_number}")
+        flash(f"Devis {q['quote_number']} converti en facture {invoice_number}.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.route('/facturation/devis/<int:quote_id>/pdf')
@@ -1809,7 +1247,7 @@ def register(app):
         c=cx()
         q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         from profitos.entities import resolve_entity
-        company_row=_seller_identity(c,eid) if q else None
+        company_row=resolve_entity(c,eid) if q else None
         c.close()
         if not q: abort(404)
         pdf_bytes=_render_quote_pdf(q,company_row)
@@ -1825,23 +1263,73 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_receivables():
-        # Vue unique des créances : factures émises ET factures importées (profitos/receivables.py).
-        from profitos.receivables import open_receivables, summarize, by_customer
         c=cx()
-        try:
-            invoices=open_receivables(c,current=True)
-        finally:
-            c.close()
-        totals=summarize(invoices)
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        rows=c.execute("""
+            SELECT i.*,
+                   COALESCE((SELECT SUM(cn.total) FROM outgoing_credit_notes cn
+                             WHERE cn.original_invoice_id=i.id AND cn.entity_id IS i.entity_id AND cn.status='issued'),0) AS credited_total,
+                   COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p
+                             WHERE p.invoice_id=i.id AND p.entity_id IS i.entity_id),0) AS paid_total
+            FROM outgoing_invoices i
+            WHERE i.status IN ('sent','partially_paid') AND i.entity_id IS ?
+            ORDER BY i.due_date ASC, i.id DESC
+        """,(eid,)).fetchall()
+
+        today=date.today()
+        invoices=[]
+        by_client={}
+        total_due=0.0
+        overdue_due=0.0
+
+        for r in rows:
+            total=float(r['total'] or 0)
+            credited=float(r['credited_total'] or 0)
+            remaining=max(0.0,total-credited-float(r['paid_total'] or 0))
+            if remaining <= 0.01:
+                continue
+
+            due=None
+            try:
+                due=datetime.strptime(r['due_date'],'%Y-%m-%d').date() if r['due_date'] else None
+            except Exception:
+                due=None
+            overdue=bool(due and due < today)
+            days_overdue=(today-due).days if overdue else 0
+            total_due += remaining
+            if overdue:
+                overdue_due += remaining
+
+            item={
+                'id':r['id'],
+                'invoice_number':r['invoice_number'],
+                'client_name':r['client_name'],
+                'client_email':r['client_email'],
+                'due_date':r['due_date'],
+                'remaining':remaining,
+                'overdue':overdue,
+                'days_overdue':days_overdue,
+            }
+            invoices.append(item)
+
+            client=(r['client_name'] or 'Client sans nom').strip()
+            agg=by_client.setdefault(client,{'client_name':client,'total':0.0,'overdue':0.0,'count':0})
+            agg['total'] += remaining
+            agg['count'] += 1
+            if overdue:
+                agg['overdue'] += remaining
+
+        clients=sorted(by_client.values(),key=lambda x:(x['overdue'],x['total']),reverse=True)
+        c.close()
         return render_template(
             'invoicing_receivables.html',
             invoices=invoices,
-            clients=by_customer(invoices),
-            total_due=totals['total_due'],
-            overdue_due=totals['overdue_due'],
-            imported_due=totals['imported_due'],
-            unpaid_count=totals['count'],
-            overdue_count=totals['overdue_count']
+            clients=clients,
+            total_due=total_due,
+            overdue_due=overdue_due,
+            unpaid_count=len(invoices),
+            overdue_count=sum(1 for x in invoices if x['overdue'])
         )
 
     @app.get('/facturation/achats')
@@ -1853,36 +1341,27 @@ def register(app):
         c=cx()
         from profitos.entities import current_entity_id
         eid=current_entity_id()
-        purchases=c.execute("""SELECT pi.*,COALESCE((SELECT SUM(p.amount) FROM purchase_invoice_payments p
-                 WHERE p.purchase_invoice_id=pi.id AND COALESCE(CAST(p.entity_id AS TEXT),'')=COALESCE(CAST(pi.entity_id AS TEXT),'')),0) paid_total
-                 FROM purchase_invoices pi WHERE pi.entity_id IS ? ORDER BY pi.due_date ASC, pi.id DESC""",(eid,)).fetchall()
+        purchases=c.execute("SELECT * FROM purchase_invoices WHERE entity_id IS ? ORDER BY due_date ASC, id DESC",(eid,)).fetchall()
         suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
-        today=paris_today()
-        total_unpaid=total_overdue=due_7=due_30=0.0
+        today=date.today()
+        total_unpaid=0.0
+        total_overdue=0.0
         view=[]
         for p in purchases:
             overdue=False
-            open_status=p['status'] in ('unpaid','partially_paid')
-            remaining=max(0.0,round(float(p['total'] or 0)-float(p['paid_total'] or 0),2)) if open_status else 0.0
-            due=None
-            if p['due_date']:
-                try: due=date.fromisoformat(str(p['due_date'])[:10])
-                except ValueError: due=None
-            if open_status and remaining>0:
-                overdue=bool(due and due<today)
-                total_unpaid+=remaining
-                if overdue: total_overdue+=remaining
-                elif due and (due-today).days<=7: due_7+=remaining
-                if due and not overdue and (due-today).days<=30: due_30+=remaining
+            if p['status']=='unpaid' and p['due_date']:
+                try:
+                    overdue=datetime.strptime(p['due_date'],'%Y-%m-%d').date() < today
+                except Exception:
+                    overdue=False
+            if p['status']=='unpaid':
+                total_unpaid += float(p['total'] or 0)
+                if overdue:
+                    total_overdue += float(p['total'] or 0)
             view.append({'row':p,'overdue':overdue})
-        # Fournisseurs distincts : fiches + fournisseurs saisis sans fiche sur une facture.
-        names={(s['name'] or '').strip().lower() for s in suppliers}
-        names|={(p['supplier_name'] or '').strip().lower() for p in purchases}
-        names.discard('')
         c.close()
         return render_template('purchase_list.html',purchases=view,suppliers=suppliers,
-                               total_unpaid=round(total_unpaid,2),total_overdue=round(total_overdue,2),
-                               due_7=round(due_7,2),due_30=round(due_30,2),supplier_count=len(names))
+                               total_unpaid=total_unpaid,total_overdue=total_overdue)
 
     @app.route('/facturation/achats/pilotage')
     @login_required
@@ -1991,7 +1470,7 @@ def register(app):
 
         month=request.args.get('month','').strip()
         if not re.fullmatch(r'\d{4}-\d{2}',month or ''):
-            month=paris_today().strftime('%Y-%m')
+            month=date.today().strftime('%Y-%m')
 
         budget_rows=c.execute("SELECT * FROM purchase_budgets WHERE entity_key=?",(ekey,)).fetchall()
         budgets={r['category']:r['monthly_amount'] for r in budget_rows}
@@ -2051,13 +1530,13 @@ def register(app):
         purchases=c.execute("SELECT * FROM purchase_invoices WHERE entity_id IS ? ORDER BY due_date ASC, id DESC",(current_entity_id(),)).fetchall()
         c.close()
         data=[{'Fournisseur':p['supplier_name'],'N° facture':p['invoice_number'],
-               "Date d'émission":fr_date(p['issue_date']) or '',"Date d'échéance":fr_date(p['due_date']) or '',
+               "Date d'émission":p['issue_date'] or '',"Date d'échéance":p['due_date'] or '',
                'Montant HT (€)':round(p['subtotal'] or 0,2),'TVA (€)':round(p['vat_amount'] or 0,2),
                'Montant TTC (€)':round(p['total'] or 0,2),
                'Catégorie':PURCHASE_CATEGORY_LABELS.get(p['category'] or 'autre','Autre'),
-               'Statut':{'paid':'Payée','partially_paid':'Partiellement payée'}.get(p['status'],'À payer')} for p in purchases]
+               'Statut':'Payée' if p['status']=='paid' else 'À payer'} for p in purchases]
         record_usage('reports_per_month',organization_id=org['id'])
-        return export_response(data,'profitos-achats-fournisseurs',french_csv=True)
+        return export_response(data,'profitos-achats-fournisseurs')
 
     @app.route('/facturation/fournisseurs/nouveau',methods=['GET','POST'])
     @login_required
@@ -2103,7 +1582,7 @@ def register(app):
         iban = (request.form.get('iban') or '').replace(' ', '').upper().strip()
         if iban and not validate_iban(iban):
             c.close()
-            flash("IBAN invalide — vérifiez la saisie (format et somme de contrôle incorrects).")
+            flash("IBAN invalide — vérifie la saisie (format et somme de contrôle incorrects).")
             return redirect(url_for('supplier_detail', supplier_id=supplier_id))
         c.execute(
             "UPDATE suppliers SET email=?,phone=?,address=?,iban=?,bic=? WHERE id=? AND entity_id IS ?",
@@ -2126,7 +1605,7 @@ def register(app):
         try:
             stored,mime=_save_purchase_document(uploaded)
             if not stored:
-                raise ValueError("Sélectionnez un fichier PDF ou une photo.")
+                raise ValueError("Sélectionne un fichier PDF ou une photo.")
             path=_purchase_pdf_dir()/stored
             if mime=='application/pdf':
                 try:
@@ -2172,7 +1651,7 @@ def register(app):
         domain = os.environ.get('SUPPLIER_INBOX_DOMAIN', 'achats.profitos.fr')
         c = cx()
         recent = c.execute(
-            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%%' AND entity_id IS ? ORDER BY id DESC LIMIT 20",
+            "SELECT * FROM purchase_invoices WHERE notes LIKE 'Reçu par email%' AND entity_id IS ? ORDER BY id DESC LIMIT 20",
             (eid,),
         ).fetchall()
         c.close()
@@ -2216,7 +1695,6 @@ def register(app):
             return jsonify({'error': 'jeton inconnu'}), 404
         org_id = mapping['organization_id']
         entity_id = mapping['entity_id']
-        g.ai_quota_org_id = org_id  # quota IA décompté sur cette organisation (pas de session)
 
         attachments = payload.get('attachments') or []
         created, failed = [], []
@@ -2275,14 +1753,42 @@ def register(app):
                  now(), stored, 'autre', 'pending', entity_id),
             )
             tc.commit()
-            # Facture reçue par e-mail : en attente de validation, donc comptabilisée seulement
-            # quand un utilisateur l'aura vérifiée et validée.
+            new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
+            try:
+                purchase_row = tc.execute('SELECT * FROM purchase_invoices WHERE id=?', (new_id,)).fetchone()
+                generate_purchase_entry(tc, purchase_row)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED', outcome='ERROR', detail=f"achat email {new_id}: {e}")
             tc.close()
             created.append(detected['invoice_number'])
 
         log_ops_event('SUPPLIER_INBOX_RECEIVED', outcome='INFO' if created else 'WARNING',
                        detail=f"org={org_id} entity={entity_id} créées={created} échecs={failed}")
         return jsonify({'created': created, 'failed': failed}), 200
+
+    def _inbound_original_reference(raw):
+        """Extrait la facture précédente d'un UBL/CII entrant."""
+        try: root=ET.fromstring(raw)
+        except Exception: return None
+        for parent_name,id_name in (('BillingReference','ID'),('InvoiceReferencedDocument','IssuerAssignedID')):
+            for el in root.iter():
+                if el.tag.rsplit('}',1)[-1] == parent_name:
+                    for child in el.iter():
+                        if child.tag.rsplit('}',1)[-1] == id_name and (child.text or '').strip():
+                            return child.text.strip()
+        return None
+
+    def _is_inbound_credit_note(item, raw):
+        kind=str(item.get('type') or '').upper().replace('-','_')
+        if 'CREDIT' in kind or 'AVOIR' in kind: return True
+        try:
+            root=ET.fromstring(raw)
+            if root.tag.rsplit('}',1)[-1].upper() == 'CREDITNOTE': return True
+            for el in root.iter():
+                if el.tag.rsplit('}',1)[-1] in ('TypeCode','InvoiceTypeCode','CreditNoteTypeCode'):
+                    if (el.text or '').strip() in {'261','381','396','502','503'}: return True
+        except Exception: pass
+        return False
 
     @app.route('/facturation/achats/weinvoice/synchroniser', methods=['POST'])
     @login_required
@@ -2299,18 +1805,128 @@ def register(app):
         eid=current_entity_id()
         c=cx()
         try:
-            try:
-                result=sync_weinvoice_inbound(c,eid,session['org_id'],max_items=WEINVOICE_MANUAL_SYNC_MAX)
-            except WeInvoiceInboundNotConfigured:
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
                 flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('purchase_list'))
+            org_remote=settings['weinvoice_company_id']
+            # Parcourt toutes les pages WeInvoice. La limite de 100 est celle
+            # d'une page API, pas celle d'une synchronisation ProfitOS.
+            inbound_items=[]; page=1; page_size=100
+            try:
+                while True:
+                    payload=list_inbound_invoices(org_remote,page=page,page_size=page_size)
+                    batch=payload.get('invoices',[])
+                    inbound_items.extend(batch)
+                    total=payload.get('total')
+                    if isinstance(total,int):
+                        if len(inbound_items) >= total: break
+                    elif len(batch) < page_size:
+                        break
+                    if not batch: break
+                    page += 1
+                    if page > 1000:
+                        raise WeInvoiceAPIError("Pagination WeInvoice anormalement longue.")
             except (WeInvoiceAPIError,WeInvoiceConfigError) as exc:
                 flash(str(exc)); return redirect(url_for('purchase_list'))
-            created,skipped,ignored,failed=result['created'],result['skipped'],result['ignored'],result['failed']
-            msg=f"Factures électroniques reçues : {created} importée(s), {skipped} déjà présente(s), {ignored} rejetée(s) ignorée(s), {len(failed)} échec(s)."
-            if result['remaining']:
-                msg+=f" Il reste {result['remaining']} facture(s) à importer : relancez la synchronisation ou attendez la synchronisation automatique (toutes les heures)."
-            flash(msg)
+            created=0; skipped=0; ignored=0; failed=[]
+            for item in inbound_items:
+                stored=None
+                remote_id=str(item.get('id') or '').strip()
+                if not remote_id or str(item.get('direction') or '').upper()!='INBOUND':
+                    continue
+                if (c.execute('SELECT 1 FROM purchase_invoices WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()
+                    or c.execute('SELECT 1 FROM purchase_credit_notes WHERE entity_id IS ? AND weinvoice_invoice_id=?',(eid,remote_id)).fetchone()):
+                    skipped+=1; continue
+                # Un document terminalement rejeté n'est pas une facture fournisseur
+                # importable. Il reste visible chez WeInvoice mais ne doit pas être
+                # compté comme une panne de synchronisation ProfitOS.
+                status=str(item.get('status') or '').upper()
+                regulatory=str(item.get('regulatoryStatusCode') or item.get('cdvCode') or '').strip()
+                if status in {'REJECTED','REJETEE','REJETÉE'} or regulatory == '213':
+                    ignored+=1
+                    continue
+                try:
+                    # Le contenu structure est la source metier indispensable.
+                    # Le socle original et le lisible sont des enrichissements :
+                    # leur indisponibilite ne doit pas bloquer une facture valide.
+                    content=get_inbound_invoice_content(org_remote,remote_id)
+                    raw_original=b''
+                    try:
+                        raw_original=download_inbound_invoice_original(org_remote,remote_id)
+                    except WeInvoiceAPIError as exc:
+                        log_ops_event('WEINVOICE_INBOUND_ORIGINAL_UNAVAILABLE','WARNING',
+                                      detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+                    subtotal=float(content.get('totalHt') if content.get('totalHt') is not None else (item.get('totalHt') or 0))
+                    vat=float(content.get('totalVat') or item.get('totalVat') or 0)
+                    total=float(content.get('totalTtc') if content.get('totalTtc') is not None else subtotal+vat)
+                    if not all(math.isfinite(v) and v>=0 for v in (subtotal,vat,total)):
+                        raise ValueError('montants non valides')
+                    number=str(item.get('number') or remote_id)[:100]
+                    supplier=str(item.get('vendorName') or item.get('vendorSiren') or 'Fournisseur électronique')[:255]
+                    issue=str(item.get('date') or '')[:10] or None
+                    due=str(item.get('dueDate') or '')[:10] or None
+                    if _is_inbound_credit_note(item,raw_original):
+                        original_number=_inbound_original_reference(raw_original)
+                        if not original_number: raise ValueError("avoir fournisseur sans référence à la facture d'origine")
+                        original=c.execute('SELECT * FROM purchase_invoices WHERE entity_id IS ? AND invoice_number=? ORDER BY id DESC LIMIT 1',(eid,original_number)).fetchone()
+                        if not original: raise ValueError("facture fournisseur d'origine introuvable")
+                        # Comme pour une facture normale, le PDF lisible est un
+                        # enrichissement documentaire et non une condition d'import.
+                        try:
+                            pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                        except WeInvoiceAPIError as exc:
+                            pdf=None
+                            log_ops_event('WEINVOICE_INBOUND_CREDIT_READABLE_UNAVAILABLE','WARNING',
+                                          detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+                        if pdf:
+                            stored=f"weinvoice_credit_{hashlib.sha256((str(eid)+':'+remote_id).encode()).hexdigest()[:24]}.pdf"
+                            (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                        c.execute("""INSERT INTO purchase_credit_notes(
+                            entity_id,original_purchase_id,original_invoice_number,credit_number,supplier_name,issue_date,
+                            subtotal,vat_amount,total,category,notes,document_path,weinvoice_invoice_id,weinvoice_status,
+                            weinvoice_regulatory_code,weinvoice_last_sync_at,created_at)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (eid,original['id'],original_number,number,supplier,issue,subtotal,vat,total,
+                             original['category'] or 'autre','Avoir reçu par facturation électronique WeInvoice',stored,
+                             remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now(),now()))
+                        credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                        credit=c.execute('SELECT * FROM purchase_credit_notes WHERE id=? AND entity_id IS ?',(credit_id,eid)).fetchone()
+                        generate_purchase_credit_entry(c,credit,commit=False)
+                        c.commit(); created+=1
+                        continue
+                    try:
+                        pdf=download_inbound_invoice_readable(org_remote,remote_id)
+                    except WeInvoiceAPIError as exc:
+                        pdf=None
+                        log_ops_event('WEINVOICE_INBOUND_READABLE_UNAVAILABLE','WARNING',
+                                      detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+                    if pdf:
+                        stored=f"weinvoice_{hashlib.sha256(remote_id.encode()).hexdigest()[:24]}.pdf"
+                        (_purchase_pdf_dir()/stored).write_bytes(pdf)
+                    validation='pending'
+                    settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
+                    if not (settings_row and settings_row['require_purchase_validation']): validation='approved'
+                    c.execute("""INSERT INTO purchase_invoices(
+                        supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
+                        notes,created_at,document_path,category,validation_status,entity_id,
+                        weinvoice_invoice_id,weinvoice_status,weinvoice_regulatory_code,weinvoice_last_sync_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (supplier,number,issue,due,subtotal,vat,total,'unpaid','Reçue par facturation électronique WeInvoice',now(),stored,'autre',validation,eid,
+                         remote_id,str(item.get('status') or ''),str(item.get('regulatoryStatusCode') or ''),now()))
+                    new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                    purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?',(new_id,eid)).fetchone()
+                    generate_purchase_entry(c,purchase_row,commit=False)
+                    c.commit(); created+=1
+                except Exception as exc:
+                    c.rollback()
+                    try:
+                        if stored: (_purchase_pdf_dir()/stored).unlink(missing_ok=True)
+                    except Exception: pass
+                    failed.append(f"{remote_id}: {type(exc).__name__}")
+                    log_ops_event('WEINVOICE_INBOUND_IMPORT_FAILED','ERROR',detail=f'eInvoicingId={remote_id} error={type(exc).__name__}')
+            log_ops_event('WEINVOICE_INBOUND_SYNC','INFO' if not failed else 'WARNING',detail=f'entity={eid} created={created} skipped={skipped} ignored={ignored} failed={len(failed)}')
+            flash(f"Factures électroniques reçues : {created} importée(s), {skipped} déjà présente(s), {ignored} rejetée(s) ignorée(s), {len(failed)} échec(s).")
             return redirect(url_for('purchase_list'))
         finally:
             c.close()
@@ -2396,45 +2012,21 @@ def register(app):
                 if s:
                     supplier_name=s['name']
             number=(request.form.get('invoice_number') or '').strip()
-            pending_document=(request.form.get('pending_document') or '').strip()
-
-            def _purchase_form_again(message):
-                # Réaffiche le formulaire avec la saisie conservée (jamais de saisie perdue).
-                from profitos.entities import list_all_entities
-                detected={'supplier_name':supplier_name,'invoice_number':number,
-                          'issue_date':request.form.get('issue_date') or '','due_date':request.form.get('due_date') or '',
-                          'subtotal':amounts.parse_number(request.form.get('subtotal'),0.0) or 0.0,
-                          'vat_amount':amounts.parse_number(request.form.get('vat_amount'),0.0) or 0.0}
-                detected['total']=round(detected['subtotal']+detected['vat_amount'],2)
-                open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
-                entities=list_all_entities(c)
-                c.close(); flash(message)
-                return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES,open_orders=open_orders,
-                                       entities=entities,detected=detected,pending_document=pending_document or None,
-                                       duplicate_warning=message.startswith('Doublon')), 400
             try:
                 issue_date=_purchase_form_date(request.form.get('issue_date'), "Date de facture")
                 due_date=_purchase_form_date(request.form.get('due_date'), "Date d'échéance")
-                subtotal=amounts.parse_number(request.form.get('subtotal'),None)
-                vat=amounts.parse_number(request.form.get('vat_amount'),0.0)
-                if subtotal is None or vat is None:
-                    raise ValueError("Montants invalides.")
+                subtotal=float(request.form.get('subtotal') or 0)
+                vat=float(request.form.get('vat_amount') or 0)
             except ValueError as exc:
-                return _purchase_form_again(str(exc) if "date" in str(exc).lower() else "Montants invalides.")
+                c.close()
+                flash(str(exc) if "date" in str(exc).lower() else "Montants invalides.")
+                return redirect(url_for('purchase_new'))
             total=round(subtotal+vat,2)
             if not supplier_name or not number or subtotal < 0 or vat < 0:
-                return _purchase_form_again("Fournisseur, numéro et montants valides sont obligatoires.")
-            if not issue_date:
-                return _purchase_form_again("La date de facture est obligatoire.")
-            if due_date and due_date < issue_date:
-                return _purchase_form_again("La date d'échéance ne peut pas être antérieure à la date de facture.")
-            if not request.form.get('confirm_duplicate'):
-                dup=c.execute("SELECT id,issue_date,total FROM purchase_invoices WHERE entity_id IS ? AND lower(supplier_name)=lower(?) AND lower(invoice_number)=lower(?) LIMIT 1",
-                              (eid,supplier_name,number)).fetchone()
-                if dup:
-                    return _purchase_form_again(f"Doublon probable : la facture n° {number} de {supplier_name} est déjà enregistrée "
-                                                f"(du {fr_date(dup['issue_date'])}, {fr_number(dup['total'],2)} € TTC). "
-                                                "Cochez « Enregistrer malgré tout » si c'est bien une autre facture.")
+                c.close()
+                flash("Fournisseur, numéro et montants valides sont obligatoires.")
+                return redirect(url_for('purchase_new'))
+            pending_document=(request.form.get('pending_document') or '').strip()
             if pending_document and not re.fullmatch(r'[0-9a-f]{32}\.(pdf|jpg|png|webp)',pending_document):
                 c.close(); abort(400)
             if pending_document and not (_purchase_pdf_dir()/pending_document).is_file():
@@ -2457,20 +2049,13 @@ def register(app):
                        due_date,
                        subtotal,vat,total,'unpaid',
                        (request.form.get('notes') or '').strip(),now(),pending_document or None,category,validation_status,purchase_order_id,entity_id))
-            new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-            # Une facture en attente de validation n'est comptabilisée qu'une fois validée.
-            # Facture + écriture sont enregistrées ensemble : si l'écriture est refusée
-            # (période clôturée…), la facture n'est pas créée et l'utilisateur est prévenu.
-            if validation_status=='approved':
-                try:
-                    purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(new_purchase_id,)).fetchone()
-                    generate_purchase_entry(c,purchase_row,commit=False)
-                except AccountingError as e:
-                    c.rollback(); c.close()
-                    log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"achat {number}: {e}")
-                    flash(f"Facture fournisseur non enregistrée : {e}")
-                    return redirect(url_for('purchase_new'))
             c.commit()
+            new_purchase_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            try:
+                purchase_row=c.execute('SELECT * FROM purchase_invoices WHERE id=?',(new_purchase_id,)).fetchone()
+                generate_purchase_entry(c,purchase_row)
+            except AccountingError as e:
+                log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"achat {new_purchase_id}: {e}")
             deliver_webhook(c,'purchase.created',{'id':new_purchase_id,'invoice_number':number,
                 'supplier_name':supplier_name,'total':total},entity_id=eid)
             c.close()
@@ -2496,8 +2081,7 @@ def register(app):
             c.close(); abort(404)
         purchases=c.execute("SELECT * FROM purchase_invoices WHERE supplier_id=? AND entity_id IS ? ORDER BY issue_date DESC,id DESC",(supplier_id,eid)).fetchall()
         total=sum(float(p['total'] or 0) for p in purchases)
-        # Reste à payer réel : factures non soldées, règlements partiels déduits.
-        unpaid=round(sum(_purchase_balance(c,p,eid) for p in purchases if p['status'] in ('unpaid','partially_paid')),2)
+        unpaid=sum(float(p['total'] or 0) for p in purchases if p['status']=='unpaid')
         c.close()
         return render_template('supplier_detail.html',supplier=supplier,purchases=purchases,total=total,unpaid=unpaid)
 
@@ -2508,7 +2092,7 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def supplier_debts():
-        today = paris_today()
+        today = date.today()
         d7 = today + timedelta(days=7)
         d30 = today + timedelta(days=30)
         c = cx()
@@ -2561,7 +2145,7 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def supplier_payment_forecast():
-        today = paris_today()
+        today = date.today()
         d7 = today + timedelta(days=7)
         d30 = today + timedelta(days=30)
 
@@ -2673,8 +2257,7 @@ def register(app):
         if p['weinvoice_invoice_id']:
             einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE entity_id IS ? AND remote_id=? ORDER BY id DESC LIMIT 50",(eid,p['weinvoice_invoice_id'])).fetchall()
         c.close()
-        return render_template('purchase_detail.html',p=p,supplier=supplier,einvoice_events=einvoice_events,today=paris_today().isoformat(),
-                               payment_hold=_einvoice_hold(p))
+        return render_template('purchase_detail.html',p=p,supplier=supplier,einvoice_events=einvoice_events)
 
     @app.route('/facturation/achats/<int:purchase_id>/modifier',methods=['GET','POST'])
     @login_required
@@ -2713,12 +2296,6 @@ def register(app):
             if not supplier_name or not number or subtotal<0 or vat<0:
                 c.close(); flash("Fournisseur, numéro et montants valides sont obligatoires.")
                 return redirect(url_for('purchase_edit',purchase_id=purchase_id))
-            if not issue_date:
-                c.close(); flash("La date de facture est obligatoire.")
-                return redirect(url_for('purchase_edit',purchase_id=purchase_id))
-            if due_date and due_date<issue_date:
-                c.close(); flash("La date d'échéance ne peut pas être antérieure à la date de facture.")
-                return redirect(url_for('purchase_edit',purchase_id=purchase_id))
             category=request.form.get('category','autre')
             if category not in PURCHASE_CATEGORY_LABELS: category='autre'
             c.execute("""UPDATE purchase_invoices SET supplier_id=?,supplier_name=?,invoice_number=?,
@@ -2726,30 +2303,8 @@ def register(app):
                       (supplier_id,supplier_name,number,issue_date,
                        due_date,subtotal,vat,round(subtotal+vat,2),
                        (request.form.get('notes') or '').strip(),category,purchase_id,eid))
-            accounting_changed=any(str(p[k] or '')!=str(v or '') for k,v in (
-                ('supplier_name',supplier_name),('invoice_number',number),('issue_date',issue_date),('category',category))) \
-                or abs(float(p['subtotal'] or 0)-subtotal)>0.004 or abs(float(p['vat_amount'] or 0)-vat)>0.004
-            needs_validation=False
-            if accounting_changed:
-                settings_row=c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
-                # Circuit de validation : une facture validée puis modifiée par quelqu'un qui
-                # n'a pas le droit de valider repart en attente (sinon le montant validé
-                # pouvait passer de 120 € à 90 000 € en restant « approuvé »).
-                needs_validation=bool(settings_row and settings_row['require_purchase_validation']) \
-                    and current_role() not in ('OWNER','ADMIN','COMPTABLE')
-                try:
-                    reverse_purchase_entry(c,p,commit=False)
-                    if needs_validation:
-                        c.execute("UPDATE purchase_invoices SET validation_status='pending',validated_by=NULL,validated_at=NULL WHERE id=? AND entity_id IS ?",(purchase_id,eid))
-                    elif (p['validation_status'] or 'approved')=='approved':
-                        updated=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
-                        generate_purchase_entry(c,updated,commit=False)
-                except AccountingError as e:
-                    c.rollback(); c.close()
-                    flash(f"Modification refusée : {e}")
-                    return redirect(url_for('purchase_edit',purchase_id=purchase_id))
             c.commit(); c.close()
-            flash("Facture fournisseur mise à jour." + (" Elle doit être validée à nouveau." if needs_validation else ""))
+            flash("Facture fournisseur mise à jour.")
             return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         c.close()
         return render_template('purchase_edit.html',p=p,suppliers=suppliers,categories=PURCHASE_CATEGORIES)
@@ -2838,21 +2393,14 @@ def register(app):
         balance=_purchase_balance(c,p,eid)
         if balance <= .005:
             c.close(); flash("Cette facture fournisseur est déjà soldée."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-        payment_date=(request.form.get('payment_date') or paris_today().isoformat()).strip()
-        try:
-            date.fromisoformat(payment_date)
-        except ValueError:
-            c.close(); flash("Date de paiement invalide."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-        if payment_date>paris_today().isoformat():
-            c.close(); flash("La date de paiement ne peut pas être dans le futur."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         key=f"manual-full:{eid}:{purchase_id}:{balance:.2f}"
         try:
-            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,balance,payment_date,'manual','Solde manuel',key,now()))
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,balance,date.today().isoformat(),'manual','Solde manuel',key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
             generate_purchase_partial_payment_entry(c,p,payment)
             c.execute("UPDATE purchase_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),purchase_id,eid))
             c.commit()
-        except (AccountingError, *dbmod.IntegrityError) as e:
+        except (AccountingError, sqlite3.IntegrityError) as e:
             c.rollback(); c.close(); flash(f"Paiement non enregistré : {e}"); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
         c.close(); flash("Solde fournisseur enregistré."); return redirect(url_for('purchase_list'))
 
@@ -2887,7 +2435,7 @@ def register(app):
             selected_ids = [int(x) for x in request.form.getlist('purchase_id')]
             if len(selected_ids) == 0:
                 c.close()
-                flash("Sélectionnez au moins une facture à inclure dans le virement groupé.")
+                flash("Sélectionne au moins une facture à inclure dans le virement groupé.")
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
             placeholders = ','.join('?' * len(selected_ids))
             # Filtre aussi sur l'entité choisie — une remise SEPA n'a qu'un seul débiteur (compte
@@ -2901,14 +2449,6 @@ def register(app):
                       AND (p.validation_status IS NULL OR p.validation_status='approved')""",
                 selected_ids + ([entity_id] if entity_id else []),
             ).fetchall()
-            # Une facture « refusée », « en litige », « suspendue » ou « rejetée » côté facturation
-            # électronique ne part jamais dans un fichier de virement, même si un client mal formé la
-            # sélectionne : elle est écartée ici et l'utilisateur en est informé.
-            held_rows = [(r, _einvoice_hold(r)) for r in rows if _einvoice_hold(r)]
-            if held_rows:
-                rows = [r for r in rows if not _einvoice_hold(r)]
-                flash("Non incluses dans le virement (statut de facturation électronique) : "
-                      + ", ".join(f"{r['invoice_number']} ({hold})" for r, hold in held_rows) + ".")
             # Le virement porte sur le solde restant, jamais sur le total historique
             # de la facture (une facture peut déjà avoir reçu un paiement partiel).
             payable_rows = []
@@ -2938,7 +2478,7 @@ def register(app):
                 c.execute("""INSERT INTO sepa_export_batches
                              (entity_id,message_id,execution_date,total_amount,payment_count,status,file_sha256,created_at,created_by)
                              VALUES(?,?,?,?,?,'exported',?,?,?)""",
-                          (entity_id,msg_id,paris_today().isoformat(),total,len(payable_rows),file_sha256,now(),session.get('user_email')))
+                          (entity_id,msg_id,date.today().isoformat(),total,len(payable_rows),file_sha256,now(),session.get('user_email')))
                 batch = c.execute("SELECT id FROM sepa_export_batches WHERE entity_id IS ? AND message_id=?",
                                   (entity_id,msg_id)).fetchone()
                 if not batch:
@@ -2949,14 +2489,14 @@ def register(app):
                                  VALUES(?,?,?,?,?,?,?)""",
                               (batch['id'],entity_id,r['id'],balance,r['supplier_name'],r['invoice_number'],now()))
                 c.commit()
-            except (AccountingError, *dbmod.IntegrityError) as e:
+            except (AccountingError, sqlite3.IntegrityError) as e:
                 c.rollback(); c.close()
                 log_ops_event('SEPA_EXPORT_FAILED', outcome='ERROR', detail=f"lot {msg_id}: {e}")
                 flash(f"Export SEPA interrompu : {e}")
                 return redirect(url_for('purchase_sepa_batch', entity_id=entity_id or ''))
             c.close()
             log_activity('SEPA_BATCH_GENERATED', f"Lot SEPA {msg_id} ({debtor_identity['name']}) : {len(payable_rows)} virement(s), {fr_number(total, 2)} €")
-            filename = f"virements_{paris_today().isoformat()}.xml"
+            filename = f"virements_{date.today().isoformat()}.xml"
             return Response(
                 xml_content.encode('utf-8'), mimetype='application/xml',
                 headers={'Content-Disposition': f'attachment; filename="{filename}"'},
@@ -2971,12 +2511,8 @@ def register(app):
                ORDER BY p.due_date""",
             ([entity_id] if entity_id else []),
         ).fetchall()
-        ready, blocked, held = [], [], []
+        ready, blocked = [], []
         for r in candidates:
-            hold = _einvoice_hold(r)
-            if hold:
-                held.append((r, hold))
-                continue
             if r['supplier_iban'] and validate_iban(r['supplier_iban']) and r['supplier_bic']:
                 ready.append(r)
             else:
@@ -2984,7 +2520,7 @@ def register(app):
         company_ready = bool(debtor_identity['iban'] and validate_iban(debtor_identity['iban']) and debtor_identity['bic'])
         entities = list_all_entities(c)
         c.close()
-        return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked, held=held,
+        return render_template('purchase_sepa_batch.html', ready=ready, blocked=blocked,
                                 company_ready=company_ready, company=debtor_identity,
                                 entities=entities, current_entity_id=entity_id)
 
@@ -3017,7 +2553,7 @@ def register(app):
         if request.method == 'POST':
             supplier_id = request.form.get('supplier_id') or None
             supplier_name = (request.form.get('supplier_name') or '').strip()
-            order_date = request.form.get('order_date') or paris_today().isoformat()
+            order_date = request.form.get('order_date') or date.today().isoformat()
             expected_delivery_date = request.form.get('expected_delivery_date') or None
             descriptions = request.form.getlist('description')
             quantities = request.form.getlist('quantity')
@@ -3042,10 +2578,10 @@ def register(app):
                 lines.append((desc, qty, price))
             if not lines:
                 c.close()
-                flash("Ajoutez au moins une ligne avec une quantité positive.")
+                flash("Ajoute au moins une ligne avec une quantité positive.")
                 return redirect(url_for('purchase_order_new'))
 
-            year = paris_today().year
+            year = date.today().year
             prefix = f"BC-E{eid}-{year}-" if eid else f"BC-{year}-"
             seq = c.execute(
                 "SELECT COUNT(*) n FROM purchase_orders WHERE order_number LIKE ? AND entity_id IS ?", (prefix + '%', eid)
@@ -3194,13 +2730,6 @@ def register(app):
             "UPDATE purchase_invoices SET validation_status='approved',validated_by=?,validated_at=?,rejection_reason=NULL WHERE id=? AND entity_id IS ?",
             (validator_email, now(), purchase_id, eid),
         )
-        try:
-            approved=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
-            generate_purchase_entry(c, approved, commit=False)
-        except AccountingError as e:
-            c.rollback(); c.close()
-            flash(f"Validation impossible : {e}")
-            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         c.commit(); c.close()
         log_activity('PURCHASE_VALIDATED', f"Facture fournisseur #{purchase_id} validée par {validator_email}")
         flash("Facture validée — elle peut maintenant être marquée comme payée.")
@@ -3231,13 +2760,6 @@ def register(app):
             "UPDATE purchase_invoices SET validation_status='rejected',validated_by=?,validated_at=?,rejection_reason=? WHERE id=? AND entity_id IS ?",
             (validator_email, now(), reason or None, purchase_id, eid),
         )
-        try:
-            # Factures créées avant v390 : déjà comptabilisées à l'enregistrement -> extourne.
-            reverse_purchase_entry(c, p, commit=False)
-        except AccountingError as e:
-            c.rollback(); c.close()
-            flash(f"Rejet impossible : {e}")
-            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         c.commit(); c.close()
         log_activity('PURCHASE_REJECTED', f"Facture fournisseur #{purchase_id} rejetée par {validator_email}")
         flash("Facture rejetée.")
@@ -3255,22 +2777,13 @@ def register(app):
         ereporting_rows=c.execute("""SELECT id,transmission_number,flow_type,anchor_date,type_code,provider_reference,status,
             late_deposit,flux_status,rejection_motifs_json,last_error,submitted_at,last_checked_at,created_at
             FROM ereporting_transmissions WHERE entity_id IS ? ORDER BY id DESC LIMIT 25""",(eid,)).fetchall()
-        # Tuiles « à encaisser » / « en retard » : reste dû réel (règlements et avoirs
-        # déduits), factures importées comprises — mêmes chiffres que Créances et l'accueil.
-        from profitos.receivables import open_receivables, summarize
-        try:
-            recv=summarize(open_receivables(c,current=True))
-        finally:
-            c.close()
+        c.close()
         totals={'draft':0,'sent':0,'overdue':0,'paid':0,'cancelled':0}
         display_statuses={}
         for r in rows:
             status=_display_status(r)
             display_statuses[r['id']]=status
-            if status in ('draft','paid','cancelled'): totals[status]+=r['total'] or 0
-        totals['overdue']=recv['overdue_due']
-        totals['sent']=round(recv['total_due']-recv['overdue_due'],2)
-        totals['imported_due']=recv['imported_due']
+            if status in totals: totals[status]+=r['total'] or 0
         return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses,ereporting_rows=ereporting_rows)
 
     @app.route('/facturation/nouvelle',methods=['GET','POST'])
@@ -3283,24 +2796,43 @@ def register(app):
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         if not company_row or not company_row['name']:
             c.close()
-            flash("Complétez d'abord votre profil entreprise (nom, adresse, SIRET) avant de créer une facture.")
+            flash("Complète d'abord ton profil entreprise (nom, adresse, SIRET) avant de créer une facture.")
             return redirect(url_for('company'))
-        clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
-        from profitos.entities import list_all_entities
-        entities=list_all_entities(c)
-
-        def _form_again(values, message, items=None):
-            flash(message)
-            c.close()
-            return render_template('invoicing_new.html',company=company_row,today=paris_today().isoformat(),clients=clients,
-                                   entities=entities,f=values,items=items or [],vat_treatment_labels=VAT_TREATMENT_LABELS), 400
 
         if request.method=='POST':
-            header,error=_parse_invoice_header(request.form,paris_today().isoformat())
-            header['notes']=(request.form.get('notes') or '').strip()
+            client_name=request.form.get('client_name','').strip()
+            client_address=request.form.get('client_address','').strip()
+            client_email=request.form.get('client_email','').strip()
+            client_siren=re.sub(r'\D','',request.form.get('client_siren','').strip())[:9]
+            operation_nature=request.form.get('operation_nature','services')
+            if operation_nature not in ('biens','services','mixte'): operation_nature='services'
+            vat_on_debits=1 if request.form.get('vat_on_debits')=='on' else 0
+            delivery_address=request.form.get('delivery_address','').strip()
+            ereporting_scope=(request.form.get('ereporting_scope') or '').strip()
+            ereporting_category=(request.form.get('ereporting_category') or '').strip()
+            counterparty_country=(request.form.get('counterparty_country') or '').strip().upper()
+            client_vat_number=(request.form.get('client_vat_number') or '').strip()
+            if ereporting_scope not in ('','b2c','international_b2b'):
+                flash("Périmètre e-reporting invalide."); return redirect(url_for('invoicing_new'))
+            if ereporting_scope=='b2c' and ereporting_category not in ('TLB1','TPS1','TNT1','TMA1'):
+                flash("Catégorie e-reporting B2C requise."); return redirect(url_for('invoicing_new'))
+            if ereporting_scope=='international_b2b' and (len(counterparty_country)!=2 or counterparty_country=='FR'):
+                flash("Pays étranger ISO alpha-2 requis pour le B2B international."); return redirect(url_for('invoicing_new'))
+            due_date=request.form.get('due_date','').strip()
+            notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
-            if error:
-                return _form_again(header,error,items)
+            issue_date=date.today().isoformat()
+            if due_date:
+                try:
+                    if date.fromisoformat(due_date) < date.fromisoformat(issue_date):
+                        c.close()
+                        flash("La date d'échéance ne peut pas être antérieure à la date d'émission.")
+                        return redirect(url_for('invoicing_new'))
+                except ValueError:
+                    c.close()
+                    flash("Date d'échéance invalide.")
+                    return redirect(url_for('invoicing_new'))
+
             entity_id_raw=request.form.get('entity_id')
             entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
             if entity_id is not None:
@@ -3308,41 +2840,50 @@ def register(app):
                 try:
                     resolve_entity(c,entity_id)
                 except ValueError:
-                    return _form_again(header,"Entité sélectionnée introuvable.",items)
+                    c.close()
+                    flash("Entité sélectionnée introuvable.")
+                    return redirect(url_for('invoicing_new'))
                 if not user_can_access_entity(c, session.get('user_id'), entity_id):
                     c.close()
                     abort(403)
-            if not header['client_name'] or not items:
-                return _form_again(header,'Nom du client et au moins une ligne de facture requis.',items)
-            items_error=_line_items_error(items)
-            if items_error:
-                return _form_again(header,items_error,items)
+
+            if not client_name or not items:
+                c.close()
+                flash('Nom du client et au moins une ligne de facture requis.')
+                return redirect(url_for('invoicing_new'))
+            if client_siren and len(client_siren)!=9:
+                c.close()
+                flash('Le SIREN client doit comporter exactement 9 chiffres (laisse vide si inconnu).')
+                return redirect(url_for('invoicing_new'))
+
             subtotal,vat_amount,total=_totals(items)
+            invoice_number=_next_invoice_number(c,entity_id)
             token=secrets.token_urlsafe(20)
-            # Brouillon SANS numéro : le numéro légal est attribué à l'émission (série
-            # continue, aucun numéro consommé par un brouillon annulé).
-            cols=list(INVOICE_HEADER_COLUMNS)+['notes','line_items','subtotal','vat_amount','total','status',
-                  'public_token','created_at','entity_id','issue_date']
-            vals=[header[k] for k in INVOICE_HEADER_COLUMNS]+[header['notes'],json.dumps(items,ensure_ascii=False),
-                  subtotal,vat_amount,total,'draft',token,now(),entity_id,paris_today().isoformat()]
-            c.execute(f"INSERT INTO outgoing_invoices({','.join(cols)}) VALUES({','.join('?' for _ in cols)})",vals)
-            new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+            c.execute('''INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,due_date,
+                         line_items,subtotal,vat_amount,total,notes,status,public_token,created_at,
+                         client_siren,operation_nature,vat_on_debits,delivery_address,entity_id,
+                         ereporting_scope,ereporting_category,counterparty_country,client_vat_number)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?,?)''',
+                (invoice_number,client_name,client_address,client_email,issue_date,due_date or None,
+                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,token,now(),
+                 client_siren or None,operation_nature,vat_on_debits,delivery_address or None,entity_id,
+                 ereporting_scope or None,ereporting_category or None,counterparty_country or None,client_vat_number or None))
             c.commit()
+            new_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
-            log_activity('INVOICE_CREATED',f'Facture brouillon n°{new_id} créée ({fr_number(total,2)} € TTC)')
-            flash(f'Facture créée en brouillon (Brouillon n°{new_id}). Le numéro définitif sera attribué à l\'émission.')
-            # Facture émise pour une autre entité que l'entité active : on bascule sur
-            # cette entité pour que la facture reste visible (sinon 404 sur sa fiche).
-            if 'entity_id' in request.form:
-                if entity_id: session['current_entity_id']=entity_id
-                else: session.pop('current_entity_id',None)
+            ac=auth_cx()
+            ac.execute('INSERT INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+                (token,session['org_id'],new_id,now())); ac.commit(); ac.close()
+            log_activity('INVOICE_CREATED',f'Facture {invoice_number} créée ({fr_number(total)} € TTC)')
+            flash(f'Facture {invoice_number} créée en brouillon.')
             return redirect(url_for('invoicing_detail',invoice_id=new_id))
 
-        defaults={'operation_nature':'services','vat_treatment':'standard',
-                  'vat_on_debits':1 if str(_g(company_row,'vat_on_debits','0') or '0')=='1' else 0}
+        clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        from profitos.entities import list_all_entities
+        entities=list_all_entities(c)
         c.close()
-        return render_template('invoicing_new.html',company=company_row,today=paris_today().isoformat(),clients=clients,
-                               entities=entities,f=defaults,items=[],vat_treatment_labels=VAT_TREATMENT_LABELS)
+        return render_template('invoicing_new.html',company=company_row,today=date.today().isoformat(),clients=clients,entities=entities)
 
     @app.route('/facturation/<int:invoice_id>')
     @login_required
@@ -3353,30 +2894,27 @@ def register(app):
         inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        company_row=_seller_identity(c,inv['entity_id'])
+        from profitos.entities import resolve_entity
+        company_row=resolve_entity(c,inv['entity_id'])
+        c.close()
         items=json.loads(inv['line_items'] or '[]')
         mention_checks,missing_mentions=_check_mandatory_mentions(inv,company_row)
-        emitter_missing_count=sum(1 for m in mention_checks if not m['ok'] and m['scope']=='seller')
+        emitter_missing_count=sum(1 for m in missing_mentions if 'émetteur' in m)
+        c=cx()
         credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? ORDER BY id DESC",(invoice_id,inv['entity_id'])).fetchall()
         credited_total=_credited_total(c,invoice_id,inv['entity_id'])
         reminders=c.execute("SELECT * FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ? ORDER BY reminder_number DESC",(invoice_id,inv['entity_id'])).fetchall()
         payments=c.execute("SELECT * FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ? ORDER BY payment_date,id",(invoice_id,inv['entity_id'])).fetchall()
         paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
-        balance_due=max(0.0,round(float(inv['total'] or 0)-paid_total-credited_total,2))
+        balance_due=max(0.0,round(float(inv['total'] or 0)-paid_total,2))
         einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 50",(invoice_id,inv['entity_id'])).fetchall()
         c.close()
-        issued=inv['status'] in ('sent','partially_paid','paid')
-        public_url=f"{app_base_url()}{url_for('public_invoice_view',token=inv['public_token'])}" if issued and inv['public_token'] else None
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
-                               einvoice_hold=_einvoice_hold(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,payments=payments,
                                paid_total=paid_total,balance_due=balance_due,
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total),
                                mention_checks=mention_checks,missing_mentions=missing_mentions,
-                               emitter_missing_count=emitter_missing_count,einvoice_events=einvoice_events,
-                               vat_breakdown=amounts.vat_breakdown(items),public_url=public_url,
-                               is_public_buyer=_is_public_buyer(inv),today=paris_today().isoformat(),
-                               vat_treatment_label=VAT_TREATMENT_LABELS.get(_invoice_vat_treatment(inv,company_row)))
+                               emitter_missing_count=emitter_missing_count,einvoice_events=einvoice_events)
 
     @app.route('/facturation/<int:invoice_id>/pdf')
     @login_required
@@ -3388,15 +2926,14 @@ def register(app):
         if not inv:
             c.close(); abort(404)
         from profitos.entities import resolve_entity
-        company_row=_seller_identity(c,inv['entity_id'])
+        company_row=resolve_entity(c,inv['entity_id'])
         c.close()
         pdf_bytes=_render_invoice_pdf(inv,company_row)
         if pdf_bytes is None:
-            flash("La génération PDF nécessite le paquet 'fpdf2' — lancez : pip install -r requirements.txt")
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        filename=inv['invoice_number'] or f"brouillon-{inv['id']}"
         return Response(pdf_bytes,mimetype='application/pdf',
-            headers={'Content-Disposition':f'attachment; filename="{filename}.pdf"'})
+            headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}.pdf"'})
 
     @app.route('/facturation/<int:invoice_id>/proforma')
     @login_required
@@ -3408,7 +2945,7 @@ def register(app):
         c=cx()
         eid=current_entity_id()
         inv=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(invoice_id,eid)).fetchone()
-        company_row=_seller_identity(c,eid)
+        company_row=resolve_entity(c,eid)
         c.close()
         if not inv: abort(404)
         if inv['status']!='draft':
@@ -3416,11 +2953,11 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         pdf_bytes=_render_proforma_pdf(inv,company_row)
         if pdf_bytes is None:
-            flash("La génération PDF nécessite le paquet 'fpdf2' — lancez : pip install -r requirements.txt")
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        log_activity('PROFORMA_GENERATED', f"Pro-forma généré pour la facture {invoice_label(inv)}")
+        log_activity('PROFORMA_GENERATED', f"Pro-forma généré pour la facture brouillon {inv['invoice_number']}")
         return Response(pdf_bytes,mimetype='application/pdf',
-            headers={'Content-Disposition':f'attachment; filename="proforma-brouillon-{inv["id"]}.pdf"'})
+            headers={'Content-Disposition':f'attachment; filename="proforma-{inv["invoice_number"]}.pdf"'})
 
     @app.route('/facturation/livraisons')
     @login_required
@@ -3447,54 +2984,29 @@ def register(app):
             client_name = (request.form.get('client_name') or '').strip()
             client_address = (request.form.get('client_address') or '').strip()
             client_email = (request.form.get('client_email') or '').strip()
-            delivery_date = request.form.get('delivery_date') or paris_today().isoformat()
-            try:
-                date.fromisoformat(delivery_date)
-            except ValueError:
-                c.close(); flash("Date de livraison invalide.")
-                return redirect(url_for('delivery_note_new'))
+            delivery_date = request.form.get('delivery_date') or date.today().isoformat()
             items = _compute_line_items(request.form)
             if not client_name or not items:
                 c.close()
                 flash("Nom du client et au moins une ligne sont requis.")
                 return redirect(url_for('delivery_note_new'))
-            siren = re.sub(r'\D', '', request.form.get('client_siren') or '')[:9]
-            if siren and not siren_is_valid(siren):
-                c.close(); flash("SIREN client invalide : 9 chiffres avec une clé de contrôle correcte.")
-                return redirect(url_for('delivery_note_new'))
-            nature = request.form.get('operation_nature') or 'biens'
-            if nature not in ('biens', 'services', 'mixte'):
-                nature = 'biens'
-            # Échéance de paiement de la future facture (reprise à la facturation du bon).
-            due_date = (request.form.get('due_date') or '').strip() or None
-            if due_date:
-                try:
-                    date.fromisoformat(due_date)
-                except ValueError:
-                    c.close(); flash("Date d'échéance invalide.")
-                    return redirect(url_for('delivery_note_new'))
-                if due_date < delivery_date:
-                    c.close(); flash("La date d'échéance ne peut pas précéder la date de livraison.")
-                    return redirect(url_for('delivery_note_new'))
-            delivery_number = _next_delivery_number(c, current_entity_id(), delivery_date)
+            delivery_number = _next_delivery_number(c)
             c.execute(
                 """INSERT INTO delivery_notes
-                   (entity_id,delivery_number,client_name,client_address,client_email,delivery_date,line_items,status,notes,created_at,created_by,
-                    billing_address,client_siren,operation_nature,due_date)
-                   VALUES(?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?)""",
+                   (entity_id,delivery_number,client_name,client_address,client_email,delivery_date,line_items,status,notes,created_at,created_by)
+                   VALUES(?,?,?,?,?,?,?,'draft',?,?,?)""",
                 (current_entity_id(), delivery_number, client_name, client_address, client_email, delivery_date,
                  json.dumps(items, ensure_ascii=False), (request.form.get('notes') or '').strip(),
-                 now(), current_user()['email'], (request.form.get('billing_address') or '').strip() or None,
-                 siren or None, nature, due_date),
+                 now(), current_user()['email']),
             )
-            new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.commit()
+            new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.close()
             log_activity('DELIVERY_NOTE_CREATED', f"Bon de livraison {delivery_number} créé")
             flash(f"Bon de livraison {delivery_number} créé.")
             return redirect(url_for('delivery_note_detail', delivery_id=new_id))
         c.close()
-        return render_template('delivery_note_new.html', today=paris_today().isoformat())
+        return render_template('delivery_note_new.html', today=date.today().isoformat())
 
     @app.route('/facturation/livraisons/<int:delivery_id>')
     @login_required
@@ -3547,24 +3059,25 @@ def register(app):
             return redirect(url_for('delivery_note_detail', delivery_id=delivery_id))
         items = json.loads(row['line_items'] or '[]')
         subtotal, vat_amount, total = _totals(items)
-        # Le bon de livraison porte l'adresse de livraison ; l'adresse de facturation est
-        # celle du client (reprise du bon si renseignée), la nature est celle du bon
-        # (livraison de biens par défaut), la date de livraison devient la date de la vente
-        # et l'échéance est celle du bon (à défaut : 30 jours, jamais déjà passée).
-        due_date = _g(row, 'due_date')
-        if not due_date or str(due_date)[:10] < paris_today().isoformat():
-            due_date = (paris_today() + timedelta(days=30)).isoformat()
-        new_invoice_id, _token = _insert_draft_invoice(c, {
-            'client_name': row['client_name'], 'client_address': _g(row, 'billing_address') or row['client_address'],
-            'client_email': row['client_email'], 'delivery_address': row['client_address'],
-            'client_siren': _g(row, 'client_siren'), 'operation_nature': _g(row, 'operation_nature', 'biens') or 'biens',
-            'due_date': due_date, 'service_date': row['delivery_date'],
-            'line_items': row['line_items'], 'subtotal': subtotal, 'vat_amount': vat_amount, 'total': total,
-            'entity_id': eid, 'notes': f"Facturé à partir du bon de livraison {row['delivery_number']} du {fr_date(row['delivery_date'])}"})
-        c.execute("UPDATE delivery_notes SET linked_invoice_id=? WHERE id=? AND entity_id IS ?", (new_invoice_id, delivery_id, eid))
+        invoice_number = _next_invoice_number(c, current_entity_id())
+        token = secrets.token_urlsafe(20)
+        c.execute(
+            """INSERT INTO outgoing_invoices(invoice_number,client_name,client_address,client_email,issue_date,
+               line_items,subtotal,vat_amount,total,status,public_token,created_at,entity_id,notes)
+               VALUES(?,?,?,?,?,?,?,?,?,'draft',?,?,?,?)""",
+            (invoice_number, row['client_name'], row['client_address'], row['client_email'], date.today().isoformat(),
+             row['line_items'], subtotal, vat_amount, total, token, now(), current_entity_id(),
+             f"Facturé à partir du bon de livraison {row['delivery_number']}"),
+        )
+        c.commit()
+        new_invoice_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+        ac = auth_cx()
+        ac.execute('INSERT INTO outgoing_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+            (token, session['org_id'], new_invoice_id, now())); ac.commit(); ac.close()
+        c.execute("UPDATE delivery_notes SET linked_invoice_id=? WHERE id=? AND entity_id IS ?", (new_invoice_id, delivery_id, current_entity_id()))
         c.commit(); c.close()
-        log_activity('DELIVERY_NOTE_INVOICED', f"Bon de livraison {row['delivery_number']} facturé (brouillon n°{new_invoice_id})")
-        flash(f"Facture brouillon n°{new_invoice_id} créée à partir du bon de livraison.")
+        log_activity('DELIVERY_NOTE_INVOICED', f"Bon de livraison {row['delivery_number']} facturé ({invoice_number})")
+        flash(f"Facture {invoice_number} créée à partir du bon de livraison.")
         return redirect(url_for('invoicing_detail', invoice_id=new_invoice_id))
 
     @app.route('/facturation/livraisons/<int:delivery_id>/pdf')
@@ -3576,13 +3089,54 @@ def register(app):
         from profitos.entities import current_entity_id
         eid = current_entity_id()
         row = c.execute('SELECT * FROM delivery_notes WHERE id=? AND entity_id IS ?', (delivery_id, eid)).fetchone()
-        company_row = _seller_identity(c, eid)
+        from profitos.entities import resolve_entity
+        company_row = resolve_entity(c, eid)
         c.close()
         if not row: abort(404)
-        pdf_bytes = _render_delivery_pdf(row, company_row)
-        if pdf_bytes is None:
-            flash("La génération PDF nécessite le paquet 'fpdf2' — lancez : pip install -r requirements.txt")
+        try:
+            from fpdf import FPDF
+        except ImportError:
+            flash("La génération PDF nécessite le paquet 'fpdf2' — lance : pip install -r requirements.txt")
             return redirect(url_for('delivery_note_detail', delivery_id=delivery_id))
+
+        def safe(text):
+            if text is None: return ''
+            text=str(text)
+            repl={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+            for a,b in repl.items(): text=text.replace(a,b)
+            return text.encode('latin-1',errors='replace').decode('latin-1')
+
+        items = json.loads(row['line_items'] or '[]')
+        pdf = FPDF(orientation='P', unit='mm', format='A4')
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+        pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
+        pdf.cell(0,12,safe(f"Bon de livraison {row['delivery_number']}"),ln=1)
+        pdf.set_font('Helvetica','',11); pdf.set_text_color(107,114,128)
+        if company_row:
+            pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        pdf.ln(4)
+        pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',12)
+        pdf.cell(0,7,'Livré à :',ln=1)
+        pdf.set_font('Helvetica','',11)
+        pdf.cell(0,6,safe(row['client_name']),ln=1)
+        if row['client_address']: pdf.cell(0,6,safe(row['client_address']),ln=1)
+        pdf.ln(4)
+        pdf.set_font('Helvetica','',10); pdf.set_text_color(107,114,128)
+        pdf.cell(0,6,safe(f"Date de livraison : {row['delivery_date']}"),ln=1)
+        pdf.ln(8)
+        pdf.set_fill_color(243,244,246); pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',10)
+        pdf.cell(100,8,'Description',border=0,fill=True)
+        pdf.cell(30,8,'Qté livrée',border=0,fill=True,align='R')
+        pdf.cell(50,8,'',border=0,fill=True,ln=1)
+        pdf.set_font('Helvetica','',10)
+        for it in items:
+            pdf.cell(100,7,safe(it['label']))
+            pdf.cell(30,7,safe(f"{it['qty']:g}"),align='R')
+            pdf.cell(50,7,'',ln=1)
+        pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
+        pdf.multi_cell(0,4,safe("Document généré via ProfitOS — bon de livraison, à faire signer par le destinataire pour valoir accusé de réception."))
+        pdf_bytes = bytes(pdf.output(dest='S'))
         return Response(pdf_bytes, mimetype='application/pdf',
             headers={'Content-Disposition': f'attachment; filename="{row["delivery_number"]}.pdf"'})
 
@@ -3597,17 +3151,12 @@ def register(app):
         ne sont pas toutes réunies."""
         c=cx()
         inv=_current_invoice(c,invoice_id)
-        if not inv:
-            c.close(); abort(404)
-        # Identité de l'entité émettrice de LA facture (filiale ou société mère).
-        company_row=_seller_identity(c,inv['entity_id'])
+        company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         c.close()
-        if inv['status'] not in ('sent','partially_paid','paid'):
-            flash("Le Factur-X n'est disponible que pour une facture émise : émettez d'abord la facture.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        if not inv: abort(404)
         _,missing=_check_mandatory_mentions(inv,company_row)
         if missing:
-            flash("Facture non conforme : complétez d'abord les mentions obligatoires manquantes avant de générer le Factur-X.")
+            flash("Facture non conforme — complète d'abord les mentions manquantes avant de générer le Factur-X.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         items=json.loads(inv['line_items'] or '[]')
         _,rule_failures=validate_facturx_business_rules(inv,items,company_row)
@@ -3617,7 +3166,7 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         pdf_bytes=render_facturx_pdf(inv,company_row)
         if pdf_bytes is None:
-            flash("Le Factur-X (PDF/A-3) n'est pas disponible sur ce serveur : il nécessite fpdf2 version 2.8.7 ou ultérieure. Le PDF de la facture reste téléchargeable.")
+            flash("La génération Factur-X nécessite fpdf2 ≥ 2.8.7 ET les polices à embarquer dans static/fonts/ (DejaVuSans.ttf, DejaVuSans-Bold.ttf) — vérifie les deux.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         log_activity('INVOICE_FACTURX_GENERATED',f"Factur-X généré pour la facture {inv['invoice_number']}")
         return Response(pdf_bytes,mimetype='application/pdf',
@@ -3634,15 +3183,12 @@ def register(app):
         try:
             inv = _current_invoice(c,invoice_id)
             if not inv: abort(404)
-            company_row = _seller_identity(c,inv['entity_id'])
+            from profitos.entities import resolve_entity
+            company_row = resolve_entity(c,inv['entity_id'])
             settings = c.execute('SELECT weinvoice_company_id,weinvoice_kyb_status FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
+            if not inv: abort(404)
             if inv['status'] == 'cancelled':
-                flash("Une facture annulée ne peut pas être transmise à la plateforme de facturation électronique.")
-                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            if inv['status'] not in ('sent','partially_paid','paid'):
-                # Seule une facture émise (numéro légal, date d'émission, écriture) peut
-                # être transmise : un brouillon n'a pas de numéro définitif.
-                flash("Seule une facture émise peut être transmise : émettez d'abord la facture (« Marquer comme émise » ou « Envoyer »).")
+                flash("Une facture annulée ne peut pas être transmise à WeInvoice.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if 'weinvoice_invoice_id' in inv.keys() and inv['weinvoice_invoice_id']:
                 flash(f"Facture déjà transmise à WeInvoice — identifiant {inv['weinvoice_invoice_id']}.")
@@ -3655,12 +3201,12 @@ def register(app):
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             _, missing = _check_mandatory_mentions(inv, company_row)
             if missing:
-                flash("Transmission impossible : complétez les mentions obligatoires manquantes (détail ci-dessous).")
+                flash("Facture non conforme — complète les mentions obligatoires avant transmission WeInvoice.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             items = json.loads(inv['line_items'] or '[]')
             _, rule_failures = validate_facturx_business_rules(inv, items, company_row)
             if rule_failures:
-                flash("Facture EN16931 invalide — corrigez les règles métier avant transmission WeInvoice.")
+                flash("Facture EN16931 invalide — corrige les règles métier avant transmission WeInvoice.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             validation_errors = validate_outgoing_invoice(inv)
             if validation_errors:
@@ -3686,7 +3232,7 @@ def register(app):
                 missing_remote_id_error = "WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé."
                 c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (missing_remote_id_error, invoice_id, inv['entity_id']))
                 _record_einvoice_event(c,inv,'submission_failed',idempotency_key=idem,detail=missing_remote_id_error)
-                c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifiez le journal des événements avant tout nouvel envoi.")
+                c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifie les logs avant tout nouvel envoi.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (remote_id, remote_status, now(), invoice_id, inv['entity_id']))
             _record_einvoice_event(c,inv,'submitted',remote_id=remote_id,status=remote_status,idempotency_key=idem)
@@ -3801,10 +3347,6 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_send(invoice_id):
-        """Envoie la facture par e-mail. Un brouillon est d'abord ÉMIS (numéro, date,
-        écriture) dans une transaction validée ; l'e-mail part APRÈS la validation. Un
-        échec d'envoi ne défait jamais l'émission : la facture reste émise et peut être
-        renvoyée."""
         c=cx()
         inv=_current_invoice(c,invoice_id)
         if not inv:
@@ -3815,70 +3357,44 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if not inv['client_email']:
             c.close()
-            flash("Aucune adresse e-mail client n'est renseignée pour cette facture.")
+            flash("Aucun email client renseigné pour cette facture.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        was_draft=inv['status']=='draft'
-        if was_draft:
-            try:
-                inv=issue_invoice(c,invoice_id,inv['entity_id'])
-            except InvoiceIssueError as e:
-                c.close()
-                flash(str(e) + (" Détail ci-dessous." if e.missing else ""))
-                return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-            deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
-                'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']},
-                entity_id=inv['entity_id'])
+
         org=current_org()
-        base=app_base_url()
+        base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
         link=f"{base}{url_for('public_invoice_view',token=inv['public_token'])}"
         html=render_template('email_transactional.html',title=f"Facture {inv['invoice_number']} — {org['name']}",
             intro=f"Voici votre facture {inv['invoice_number']} de {org['name']}, d'un montant de {fr_number(inv['total'],2)} € TTC.",
             cta_label='Consulter la facture',cta_url=link,footer='')
-        try:
-            result=send_email(inv['client_email'],f"Facture {inv['invoice_number']} — {org['name']}",html,on_behalf_of_org=org)
-        except Exception:
-            app.logger.exception('Envoi de la facture %s impossible', invoice_id)
-            result={'sent':False,'error':'exception'}
-        prefix=f"Facture {inv['invoice_number']} émise. " if was_draft else ''
-        if result.get('dry_run'):
-            flash(prefix+f"Service e-mail non configuré : la facture n'a pas été réellement envoyée à {inv['client_email']} (mode simulation).")
-        elif result.get('sent'):
-            c.execute("UPDATE outgoing_invoices SET sent_at=? WHERE id=? AND entity_id IS ?",(now(),invoice_id,inv['entity_id']))
-            c.commit()
-            log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
-            flash(prefix+f"Facture envoyée à {inv['client_email']}.")
-        else:
-            log_ops_event('INVOICE_EMAIL_FAILED',outcome='ERROR',detail=f"facture {invoice_id}: {str(result.get('error') or '')[:200]}")
-            flash(prefix+"L'e-mail n'a pas pu être envoyé. Réessayez dans quelques minutes ou transmettez la facture (PDF) par un autre moyen.")
-        c.close()
-        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+        result=send_email(inv['client_email'],f"Facture {inv['invoice_number']} — {org['name']}",html)
 
-    @app.route('/facturation/<int:invoice_id>/marquer-emise',methods=['POST'])
-    @login_required
-    @requires_active_plan
-    @requires_paid_plan
-    @require_area('invoicing')
-    def invoicing_mark_issued(invoice_id):
-        """Émet une facture brouillon transmise au client hors ProfitOS (courrier, messagerie
-        personnelle, remise en main propre) : numéro légal, date d'émission, écriture de
-        vente et webhook, sans e-mail. Atomique : si un contrôle ou l'écriture comptable
-        échoue, la facture reste un brouillon sans numéro."""
-        c=cx()
-        inv=_current_invoice(c,invoice_id)
-        if not inv:
-            c.close(); abort(404)
-        try:
-            issued=issue_invoice(c,invoice_id,inv['entity_id'])
-        except InvoiceIssueError as e:
-            c.close()
-            flash(str(e) + (" Détail ci-dessous." if e.missing else ""))
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':issued['invoice_number'],
-            'client_name':issued['client_name'],'total':issued['total'],'due_date':issued['due_date']},
-            entity_id=issued['entity_id'])
+        if result.get('dry_run'):
+            flash(f"Service email non configuré — facture non envoyée réellement (mode simulation) à {inv['client_email']}.")
+        elif result.get('sent'):
+            issue_date = date.today().isoformat() if inv['status']=='draft' else inv['issue_date']
+            c.execute("UPDATE outgoing_invoices SET status='sent',sent_at=?,issue_date=? WHERE id=? AND entity_id IS ?",
+                      (now(),issue_date,invoice_id,inv['entity_id']))
+            c.commit()
+            if inv['status']=='draft':
+                try:
+                    inv_updated=_current_invoice(c,invoice_id)
+                    invoice_kind=inv_updated['invoice_kind'] if 'invoice_kind' in inv_updated.keys() else 'standard'
+                    if invoice_kind=='deposit':
+                        generate_customer_deposit_entry(c,inv_updated)
+                    elif invoice_kind=='final':
+                        generate_customer_final_entry(c,inv_updated)
+                    else:
+                        generate_sale_entry(c,inv_updated)
+                except AccountingError as e:
+                    log_ops_event('ACCOUNTING_ENTRY_FAILED',outcome='ERROR',detail=f"vente facture {invoice_id}: {e}")
+                deliver_webhook(c,'invoice.sent',{'id':invoice_id,'invoice_number':inv['invoice_number'],
+                    'client_name':inv['client_name'],'total':inv['total'],'due_date':inv['due_date']},
+                    entity_id=inv['entity_id'])
+            log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
+            flash(f"Facture envoyée à {inv['client_email']}.")
+        else:
+            flash(f"Échec de l'envoi : {result.get('error','erreur inconnue')}")
         c.close()
-        log_activity('INVOICE_ISSUED_MANUALLY',f"Facture {issued['invoice_number']} émise (transmise hors ProfitOS)")
-        flash(f"Facture {issued['invoice_number']} émise. Vous pouvez maintenant enregistrer ses règlements.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.route('/facturation/<int:invoice_id>/relancer',methods=['POST'])
@@ -3895,44 +3411,31 @@ def register(app):
             c.close()
             flash("Seule une facture envoyée et échue peut être relancée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        hold=_einvoice_hold(inv)
-        if hold:
-            c.close()
-            flash(f"Cette facture est {hold} côté facturation électronique : régularisez-la avant de relancer le client.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if not inv['client_email']:
             c.close()
-            flash("Aucun e-mail client renseigné pour cette facture.")
+            flash("Aucun email client renseigné pour cette facture.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        balance=_invoice_balance(c,inv)
-        if balance <= 0.005:
+        if _credited_total(c,invoice_id,inv['entity_id']) >= float(inv['total'] or 0)-0.01:
             c.close()
-            flash("Cette facture est entièrement réglée ou couverte par un avoir et ne peut pas être relancée.")
+            flash("Cette facture est entièrement couverte par un avoir et ne peut pas être relancée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
         row=c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",(invoice_id,inv['entity_id'])).fetchone()
         reminder_number=int(row['n'] or 0)+1
         org=current_org()
-        base=app_base_url()
+        base=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
         link=f"{base}{url_for('public_invoice_view',token=inv['public_token'])}"
         html=render_template(
             'email_transactional.html',
             title=f"Relance facture {inv['invoice_number']} — {org['name']}",
             intro=(f"Sauf erreur de notre part, la facture {inv['invoice_number']} "
-                   f"(montant TTC {fr_number(inv['total'],2)} €), échue le {fr_date(inv['due_date'])}, "
-                   f"présente un reste à payer de {fr_number(balance,2)} €. "
-                   f"Conformément à nos conditions de paiement, tout retard entraîne l'application de pénalités de retard "
-                   f"et d'une indemnité forfaitaire pour frais de recouvrement de 40 € (art. L441-10 du Code de commerce). "
-                   f"Si votre règlement a déjà été effectué, merci de ne pas tenir compte de cette relance."),
+                   f"d'un montant de {fr_number(inv['total'],2)} € TTC, échue le {inv['due_date']}, "
+                   f"reste impayée. Si votre règlement a déjà été effectué, merci de ne pas tenir compte de cette relance."),
             cta_label='Consulter la facture',cta_url=link,footer=''
         )
-        try:
-            result=send_email(inv['client_email'],f"Relance facture {inv['invoice_number']} — {org['name']}",html,on_behalf_of_org=org)
-        except Exception:
-            app.logger.exception('Relance de la facture %s impossible', invoice_id)
-            result={'sent':False,'error':'exception'}
+        result=send_email(inv['client_email'],f"Relance facture {inv['invoice_number']} — {org['name']}",html)
         if result.get('dry_run'):
-            flash(f"Service e-mail non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
+            flash(f"Service email non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
         elif result.get('sent'):
             sent_at=now()
             c.execute("INSERT INTO invoice_reminders(entity_id,invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?,?)",
@@ -3941,8 +3444,7 @@ def register(app):
             log_activity('INVOICE_REMINDER_SENT',f"Relance n°{reminder_number} pour {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(f"Relance n°{reminder_number} envoyée à {inv['client_email']}.")
         else:
-            log_ops_event('INVOICE_REMINDER_FAILED',outcome='ERROR',detail=f"facture {invoice_id}: {str(result.get('error') or '')[:200]}")
-            flash("La relance n'a pas pu être envoyée. Réessayez dans quelques minutes.")
+            flash(f"Échec de la relance : {result.get('error','erreur inconnue')}")
         c.close()
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
@@ -3958,21 +3460,18 @@ def register(app):
         if inv['status'] not in ('sent','partially_paid'):
             c.close(); flash("Un règlement ne peut être saisi que sur une facture émise non soldée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        amount=round(amounts.parse_number(request.form.get('amount'),0.0),2)
+        try:
+            amount=round(float((request.form.get('amount') or '0').replace(',','.')),2)
+        except ValueError:
+            amount=0
         balance=_invoice_balance(c,inv)
         if amount <= 0 or amount > balance + 0.001:
             c.close(); flash(f"Montant invalide. Le reste à payer est de {fr_number(balance,2)} €.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        payment_date=(request.form.get('payment_date') or paris_today().isoformat()).strip()
+        payment_date=(request.form.get('payment_date') or date.today().isoformat()).strip()
         try: date.fromisoformat(payment_date)
         except ValueError:
             c.close(); flash("Date de règlement invalide.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        if payment_date > paris_today().isoformat():
-            c.close(); flash("La date de règlement ne peut pas être dans le futur.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        if inv['issue_date'] and payment_date < str(inv['issue_date'])[:10]:
-            c.close(); flash(f"La date de règlement ne peut pas précéder la date d'émission ({fr_date(inv['issue_date'])}).")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         reference=(request.form.get('reference') or '').strip()[:120]
         method=(request.form.get('payment_method') or 'bank').strip()[:30]
@@ -3983,14 +3482,15 @@ def register(app):
             payment_id=cur.lastrowid
             payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,inv['entity_id'])).fetchone()
             generate_sale_partial_payment_entry(c,inv,payment)
-            new_status='paid' if _invoice_balance(c,inv) <= 0.005 else 'partially_paid'
+            paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
+            new_status='paid' if paid_total >= float(inv['total'] or 0)-0.005 else 'partially_paid'
             paid_at=now() if new_status=='paid' else None
             c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(new_status,paid_at,invoice_id,inv['entity_id']))
             _stage_payment_ereporting(c,inv,payment)
             c.commit()
             if new_status=='paid':
                 deliver_webhook(c,'invoice.paid',{'id':invoice_id,'invoice_number':inv['invoice_number'],'client_name':inv['client_name'],'total':inv['total']},entity_id=inv['entity_id'])
-        except dbmod.IntegrityError:
+        except sqlite3.IntegrityError:
             c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         except AccountingError as e:
@@ -4019,13 +3519,13 @@ def register(app):
         try:
             idem=f"manual-balance:{invoice_id}:{inv['entity_id']}:{round(balance,2)}"
             cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
-                         VALUES(?,?,?,?,?,?,?,?)""",(inv['entity_id'],invoice_id,balance,paris_today().isoformat(),'bank','Solde manuel',idem,now()))
+                         VALUES(?,?,?,?,?,?,?,?)""",(inv['entity_id'],invoice_id,balance,date.today().isoformat(),'bank','Solde manuel',idem,now()))
             payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=?",(cur.lastrowid,)).fetchone()
             generate_sale_partial_payment_entry(c,inv,payment)
             c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",(now(),invoice_id,inv['entity_id']))
             _stage_payment_ereporting(c,inv,payment)
             c.commit()
-        except dbmod.IntegrityError:
+        except sqlite3.IntegrityError:
             c.rollback(); c.close(); flash("Ce règlement a déjà été enregistré.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         except AccountingError as e:
@@ -4052,31 +3552,36 @@ def register(app):
             flash("Seule une facture en brouillon peut être modifiée.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         if request.method=='POST':
-            header,error=_parse_invoice_header(request.form,paris_today().isoformat())
-            header['notes']=(request.form.get('notes') or '').strip()
+            client_name=request.form.get('client_name','').strip()
+            client_address=request.form.get('client_address','').strip()
+            client_email=request.form.get('client_email','').strip()
+            due_date=request.form.get('due_date','').strip()
+            notes=request.form.get('notes','').strip()
             items=_compute_line_items(request.form)
-            if not error and (not header['client_name'] or not items):
-                error='Nom du client et au moins une ligne de facture requis.'
-            if not error and (_g(inv,'invoice_kind','standard') or 'standard')!='final':
-                error=_line_items_error(items)
-            if error:
-                c.close(); flash(error)
-                merged=dict(inv); merged.update(header)
-                return render_template('invoicing_edit.html',inv=inv,f=merged,items=items,
-                                       vat_treatment_labels=VAT_TREATMENT_LABELS), 400
+            if due_date:
+                try:
+                    if date.fromisoformat(due_date) < date.fromisoformat(inv['issue_date']):
+                        c.close()
+                        flash("La date d'échéance ne peut pas être antérieure à la date d'émission.")
+                        return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
+                except (ValueError, TypeError):
+                    c.close()
+                    flash("Date d'échéance invalide.")
+                    return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
+            if not client_name or not items:
+                c.close()
+                flash('Nom du client et au moins une ligne de facture requis.')
+                return redirect(url_for('invoicing_edit',invoice_id=invoice_id))
             subtotal,vat_amount,total=_totals(items)
-            sets=','.join(f'{k}=?' for k in INVOICE_HEADER_COLUMNS)
-            c.execute(f"UPDATE outgoing_invoices SET {sets},line_items=?,subtotal=?,vat_amount=?,total=?,notes=? "
-                      "WHERE id=? AND entity_id IS ? AND status='draft'",
-                      [header[k] for k in INVOICE_HEADER_COLUMNS]+[json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,
-                       header['notes'],invoice_id,inv['entity_id']])
+            c.execute("UPDATE outgoing_invoices SET client_name=?,client_address=?,client_email=?,due_date=?,line_items=?,subtotal=?,vat_amount=?,total=?,notes=? WHERE id=? AND entity_id IS ? AND status='draft'",
+                (client_name,client_address,client_email,due_date or None,json.dumps(items,ensure_ascii=False),subtotal,vat_amount,total,notes,invoice_id,inv['entity_id']))
             c.commit(); c.close()
-            log_activity('INVOICE_UPDATED',f"Facture {invoice_label(inv)} modifiée")
-            flash(f"{invoice_label(inv)} mise à jour.")
+            log_activity('INVOICE_UPDATED',f"Facture {inv['invoice_number']} modifiée")
+            flash(f"Facture {inv['invoice_number']} mise à jour.")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         items=json.loads(inv['line_items'] or '[]')
         c.close()
-        return render_template('invoicing_edit.html',inv=inv,f=inv,items=items,vat_treatment_labels=VAT_TREATMENT_LABELS)
+        return render_template('invoicing_edit.html',inv=inv,items=items)
 
     @app.route('/facturation/<int:invoice_id>/annuler',methods=['POST'])
     @login_required
@@ -4097,8 +3602,8 @@ def register(app):
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
         c.execute("UPDATE outgoing_invoices SET status='cancelled' WHERE id=? AND entity_id IS ?",(invoice_id,inv['entity_id']))
         c.commit(); c.close()
-        log_activity('INVOICE_CANCELLED',f"Facture {invoice_label(inv)} annulée")
-        flash(f"{invoice_label(inv)} annulé : aucun numéro de facture n'a été consommé.")
+        log_activity('INVOICE_CANCELLED',f"Facture {inv['invoice_number']} annulée")
+        flash(f"Facture {inv['invoice_number']} annulée.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
     @app.route('/facturation/<int:invoice_id>/avoir',methods=['GET','POST'])
@@ -4131,9 +3636,8 @@ def register(app):
                 c.rollback(); c.close(); abort(404)
             already=_credited_total(c,invoice_id,inv['entity_id'])
             remaining=max(0,float(inv['total'] or 0)-already)
-            # Factures classiques, d'acompte et finales : chacune a son type d'écriture de vente.
             sale_entry=c.execute(
-                "SELECT id,source_type FROM accounting_entries WHERE source_type IN ('outgoing_invoice','customer_deposit_invoice','customer_final_invoice') AND source_id=? AND entity_id IS ? LIMIT 1",
+                "SELECT id FROM accounting_entries WHERE source_type='outgoing_invoice' AND source_id=? AND entity_id IS ? LIMIT 1",
                 (invoice_id,inv['entity_id']),
             ).fetchone()
             if not sale_entry:
@@ -4142,59 +3646,35 @@ def register(app):
                 return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
             reason=request.form.get('reason','').strip()
             try:
-                amount_ttc=float(amounts.parse_number(request.form.get('amount_ttc'),0.0))
-            except (TypeError,ValueError):
+                amount_ttc=float(request.form.get('amount_ttc','0').replace(',','.'))
+            except ValueError:
                 amount_ttc=0
             if not reason or amount_ttc <= 0 or amount_ttc > remaining + 0.005:
                 c.close()
-                flash(f"Motif requis et montant TTC compris entre 0,01 € et {fr_number(remaining,2)} €.")
+                flash(f"Motif requis et montant TTC compris entre 0,01 € et {remaining:.2f} €.")
                 return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
 
+            ratio=amount_ttc/float(inv['total'])
             source_items=json.loads(inv['line_items'] or '[]')
-            if abs(amount_ttc-float(inv['total'] or 0))<0.005 and already<0.005:
-                # Avoir total : copie exacte des lignes, mêmes totaux que la facture.
-                items=credit_note_items(source_items)
-            else:
-                ratio=amount_ttc/float(inv['total'])
-                items=credit_note_items(source_items,ratio)
-                # Ajustement au centime pour atteindre exactement le TTC demandé, sans
-                # jamais dépasser le reste créditable ; lignes = totaux d'en-tête.
-                for _ in range(6):
-                    _, _, ttc_now=_totals(items)
-                    diff=round(amount_ttc-ttc_now,2)
-                    if abs(diff)<0.005 or not items:
-                        break
-                    biggest=max(items,key=lambda x:abs(x['line_total']))
-                    step=0.01 if diff>0 else -0.01
-                    biggest['line_total']=round(biggest['line_total']+step,2)
-                    biggest['unit_price']=abs(biggest['line_total'])
-            subtotal,vat_amount,credit_total=_totals(items)
-            if credit_total > remaining + 0.005:
-                c.rollback(); c.close()
-                flash(f"Le montant de l'avoir ({fr_number(credit_total,2)} €) dépasserait le reste créditable ({fr_number(remaining,2)} €).")
-                return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
-            from profitos.invoice_numbering import next_document_number
-            issue_date=paris_today().isoformat()
-            credit_number=next_document_number(c,'credit',inv['entity_id'],issue_date)
+            items=[]
+            for it in source_items:
+                line_total=round(float(it['line_total'])*ratio,2)
+                items.append({'label':f"Avoir — {it['label']}",'qty':1.0,
+                              'unit_price':line_total,'vat_rate':float(it['vat_rate']),
+                              'line_total':line_total})
+            subtotal=round(float(inv['subtotal'])*ratio,2)
+            vat_amount=round(amount_ttc-subtotal,2)
+            credit_number=_next_credit_number(c,inv['entity_id'])
             c.execute("""INSERT INTO outgoing_credit_notes
                 (entity_id,credit_number,original_invoice_id,original_invoice_number,client_name,issue_date,
                  line_items,subtotal,vat_amount,total,reason,status,created_at)
                  VALUES(?,?,?,?,?,?,?,?,?,?,?,'issued',?)""",
-                (inv['entity_id'],credit_number,invoice_id,inv['invoice_number'],inv['client_name'],issue_date,
-                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,credit_total,reason,now()))
-            amount_ttc=credit_total
+                (inv['entity_id'],credit_number,invoice_id,inv['invoice_number'],inv['client_name'],date.today().isoformat(),
+                 json.dumps(items,ensure_ascii=False),subtotal,vat_amount,round(amount_ttc,2),reason,now()))
             credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             credit=_current_credit(c,credit_id)
             try:
-                # Avoir sur facture d'acompte : on annule l'acompte (419100), pas du chiffre d'affaires.
-                # Les autres avoirs suivent les comptes de la facture d'origine : 707 pour les
-                # biens, 706 pour les services (nature de chaque ligne).
-                generate_sale_credit_entry(c,credit,
-                    revenue_account='419100' if sale_entry['source_type']=='customer_deposit_invoice' else None)
-                # Facture désormais soldée (encaissements + avoirs) : elle sort des créances et des relances.
-                if inv['status'] in ('sent','partially_paid') and _invoice_balance(c,inv) <= 0.005:
-                    c.execute("UPDATE outgoing_invoices SET status='paid',paid_at=? WHERE id=? AND entity_id IS ?",
-                              (now(),invoice_id,inv['entity_id']))
+                generate_sale_credit_entry(c,credit)
                 c.commit()
             except AccountingError as e:
                 c.rollback()
@@ -4203,7 +3683,7 @@ def register(app):
                 flash(f"Avoir non créé : {e}")
                 return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
             c.close()
-            log_activity('CREDIT_NOTE_CREATED',f"Avoir {credit_number} créé pour {inv['invoice_number']} ({fr_number(amount_ttc,2)} € TTC)")
+            log_activity('CREDIT_NOTE_CREATED',f"Avoir {credit_number} créé pour {inv['invoice_number']} ({amount_ttc:.2f} € TTC)")
             flash(f"Avoir {credit_number} créé.")
             return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
 
@@ -4351,12 +3831,8 @@ def register(app):
                 try: fiscal=validate_ereporting_fiscal_readiness(settings['weinvoice_company_id'])
                 except Exception as exc: fiscal_error=str(exc)
         finally: c.close()
-        if request.args.get('format')=='json' and current_role() in ('OWNER','ADMIN'):
-            return jsonify({'local':local,'fiscalSettings':fiscal,'fiscalError':fiscal_error,
-                            'productionSwitchAutomatic':False})
-        # Page lisible pour l'utilisateur (le JSON brut reste réservé aux administrateurs).
-        return render_template('einvoice_diagnostic.html',local=local,fiscal=fiscal,fiscal_error=fiscal_error,
-                               connected=bool(settings and settings['weinvoice_company_id']))
+        return jsonify({'local':local,'fiscalSettings':fiscal,'fiscalError':fiscal_error,
+                        'productionSwitchAutomatic':False})
 
     @app.post('/facturation/avoir/<int:credit_id>/electronique/envoyer')
     @login_required
@@ -4377,7 +3853,8 @@ def register(app):
             if not settings or not settings['weinvoice_company_id']:
                 flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
-            company=_seller_identity(c,credit['entity_id'])
+            from profitos.entities import resolve_entity
+            company=resolve_entity(c,credit['entity_id'])
             pdf=render_credit_facturx_pdf(credit,original,company)
             if not pdf:
                 flash("Impossible de générer le Factur-X de l'avoir.")
@@ -4439,10 +3916,9 @@ def register(app):
         if not credit:
             c.close(); abort(404)
         from profitos.entities import resolve_entity
-        company_row=_seller_identity(c,credit['entity_id'])
-        original=c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',(credit['original_invoice_id'],credit['entity_id'])).fetchone()
+        company_row=resolve_entity(c,credit['entity_id'])
         c.close()
-        pdf_bytes=_render_credit_pdf(credit,company_row,original)
+        pdf_bytes=_render_credit_pdf(credit,company_row)
         if pdf_bytes is None:
             flash("La génération PDF nécessite le paquet 'fpdf2'.")
             return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
@@ -4460,7 +3936,7 @@ def register(app):
         
         if q:
             from profitos.entities import resolve_entity
-            company_row=_seller_identity(tc,q['entity_id'])
+            company_row=resolve_entity(tc,q['entity_id'])
         else:
             company_row=None
         tc.close()
@@ -4515,7 +3991,7 @@ def register(app):
         
         if q:
             from profitos.entities import resolve_entity
-            company_row=_seller_identity(tc,q['entity_id'])
+            company_row=resolve_entity(tc,q['entity_id'])
         else:
             company_row=None
         tc.close()
@@ -4539,18 +4015,13 @@ def register(app):
         
         if inv:
             from profitos.entities import resolve_entity
-            company_row=_seller_identity(tc,inv['entity_id'])
+            company_row=resolve_entity(tc,inv['entity_id'])
         else:
             company_row=None
         tc.close()
         if not inv: abort(404)
-        # Seule une facture émise est consultable publiquement : jamais un brouillon
-        # (sans valeur de facture) ni une facture annulée.
-        if inv['status'] not in ('sent','partially_paid','paid'): abort(404)
         items=json.loads(inv['line_items'] or '[]')
-        return render_template('invoicing_public.html',inv=inv,items=items,company=company_row,token=token,
-                               vat_breakdown=_pdf_breakdown(inv,company_row,items),
-                               legal_mentions=_legal_mentions(inv,company_row,fr_date=fr_date))
+        return render_template('invoicing_public.html',inv=inv,items=items,company=company_row,token=token)
 
     @app.route('/facture/<token>/pdf')
     def public_invoice_pdf(token):
@@ -4563,14 +4034,11 @@ def register(app):
         
         if inv:
             from profitos.entities import resolve_entity
-            company_row=_seller_identity(tc,inv['entity_id'])
+            company_row=resolve_entity(tc,inv['entity_id'])
         else:
             company_row=None
         tc.close()
         if not inv: abort(404)
-        # Seule une facture émise est consultable publiquement : jamais un brouillon
-        # (sans valeur de facture) ni une facture annulée.
-        if inv['status'] not in ('sent','partially_paid','paid'): abort(404)
         pdf_bytes=_render_invoice_pdf(inv,company_row)
         if pdf_bytes is None: abort(404)
         return Response(pdf_bytes,mimetype='application/pdf',
@@ -4603,9 +4071,6 @@ def register(app):
             items=_compute_line_items(request.form)
             if not client_name or not items:
                 c.close(); flash("Client et au moins une ligne sont requis."); return redirect(url_for('recurring_invoices'))
-            items_error=_line_items_error(items)
-            if items_error:
-                c.close(); flash(items_error); return redirect(url_for('recurring_invoices'))
             end=(request.form.get('end_date') or '').strip() or None
             if end:
                 try: date.fromisoformat(end)
@@ -4624,7 +4089,7 @@ def register(app):
         rows=c.execute("SELECT * FROM recurring_invoice_templates WHERE entity_id IS ? ORDER BY id DESC",(eid,)).fetchall()
         clients=c.execute("SELECT * FROM invoicing_clients WHERE entity_id IS ? ORDER BY lower(name)",(eid,)).fetchall()
         c.close()
-        return render_template('recurring_invoices.html',rows=rows,clients=clients,today=paris_today().isoformat())
+        return render_template('recurring_invoices.html',rows=rows,clients=clients,today=date.today().isoformat())
 
     @app.route('/facturation/recurrentes/generer',methods=['POST'])
     @login_required
@@ -4669,283 +4134,380 @@ def register(app):
         return redirect(url_for('recurring_invoices'))
 
 
-# --- Documents PDF (facture, avoir, devis, pro-forma, bon de livraison, Factur-X) -----------
-from profitos import invoice_pdf as _pdf
+def _render_invoice_pdf(inv,company_row):
+    """Génère le PDF d'une facture émise. Retourne None si fpdf2 n'est pas installé
+    (dégradation propre, jamais d'erreur 500)."""
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
 
-DRAFT_WATERMARK = "BROUILLON — document sans valeur de facture"
-CANCELLED_WATERMARK = "ANNULÉE"
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        repl={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+        for a,b in repl.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
 
+    items=json.loads(inv['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4')
+    pdf.set_auto_page_break(auto=True,margin=18)
+    pdf.add_page()
 
-def _pdf_rows(items):
-    rows = []
+    pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
+    pdf.cell(0,12,safe(f"Facture {inv['invoice_number']}"),ln=1)
+    pdf.set_font('Helvetica','',11); pdf.set_text_color(107,114,128)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['address']: pdf.cell(0,6,safe(company_row['address']),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+        if company_row['vat_number']: pdf.cell(0,6,safe(f"TVA : {company_row['vat_number']}"),ln=1)
+    pdf.ln(6)
+
+    pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',12)
+    pdf.cell(0,7,'Facturé à :',ln=1)
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(0,6,safe(inv['client_name']),ln=1)
+    if inv['client_address']: pdf.cell(0,6,safe(inv['client_address']),ln=1)
+    pdf.ln(4)
+    pdf.set_font('Helvetica','',10); pdf.set_text_color(107,114,128)
+    pdf.cell(0,6,safe(f"Date d'émission : {inv['issue_date']}"),ln=1)
+    if inv['due_date']: pdf.cell(0,6,safe(f"Échéance : {inv['due_date']}"),ln=1)
+    pdf.ln(8)
+
+    pdf.set_fill_color(243,244,246); pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',10)
+    pdf.cell(80,8,'Description',border=0,fill=True)
+    pdf.cell(20,8,'Qté',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Prix unit.',border=0,fill=True,align='R')
+    pdf.cell(20,8,'TVA',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Total HT',border=0,fill=True,align='R',ln=1)
+    pdf.set_font('Helvetica','',10)
     for it in items:
-        rows.append((it.get('label') or '', amounts.fr_qty(it.get('qty', 1)),
-                     amounts.fr_price(it.get('unit_price', 0)) + ' €',
-                     amounts.fr_rate(it.get('vat_rate', 0)), _pdf.money(it.get('line_total', 0))))
-    return rows
+        pdf.cell(80,7,safe(it['label']))
+        pdf.cell(20,7,safe(f"{it['qty']:g}"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['unit_price'],2)} EUR"),align='R')
+        pdf.cell(20,7,safe(f"{it['vat_rate']:g}%"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
+    pdf.ln(6)
 
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(150,7,'Sous-total HT',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(150,7,'TVA',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['vat_amount'],2)} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(150,9,'Total TTC',align='R')
+    pdf.cell(30,9,safe(f"{fr_number(inv['total'],2)} EUR"),align='R',ln=1)
 
-def _pdf_buyer(inv):
-    return {'name': _g(inv, 'client_name', ''), 'address': _g(inv, 'client_address', ''),
-            'siren': _g(inv, 'client_siren'), 'vat_number': _g(inv, 'client_vat_number'),
-            'country': (_g(inv, 'counterparty_country', '') or 'FR').upper()}
+    if inv['notes']:
+        pdf.ln(8); pdf.set_font('Helvetica','',9); pdf.set_text_color(107,114,128)
+        pdf.multi_cell(0,5,safe(inv['notes']))
 
+    pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
+    pdf.multi_cell(0,4,safe("Document genere via ProfitOS. Ce document n'est pas emis via une Plateforme Agreee DGFiP au sens de la reforme de facturation electronique."))
 
-def _pdf_breakdown(inv, company, items):
-    out = []
-    for b in amounts.vat_breakdown(items):
-        category = _vat_category(inv, company, b['rate'])
-        label = amounts.fr_rate(b['rate']) if category == 'S' else {
-            'Z': '0 %', 'E': 'Exonéré', 'AE': 'Autoliquidation', 'K': 'Intracom.', 'G': 'Export'}.get(category, '0 %')
-        out.append(dict(b, label=label))
-    return out
-
-
-def _pdf_totals(subtotal, vat, total, ttc_label='Total TTC'):
-    return [('Total HT', _pdf.money(subtotal), False), ('Total TVA', _pdf.money(vat), False),
-            (ttc_label, _pdf.money(total), True)]
-
-
-def build_invoice_document(inv, company, proforma=False):
-    """Contenu imprimable d'une facture (toutes les mentions obligatoires)."""
-    items = json.loads(_g(inv, 'line_items', '[]') or '[]')
-    subtotal, vat, total = amounts.totals(items)
-    status = _g(inv, 'status', 'draft')
-    issued = status in ('sent', 'partially_paid', 'paid')
-    kind = _g(inv, 'invoice_kind', 'standard') or 'standard'
-    kind_label = {'deposit': "Facture d'acompte", 'final': 'Facture finale'}.get(kind, 'Facture')
-    if proforma:
-        title = 'Facture pro forma'
-        subtitle = f"Réf. {invoice_label(inv)} — document sans valeur comptable ni fiscale, ne constitue pas une facture."
-    elif issued or (status == 'cancelled' and _g(inv, 'invoice_number')):
-        title = f"{kind_label} n° {_g(inv, 'invoice_number')}"
-        subtitle = None
-    else:
-        title = f"{kind_label} — {invoice_label(inv)}"
-        subtitle = "Projet de facture : le numéro et la date d'émission sont attribués à l'émission."
-    meta = [("Date d'émission", _pdf.fr_date(_g(inv, 'issue_date')) if issued else ('à l\'émission' if not proforma else _pdf.fr_date(paris_today().isoformat()))),
-            ("Date d'échéance", _pdf.fr_date(_g(inv, 'due_date')))]
-    nature = _g(inv, 'operation_nature', 'services') or 'services'
-    sale_date = _g(inv, 'service_date') or (_g(inv, 'issue_date') if issued else None)
-    details = [("Nature de l'opération", OPERATION_NATURE_LABELS.get(nature, nature)),
-               ('Date de la vente / de la prestation', _pdf.fr_date(sale_date) if sale_date else None)]
-    if _is_public_buyer(inv):
-        details.append(('Acheteur public', 'facture à déposer sur Chorus Pro'))
-    totals = _pdf_totals(subtotal, vat, total)
-    if kind == 'final' and float(_g(inv, 'deposit_applied_subtotal', 0) or 0):
-        applied = float(_g(inv, 'deposit_applied_subtotal', 0) or 0) + float(_g(inv, 'deposit_applied_vat', 0) or 0)
-        totals.insert(0, ('Acomptes déduits (TTC)', _pdf.money(-applied), False))
-    return {
-        'title': title, 'subtitle': subtitle, 'seller': dict(company or {}), 'buyer': _pdf_buyer(inv),
-        'delivery_address': _g(inv, 'delivery_address'), 'meta': meta, 'details': details,
-        'rows': _pdf_rows(items), 'vat_breakdown': _pdf_breakdown(inv, company, items), 'totals': totals,
-        'mentions': _legal_mentions(inv, company, fr_date=_pdf.fr_date, include_payment=not proforma),
-        'notes': _g(inv, 'notes'), 'footer': _seller_legal_footer(company or {}),
-    }
-
-
-def _invoice_watermark(inv):
-    status = _g(inv, 'status', 'draft')
-    if status == 'draft':
-        return DRAFT_WATERMARK
-    if status == 'cancelled':
-        return CANCELLED_WATERMARK
-    return None
-
-
-def _render_invoice_pdf(inv, company_row):
-    """PDF d'une facture. Un brouillon porte le filigrane « BROUILLON — document sans
-    valeur de facture », une facture annulée « ANNULÉE ». Retourne None sans fpdf2."""
-    doc = build_invoice_document(inv, company_row)
-    return _pdf.render_document(doc, watermark=_invoice_watermark(inv), title=doc['title'])
+    return bytes(pdf.output(dest='S'))
 
 
 def _render_proforma_pdf(inv, company_row):
-    """Pro-forma d'un brouillon : mêmes montants, explicitement sans valeur comptable ni
-    fiscale ; ne consomme aucun numéro de facture."""
-    doc = build_invoice_document(inv, company_row, proforma=True)
-    return _pdf.render_document(doc, watermark='PRO FORMA', title=doc['title'])
-
-
-def facturx_xmp(title, doc_type='INVOICE'):
-    """Métadonnées XMP d'un PDF/A-3B Factur-X (schéma d'extension fx déclaré)."""
-    safe_title = (title or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    return f'''<x:xmpmeta xmlns:x="adobe:ns:meta/">
- <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-  <rdf:Description rdf:about="" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/">
-   <pdfaid:part>3</pdfaid:part>
-   <pdfaid:conformance>B</pdfaid:conformance>
-  </rdf:Description>
-  <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">
-   <dc:title><rdf:Alt><rdf:li xml:lang="x-default">{safe_title}</rdf:li></rdf:Alt></dc:title>
-  </rdf:Description>
-  <rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/">
-   <pdf:Producer>ProfitOS</pdf:Producer>
-  </rdf:Description>
-  <rdf:Description rdf:about="" xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#">
-   <fx:DocumentType>{doc_type}</fx:DocumentType>
-   <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
-   <fx:Version>1.0</fx:Version>
-   <fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>
-  </rdf:Description>
-  <rdf:Description rdf:about="" xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#" xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#">
-   <pdfaExtension:schemas>
-    <rdf:Bag>
-     <rdf:li rdf:parseType="Resource">
-      <pdfaSchema:schema>Factur-X PDFA Extension Schema</pdfaSchema:schema>
-      <pdfaSchema:namespaceURI>urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#</pdfaSchema:namespaceURI>
-      <pdfaSchema:prefix>fx</pdfaSchema:prefix>
-      <pdfaSchema:property>
-       <rdf:Seq>
-        <rdf:li rdf:parseType="Resource"><pdfaProperty:name>DocumentFileName</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The name of the embedded XML document</pdfaProperty:description></rdf:li>
-        <rdf:li rdf:parseType="Resource"><pdfaProperty:name>DocumentType</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The type of the hybrid document in capital letters, e.g. INVOICE or ORDER</pdfaProperty:description></rdf:li>
-        <rdf:li rdf:parseType="Resource"><pdfaProperty:name>Version</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The actual version of the standard applying to the embedded XML document</pdfaProperty:description></rdf:li>
-        <rdf:li rdf:parseType="Resource"><pdfaProperty:name>ConformanceLevel</pdfaProperty:name><pdfaProperty:valueType>Text</pdfaProperty:valueType><pdfaProperty:category>external</pdfaProperty:category><pdfaProperty:description>The conformance level of the embedded XML document</pdfaProperty:description></rdf:li>
-       </rdf:Seq>
-      </pdfaSchema:property>
-     </rdf:li>
-    </rdf:Bag>
-   </pdfaExtension:schemas>
-  </rdf:Description>
- </rdf:RDF>
-</x:xmpmeta>'''
-
-
-def _render_facturx(doc, xml_bytes, title, description):
-    """PDF/A-3B avec factur-x.xml embarqué (relation « Alternative ») et XMP Factur-X.
-    Nécessite fpdf2 ≥ 2.8.7 ; sinon None (l'appelant affiche un message)."""
-    if not _pdf.pdfa_supported():
+    """Génère un pro-forma — présentation alternative d'une facture encore
+    au statut brouillon, mêmes montants, mais explicitement sans valeur
+    comptable ni fiscale (utile pour une douane, un acompte, ou avant
+    accord définitif). Ne modifie jamais la facture elle-même, ne
+    consomme aucun numéro de séquence — un pro-forma n'est jamais une
+    vraie facture. Retourne None si fpdf2 n'est pas installé, même
+    convention que _render_invoice_pdf."""
+    try:
+        from fpdf import FPDF
+    except ImportError:
         return None
-    from fpdf.enums import DocumentCompliance
-    attachment = {'bytes': xml_bytes, 'basename': 'factur-x.xml', 'mime_type': 'text/xml',
-                  'desc': description, 'associated_file_relationship': 'Alternative', 'compress': True}
-    return _pdf.render_document(doc, compliance=DocumentCompliance.PDFA_3B, attachments=[attachment],
-                                xmp=facturx_xmp(title), title=title)
+
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        repl={'—':'-','–':'-','\u2018':"'",'\u2019':"'",'\u201c':'"','\u201d':'"','…':'...','\xa0':' ','€':'EUR'}
+        for a,b in repl.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+
+    items=json.loads(inv['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4')
+    pdf.set_auto_page_break(auto=True,margin=18)
+    pdf.add_page()
+
+    pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
+    pdf.cell(0,12,safe(f"FACTURE PRO FORMA — {inv['invoice_number']}"),ln=1)
+    pdf.set_font('Helvetica','I',10); pdf.set_text_color(220,38,38)
+    pdf.cell(0,7,safe("Document sans valeur comptable ni fiscale — ne constitue pas une facture."),ln=1)
+    pdf.set_font('Helvetica','',11); pdf.set_text_color(107,114,128)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['address']: pdf.cell(0,6,safe(company_row['address']),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+        if company_row['vat_number']: pdf.cell(0,6,safe(f"TVA : {company_row['vat_number']}"),ln=1)
+    pdf.ln(6)
+
+    pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',12)
+    pdf.cell(0,7,'Destinataire :',ln=1)
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(0,6,safe(inv['client_name']),ln=1)
+    if inv['client_address']: pdf.cell(0,6,safe(inv['client_address']),ln=1)
+    pdf.ln(4)
+    pdf.set_font('Helvetica','',10); pdf.set_text_color(107,114,128)
+    pdf.cell(0,6,safe(f"Date d'émission : {inv['issue_date']}"),ln=1)
+    if inv['due_date']: pdf.cell(0,6,safe(f"Échéance indicative : {inv['due_date']}"),ln=1)
+    pdf.ln(8)
+
+    pdf.set_fill_color(243,244,246); pdf.set_text_color(17,24,39); pdf.set_font('Helvetica','B',10)
+    pdf.cell(80,8,'Description',border=0,fill=True)
+    pdf.cell(20,8,'Qté',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Prix unit.',border=0,fill=True,align='R')
+    pdf.cell(20,8,'TVA',border=0,fill=True,align='R')
+    pdf.cell(30,8,'Total HT',border=0,fill=True,align='R',ln=1)
+    pdf.set_font('Helvetica','',10)
+    for it in items:
+        pdf.cell(80,7,safe(it['label']))
+        pdf.cell(20,7,safe(f"{it['qty']:g}"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['unit_price'],2)} EUR"),align='R')
+        pdf.cell(20,7,safe(f"{it['vat_rate']:g}%"),align='R')
+        pdf.cell(30,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
+    pdf.ln(6)
+
+    pdf.set_font('Helvetica','',11)
+    pdf.cell(150,7,'Sous-total HT',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(150,7,'TVA',align='R')
+    pdf.cell(30,7,safe(f"{fr_number(inv['vat_amount'],2)} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(150,9,'Total TTC indicatif',align='R')
+    pdf.cell(30,9,safe(f"{fr_number(inv['total'],2)} EUR"),align='R',ln=1)
+
+    pdf.ln(10); pdf.set_font('Helvetica','I',8); pdf.set_text_color(150,150,150)
+    pdf.multi_cell(0,4,safe(
+        "Document généré via ProfitOS à titre de pro-forma — présentation indicative avant facturation "
+        "définitive. Ne constitue ni une facture, ni un document comptable ou fiscal opposable."
+    ))
+
+    return bytes(pdf.output(dest='S'))
 
 
 def render_facturx_pdf(inv, company_row):
-    """Factur-X (profil EN16931) : page visible identique à la facture PDF (dates
-    d'émission et d'échéance, n° de TVA du vendeur, mentions) + factur-x.xml embarqué.
-    Retourne None si fpdf2 est trop ancien (< 2.8.7) ou si les polices manquent.
+    """Génère le PDF/A-3 Factur-X (facture visible + factur-x.xml embarqué), profil
+    EN16931. Retourne None si fpdf2 est absent/trop ancien, ou si les fichiers de
+    police à embarquer sont introuvables (voir static/fonts/ — nécessaires car
+    PDF/A-3B interdit les polices "de base" non incorporées comme Helvetica).
 
-    ATTENTION : la conformité PDF/A-3 finale n'a pas été validée contre un outil
-    officiel (veraPDF, FNFE-MPE) dans cet environnement."""
+    ATTENTION : la conformité PDF/A-3 finale et l'intégration Factur-X n'ont pas été
+    validées contre un outil officiel (FNFE-MPE, Chorus Pro, Mustangproject...).
+    """
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import DocumentCompliance
+    except ImportError:
+        return None
+    if not hasattr(DocumentCompliance, 'PDFA_3B'):
+        return None  # version de fpdf2 trop ancienne pour le support PDF/A-3
+
+    font_regular = BASE / 'static' / 'fonts' / 'DejaVuSans.ttf'
+    font_bold = BASE / 'static' / 'fonts' / 'DejaVuSans-Bold.ttf'
+    if not font_regular.is_file() or not font_bold.is_file():
+        return None  # polices à embarquer absentes — voir static/fonts/README.txt
+
     items = json.loads(inv['line_items'] or '[]')
     xml_bytes = generate_facturx_xml(inv, items, company_row)
-    doc = build_invoice_document(inv, company_row)
-    return _render_facturx(doc, xml_bytes, doc['title'], 'Factur-X invoice data (EN16931)')
 
+    def safe(text):
+        return '' if text is None else str(text)
 
-def credit_note_items(original_items, ratio=None):
-    """Lignes d'un avoir : copie exacte (avoir total) ou prorata par ligne (avoir partiel).
-    Chaque ligne garde sa nature (biens/services) et son taux : l'avoir suit les comptes
-    de la facture d'origine. Quantité × prix = total de ligne."""
-    items = []
-    for it in original_items:
-        x = {'label': f"Avoir — {it.get('label', '')}", 'vat_rate': amounts.rate_key(it.get('vat_rate', 0))}
-        if it.get('nature'):
-            x['nature'] = it['nature']
-        if it.get('deposit_deduction'):
-            x['deposit_deduction'] = True
-        if ratio is None:
-            x['qty'] = float(it.get('qty', 1) or 1)
-            x['unit_price'] = float(it.get('unit_price', 0) or 0)
-            x['line_total'] = amounts.money(it.get('line_total', 0))
-        else:
-            lt = amounts.money(float(it.get('line_total', 0) or 0) * ratio)
-            x['qty'] = -1.0 if lt < 0 else 1.0
-            x['unit_price'] = abs(lt)
-            x['line_total'] = lt
-        items.append(x)
-    return items
+    pdf = FPDF(orientation='P', unit='mm', format='A4', enforce_compliance=DocumentCompliance.PDFA_3B)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_title(f"Facture {inv['invoice_number']}")
+    pdf.add_font('DejaVu', '', str(font_regular))
+    pdf.add_font('DejaVu', 'B', str(font_bold))
+    pdf.add_page()
 
+    pdf.set_font('DejaVu', 'B', 20); pdf.set_text_color(17, 24, 39)
+    pdf.cell(0, 12, safe(f"Facture {inv['invoice_number']}"), ln=1)
+    pdf.set_font('DejaVu', '', 11); pdf.set_text_color(107, 114, 128)
+    if company_row:
+        pdf.cell(0, 6, safe(company_row['name'] or ''), ln=1)
+        if company_row['address']: pdf.cell(0, 6, safe(company_row['address']), ln=1)
+        if company_row['siret']: pdf.cell(0, 6, safe(f"SIRET : {company_row['siret']}"), ln=1)
+    pdf.ln(6)
+    pdf.set_text_color(17, 24, 39); pdf.set_font('DejaVu', 'B', 12)
+    pdf.cell(0, 7, 'Facturé à :', ln=1)
+    pdf.set_font('DejaVu', '', 11)
+    pdf.cell(0, 6, safe(inv['client_name']), ln=1)
+    if inv['client_address']: pdf.cell(0, 6, safe(inv['client_address']), ln=1)
+    pdf.ln(8)
 
-def build_credit_document(credit, original, company):
-    items = json.loads(_g(credit, 'line_items', '[]') or '[]')
-    subtotal, vat, total = amounts.totals(items)
-    base = dict(original) if original is not None else {}
-    base.update({'notes': None, 'due_date': None})
-    orig_date = _pdf.fr_date(_g(original, 'issue_date')) if original is not None else ''
-    # Titre réglementaire complet : l'avoir référence la facture rectifiée et sa date.
-    title = (f"Facture d'avoir n° {_g(credit, 'credit_number')} — rectifie la facture n° "
-             f"{_g(credit, 'original_invoice_number')}" + (f" du {orig_date}" if orig_date else ''))
-    subtitle = None
-    details = [('Motif', _g(credit, 'reason')),
-               ("Nature de l'opération", OPERATION_NATURE_LABELS.get(_g(original, 'operation_nature', 'services') or 'services'))]
-    mentions = _legal_mentions(base, company, fr_date=_pdf.fr_date, include_payment=False)
-    mentions.append("Montant à déduire de la facture rectifiée ou à rembourser au client.")
-    return {
-        'title': title, 'title_size': 12, 'subtitle': subtitle, 'seller': dict(company or {}), 'buyer': _pdf_buyer(base or credit),
-        'delivery_address': None, 'meta': [("Date d'émission", _pdf.fr_date(_g(credit, 'issue_date')))],
-        'details': details, 'rows': _pdf_rows(items), 'vat_breakdown': _pdf_breakdown(base, company, items),
-        'totals': _pdf_totals(subtotal, vat, total, "Total TTC de l'avoir"), 'mentions': mentions,
-        'notes': None, 'footer': _seller_legal_footer(company or {}),
-    }
+    pdf.set_fill_color(243, 244, 246); pdf.set_font('DejaVu', 'B', 10)
+    pdf.cell(90, 8, 'Description', fill=True)
+    pdf.cell(20, 8, 'Qté', fill=True, align='R')
+    pdf.cell(30, 8, 'Prix unit.', fill=True, align='R')
+    pdf.cell(20, 8, 'TVA', fill=True, align='R')
+    pdf.cell(30, 8, 'Total HT', fill=True, align='R', ln=1)
+    pdf.set_font('DejaVu', '', 10)
+    for it in items:
+        pdf.cell(90, 7, safe(it['label']))
+        pdf.cell(20, 7, safe(f"{it['qty']:g}"), align='R')
+        pdf.cell(30, 7, safe(f"{fr_number(it['unit_price'],2)} €"), align='R')
+        pdf.cell(20, 7, safe(f"{it['vat_rate']:g}%"), align='R')
+        pdf.cell(30, 7, safe(f"{fr_number(it['line_total'],2)} €"), align='R', ln=1)
+    pdf.ln(6)
+    pdf.set_font('DejaVu', '', 11)
+    pdf.cell(160, 7, 'Sous-total HT', align='R')
+    pdf.cell(30, 7, safe(f"{fr_number(inv['subtotal'],2)} €"), align='R', ln=1)
+    pdf.cell(160, 7, 'TVA', align='R')
+    pdf.cell(30, 7, safe(f"{fr_number(inv['vat_amount'],2)} €"), align='R', ln=1)
+    pdf.set_font('DejaVu', 'B', 13)
+    pdf.cell(160, 9, 'Total TTC', align='R')
+    pdf.cell(30, 9, safe(f"{fr_number(inv['total'],2)} €"), align='R', ln=1)
 
+    pdf.ln(10); pdf.set_font('DejaVu', '', 8); pdf.set_text_color(150, 150, 150)
+    pdf.multi_cell(0, 4, safe(
+        "Facture électronique Factur-X (profil EN16931). Contient un fichier XML structuré "
+        "factur-x.xml. Document généré via ProfitOS ; transmission via une Plateforme Agréée "
+        "DGFiP non encore réalisée par cette version."))
 
-def _render_credit_pdf(credit, company_row, original=None):
-    doc = build_credit_document(credit, original, company_row)
-    return _pdf.render_document(doc, title=doc['title'])
+    pdf.embed_file(
+        bytes=xml_bytes,
+        basename='factur-x.xml',
+        mime_type='application/xml',
+        desc='Factur-X invoice data (EN16931)',
+        associated_file_relationship='Alternative',
+        compress=True,
+    )
+    return bytes(pdf.output(dest='S'))
+
 
 
 def generate_credit_facturx_xml(credit, original_invoice, company):
-    """CII EN16931 d'un avoir : code 381, lignes et totaux de l'avoir, référence à la
-    facture d'origine (InvoiceReferencedDocument, après la MonetarySummation)."""
+    """CII EN16931 d'un avoir : code 381 + référence à la facture d'origine."""
     items=json.loads(credit['line_items'] or '[]')
     proxy=dict(original_invoice)
     proxy.update(invoice_number=credit['credit_number'],issue_date=credit['issue_date'],
-                 due_date=None,subtotal=credit['subtotal'],vat_amount=credit['vat_amount'],total=credit['total'],
-                 notes=None)
-    # Un avoir n'a pas d'échéance : ses conditions indiquent l'imputation ou le
-    # remboursement (BR-CO-25 : montant dû positif => conditions de paiement présentes).
-    xml=generate_facturx_xml(proxy,items,company,type_code='381',
-                             referenced={'number':credit['original_invoice_number'],'issue_date':original_invoice['issue_date']},
-                             payment_terms_text=f"Avoir imputable sur la facture n° {credit['original_invoice_number']} ou remboursable au client.")
+                 due_date=None,subtotal=credit['subtotal'],vat_amount=credit['vat_amount'],total=credit['total'])
+    xml=generate_facturx_xml(proxy,items,company)
     root=ET.fromstring(xml.split(b'\n',1)[1]); ns=_CII_NS
     doc=root.find(f'{{{ns["rsm"]}}}ExchangedDocument')
     type_code=doc.find(f'{{{ns["ram"]}}}TypeCode') if doc is not None else None
     if type_code is None: raise ValueError("CII invalide : TypeCode absent")
     type_code.text='381'
+    txn=root.find(f'{{{ns["rsm"]}}}SupplyChainTradeTransaction')
+    settlement=txn.find(f'{{{ns["ram"]}}}ApplicableHeaderTradeSettlement') if txn is not None else None
+    if settlement is None: raise ValueError("CII invalide : règlement absent")
+    ref=ET.Element(f'{{{ns["ram"]}}}InvoiceReferencedDocument')
+    ET.SubElement(ref,f'{{{ns["ram"]}}}IssuerAssignedID').text=credit['original_invoice_number']
+    formatted=ET.SubElement(ref,f'{{{ns["ram"]}}}FormattedIssueDateTime')
+    d=ET.SubElement(formatted,f'{{{ns["qdt"]}}}DateTimeString')
+    d.set('format','102'); d.text=_cii_date(original_invoice['issue_date']) or ''
+    monetary=settlement.find(f'{{{ns["ram"]}}}SpecifiedTradeSettlementHeaderMonetarySummation')
+    children=list(settlement); pos=children.index(monetary) if monetary is not None else len(children)
+    settlement.insert(pos,ref)
     return b'<?xml version="1.0" encoding="UTF-8"?>\n'+ET.tostring(root,encoding='utf-8')
 
-
 def render_credit_facturx_pdf(credit, original_invoice, company_row):
-    """PDF/A-3 Factur-X d'avoir avec CII 381 embarqué (fpdf2 ≥ 2.8.7)."""
+    """PDF/A-3 Factur-X d'avoir avec CII 381 embarqué."""
+    try:
+        from fpdf import FPDF
+        from fpdf.enums import DocumentCompliance
+    except ImportError:
+        return None
+    if not hasattr(DocumentCompliance,'PDFA_3B'): return None
+    regular=BASE/'static'/'fonts'/'DejaVuSans.ttf'; bold=BASE/'static'/'fonts'/'DejaVuSans-Bold.ttf'
+    if not regular.is_file() or not bold.is_file(): return None
     xml_bytes=generate_credit_facturx_xml(credit,original_invoice,company_row)
-    doc=build_credit_document(credit,original_invoice,company_row)
-    return _render_facturx(doc,xml_bytes,doc['title'],'Factur-X credit note data (EN16931)')
+    items=json.loads(credit['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4',enforce_compliance=DocumentCompliance.PDFA_3B)
+    pdf.set_auto_page_break(auto=True,margin=18); pdf.set_title(f"Avoir {credit['credit_number']}")
+    pdf.add_font('DejaVu','',str(regular)); pdf.add_font('DejaVu','B',str(bold)); pdf.add_page()
+    pdf.set_font('DejaVu','B',20); pdf.cell(0,12,f"Avoir {credit['credit_number']}",ln=1)
+    pdf.set_font('DejaVu','',10)
+    if company_row:
+        pdf.cell(0,6,str(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,f"SIRET : {company_row['siret']}",ln=1)
+    pdf.ln(4); pdf.set_font('DejaVu','B',11); pdf.cell(0,7,f"Facture d'origine : {credit['original_invoice_number']}",ln=1)
+    pdf.set_font('DejaVu','',10); pdf.cell(0,6,f"Client : {credit['client_name'] or ''}",ln=1)
+    pdf.cell(0,6,f"Date : {credit['issue_date']}",ln=1); pdf.multi_cell(0,6,f"Motif : {credit['reason'] or ''}"); pdf.ln(5)
+    for it in items:
+        pdf.cell(135,7,str(it.get('label') or '')); pdf.cell(45,7,f"-{fr_number(it.get('line_total',0),2)} EUR",align='R',ln=1)
+    pdf.ln(5); pdf.set_font('DejaVu','B',12); pdf.cell(135,8,'Total TTC avoir',align='R')
+    pdf.cell(45,8,f"-{fr_number(credit['total'],2)} EUR",align='R',ln=1)
+    pdf.ln(8); pdf.set_font('DejaVu','',8)
+    pdf.multi_cell(0,4,"Avoir électronique Factur-X EN16931 — code document 381 et référence à la facture d'origine.")
+    pdf.embed_file(bytes=xml_bytes,basename='factur-x.xml',mime_type='application/xml',
+                   desc='Factur-X credit note data (EN16931)',associated_file_relationship='Alternative',compress=True)
+    return bytes(pdf.output(dest='S'))
 
 
-def _render_quote_pdf(q, company_row):
-    items = json.loads(q['line_items'] or '[]')
-    subtotal, vat, total = amounts.totals(items)
-    proxy = dict(q)
-    meta = [('Date', _pdf.fr_date(q['issue_date'])), ("Valable jusqu'au", _pdf.fr_date(q['valid_until']))]
-    nature = _g(q, 'operation_nature', 'services') or 'services'
-    doc = {
-        'title': f"Devis n° {q['quote_number']}", 'subtitle': None, 'seller': dict(company_row or {}),
-        'buyer': _pdf_buyer(proxy), 'buyer_title': 'Client', 'delivery_address': _g(q, 'delivery_address'),
-        'meta': meta, 'details': [("Nature de l'opération", OPERATION_NATURE_LABELS.get(nature, nature))],
-        'rows': _pdf_rows(items), 'vat_breakdown': _pdf_breakdown(proxy, company_row, items),
-        'totals': _pdf_totals(subtotal, vat, total), 'mentions': _legal_mentions(proxy, company_row, fr_date=_pdf.fr_date, include_payment=False),
-        'notes': q['notes'], 'footer': _seller_legal_footer(company_row or {}),
-        'signature_box': "Bon pour accord — date et signature du client :",
-    }
-    return _pdf.render_document(doc, title=doc['title'])
+def _render_credit_pdf(credit,company_row):
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        repl={'—':'-','–':'-','€':'EUR','\xa0':' '}
+        for a,b in repl.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+    items=json.loads(credit['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4'); pdf.add_page()
+    pdf.set_font('Helvetica','B',20)
+    pdf.cell(0,12,safe(f"Avoir {credit['credit_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+    pdf.ln(5)
+    pdf.set_font('Helvetica','B',11)
+    pdf.cell(0,7,safe(f"Facture d'origine : {credit['original_invoice_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    pdf.cell(0,6,safe(f"Client : {credit['client_name']}"),ln=1)
+    pdf.cell(0,6,safe(f"Date : {credit['issue_date']}"),ln=1)
+    pdf.multi_cell(0,6,safe(f"Motif : {credit['reason']}"))
+    pdf.ln(5)
+    for it in items:
+        pdf.cell(130,7,safe(it['label']))
+        pdf.cell(50,7,safe(f"-{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
+    pdf.ln(5); pdf.set_font('Helvetica','',11)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"-{fr_number(credit['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"-{fr_number(credit['vat_amount'],2)} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(140,9,'Total TTC avoir',align='R'); pdf.cell(40,9,safe(f"-{fr_number(credit['total'],2)} EUR"),align='R',ln=1)
+    return bytes(pdf.output(dest='S'))
 
 
-def _render_delivery_pdf(row, company_row):
-    items = json.loads(row['line_items'] or '[]')
-    doc = {
-        'title': f"Bon de livraison n° {row['delivery_number']}", 'subtitle': None, 'seller': dict(company_row or {}),
-        'buyer': {'name': row['client_name'], 'address': _g(row, 'billing_address') or row['client_address'],
-                  'siren': _g(row, 'client_siren')},
-        'buyer_title': 'Client', 'delivery_address': row['client_address'], 'delivery_title': 'Livré à',
-        'meta': [('Date de livraison', _pdf.fr_date(row['delivery_date']))], 'details': [],
-        'columns': [('Désignation', 140, 'L'), ('Quantité livrée', 40, 'R')],
-        'rows': [(it.get('label') or '', amounts.fr_qty(it.get('qty', 1))) for it in items],
-        'vat_breakdown': [], 'totals': [], 'mentions': [], 'notes': row['notes'],
-        'footer': _seller_legal_footer(company_row or {}),
-        'signature_box': "Reçu le : ____/____/________ — nom et signature du destinataire :",
-    }
-    return _pdf.render_document(doc, title=doc['title'])
+def _render_quote_pdf(q,company_row):
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+    def safe(text):
+        if text is None: return ''
+        text=str(text)
+        for a,b in {'—':'-','–':'-','€':'EUR','\xa0':' '}.items(): text=text.replace(a,b)
+        return text.encode('latin-1',errors='replace').decode('latin-1')
+    items=json.loads(q['line_items'] or '[]')
+    pdf=FPDF(orientation='P',unit='mm',format='A4'); pdf.add_page()
+    pdf.set_font('Helvetica','B',20); pdf.cell(0,12,safe(f"Devis {q['quote_number']}"),ln=1)
+    pdf.set_font('Helvetica','',10)
+    if company_row:
+        pdf.cell(0,6,safe(company_row['name'] or ''),ln=1)
+        if company_row['siret']: pdf.cell(0,6,safe(f"SIRET : {company_row['siret']}"),ln=1)
+    pdf.ln(4); pdf.cell(0,6,safe(f"Client : {q['client_name']}"),ln=1)
+    if q['client_address']: pdf.multi_cell(0,6,safe(q['client_address']))
+    pdf.cell(0,6,safe(f"Date : {q['issue_date']}"),ln=1)
+    if q['valid_until']: pdf.cell(0,6,safe(f"Valable jusqu'au : {q['valid_until']}"),ln=1)
+    pdf.ln(5)
+    for it in items:
+        pdf.cell(130,7,safe(f"{it['label']} ({it['qty']} x {it['unit_price']:.2f} EUR, TVA {it['vat_rate']:.1f}%)"))
+        pdf.cell(50,7,safe(f"{fr_number(it['line_total'],2)} EUR"),align='R',ln=1)
+    pdf.ln(5)
+    pdf.cell(140,7,'Sous-total HT',align='R'); pdf.cell(40,7,safe(f"{fr_number(q['subtotal'],2)} EUR"),align='R',ln=1)
+    pdf.cell(140,7,'TVA',align='R'); pdf.cell(40,7,safe(f"{fr_number(q['vat_amount'],2)} EUR"),align='R',ln=1)
+    pdf.set_font('Helvetica','B',13)
+    pdf.cell(140,9,'Total TTC',align='R'); pdf.cell(40,9,safe(f"{fr_number(q['total'],2)} EUR"),align='R',ln=1)
+    if q['notes']:
+        pdf.ln(5); pdf.set_font('Helvetica','',10); pdf.multi_cell(0,6,safe(q['notes']))
+    return bytes(pdf.output(dest='S'))

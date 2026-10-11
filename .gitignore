@@ -32,7 +32,3 @@ Thumbs.db
 # Local database backups
 backups/
 *.dump
-logs/
-.pytest_cache/
-# Données persistantes locales (disque Render monté sur /var/data en production)
-var/

@@ -19,9 +19,7 @@ def test_deposit_accounting_uses_4191_and_is_entity_idempotent():
 def test_final_accounting_releases_deposit_and_recognizes_revenue_once():
     block=ACC[ACC.index('def generate_customer_final_entry'):ACC.index('def generate_sale_credit_entry')]
     assert "'419100','debit'" in block
-    # v4xx : produits 707/706 par nature de ligne, lignes de déduction exclues des produits.
-    assert "_sale_revenue_and_vat_lines(invoice, items=items)" in block
-    assert "it['deposit_deduction'] = True" in block
+    assert "'706000','credit'" in block
     assert "'customer_final_invoice'" in block
 
 def test_quote_routes_enforce_entity_and_no_duplicate_final():
@@ -31,14 +29,13 @@ def test_quote_routes_enforce_entity_and_no_duplicate_final():
     assert "Le cumul des acomptes dépasserait le montant du devis" in INV
 
 def test_final_invoice_contains_explicit_deposit_deductions():
-    assert "Déduction des acomptes déjà facturés" in INV
-    assert "'qty':-1.0" in INV and "'deposit_deduction':True" in INV
+    assert "Déduction acomptes déjà facturés" in INV
     assert "deposit_by_rate" in INV
     assert "json.dumps(final_items,ensure_ascii=False)" in INV
 
 def test_send_dispatches_special_accounting_generators():
-    assert "kind=='deposit'" in INV and 'generate_customer_deposit_entry(c,inv,commit=False)' in INV
-    assert "kind=='final'" in INV and 'generate_customer_final_entry(c,inv,commit=False)' in INV
+    assert "invoice_kind=='deposit'" in INV and 'generate_customer_deposit_entry(c,inv_updated)' in INV
+    assert "invoice_kind=='final'" in INV and 'generate_customer_final_entry(c,inv_updated)' in INV
 
 def test_quote_ui_exposes_deposit_and_final_actions():
     assert "invoicing_quote_deposit" in TPL

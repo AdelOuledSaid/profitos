@@ -527,5 +527,5 @@ def register(app):
             simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
-            log_activity('DECISION_SIMULATOR_VIEW','Consultation du simulateur de décision')
+            log_activity('DECISION_SIMULATOR_VIEW','Consultation du Decision Simulator')
         return render_template('decision_simulator.html',cash=cash,simulation=simulation,inputs=inputs,cfo_question=request.args.get('cfo_question',''))

@@ -1,7 +1,6 @@
 import json
 import secrets
 
-from profitos.accounting import paris_today
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
 from profitos.ecommerce import (
@@ -18,9 +17,7 @@ def register(app):
     @require_area('settings')
     def ecommerce_settings():
         c = cx()
-        # Page d'état : les identifiants chiffrés ne sont ni déchiffrés ni transmis au gabarit.
-        connections = {p: c.execute('SELECT platform,shop_domain,connected_at,connected_by FROM ecommerce_connections '
-                                    'WHERE platform=?', (p,)).fetchone() for p in PLATFORM_LABELS}
+        connections = {p: get_connection(c, p) for p in PLATFORM_LABELS}
         c.close()
         return render_template('ecommerce_settings.html', platforms=PLATFORM_LABELS, connections=connections)
 
@@ -41,15 +38,8 @@ def register(app):
         except ValueError as e:
             flash(str(e))
             return redirect(url_for('ecommerce_settings'))
-        from profitos.crypto import DataKeyMissing
         c = cx()
-        try:
-            save_connection(c, platform, shop_domain, cred1, cred2, current_user()['email'])
-        except DataKeyMissing:
-            c.close()
-            current_app.logger.error('PROFITOS_DATA_KEY manquante : connexion %s refusée', platform)
-            flash("Connexion impossible pour le moment : le chiffrement des identifiants n'est pas configuré sur le serveur. Contactez le support.")
-            return redirect(url_for('ecommerce_settings'))
+        save_connection(c, platform, shop_domain, cred1, cred2, current_user()['email'])
         c.close()
         log_activity('ECOMMERCE_CONNECTED', f"{PLATFORM_LABELS[platform]} connecté ({shop_domain})")
         flash(f"{PLATFORM_LABELS[platform]} connecté.")
@@ -76,12 +66,7 @@ def register(app):
         if platform not in PLATFORM_LABELS:
             abort(404)
         c = cx()
-        try:
-            connection = get_connection(c, platform)
-        except ValueError:
-            c.close()
-            flash(f"Identifiants {PLATFORM_LABELS[platform]} illisibles : reconnectez la boutique.")
-            return redirect(url_for('ecommerce_settings'))
+        connection = get_connection(c, platform)
         if not connection:
             c.close()
             flash(f"{PLATFORM_LABELS[platform]} n'est pas connecté.")
@@ -114,15 +99,17 @@ def register(app):
                  'vat_rate': 0, 'line_total': round(li['qty'] * li['unit_price'], 2)}
                 for li in o['line_items']
             ]
-            # Brouillon sans numéro : le numéro légal (série continue de l'entité) est
-            # attribué à l'émission ; le lien public n'est servi qu'une fois la facture émise.
-            invoice_number = None
+            seq = c.execute(
+                "SELECT COUNT(*) n FROM outgoing_invoices WHERE entity_id IS ?",
+                (entity_id,),
+            ).fetchone()['n'] + 1
+            invoice_number = f"FA-{platform.upper()}-{date.today().year}-{seq:04d}"
             token = secrets.token_urlsafe(20)
             c.execute(
                 """INSERT INTO outgoing_invoices(invoice_number,client_name,client_email,issue_date,
                    line_items,subtotal,vat_amount,total,status,public_token,created_at,entity_id,notes)
                    VALUES(?,?,?,?,?,?,?,?,'draft',?,?,?,?)""",
-                (invoice_number, o['customer_name'], o['customer_email'], o['order_date'] or paris_today().isoformat(),
+                (invoice_number, o['customer_name'], o['customer_email'], o['order_date'] or date.today().isoformat(),
                  json.dumps(clean_lines, ensure_ascii=False), round(subtotal, 2), 0, round(subtotal, 2),
                  token, now(), entity_id, f"Importé depuis {PLATFORM_LABELS[platform]} — commande {o['order_number']}"),
             )
@@ -139,5 +126,5 @@ def register(app):
             created += 1
         c.close()
         log_activity('ECOMMERCE_SYNCED', f"{PLATFORM_LABELS[platform]} : {created} commande(s) importée(s)")
-        flash(f"{pluralize(created, 'commande importée', 'commandes importées')} en brouillon — la TVA n'est pas calculée automatiquement, à vérifier avant envoi.")
+        flash(f"{created} commande(s) importée(s) en brouillon — la TVA n'est pas calculée automatiquement, à vérifier avant envoi.")
         return redirect(url_for('ecommerce_settings'))

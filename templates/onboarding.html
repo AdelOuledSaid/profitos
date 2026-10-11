@@ -1,38 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-{% set pf = profile or {} %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">DÉMARRAGE</div>
-<h1 class="purchase-title">Configurer {{ org.name if org else "votre entreprise" }}</h1>
-<p class="purchase-subtitle">Ces informations figurent sur vos factures (mentions obligatoires). Vous pourrez les modifier à tout moment dans Profil entreprise.</p>
-{% if errors %}<div class="purchase-error" role="alert"><strong>Vérifiez les champs suivants :</strong><ul style="margin:6px 0 0;">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
-<form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <section class="purchase-panel" style="margin-top:18px;">
-    <h2>1. Identité de l'entreprise</h2>
-    <div class="lot-form">
-      <label>Dénomination<input name="company_name" value="{{ pf.name or (org.name if org else '') }}" autocomplete="organization" required></label>
-      <label>Forme juridique<select name="legal_form"><option value="">Choisir…</option>{% for lf in legal_forms %}<option value="{{ lf }}" {% if pf.legal_form == lf %}selected{% endif %}>{{ lf }}</option>{% endfor %}</select></label>
-      <label>SIRET<input name="siret" value="{{ pf.siret or '' }}" inputmode="numeric" placeholder="ex. : 732 829 320 00074"><span class="lot-hint">14 chiffres, figurant sur votre extrait Kbis ou l'avis de situation Insee.</span></label>
-      <label>N° de TVA intracommunautaire<input name="vat_number" value="{{ pf.vat_number or '' }}" placeholder="ex. : FR44 732829320"><span class="lot-hint">Laissez vide si vous êtes en franchise de TVA.</span></label>
-      <label style="grid-column:1/-1;">Adresse<input name="address" value="{{ pf.address or '' }}" autocomplete="street-address" placeholder="ex. : 18 rue de la Charité"></label>
-      <label>Code postal<input name="postal_code" value="{{ pf.postal_code or '' }}" inputmode="numeric" autocomplete="postal-code" placeholder="ex. : 69002"></label>
-      <label>Ville<input name="city" value="{{ pf.city or '' }}" autocomplete="address-level2" placeholder="ex. : Lyon"></label>
-      <label>Capital social (€)<input name="share_capital" value="{{ pf.share_capital or '' }}" inputmode="decimal" placeholder="ex. : 10 000"><span class="lot-hint">Obligatoire pour une société (SAS, SARL…).</span></label>
-      <label>Ville du greffe (RCS)<input name="rcs_city" value="{{ pf.rcs_city or '' }}" placeholder="ex. : Lyon"></label>
-    </div>
-  </section>
-  <section class="purchase-panel" style="margin-top:18px;">
-    <h2>2. Marchés publics <span class="purchase-muted" style="font-size:14px;font-weight:600;">(facultatif)</span></h2>
-    <p class="purchase-muted">Pour vous proposer des appels d'offres adaptés. Vous pouvez passer cette étape.</p>
-    <div class="lot-form">
-      <label>Département principal<input name="department" value="{{ pf.department or '' }}" placeholder="ex. : 69"></label>
-      <label>Départements d'intervention<input name="allowed_departments" value="{{ pf.allowed_departments or '' }}" placeholder="ex. : 69, 01, 38"></label>
-      <label style="grid-column:1/-1;">Activités<textarea name="activities" rows="3" placeholder="ex. : rénovation, menuiserie, peinture">{{ pf.activities or '' }}</textarea></label>
-      <label style="grid-column:1/-1;">Certifications<input name="certifications" value="{{ pf.certifications or '' }}" placeholder="ex. : Qualibat RGE"></label>
-    </div>
-  </section>
-  <div style="margin-top:18px;"><button class="purchase-primary-btn primary">Terminer la configuration</button></div>
-</form>
+<div class="purchase-eyebrow">ONBOARDING</div>
+<h1 class="purchase-title">Configurer {{ org.name if org else "votre entreprise" }}.</h1>
+<section class="purchase-panel formpanel">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Entreprise<input name="company_name" value="{{ profile.name if profile else (org.name if org else '') }}" required></label>
+    <label>Ville<input name="city" value="{{ profile.city if profile else '' }}" required></label>
+    <label>Département<input name="department" value="{{ profile.department if profile else '' }}" placeholder="14" required></label>
+    <label>Départements d'intervention<input name="allowed_departments" value="{{ profile.allowed_departments if profile else '' }}" placeholder="14,50,61"></label>
+    <label class="wide">Activités<textarea name="activities" rows="4" required>{{ profile.activities if profile else '' }}</textarea></label>
+    <label class="wide">Certifications<input name="certifications" value="{{ profile.certifications if profile else '' }}"></label>
+    <div class="wide"><button class="purchase-primary-btn primary">Terminer l'onboarding</button></div>
+  </form>
+</section>
 </div>
 {% endblock %}

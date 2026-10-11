@@ -15,10 +15,7 @@ def test_customer_invoices_are_scoped_to_current_entity():
 def test_credit_notes_are_scoped_and_numbered_per_entity():
     assert "SELECT * FROM outgoing_credit_notes WHERE id=? AND entity_id IS ?" in INV
     assert "original_invoice_id=? AND entity_id IS ? AND status='issued'" in INV
-    # v421 : série d'avoirs par entité, réservée sous verrou (profitos/invoice_numbering.py).
-    NUM = (Path(__file__).resolve().parents[1] / 'profitos' / 'invoice_numbering.py').read_text(encoding='utf-8')
-    assert 'f"{prefix}-E{entity_id}-{year}-"' in NUM and "'credit': ('AV'" in NUM
-    assert "next_document_number(c,'credit',inv['entity_id'],issue_date)" in INV
+    assert 'f"AV-E{entity_id}-{year}-"' in INV
     assert '(entity_id,credit_number,original_invoice_id' in INV
 
 
@@ -35,8 +32,7 @@ def test_mark_paid_is_idempotent_and_entity_scoped():
     assert 'idempotency_key' in block
     assert 'generate_sale_partial_payment_entry(c,inv,payment)' in block
     assert "WHERE id=? AND entity_id IS ?" in block
-    # Doublon attrapé quel que soit le backend (SQLite en local, psycopg2 en production).
-    assert 'except dbmod.IntegrityError:' in block
+    assert 'except sqlite3.IntegrityError:' in block
     assert 'except AccountingError as e:' in block
     assert 'c.rollback()' in block
 
@@ -69,4 +65,4 @@ def test_new_and_legacy_schema_have_invoice_and_credit_entity_id():
 
 def test_public_invoice_uses_owning_entity_identity():
     public = INV[INV.index("@app.route('/facture/<token>')"):]
-    assert "company_row=_seller_identity(tc,inv['entity_id'])" in public
+    assert "company_row=resolve_entity(tc,inv['entity_id'])" in public

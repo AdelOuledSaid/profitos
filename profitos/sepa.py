@@ -61,9 +61,9 @@ def generate_sepa_xml(company, payments):
     company_iban = (company.get('iban') or '').replace(' ', '').upper()
     company_bic = (company.get('bic') or '').replace(' ', '').upper()
     if not validate_iban(company_iban):
-        raise ValueError("L'IBAN de l'entreprise est manquant ou invalide — renseignez-le dans le profil entreprise.")
+        raise ValueError("L'IBAN de l'entreprise est manquant ou invalide — renseigne-le dans le profil entreprise.")
     if not company_bic:
-        raise ValueError("Le BIC de l'entreprise est manquant — renseignez-le dans le profil entreprise.")
+        raise ValueError("Le BIC de l'entreprise est manquant — renseigne-le dans le profil entreprise.")
 
     total = 0.0
     for p in payments:

@@ -1,4 +1,3 @@
-from profitos.accounting import paris_today
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan
 from profitos.entities import current_entity_id
@@ -240,23 +239,29 @@ def register(app):
             tc.execute('BEGIN IMMEDIATE')
         except Exception:
             pass
-        # Brouillon sans numéro : le numéro légal est attribué à l'émission (série
-        # continue propre à l'entité), jamais à la création via l'API.
-        invoice_number=None
+        ef,ep=_entity_where()
+        prefix=f"FA-API-{date.today().year}-"
+        rows=tc.execute(f"SELECT invoice_number FROM outgoing_invoices WHERE {ef} AND invoice_number LIKE ?",
+                        (*ep,prefix+'%')).fetchall()
+        highest=0
+        for r in rows:
+            try: highest=max(highest,int((r['invoice_number'] or '').rsplit('-',1)[1]))
+            except (ValueError,IndexError): pass
+        invoice_number=f"{prefix}{highest+1:04d}"
         tc.execute(
             """INSERT INTO outgoing_invoices
                (invoice_number,client_name,client_address,client_email,issue_date,due_date,
                 line_items,subtotal,vat_amount,total,status,created_at,entity_id)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (invoice_number, client_name, payload.get('client_address', ''), payload.get('client_email', ''),
-             paris_today().isoformat(), payload.get('due_date'), json.dumps(clean_lines, ensure_ascii=False),
+             date.today().isoformat(), payload.get('due_date'), json.dumps(clean_lines, ensure_ascii=False),
              subtotal, vat_amount, total, 'draft', now(), _api_eid()),
         )
         tc.commit()
         new_id = tc.execute('SELECT last_insert_rowid()').fetchone()[0]
         tc.close()
-        log_activity('API_INVOICE_CREATED', f"Facture brouillon n°{new_id} créée via API")
-        result={'id': new_id, 'invoice_number': None, 'draft_label': f"Brouillon n°{new_id}", 'total': total, 'status': 'draft'}
+        log_activity('API_INVOICE_CREATED', f"Facture {invoice_number} créée via API (brouillon)")
+        result={'id': new_id, 'invoice_number': invoice_number, 'total': total, 'status': 'draft'}
         _idempotency_store(key,201,result); _api_audit('POST',request.path,'write',201,key)
         return jsonify(result), 201
 
@@ -317,10 +322,6 @@ def register(app):
         row=tc.execute(f"SELECT * FROM purchase_invoices WHERE id=? AND {ef}",(purchase_id,*ep)).fetchone()
         if not row:
             tc.close(); return jsonify({'error':'not_found'}),404
-        # Même règle que l'interface : une facture non validée ne peut pas être payée.
-        if row['validation_status'] in ('pending','rejected'):
-            tc.close()
-            return jsonify({'error':'validation_required','message':"Facture fournisseur en attente de validation ou rejetée."}),409
         paid=tc.execute(f"""SELECT COALESCE(SUM(amount),0) t FROM purchase_invoice_payments
                             WHERE purchase_invoice_id=? AND {ef}""",(purchase_id,*ep)).fetchone()['t']
         remaining=round(max(float(row['total'] or 0)-float(paid or 0),0),2)
@@ -334,7 +335,7 @@ def register(app):
             cur=tc.execute("""INSERT INTO purchase_invoice_payments
                               (entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
                               VALUES(?,?,?,?,?,?,?,?)""",
-                           (_api_eid(),purchase_id,remaining,paris_today().isoformat(),'api',
+                           (_api_eid(),purchase_id,remaining,date.today().isoformat(),'api',
                             'API mark-paid',payment_key,now()))
             payment_id=cur.lastrowid
             payment=tc.execute("SELECT * FROM purchase_invoice_payments WHERE id=?",(payment_id,)).fetchone()
@@ -468,25 +469,9 @@ def register(app):
         if request.method=='POST':
             action=request.form.get('action')
             if action=='create':
-                from profitos.account_security import verify_reauth
-                if not verify_reauth(current_user()):
-                    c.close()
-                    flash("Mot de passe incorrect : confirmez votre mot de passe pour créer une clé API.")
-                    return redirect(url_for('api_keys'))
-                expires_raw=(request.form.get('expires_at') or '').strip()
-                expires_at=None
-                if expires_raw:
-                    try:
-                        exp_date=date.fromisoformat(expires_raw)
-                    except ValueError:
-                        c.close(); flash("Date d'expiration invalide."); return redirect(url_for('api_keys'))
-                    if exp_date<=paris_today():
-                        c.close(); flash("La date d'expiration doit être dans le futur."); return redirect(url_for('api_keys'))
-                    expires_at=f"{exp_date.isoformat()}T23:59:59+00:00"
                 raw_key=generate_api_key()
                 requested=request.form.getlist('scopes')
-                # La portée « webhooks » n'était vérifiée par aucune route : retirée.
-                allowed={'read','write'}
+                allowed={'read','write','webhooks'}
                 scopes=sorted(set(requested)&allowed) or ['read']
                 if 'write' in scopes and 'read' not in scopes: scopes.append('read')
                 entity_raw=(request.form.get('entity_id') or '').strip()
@@ -501,13 +486,13 @@ def register(app):
                         return redirect(url_for('api_keys'))
                 scope_legacy='read_write' if 'write' in scopes else 'read'
                 c.execute('''INSERT INTO api_keys
-                             (organization_id,key_hash,key_prefix,created_by,created_at,scope,scopes,entity_id,expires_at)
-                             VALUES(?,?,?,?,?,?,?,?,?)''',
+                             (organization_id,key_hash,key_prefix,created_by,created_at,scope,scopes,entity_id)
+                             VALUES(?,?,?,?,?,?,?,?)''',
                     (org['id'],hash_api_key(raw_key),raw_key[:16],current_user()['email'],now(),
-                     scope_legacy,','.join(sorted(scopes)),entity_id,expires_at))
+                     scope_legacy,','.join(sorted(scopes)),entity_id))
                 c.commit(); c.close()
                 log_activity('API_KEY_CREATED',f"Nouvelle clé API créée (scopes : {','.join(sorted(scopes))})")
-                flash('Clé créée — copiez-la maintenant, elle ne sera plus jamais affichée en clair.')
+                flash('Clé créée — copie-la maintenant, elle ne sera plus jamais affichée en clair.')
                 keys=_load_api_keys(org['id'])
                 return render_template('api_keys.html',keys=keys,new_key=raw_key)
             elif action=='revoke':
@@ -541,7 +526,7 @@ def register(app):
             if not ok:
                 error = reason
             elif not events:
-                error = "Sélectionnez au moins un événement."
+                error = "Sélectionne au moins un événement."
             else:
                 secret = new_webhook_secret()
                 c.execute(
@@ -550,10 +535,7 @@ def register(app):
                 )
                 c.commit()
                 log_activity('WEBHOOK_CREATED', f"Webhook sortant créé vers {url}")
-                # Secret montré une seule fois depuis un stockage serveur (jamais dans le cookie).
-                from profitos.oneshot import store_secret
-                store_secret('webhook_secret', url, secret)
-                flash("Webhook créé. Copiez le secret de signature affiché ci-dessous : il ne sera plus jamais montré.")
+                flash(f"Webhook créé. Secret de signature (copie-le maintenant, affiché une seule fois) : {secret}")
                 return redirect(url_for('outbound_webhooks'))
 
         eid=current_entity_id()
@@ -567,10 +549,8 @@ def register(app):
                 (s['id'],),
             ).fetchall()
         c.close()
-        from profitos.oneshot import pop_secrets
         return render_template('webhooks_outbound.html', subs=subs, error=error,
-                                events=WEBHOOK_EVENTS, recent_deliveries=recent_deliveries,
-                                revealed_secrets=pop_secrets('webhook_secret'))
+                                events=WEBHOOK_EVENTS, recent_deliveries=recent_deliveries)
 
     @app.route('/settings/webhooks/<int:sub_id>/supprimer', methods=['POST'])
     @login_required
@@ -600,7 +580,7 @@ def register(app):
         deliver_webhook(c, test_event, {'test': True, 'message': 'Ceci est un envoi de test depuis ProfitOS.'},
                          only_subscription_id=sub_id,entity_id=eid)
         c.close()
-        flash(f"Test envoyé ({test_event}) — consultez le journal des livraisons ci-dessous pour le résultat.")
+        flash(f"Test envoyé ({test_event}) — regarde le journal des livraisons ci-dessous pour le résultat.")
         return redirect(url_for('outbound_webhooks'))
 
 

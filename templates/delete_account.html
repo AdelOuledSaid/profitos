@@ -6,7 +6,7 @@
 
 {% if is_last_member %}
 <section class="purchase-panel" style="margin:20px 0;border-color:rgba(255,110,120,.4);">
-  <p style="margin:0;">Vous êtes le <strong style="color:#fff;">dernier membre</strong> de l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Continuer supprimera <strong class="purchase-alert-text">définitivement</strong>, à l'issue du délai de grâce de {{ grace_days }} jours :</p>
+  <p style="margin:0;">Tu es le <strong style="color:#fff;">dernier membre</strong> de l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Continuer supprimera <strong class="purchase-alert-text">définitivement et irréversiblement</strong> :</p>
   <ul style="margin:10px 0 0;padding-left:20px;">
     <li>Toutes les factures, dépenses et opportunités importées</li>
     <li>Tout l'historique d'actions et de statuts</li>
@@ -15,27 +15,16 @@
 </section>
 {% else %}
 <section class="purchase-panel" style="margin:20px 0;">
-  <p style="margin:0;">Vous quitterez l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Les autres membres et leurs données ne sont pas affectés. Si vous n'appartenez à aucune autre organisation ensuite, votre compte utilisateur sera également supprimé.</p>
+  <p style="margin:0;">Tu quitteras l'organisation <strong style="color:#fff;">{{ org.name }}</strong>. Les autres membres et leurs données ne sont pas affectés. Si tu n'appartiens à aucune autre organisation après ça, ton compte utilisateur sera aussi supprimé.</p>
 </section>
 {% endif %}
 
-<section class="purchase-panel" style="margin:20px 0;">
-  <h2 style="color:#fff;">Avant de supprimer : conservez vos documents</h2>
-  <p style="margin:0;">La loi vous impose de conserver vos <strong>documents comptables et factures pendant 10 ans</strong> (article L123-22 du Code de commerce). Après la suppression, ProfitOS ne pourra plus vous les fournir : téléchargez-les maintenant.</p>
-  <ul style="margin:10px 0 0;padding-left:20px;">
-    {% if can_export_accounting %}<li><a class="purchase-detail-link" href="{{ url_for('accounting_fec_export') }}">Exporter le FEC (Fichier des Écritures Comptables)</a></li>
-    <li><a class="purchase-detail-link" href="{{ url_for('invoicing_list') }}">Télécharger vos factures en PDF</a></li>{% endif %}
-    {% if can_export_org %}<li><a class="purchase-detail-link" href="{{ url_for('gdpr_export') }}">Télécharger toutes les données de l'organisation (ZIP de fichiers CSV)</a></li>{% endif %}
-    <li><a class="purchase-detail-link" href="{{ url_for('personal_data_export') }}">Télécharger mes données personnelles</a></li>
-  </ul>
-  {% if is_last_member %}<p class="purchase-muted" style="margin-top:10px;">La suppression prend effet après un délai de grâce de {{ grace_days }} jours, pendant lequel l'organisation est inaccessible mais peut être restaurée par un propriétaire en se reconnectant.</p>{% endif %}
-</section>
+<p class="purchase-muted">Avant de continuer, tu peux <a class="purchase-detail-link" href="{{ url_for('gdpr_export') }}">télécharger toutes tes données</a> (RGPD).</p>
 
 <form method="post" class="stack" style="max-width:420px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label>Saisissez le nom exact de l'organisation pour confirmer<input type="text" name="confirm_text" placeholder="{{ org.name }}" required autocomplete="off"></label>
-  <label>Votre mot de passe actuel<input type="password" name="current_password" autocomplete="current-password" required></label>
-  <button type="submit" class="purchase-danger-btn" data-confirm="Supprimer définitivement votre compte et les données de l'organisation ? Cette action est irréversible.">Confirmer la suppression</button>
+  <label>Tape le nom exact de l'organisation pour confirmer<input type="text" name="confirm_text" placeholder="{{ org.name }}" required autocomplete="off"></label>
+  <button type="submit" class="purchase-primary-btn secondary" style="background:#ff6e78;color:#1a0f0f;border-color:#ff6e78;">Confirmer la suppression</button>
 </form>
 </div>
 {% endblock %}

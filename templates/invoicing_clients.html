@@ -16,14 +16,14 @@
   <section class="purchase-panel">
     <div class="purchase-table-wrap">
       <table class="purchase-table">
-        <thead><tr><th>Client</th><th>E-mail / SIRET</th><th>Factures</th><th>Payé</th></tr></thead>
+        <thead><tr><th>Client</th><th>Email / SIRET</th><th>Factures</th><th>Payé</th></tr></thead>
         <tbody>
         {% for c in rows %}
           <tr>
             <td><a class="purchase-detail-link" href="{{ url_for('invoicing_client_detail',client_id=c.id) }}"><strong>{{ c.name }}</strong></a></td>
             <td>{{ c.email or '—' }}{% if c.siret %} · SIRET {{ c.siret }}{% endif %}</td>
             <td>{{ c.invoice_count }}</td>
-            <td><strong>{{ c.paid_total|fr_number(2) }}&nbsp;€</strong></td>
+            <td><strong>{{ c.paid_total|fr_number(2) }} €</strong></td>
           </tr>
         {% else %}
           <tr><td colspan="4" class="purchase-empty">Aucun client enregistré.</td></tr>

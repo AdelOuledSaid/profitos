@@ -5,23 +5,18 @@
   <div>
     <div class="purchase-eyebrow">API · WEBHOOKS SORTANTS</div>
     <h1 class="purchase-title">Webhooks sortants</h1>
-    <p class="purchase-subtitle">ProfitOS notifie l'URL de votre choix quand un événement se produit — utile pour connecter votre propre ERP, une automatisation Zapier/Make, ou tout système qui doit réagir en temps réel.</p>
+    <p class="purchase-subtitle">ProfitOS notifie l'URL de ton choix quand un événement se produit — utile pour connecter ton propre ERP, une automatisation Zapier/Make, ou tout système qui doit réagir en temps réel.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('api_keys') }}">← Clés API</a>
 </div>
 
 {% if error %}<p class="purchase-alert-text" style="margin-bottom:16px;">{{ error }}</p>{% endif %}
-{% for label, secret in revealed_secrets or [] %}
-<section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
-  <strong>Secret de signature pour {{ label }}</strong> (affiché une seule fois) :<br><code style="word-break:break-all;">{{ secret }}</code>
-</section>
-{% endfor %}
 
 <section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
   <h2 style="color:#fff;margin-top:0;">Créer un webhook</h2>
   <form method="post" class="formgrid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="wide">URL de destination (https uniquement)<input type="url" name="url" placeholder="ex. : https://votre-systeme.example.com/hooks/profitos" required></label>
+    <label class="wide">URL de destination (https uniquement)<input type="url" name="url" placeholder="https://ton-systeme.example.com/hooks/profitos" required></label>
     <div class="wide">
       <label style="font-weight:600;margin-bottom:6px;display:block;">Événements</label>
       {% for ev in events %}
@@ -47,7 +42,7 @@
       </form>
       <form method="post" action="{{ url_for('outbound_webhook_delete',sub_id=s.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="purchase-primary-btn secondary" data-confirm="Supprimer définitivement cet élément ? Cette action est irréversible.">Supprimer</button>
+        <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
       </form>
     </div>
   </div>

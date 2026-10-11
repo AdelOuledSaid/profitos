@@ -11,7 +11,7 @@ def test_demo_workflow_has_admin_and_customer_emails():
 
 def test_send_email_supports_reply_to():
     t=(ROOT/'profitos/runtime.py').read_text(encoding='utf-8')
-    assert 'def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, on_behalf_of_org=None, headers=None):' in t
+    assert 'def send_email(to_email, subject, html, dry_run=None, reply_to=None):' in t
     assert "params['reply_to'] = reply_to" in t
     assert "msg['Reply-To']=reply_to" in t
 
