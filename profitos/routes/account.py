@@ -89,6 +89,10 @@ def register(app):
                 flash("Veuillez accepter les conditions générales d'utilisation et de vente pour créer votre compte."); return redirect(request.url)
             if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email) or len(email)>254:
                 flash('Adresse e-mail invalide.'); return redirect(request.url)
+            from profitos.legal import is_prelaunch, prelaunch_allowed_emails
+            if is_prelaunch() and email not in prelaunch_allowed_emails():
+                flash("Les inscriptions ouvrent très bientôt. Laissez-nous vos coordonnées via « Demander une démo » : nous vous prévenons dès l'ouverture.")
+                return redirect(url_for('request_demo'))
             err=password_error(pw,email)
             if err: flash(err); return redirect(request.url)
             c=auth_cx()
@@ -1043,6 +1047,10 @@ def register(app):
     @require_area('billing')
     @rate_limit(6,60)
     def billing_checkout():
+        from profitos.legal import is_prelaunch
+        if is_prelaunch():
+            flash("Le paiement en ligne ouvre au lancement officiel de ProfitOS. Votre essai continue normalement.")
+            return redirect(url_for('billing'))
         # Défense en profondeur : la facturation ne peut être pilotée que par le propriétaire.
         if current_role()!='OWNER':
             log_security_event('BILLING_CHECKOUT','FORBIDDEN',target='billing')

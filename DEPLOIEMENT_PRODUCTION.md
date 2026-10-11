@@ -95,6 +95,14 @@ champs marqués *) : `LEGAL_COMPANY_NAME`*, `LEGAL_FORM`*, `LEGAL_SIREN`*, `LEGA
 `LEGAL_HOST_ADDRESS`, `LEGAL_HOST_CONTACT` (par défaut : Render Services, Inc., 525 Brannan Street,
 Suite 300, San Francisco — à vérifier dans votre contrat Render).
 
+**Pré-lancement** (avant l'immatriculation de la société) : `PROFITOS_PRELAUNCH=1` et
+`PRELAUNCH_ALLOWED_EMAILS` (e-mails autorisés à s'inscrire, séparés par des virgules). Seuls
+`LEGAL_COMPANY_NAME` (votre nom), `LEGAL_PUBLICATION_DIRECTOR` et `LEGAL_CONTACT_EMAIL` sont alors
+exigés ; les pages juridiques indiquent « société en cours d'immatriculation » ; le paiement en ligne
+est fermé ; disque, sauvegardes et Stripe deviennent des avertissements (les fichiers déposés
+peuvent être perdus à chaque déploiement sans disque : n'y mettez pas de vraies pièces).
+Ne jamais saisir de SIREN fictif. Au lancement : renseigner l'identité complète, puis `PROFITOS_PRELAUNCH=0`.
+
 **Secrets obligatoires** (preflight) : `PROFITOS_DATA_KEY` (≥ 32 caractères, chiffrement des
 identifiants d'intégration et de la 2FA — ne jamais la changer sans migration) et
 `BACKUP_PASSPHRASE` (≥ 16 caractères, à conserver aussi hors de Render).

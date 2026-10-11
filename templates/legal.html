@@ -40,8 +40,12 @@
     <div class="legal-body">
     {% if legal_page == 'mentions' %}
       <h3>Éditeur du service</h3>
+      {% if L.prelaunch and not L.siren %}
+      <p>Le site ProfitOS est édité par {{ v(L.company_name, 'nom de l\'éditeur') }}, porteur du projet ProfitOS. <strong>Société en cours d'immatriculation</strong> : ces mentions seront complétées (forme juridique, SIREN, siège) dès l'immatriculation. Aucun abonnement payant n'est proposé avant cette date.</p>
+      <p>{% if L.address %}Adresse : {{ L.address }}.<br>{% endif %}
+      {% else %}
       <p>Le site et le service ProfitOS sont édités par {{ v(L.company_name, 'raison sociale') }}, {{ v(L.legal_form, 'forme juridique') }}{% if L.share_capital %} au capital de {{ L.share_capital }} €{% endif %}, immatriculée sous le numéro SIREN {{ v(L.siren, 'SIREN') }}{% if L.rcs_city %} au RCS de {{ L.rcs_city }}{% endif %}{% if L.vat_number %}, n° de TVA intracommunautaire {{ L.vat_number }}{% endif %}.</p>
-      <p>Siège social : {{ v(L.address, 'adresse du siège') }}.<br>Contact : {% if L.email %}<a href="mailto:{{ L.email }}">{{ L.email }}</a>{% else %}{{ v('', 'e-mail de contact') }}{% endif %}{% if L.phone %} — {{ L.phone }}{% endif %}.</p>
+      <p>Siège social : {{ v(L.address, 'adresse du siège') }}.<br>{% endif %}Contact : {% if L.email %}<a href="mailto:{{ L.email }}">{{ L.email }}</a>{% else %}{{ v('', 'e-mail de contact') }}{% endif %}{% if L.phone %} — {{ L.phone }}{% endif %}.</p>
       <p>Directeur de la publication : {{ v(L.director, 'directeur de la publication') }}.</p>
       <h3>Hébergeur</h3>
       <p>{{ L.host_name }} — {{ L.host_address }}{% if L.host_contact %} — <a href="{{ L.host_contact }}" rel="noopener">{{ L.host_contact }}</a>{% endif %}. Les données de ProfitOS sont hébergées sur des serveurs situés à Francfort (Allemagne).</p>
@@ -52,7 +56,7 @@
 
     {% elif legal_page == 'privacy' %}
       <h3>Responsable de traitement</h3>
-      <p>{{ v(L.company_name, 'raison sociale') }}, {{ v(L.address, 'adresse du siège') }}. Contact pour toute question sur vos données : {% if L.privacy_email %}<a href="mailto:{{ L.privacy_email }}">{{ L.privacy_email }}</a>{% else %}{{ v('', 'contact données personnelles') }}{% endif %}.</p>
+      <p>{{ v(L.company_name, 'raison sociale') }}{% if L.address %}, {{ L.address }}{% elif not L.prelaunch %}, {{ v('', 'adresse du siège') }}{% endif %}{% if L.prelaunch and not L.siren %} (société en cours d'immatriculation){% endif %}. Contact pour toute question sur vos données : {% if L.privacy_email %}<a href="mailto:{{ L.privacy_email }}">{{ L.privacy_email }}</a>{% else %}{{ v('', 'contact données personnelles') }}{% endif %}.</p>
       <p>Pour les données que vous importez sur vos propres clients et fournisseurs (factures, coordonnées, relances), ProfitOS agit en <strong>sous-traitant</strong> de votre entreprise, au sens de l'article 28 du RGPD : nous les traitons uniquement pour vous fournir le service, selon vos instructions (voir l'accord de traitement dans les CGV).</p>
       <h3>Données traitées et finalités</h3>
       <ul>
@@ -98,7 +102,7 @@
 
     {% else %}
       <h3>Champ d'application</h3>
-      <p>Les présentes conditions générales de vente s'appliquent aux abonnements payants à ProfitOS souscrits auprès de {{ v(L.company_name, 'raison sociale') }} (SIREN {{ v(L.siren, 'SIREN') }}) par des clients professionnels. Elles prévalent sur tout autre document, sauf conditions particulières signées.</p>
+      <p>Les présentes conditions générales de vente s'appliquent aux abonnements payants à ProfitOS souscrits auprès de {{ v(L.company_name, 'raison sociale') }} ({% if L.siren %}SIREN {{ L.siren }}{% elif L.prelaunch %}société en cours d'immatriculation — aucun abonnement payant n'est proposé avant l'immatriculation{% else %}SIREN {{ v('', 'SIREN') }}{% endif %}) par des clients professionnels. Elles prévalent sur tout autre document, sauf conditions particulières signées.</p>
       <h3>Formules et prix</h3>
       <p>Les fonctionnalités, limites et prix de chaque formule sont ceux de la page <a href="{{ url_for('pricing') }}">Tarifs</a> au jour de la souscription. Les prix sont indiqués <strong>hors taxes</strong> ; la TVA au taux en vigueur (20 %) s'ajoute. Toute évolution de prix est notifiée au moins 30 jours à l'avance et ne s'applique qu'à la période suivante.</p>
       <h3>Essai gratuit</h3>

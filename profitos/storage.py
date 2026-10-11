@@ -39,6 +39,20 @@ def storage_root():
     return UPLOAD_ROOT
 
 
+def upload_dir_writable():
+    """(True, None) si le dossier des documents existe ou peut être créé et accepte une
+    écriture ; sinon (False, raison). Utilisé par /readyz en production."""
+    import uuid
+    try:
+        UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+        probe = UPLOAD_ROOT / f'.ready-{uuid.uuid4().hex}'
+        probe.write_bytes(b'ok')
+        probe.unlink()
+        return True, None
+    except OSError as exc:
+        return False, f'{type(exc).__name__}: {exc}'
+
+
 def _check_part(value, label):
     value = str(value)
     if not _SAFE_PART.match(value) or '..' in value:

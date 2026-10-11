@@ -55,15 +55,9 @@ def check_upload_dir(env=None):
         if str(resolved) == tmp_root or str(resolved).startswith(tmp_root + '/') or raw == tmp_root or raw.startswith(tmp_root + '/'):
             errors.append(f'PROFITOS_UPLOAD_DIR ne doit pas pointer vers {tmp_root} (stockage éphémère).')
             break
-    if errors:
-        return errors
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        probe = path / f'.preflight-{uuid.uuid4().hex}'
-        probe.write_bytes(b'ok')
-        probe.unlink()
-    except Exception as exc:
-        errors.append(f'PROFITOS_UPLOAD_DIR non inscriptible ({type(exc).__name__}). Le disque persistant est-il monté ?')
+    # Pas de test d'écriture ici : Render ne monte pas le disque pendant la commande
+    # pre-deploy (exécutée sur une autre machine). L'écriture est vérifiée par /readyz
+    # sur l'instance en service : sans disque, le déploiement n'est jamais mis en ligne.
     return errors
 
 
@@ -121,9 +115,8 @@ def check_stripe(env=None):
 def check_legal(env=None):
     """Mentions légales obligatoires (LCEN art. 6 III) : identité de l'éditeur."""
     env = os.environ if env is None else env
-    from profitos.legal import FIELDS
-    missing = [env_name for _k, (env_name, _label, required) in FIELDS.items()
-               if required and not (env.get(env_name) or '').strip()]
+    from profitos.legal import missing_legal_fields
+    missing = missing_legal_fields(env)
     if not missing:
         return []
     return ['Mentions légales incomplètes : définissez ' + ', '.join(missing) + ' (voir DEPLOIEMENT_PRODUCTION.md).']
@@ -141,8 +134,27 @@ def check_secrets(env=None):
 
 
 def production_errors(env=None, database_configured=True):
-    return (check_basic(env, database_configured) + check_upload_dir(env)
-            + check_email(env) + check_stripe(env) + check_legal(env) + check_secrets(env))
+    """Erreurs bloquantes. En pré-lancement (PROFITOS_PRELAUNCH=1, aucune vente possible),
+    le disque, les sauvegardes et Stripe deviennent des avertissements : voir prelaunch_warnings."""
+    env = os.environ if env is None else env
+    from profitos.legal import is_prelaunch
+    errors = check_basic(env, database_configured) + check_email(env) + check_legal(env)
+    if is_prelaunch(env):
+        key = (env.get('PROFITOS_DATA_KEY') or '').strip()
+        if key and len(key) < 32:
+            errors.append('PROFITOS_DATA_KEY trop courte (32 caractères minimum).')
+        return errors
+    return errors + check_upload_dir(env) + check_stripe(env) + check_secrets(env)
+
+
+def prelaunch_warnings(env=None):
+    env = os.environ if env is None else env
+    from profitos.legal import is_prelaunch
+    if not is_prelaunch(env):
+        return []
+    warns = ['Mode pré-lancement actif : inscriptions limitées à PRELAUNCH_ALLOWED_EMAILS, paiement en ligne fermé.']
+    warns += check_upload_dir(env) + check_stripe(env) + check_secrets(env)
+    return warns
 
 
 def main(argv=None):
@@ -162,6 +174,8 @@ def main(argv=None):
             for err in errors:
                 print(f'[ProfitOS] ERREUR: {err}')
             return 1
+        for warn in prelaunch_warnings():
+            print(f'[ProfitOS] AVERTISSEMENT (pré-lancement): {warn}')
 
     from profitos.runtime import init_auth_db, database_readiness, migrate_all_tenant_schemas
     init_auth_db()

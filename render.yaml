@@ -27,6 +27,12 @@ envVarGroups:
       # Chiffrement des identifiants d'intégration (32 caractères minimum).
       - key: PROFITOS_DATA_KEY
         generateValue: true
+      # Pré-lancement (société pas encore immatriculée) : 1 = site visible, inscriptions
+      # limitées à PRELAUNCH_ALLOWED_EMAILS, paiement fermé. Mettre 0 au lancement.
+      - key: PROFITOS_PRELAUNCH
+        sync: false
+      - key: PRELAUNCH_ALLOWED_EMAILS
+        sync: false
       # Identité légale de l'éditeur (mentions légales, CGV) : obligatoire,
       # le déploiement est refusé tant qu'elle n'est pas renseignée.
       - key: LEGAL_COMPANY_NAME
@@ -61,7 +67,7 @@ services:
     # Migrations + vérifications (disque, email, secrets) AVANT la bascule :
     # un échec bloque le déploiement et l'ancienne version reste en ligne.
     preDeployCommand: python scripts/cloud_preflight.py --init-tenants
-    startCommand: gunicorn --workers 2 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --bind 0.0.0.0:$PORT wsgi:app
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --bind 0.0.0.0:$PORT wsgi:app
     healthCheckPath: /readyz
     # Déploie seulement quand la CI GitHub (.github/workflows/tests.yml) est verte.
     autoDeployTrigger: checksPass
@@ -71,7 +77,7 @@ services:
     disk:
       name: profitos-data
       mountPath: /var/data
-      sizeGB: 10
+      sizeGB: 1
     envVars:
       - fromGroup: profitos-shared
       - key: PROFITOS_UPLOAD_DIR
@@ -192,9 +198,9 @@ services:
 
   - type: keyvalue
     name: profitos-rate-limit
-    # Le plan free est éphémère et limité : les compteurs de rate limiting
-    # (connexion, mot de passe oublié) doivent survivre aux redémarrages.
-    plan: starter
+    # Pré-lancement : plan free (les compteurs de limitation de débit repartent à zéro
+    # à chaque redémarrage, sans conséquence sans clients). Au lancement : plan payant.
+    plan: free
     region: frankfurt
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
@@ -206,5 +212,5 @@ databases:
     # Plans Render Postgres actuels : basic-256mb, basic-1gb, basic-4gb, pro-…
     # (à confirmer dans le tableau de bord). basic-1gb : PITR inclus sur les
     # plans payants — à vérifier/activer (RESTORE.md).
-    plan: basic-1gb
+    plan: basic-256mb
     region: frankfurt

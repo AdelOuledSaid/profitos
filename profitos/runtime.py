@@ -23,7 +23,14 @@ from . import storage as _storage
 from .plan_limits import feature_enabled as plan_feature_enabled
 
 BASE=Path(__file__).resolve().parent.parent
-AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=_storage.UPLOAD_ROOT; UP.mkdir(parents=True,exist_ok=True)  # disque persistant en production (PROFITOS_UPLOAD_DIR)
+AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=_storage.UPLOAD_ROOT  # disque persistant en production (PROFITOS_UPLOAD_DIR)
+# Le disque Render n'est monté que sur l'instance en service (ni pendant le build, ni
+# pendant la commande pre-deploy) : on ne plante jamais à l'import, les dossiers sont
+# créés à la première écriture et /readyz signale un disque absent.
+try:
+    UP.mkdir(parents=True,exist_ok=True)
+except OSError as _exc:
+    __import__('logging').getLogger('profitos.storage').warning('Dossier des documents indisponible (%s) : %s', UP, _exc)
 BOAMP='https://www.boamp.fr/api/explore/v2.1/catalog/datasets/boamp/records'
 PARIS=ZoneInfo('Europe/Paris')
 

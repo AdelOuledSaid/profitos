@@ -106,17 +106,34 @@ def test_upload_dir_required_and_not_tmp():
     assert cloud_preflight.check_upload_dir({'PROFITOS_UPLOAD_DIR': 'relative/uploads'})
 
 
-def test_upload_dir_writable_ok_and_not_writable():
-    target = ROOT / 'tenant_data' / '_preflight_probe_v401'
+def test_preflight_does_not_probe_disk_but_readyz_does(monkeypatch):
+    # Render ne monte pas le disque pendant la commande pre-deploy : le preflight ne
+    # vérifie que le chemin ; l'écriture est contrôlée par /readyz sur l'instance.
+    assert cloud_preflight.check_upload_dir({'PROFITOS_UPLOAD_DIR': '/var/data/uploads'}) == []
+    import profitos.storage as storage
+    target = ROOT / 'tenant_data' / '_ready_probe_v401'
+    blocker = ROOT / 'tenant_data' / '_ready_file_v401'
     try:
-        assert cloud_preflight.check_upload_dir({'PROFITOS_UPLOAD_DIR': str(target)}) == []
-        blocker = ROOT / 'tenant_data' / '_preflight_file_v401'
+        monkeypatch.setattr(storage, 'UPLOAD_ROOT', target)
+        assert storage.upload_dir_writable() == (True, None)
         blocker.write_text('x')
-        errs = cloud_preflight.check_upload_dir({'PROFITOS_UPLOAD_DIR': str(blocker / 'sub')})
-        assert errs and 'inscriptible' in errs[0]
+        monkeypatch.setattr(storage, 'UPLOAD_ROOT', blocker / 'sub')
+        ok, why = storage.upload_dir_writable()
+        assert not ok and why
     finally:
         shutil.rmtree(target, ignore_errors=True)
-        (ROOT / 'tenant_data' / '_preflight_file_v401').unlink(missing_ok=True)
+        blocker.unlink(missing_ok=True)
+
+
+def test_readyz_not_ready_without_disk_in_production(monkeypatch):
+    from profitos import create_app
+    from profitos.config import DevelopmentConfig
+    import profitos.storage as storage
+    app = create_app(DevelopmentConfig)
+    app.config.update(TESTING=True, PROFITOS_IS_PRODUCTION=True)
+    monkeypatch.setattr(storage, 'upload_dir_writable', lambda: (False, 'PermissionError'))
+    r = app.test_client().get('/readyz')
+    assert r.status_code == 503 and r.get_json() == {'status': 'not_ready'}
 
 
 def test_email_required_in_production():

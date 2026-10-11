@@ -54,16 +54,37 @@ RETENTION = [
 ]
 
 
+# Champs exigés en pré-lancement (société pas encore immatriculée) : l'éditeur reste
+# identifiable (nom, directeur de publication, contact), sans SIREN ni adresse de siège.
+PRELAUNCH_REQUIRED = ('company_name', 'director', 'email')
+
+
+def is_prelaunch(env=None):
+    """Mode pré-lancement : site consultable avant l'immatriculation, sans vente.
+    Inscriptions limitées à PRELAUNCH_ALLOWED_EMAILS, paiement en ligne fermé."""
+    env = os.environ if env is None else env
+    return (env.get('PROFITOS_PRELAUNCH') or '').strip().lower() in ('1', 'true', 'oui', 'yes', 'on')
+
+
+def prelaunch_allowed_emails(env=None):
+    env = os.environ if env is None else env
+    return {e.strip().lower() for e in (env.get('PRELAUNCH_ALLOWED_EMAILS') or '').split(',') if e.strip()}
+
+
 def legal_identity():
     data = {}
     for key, (env, _label, _req) in FIELDS.items():
         data[key] = (os.environ.get(env) or DEFAULTS.get(key, '')).strip()
     if not data['privacy_email']:
         data['privacy_email'] = data['email']
+    data['prelaunch'] = is_prelaunch()
     data['missing'] = missing_legal_fields()
     return data
 
 
-def missing_legal_fields():
-    return [label for key, (env, label, required) in FIELDS.items()
-            if required and not (os.environ.get(env) or '').strip()]
+def missing_legal_fields(env=None):
+    """Variables LEGAL_* obligatoires encore vides (noms des variables)."""
+    env = os.environ if env is None else env
+    prelaunch = is_prelaunch(env)
+    return [var for key, (var, label, required) in FIELDS.items()
+            if (key in PRELAUNCH_REQUIRED if prelaunch else required) and not (env.get(var) or '').strip()]

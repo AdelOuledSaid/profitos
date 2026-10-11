@@ -20,10 +20,10 @@ def _keys(envvars):
 def test_web_has_paid_plan_disk_and_predeploy():
     web = _service('profitos')
     assert web['plan'] == 'starter'
-    assert web['disk'] == {'name': 'profitos-data', 'mountPath': '/var/data', 'sizeGB': 10}
+    assert web['disk'] == {'name': 'profitos-data', 'mountPath': '/var/data', 'sizeGB': 1}  # pré-lancement : un disque peut grandir, jamais rétrécir
     assert web['preDeployCommand'] == 'python scripts/cloud_preflight.py --init-tenants'
     assert 'cloud_preflight' not in web['startCommand']
-    for flag in ('--workers 2', '--threads 4', '--timeout 120', '--graceful-timeout 30', '--access-logfile -'):
+    for flag in ('--workers 1', '--threads 4', '--timeout 120', '--graceful-timeout 30', '--access-logfile -'):
         assert flag in web['startCommand']
     env = {e.get('key'): e for e in web['envVars'] if e.get('key')}
     assert env['PROFITOS_UPLOAD_DIR']['value'] == '/var/data/uploads'
@@ -33,7 +33,9 @@ def test_web_has_paid_plan_disk_and_predeploy():
 
 
 def test_no_free_plans_and_plausible_db_plan():
-    assert all(s.get('plan') != 'free' for s in BP['services'])
+    # Web et cron jamais gratuits (mise en veille, pas de disque) ; seul le Key Value
+    # (compteurs de limitation de débit) peut l'être en pré-lancement.
+    assert all(s.get('plan') != 'free' for s in BP['services'] if s['type'] != 'keyvalue')
     assert BP['databases'][0]['plan'].startswith(('basic-', 'pro-', 'accelerated-'))
 
 

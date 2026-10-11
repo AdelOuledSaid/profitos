@@ -33,6 +33,8 @@ def register(app):
         return ((os.environ.get('LEGAL_CONTACT_EMAIL') or os.environ.get('DEMO_REPLY_EMAIL') or '').strip()
                 or 'contact@profitos.fr')
     app.jinja_env.globals['support_email']=_support_email
+    from profitos.legal import is_prelaunch as _is_prelaunch
+    app.jinja_env.globals['prelaunch']=_is_prelaunch
 
     def _legal(page):
         from profitos.legal import legal_identity, SUBPROCESSORS, RETENTION

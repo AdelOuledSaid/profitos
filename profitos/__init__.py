@@ -307,6 +307,13 @@ def create_app(config_object=None):
     @limiter.exempt
     def readyz():
         ok, backend, error = database_readiness()
+        if ok and app.config.get('PROFITOS_IS_PRODUCTION', os.environ.get('PROFITOS_ENV', '').lower() == 'production'):
+            # Disque persistant absent ou en lecture seule : l'instance n'est pas prête
+            # (Render garde alors la version précédente en ligne au lieu de perdre des fichiers).
+            from profitos.storage import upload_dir_writable
+            disk_ok, disk_error = upload_dir_writable()
+            if not disk_ok:
+                ok, error = False, f'stockage des documents : {disk_error}'
         # Réponse publique minimale : ni type ni version de base de données, ni détail
         # d'erreur (ces informations restent dans les journaux serveur).
         payload = dict(status='ready' if ok else 'not_ready')
