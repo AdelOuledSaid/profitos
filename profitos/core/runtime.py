@@ -19,9 +19,10 @@ import requests
 from pypdf import PdfReader
 from docx import Document
 from . import db as dbmod
+from profitos import storage as _storage
 
 BASE=Path(__file__).resolve().parent.parent
-AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=Path(os.environ.get('PROFITOS_UPLOAD_DIR') or (BASE/'uploads')); UP.mkdir(parents=True,exist_ok=True)
+AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=_storage.UPLOAD_ROOT; UP.mkdir(parents=True,exist_ok=True)
 BOAMP='https://www.boamp.fr/api/explore/v2.1/catalog/datasets/boamp/records'
 PARIS=ZoneInfo('Europe/Paris')
 

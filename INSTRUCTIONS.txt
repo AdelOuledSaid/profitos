@@ -1,0 +1,10 @@
+Correctif des trois echecs GitHub Actions.
+1. Copier les deux fichiers Python dans le depot en conservant les chemins.
+2. A la racine du depot, supprimer les cinq fichiers parasites suivis par Git :
+   git rm -- assert git pytest README_HOTFIX.txt db.py
+   (Verifier que db.py a la racine est bien le fichier parasite, ne pas toucher a profitos/db.py.)
+3. git add profitos/routes/account.py profitos/core/runtime.py
+4. git commit -m "Fix tests stockage depot et verrouillage"
+5. git push origin main
+Le seuil par compte reste de 10 tentatives ; la limite IP est relevee de 8 a 12 / 300 s pour permettre au verrouillage de s'activer.
+Les fichiers Python ont passe ast.parse, mais pytest n'a pas ete execute.

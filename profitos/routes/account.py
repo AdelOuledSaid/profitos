@@ -146,7 +146,7 @@ def register(app):
         return render_template('signup.html',form=session.pop('signup_form',{}),terms_version=TERMS_VERSION)
 
     @app.route('/login',methods=['GET','POST'])
-    @rate_limit(8,300)
+    @rate_limit(12,300)  # seuil compte = 10 échecs ; limite IP > seuil
     def login():
         if session.get('user_id'): return redirect(url_for('home'))
         if request.method=='POST':
