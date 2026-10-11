@@ -98,10 +98,12 @@ def ensure_ops_tables():
     """Crée job_runs et users.weekly_report_enabled (idempotent)."""
     global _ops_tables_ready
     from profitos.runtime import auth_cx
+    from profitos.db import USE_POSTGRES
     c = auth_cx()
     try:
-        c.execute('''CREATE TABLE IF NOT EXISTS job_runs(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_column = 'BIGSERIAL PRIMARY KEY' if USE_POSTGRES else 'INTEGER PRIMARY KEY AUTOINCREMENT'
+        c.execute(f'''CREATE TABLE IF NOT EXISTS job_runs(
+            id {id_column},
             job_name TEXT NOT NULL,
             organization_id INTEGER NOT NULL DEFAULT 0,
             period_key TEXT NOT NULL,
@@ -111,7 +113,13 @@ def ensure_ops_tables():
             finished_at TEXT,
             detail TEXT,
             UNIQUE(job_name, organization_id, period_key))''')
-        cols = [r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
+        if USE_POSTGRES:
+            cols = [r['column_name'] for r in c.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'users'"
+            ).fetchall()]
+        else:
+            cols = [r['name'] for r in c.execute('PRAGMA table_info(users)').fetchall()]
         if cols and 'weekly_report_enabled' not in cols:
             c.execute('ALTER TABLE users ADD COLUMN weekly_report_enabled INTEGER DEFAULT 1')
         c.commit()
