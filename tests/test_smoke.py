@@ -25,7 +25,8 @@ def test_readyz_sqlite():
     app,client=make_client(); r=client.get('/readyz')
     assert r.status_code==200
     assert r.get_json()['status']=='ready'
-    assert r.get_json()['database'] in ('sqlite','postgresql')
+    # v4xx : réponse publique minimale, sans type de base de données.
+    assert 'database' not in r.get_json() and 'version' not in r.get_json()
 
 
 def test_security_headers():
@@ -52,4 +53,7 @@ def test_password_policy():
     assert password_error('short1')
     assert password_error('abcdefghijk')
     assert password_error('12345678901')
-    assert password_error('ProfitOS2026') is None
+    # v4xx : 12 caractères minimum et liste des mots de passe courants.
+    assert password_error('ProfitOS2026')  # nom du produit + année : liste des mots de passe courants
+    assert password_error('password1234')
+    assert password_error('Brume-Cactus-Velo-48') is None

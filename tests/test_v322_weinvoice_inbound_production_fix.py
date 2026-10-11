@@ -10,12 +10,16 @@ def test_no_undefined_invoicing_token_helper_remains():
 
 
 def test_rejected_inbound_is_ignored_before_content_download():
-    block = I[I.index('def purchase_weinvoice_sync():'):I.index("@app.post('/facturation/achats/<int:purchase_id>/weinvoice/action')")]
-    rejected = block.index("status in {'REJECTED','REJETEE','REJETÉE'}")
-    content = block.index('content=get_inbound_invoice_content')
+    # v400 : le cœur de la synchro est extrait dans sync_weinvoice_inbound()
+    # (appelé par la route et par le job planifié einvoice_inbound_sync).
+    core = I[I.index('def sync_weinvoice_inbound('):I.index('def register(app):')]
+    rejected = core.index("status in {'REJECTED','REJETEE','REJETÉE'}")
+    content = core.index('content=get_inbound_invoice_content')
     assert rejected < content
-    assert "regulatory == '213'" in block
-    assert 'ignored+=1' in block
+    assert "regulatory == '213'" in core
+    assert 'ignored+=1' in core
+    block = I[I.index('def purchase_weinvoice_sync():'):I.index("@app.post('/facturation/achats/<int:purchase_id>/weinvoice/action')")]
+    assert 'sync_weinvoice_inbound(c,eid,' in block
     assert 'rejetée(s) ignorée(s)' in block
 
 

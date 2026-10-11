@@ -17,7 +17,7 @@
     <div>
       <h2 style="color:#fff;margin:0 0 6px;">{{ cfg.label }}</h2>
       {% if not is_configured(key) %}
-        <p class="purchase-muted" style="font-size:13px;">Non configuré côté serveur (variables d'environnement manquantes).</p>
+        <p class="purchase-muted" style="font-size:13px;">Pas encore disponible sur votre compte. Contactez le support pour l'activer.</p>
       {% elif conn %}
         <p class="purchase-ok-text" style="font-size:13px;">Connecté le {{ conn.connected_at|fr_date(true) }} par {{ conn.connected_by }}.</p>
         {% if conn.last_sync_at %}<p class="purchase-muted" style="font-size:12px;">Dernière synchronisation : {{ conn.last_sync_at|fr_date(true) }}</p>{% endif %}
@@ -36,7 +36,7 @@
       </form>
       <form method="post" action="{{ url_for('cloud_storage_disconnect',provider=key) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="purchase-primary-btn secondary">Déconnecter</button>
+        <button type="submit" class="purchase-primary-btn secondary" data-confirm="Déconnecter ce service ?">Déconnecter</button>
       </form>
       {% endif %}
     </div>

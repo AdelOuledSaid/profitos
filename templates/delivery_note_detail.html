@@ -37,8 +37,8 @@
       {% for it in items %}
         <tr>
           <td>{{ it.label }}</td>
-          <td style="text-align:right;">{{ it.qty }}</td>
-          <td style="text-align:right;">{{ it.unit_price|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;">{{ it.qty|fr_qty }}</td>
+          <td style="text-align:right;">{{ it.unit_price|fr_price }}&nbsp;€</td>
           <td style="text-align:right;">{{ it.line_total|fr_number(2) }}&nbsp;€</td>
         </tr>
       {% endfor %}

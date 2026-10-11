@@ -67,7 +67,7 @@
   <a class="db-kpi k-recover" href="{{ url_for('recover') }}">
     <span class="db-kpi-label">À encaisser</span>
     <span class="db-kpi-value"><span data-count-to="{{ recover|round|int }}">{{ recover|fr_number }}</span>&nbsp;€</span>
-    <span class="db-kpi-note">Factures clients échues</span>
+    <span class="db-kpi-note">Factures clients échues (émises et importées)</span>
   </a>
   {% endif %}
   {% if save is not none %}
@@ -101,7 +101,7 @@
     <ul class="db-prio-list">
     {% for r in top %}
       <li class="t-{{ r.type|lower }}">
-        <a href="{{ url_for('detail',kind=r.type,item_id=r.id) }}">
+        <a href="{{ r.url or url_for('detail',kind=r.type,item_id=r.id) }}">
           <span class="db-prio-kind">{{ r.type|label }}</span>
           <span class="db-prio-title">{{ r.title }}</span>
           {% if r.subtitle %}<span class="db-prio-sub">{{ r.subtitle }}</span>{% endif %}

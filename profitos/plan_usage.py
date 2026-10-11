@@ -1,7 +1,17 @@
 from datetime import datetime, timezone
 
-from profitos.runtime import auth_cx, current_org, now
+from flask import g, has_app_context
+
+from profitos.runtime import auth_cx, billing_org, current_org, effective_plan, now
 from profitos.plan_limits import plan_limit
+
+
+AI_EXTRACTION_METRIC = "ai_extractions_per_month"
+
+
+class AIQuotaExceeded(ValueError):
+    """Quota mensuel d'extractions IA atteint. Sous-classe de ValueError pour que
+    les flux d'import existants retombent proprement sur la saisie manuelle."""
 
 
 def _month_key():
@@ -62,7 +72,7 @@ def quota_state(metric, organization_id=None, plan=None, period=None):
         org = current_org()
         org_id = org["id"] if org else None
 
-    plan_name = plan or (org["plan"] if org else "TRIAL")
+    plan_name = plan or (effective_plan(org) if org else "TRIAL")
     limit = plan_limit(plan_name, metric)
     used = usage_count(metric, organization_id=org_id, period=period)
 
@@ -138,3 +148,51 @@ def record_usage(metric, organization_id=None, amount=1, period=None):
         return int(row["usage_count"]) if row else amount
     finally:
         c.close()
+
+
+def _ai_quota_org(organization_id=None):
+    """Organisation qui porte le quota IA : l'organisation explicite, sinon celle
+    fixée par un flux sans session (g.ai_quota_org_id), sinon l'organisation
+    active ; ramenée à l'organisation payeuse (parent Multi-sociétés)."""
+    org = None
+    if organization_id is None and has_app_context():
+        organization_id = getattr(g, "ai_quota_org_id", None)
+    if organization_id is not None:
+        c = auth_cx()
+        try:
+            org = c.execute("SELECT * FROM organizations WHERE id=?", (organization_id,)).fetchone()
+        finally:
+            c.close()
+    else:
+        try:
+            org = current_org()
+        except RuntimeError:
+            org = None
+    return billing_org(org) if org else None
+
+
+def ai_extraction_quota_state(organization_id=None):
+    org = _ai_quota_org(organization_id)
+    if not org:
+        return None
+    return quota_state(AI_EXTRACTION_METRIC, organization_id=org["id"], plan=effective_plan(org))
+
+
+def consume_ai_extraction_quota(organization_id=None):
+    """À appeler juste avant chaque appel à l'API d'extraction IA (Anthropic).
+
+    Décompte une extraction sur le quota mensuel de la formule ; lève
+    AIQuotaExceeded (ValueError) avec un message en français lorsque le quota est
+    atteint, pour que l'appelant bascule sur la saisie manuelle."""
+    org = _ai_quota_org(organization_id)
+    if not org:
+        return None
+    state = quota_state(AI_EXTRACTION_METRIC, organization_id=org["id"], plan=effective_plan(org))
+    if not state["allowed"]:
+        raise AIQuotaExceeded(
+            f"Le quota mensuel d'extractions automatiques par IA de votre formule "
+            f"({state['limit']} documents par mois) est atteint. Saisissez ce document "
+            "manuellement, ou passez à une formule supérieure depuis la page Facturation. "
+            "Le quota est remis à zéro le 1er du mois."
+        )
+    return record_usage(AI_EXTRACTION_METRIC, organization_id=org["id"])

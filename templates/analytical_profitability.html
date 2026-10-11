@@ -7,11 +7,11 @@
     <h1 class="purchase-title">Rentabilité par {{ axes|selectattr('id','equalto',axis_id)|map(attribute='name')|first if axis_id else 'axe' }}</h1>
     <p class="purchase-subtitle">Produits (classe 7) et charges (classe 6) des lignes taguées, sur la période choisie.</p>
   </div>
-  <a class="purchase-nav-btn" href="{{ url_for('analytical_axes_list') }}">← Axes et tags</a>
+  <a class="purchase-nav-btn" href="{{ url_for('analytical_axes_list') }}">← Axes et étiquettes</a>
 </div>
 
 {% if not axes %}
-<section class="purchase-panel"><p class="purchase-empty">Aucun axe analytique défini. <a class="purchase-detail-link" href="{{ url_for('analytical_axes_list') }}">Crée-en un</a> pour commencer.</p></section>
+<section class="purchase-panel"><p class="purchase-empty">Aucun axe analytique défini. <a class="purchase-detail-link" href="{{ url_for('analytical_axes_list') }}">Créez-en un</a> pour commencer.</p></section>
 {% else %}
 <section class="purchase-panel" style="max-width:640px;margin-bottom:20px;">
   <form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">

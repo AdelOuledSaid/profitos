@@ -854,7 +854,7 @@ def register(app):
                               (tid,aid,tx_date,label,signed,now_ts,category))
                     imported += 1
             c.commit()
-            flash(f"Swan synchronisé : {len(accounts)} compte(s), {imported} transaction(s) comptabilisée(s).")
+            flash(f"Compte synchronisé : {pluralize(len(accounts), 'compte')}, {pluralize(imported, 'transaction comptabilisée', 'transactions comptabilisées')}.")
         except Exception:
             c.rollback()
             app.logger.exception("Échec synchronisation Swan vers rapprochement bancaire")
@@ -1011,8 +1011,8 @@ def register(app):
 
             count_accounts, count_txs = _sync_powens(c, row)
             flash(
-                f"Banque connectée : {count_accounts} compte(s), "
-                f"{count_txs} transaction(s) synchronisée(s)."
+                f"Banque connectée : {pluralize(count_accounts, 'compte')}, "
+                f"{pluralize(count_txs, 'transaction synchronisée', 'transactions synchronisées')}."
             )
 
         except Exception as exc:
@@ -1088,7 +1088,7 @@ def register(app):
                 flash("Aucune banque connectée.")
                 return redirect(url_for("banking"))
             a, t = _sync_powens(c, row)
-            flash(f"Synchronisation terminée : {a} compte(s), {t} transaction(s).")
+            flash(f"Synchronisation terminée : {pluralize(a, 'compte')}, {pluralize(t, 'transaction')}.")
         except Exception as exc:
             try:
                 _mark_powens_sync_error(c, row)
@@ -1116,7 +1116,7 @@ def register(app):
                 ep,
             ).fetchall()
             if not rows:
-                flash("Aucun solde bancaire disponible pour cette entité — vérifie que ses comptes bancaires lui sont bien rattachés.")
+                flash("Aucun solde bancaire disponible pour cette entité — vérifiez que ses comptes bancaires lui sont bien rattachés.")
                 return redirect(url_for("banking"))
             total = round(sum(float(r["balance"]) for r in rows), 2)
             now = datetime.utcnow().replace(microsecond=0).isoformat()
@@ -1209,24 +1209,21 @@ def register(app):
         entry_date=tx['transaction_date'] or date.today().isoformat()
         label=f"Frais bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKFEE-{tx_id}"
         try:
-            c.execute("""INSERT INTO accounting_entries
-                         (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
-                         VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
-                      (piece,entry_date,label,'bank_fee',tx_id,session.get('user_email') or session.get('email') or 'system',now(),eid))
-            entry=c.execute("""SELECT id FROM accounting_entries WHERE entity_id IS ?
-                               AND source_type='bank_fee' AND source_id=? ORDER BY id DESC LIMIT 1""",(eid,tx_id)).fetchone()
-            c.execute("""INSERT INTO accounting_entry_lines
-                         (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
-                         VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],expense['code'],None,label,residual,0.0,None,1))
-            c.execute("""INSERT INTO accounting_entry_lines
-                         (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
-                         VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],bank_account['code'],None,label,0.0,residual,None,2))
+            # create_entry : contrôle de période clôturée, numérotation BQ continue,
+            # idempotence par source (bank_fee, tx_id). La contrainte unique en base
+            # arbitre aussi deux requêtes concurrentes.
+            from profitos.accounting import create_entry
+            create_entry(c,'BQ',entry_date,label,
+                         [{'account_code':expense['code'],'debit':residual},
+                          {'account_code':bank_account['code'],'credit':residual}],
+                         source_type='bank_fee',source_id=tx_id,entity_id=eid,
+                         created_by=session.get('user_email') or session.get('email') or 'system',
+                         commit=False,piece_ref=piece)
             c.commit()
         except BANK_DB_INTEGRITY_ERRORS:
-            # La contrainte unique en base arbitre aussi deux requêtes concurrentes.
             c.rollback(); c.close(); flash("Les frais de ce mouvement bancaire sont déjà comptabilisés.")
             return redirect(url_for('banking'))
-        except ValueError as e:
+        except (AccountingError, ValueError) as e:
             c.rollback(); c.close(); flash(f"Comptabilisation des frais annulée : {e}")
             return redirect(url_for('banking'))
         c.close(); flash(f"Frais bancaire de {fr_number(residual,2)} € comptabilisé (627 / 512).")
@@ -1357,7 +1354,7 @@ def register(app):
                 c.execute('UPDATE bank_transactions SET category=? WHERE id=?', (category, r['id']))
                 applied += 1
         c.commit(); c.close()
-        flash(f"{applied} transaction(s) catégorisée(s) sur {len(rows)} sans catégorie.")
+        flash(f"{pluralize(applied, 'transaction catégorisée', 'transactions catégorisées')} sur {len(rows)} sans catégorie.")
         return redirect(url_for('banking_rules'))
 
     @app.route('/banking/transactions/<int:tx_id>/categoriser', methods=['POST'])
@@ -1369,8 +1366,10 @@ def register(app):
         eid=current_entity_id()
         category=(request.form.get('category') or '').strip() or None
         account_code=(request.form.get('account_code') or '').strip() or None
-        vat_raw=(request.form.get('vat_rate') or '').strip()
-        vat_rate=float(vat_raw) if vat_raw else None
+        from profitos.invoice_amounts import parse_number
+        vat_rate=parse_number(request.form.get('vat_rate'),None)
+        if vat_rate is not None and not (0 <= vat_rate <= 20):
+            flash('Taux de TVA invalide.'); return redirect(url_for('banking'))
         c=cx()
         tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
                         ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
@@ -1406,19 +1405,11 @@ def register(app):
                 c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_categorization
                     ON accounting_entries(entity_id,source_id)
                     WHERE source_type='bank_categorization'""")
-                c.execute("""INSERT INTO accounting_entries
-                    (journal_code,piece_number,entry_date,label,source_type,source_id,is_locked,created_by,created_at,entity_id)
-                    VALUES('BQ',?,?,?,?,?,0,?,?,?)""",
-                    (piece,entry_date,label,'bank_categorization',tx_id,session.get('user_email') or session.get('email') or 'system',now(),eid))
-                entry=c.execute("SELECT id FROM accounting_entries WHERE entity_id IS ? AND source_type='bank_categorization' AND source_id=? ORDER BY id DESC LIMIT 1",(eid,tx_id)).fetchone()
-                if float(tx['amount'] or 0) < 0:
-                    first=(account_code,amount,0.0); second=(bank_account['code'],0.0,amount)
-                else:
-                    first=(bank_account['code'],amount,0.0); second=(account_code,0.0,amount)
-                for order,(code,debit,credit) in enumerate((first,second),1):
-                    c.execute("""INSERT INTO accounting_entry_lines
-                        (entry_id,account_code,auxiliary_name,label,debit,credit,lettrage_code,line_order)
-                        VALUES(?,?,?,?,?,?,?,?)""",(entry['id'],code,None,label,debit,credit,None,order))
+                lines=_bank_categorization_lines(account_code,bank_account['code'],amount,vat_rate,float(tx['amount'] or 0)<0,label)
+                from profitos.accounting import create_entry
+                create_entry(c,'BQ',entry_date,label,lines,source_type='bank_categorization',source_id=tx_id,
+                             entity_id=eid,created_by=session.get('user_email') or session.get('email') or 'system',
+                             commit=False,piece_ref=piece)
                 signature=_learning_pattern(tx['label'], tx['amount']); suggestion=_accounting_suggestion(c,tx,eid)
                 c.execute("""INSERT INTO bank_accounting_validations
                     (entity_id,bank_transaction_id,category,account_code,vat_rate,counterparty_type,counterparty_id,confidence_score,suggestion_reason,validated_at)
@@ -1434,8 +1425,36 @@ def register(app):
                         (entity_id,pattern,category,account_code,vat_rate,counterparty_type,counterparty_id,confirmations,last_confirmed_at)
                         VALUES(?,?,?,?,?,NULL,NULL,1,?)""",(eid,signature,category,account_code,vat_rate,now()))
             c.commit()
-        except BANK_DB_INTEGRITY_ERRORS + (ValueError,) as e:
+        except BANK_DB_INTEGRITY_ERRORS + (ValueError, AccountingError) as e:
             c.rollback(); c.close(); flash(f'Catégorisation comptable annulée : {e}')
             return redirect(url_for('banking'))
         c.close(); flash('Catégorisation comptable validée, écriture BQ créée et apprentissage enregistré.' if account_code else ('Catégorie mise à jour.' if category else 'Catégorie retirée.'))
         return redirect(url_for('banking'))
+
+
+def _bank_categorization_lines(account_code, bank_code, amount, vat_rate, is_debit, label):
+    """Lignes de l'écriture de catégorisation bancaire (montant TTC du mouvement).
+
+    Avec un taux de TVA sur un compte de charge (6) ou d'immobilisation (2), la TVA
+    déductible est isolée en 445660 ; sur un compte de produit (7), la TVA collectée
+    en 445710. Le HT est calculé depuis le TTC (TTC / (1 + taux)), la TVA = TTC − HT."""
+    from profitos.invoice_amounts import money
+    lines=[]
+    split=bool(vat_rate) and str(account_code)[:1] in ('2','6','7')
+    if split:
+        ht=money(amount/(1+vat_rate/100)); vat=round(amount-ht,2)
+    if is_debit:
+        if split and str(account_code)[:1] in ('2','6'):
+            lines.append({'account_code':account_code,'debit':ht,'label':label})
+            lines.append({'account_code':'445660','debit':vat,'label':label,'vat_rate':vat_rate,'vat_base':ht})
+        else:
+            lines.append({'account_code':account_code,'debit':amount,'label':label})
+        lines.append({'account_code':bank_code,'credit':amount,'label':label})
+    else:
+        lines.append({'account_code':bank_code,'debit':amount,'label':label})
+        if split and str(account_code)[:1]=='7':
+            lines.append({'account_code':account_code,'credit':ht,'label':label})
+            lines.append({'account_code':'445710','credit':vat,'label':label,'vat_rate':vat_rate,'vat_base':ht})
+        else:
+            lines.append({'account_code':account_code,'credit':amount,'label':label})
+    return [l for l in lines if round(l.get('debit',0) or l.get('credit',0),2)]

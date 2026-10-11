@@ -78,6 +78,7 @@ def _receipt_ai_extract(file_bytes, mime_type):
             "Ce reçu n'a pas de texte exploitable et l'extraction par IA n'est "
             "pas configurée côté serveur."
         )
+    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
     b64 = base64.b64encode(file_bytes).decode('utf-8')
     prompt = (
         "Tu analyses un ticket de caisse ou reçu de dépense professionnelle "
@@ -285,11 +286,17 @@ def register(app):
             flash("Montant manquant ou invalide.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
 
+        from profitos.invoice_amounts import parse_number
+        vat_amount = parse_number(request.form.get('vat_amount'), 0.0) or 0.0
+        if vat_amount < 0 or vat_amount > amount:
+            c.close()
+            flash("TVA invalide : elle doit être comprise entre 0 et le montant TTC.")
+            return redirect(url_for('expense_report_detail', report_id=report_id))
         c.execute(
             """INSERT INTO expense_report_lines
-               (report_id,expense_date,category,description,amount,receipt_path,created_at)
-               VALUES(?,?,?,?,?,?,?)""",
-            (report_id, expense_date_str, category, description, amount, receipt_path, now()),
+               (report_id,expense_date,category,description,amount,vat_amount,receipt_path,created_at)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (report_id, expense_date_str, category, description, amount, round(vat_amount, 2), receipt_path, now()),
         )
         c.commit(); c.close()
         flash(("Ligne analysée par IA et ajoutée." if used_ai else "Ligne ajoutée.") + f" {fr_number(amount, 2)} €.")
@@ -349,6 +356,18 @@ def register(app):
             flash("Cette note de frais n'est pas en attente de validation.")
             return redirect(url_for('expense_report_detail', report_id=report_id))
         validator = current_user()
+        # Séparation des tâches : on ne valide pas sa propre note de frais, sauf si l'on est
+        # seul dans l'organisation (aucun autre valideur possible).
+        if (report['employee_email'] or '').lower() == (validator['email'] or '').lower():
+            ac = auth_cx()
+            validators = ac.execute(
+                "SELECT COUNT(*) AS n FROM memberships WHERE organization_id=? AND role IN ('OWNER','ADMIN','COMPTABLE')",
+                (session['org_id'],)).fetchone()['n']
+            ac.close()
+            if validators > 1:
+                c.close()
+                flash("Vous ne pouvez pas valider votre propre note de frais : demandez à un autre valideur.")
+                return redirect(url_for('expense_report_detail', report_id=report_id))
         try:
             c.execute(
                 "UPDATE expense_reports SET status='approved',approved_by=?,approved_at=?,rejection_reason=NULL WHERE id=? AND entity_id IS ?",

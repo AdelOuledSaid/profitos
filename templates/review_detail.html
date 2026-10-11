@@ -19,8 +19,8 @@
         Contrôles de cohérence, lettrage, justificatifs{% if review.review_type=='annuelle' %}, amortissements, cut-off et état de clôture{% endif %}. Aucune écriture n’est créée automatiquement.
       </div>
       {% if diag_run %}
-        <div style="margin-top:6px;color:#fff;"><strong>{{ diag_run.blocker_count }}</strong> blocage(s) · <strong>{{ diag_run.warning_count }}</strong> alerte(s)</div>
-        <div class="purchase-muted" style="font-size:12px;">Dernier contrôle : {{ diag_run.run_at|fr_date(true) }} · {{ diag_run.entry_count }} écriture(s) analysée(s)</div>
+        <div style="margin-top:6px;color:#fff;"><strong>{{ diag_run.blocker_count }}</strong> blocage{{ 's' if diag_run.blocker_count > 1 }} · <strong>{{ diag_run.warning_count }}</strong> alerte{{ 's' if diag_run.warning_count > 1 }}</div>
+        <div class="purchase-muted" style="font-size:12px;">Dernier contrôle : {{ diag_run.run_at|fr_date(true) }} · {{ pluralize(diag_run.entry_count, 'écriture analysée', 'écritures analysées') }}</div>
       {% else %}
         <div class="purchase-muted" style="margin-top:6px;">Aucun diagnostic exécuté pour cette révision.</div>
       {% endif %}
@@ -37,7 +37,7 @@
     {% for d in diag_issues %}
       <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
         <strong>{{ '⛔ Blocage' if d.severity=='blocker' else '⚠ Alerte' }} — {{ d.label }}</strong>
-        <div class="purchase-muted" style="font-size:12px;">{{ d.item_count }} élément(s){% if d.amount %} · montant indicatif {{ (d.amount)|fr_number(2) }}&nbsp;€{% endif %}</div>
+        <div class="purchase-muted" style="font-size:12px;">{{ pluralize(d.item_count, 'élément') }}{% if d.amount %} · montant indicatif {{ (d.amount)|fr_number(2) }}&nbsp;€{% endif %}</div>
       </div>
     {% endfor %}
     </div>
@@ -75,7 +75,7 @@
 <form method="post" action="{{ url_for('review_complete',review_id=review.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit" class="purchase-primary-btn primary" {% if done<total %}disabled{% endif %}>
-    Marquer la révision comme terminée{% if done<total %} ({{ total-done }} point(s) restant(s)){% endif %}
+    Marquer la révision comme terminée{% if done<total %} ({{ pluralize(total-done, 'point restant', 'points restants') }}){% endif %}
   </button>
 </form>
 {% endif %}

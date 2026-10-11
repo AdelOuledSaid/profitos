@@ -52,12 +52,13 @@ def test_sepa_batch_never_exports_held_invoices():
 
 def test_reminders_are_blocked_for_held_invoices():
     assert "hold=_einvoice_hold(inv)" in INV
-    assert "côté facturation électronique : régularise-la avant de relancer le client." in INV
+    assert "côté facturation électronique : régularisez-la avant de relancer le client." in INV
 
 
 def test_held_invoices_stay_visible_in_receivables():
     # Volontairement signalées, jamais retirées du total : la somme n'est pas régularisée pour autant.
-    assert "'einvoice_hold':_einvoice_hold(r)," in INV
+    helper=(Path(__file__).resolve().parents[1]/'profitos/receivables.py').read_text(encoding='utf-8')
+    assert "'einvoice_hold': _hold(r)," in helper and '_einvoice_hold(row)' in helper
     assert "relance suspendue" in RECEIVABLES
 
 

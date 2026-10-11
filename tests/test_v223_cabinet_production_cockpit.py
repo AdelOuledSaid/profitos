@@ -23,9 +23,11 @@ def test_v223_each_client_is_read_through_its_own_tenant_connection():
 
 def test_v223_open_client_is_membership_guarded_and_audited():
     block=ROUTE[ROUTE.index('def cabinet_open_client'):ROUTE.index("@app.route('/cabinet/temps'")]
-    assert 'memberships WHERE user_id=? AND organization_id=?' in block
+    # v4xx : rôle lu dans l'organisation de l'URL via cabinet_role().
+    assert 'role = cabinet_role(organization_id)' in block
+    assert 'WHERE m.user_id=? AND m.organization_id=?' in ROUTE
     assert "session['org_id'] = organization_id" in block
-    assert "session['role'] = membership['role']" in block
+    assert "session['role'] = role" in block
     assert "init_tenant_db()" in block
     assert 'CABINET_CLIENT_OPENED' in block
     assert "redirect(url_for('reviews_list'))" in block

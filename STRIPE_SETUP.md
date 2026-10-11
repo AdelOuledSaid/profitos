@@ -1,65 +1,99 @@
 # Configurer la facturation Stripe
 
-## Ce qui a été construit
+## Comportement de l'application
 
-- **Sans configuration Stripe** : l'app fonctionne normalement, sans aucune limite
-  (mode démo/dev — utile pour toi et tes pilotes tant que tu ne factures pas).
-- **Avec Stripe configuré** : après les 14 jours d'essai, l'accès à RECOVER/SAVE/GROW,
-  au dashboard et aux uploads est bloqué et redirige vers `/billing` tant qu'aucun
-  abonnement actif n'existe. Une bannière affiche le nombre de jours d'essai restants.
-- Bouton "S'abonner" → crée une session Stripe Checkout (paiement carte hébergé par Stripe).
-- Bouton "Gérer mon abonnement" → ouvre le Stripe Billing Portal (facture, moyen de
-  paiement, annulation — géré entièrement par Stripe, rien à coder côté ProfitOS).
-- Webhook `/billing/webhook` : Stripe informe ProfitOS quand un paiement réussit,
-  qu'un abonnement est annulé, ou qu'un paiement échoue — met à jour automatiquement
-  `plan`/`status` de l'organisation en base.
+- **En production, Stripe est obligatoire.** `scripts/cloud_preflight.py` (lancé au
+  démarrage sur Render) échoue si `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` ou
+  au moins un tarif `STRIPE_PRICE_*_ID` manque. Sans Stripe, personne ne peut
+  souscrire et chaque organisation perd l'accès à la fin de son essai.
+- **Si Stripe n'est pas configuré** (environnement de développement ou incident) :
+  l'essai en cours reste utilisable ; la page `/billing` affiche toujours la formule,
+  le statut et la date de fin d'essai, avec le message « Paiement en ligne bientôt
+  disponible, contactez-nous ». Seul un environnement explicitement non production
+  (`PROFITOS_ENV=development` ou `test`) garde l'accès ouvert sans Stripe ;
+  `PROFITOS_ENV` absent ou inconnu est traité comme la production.
+- **Essai** : 14 jours avec exactement les fonctions de la formule Pro. À la fin de
+  l'essai, toute l'application redirige vers la page « Abonnement inactif »
+  (`/abonnement-inactif`, accessible à tous les rôles). Le propriétaire y trouve le
+  lien vers la facturation, les autres rôles le nom et l'e-mail du propriétaire.
+  Les exports (FEC, factures, export RGPD) restent accessibles en lecture seule.
+- **Impayé** : statut `PAST_DUE` uniquement depuis un abonnement actif, avec un
+  délai de grâce de `PROFITOS_PAST_DUE_GRACE_DAYS` jours (7 par défaut), puis
+  blocage (exports toujours disponibles).
+- Contrôle d'accès centralisé : un garde `before_request`
+  (`profitos/feature_access.py`, `enforce_subscription_access`) vérifie le statut
+  d'abonnement et la formule pour chaque route connectée et pour l'API `/api/v1`.
 
-⚠️ **Non testé en conditions réelles** dans cet environnement de développement (pas
-d'accès réseau pour appeler l'API Stripe). Le comportement "billing désactivé" (sans
-clés) est testé et fonctionne. Le parcours de paiement réel doit être testé en
-**mode test Stripe** avant toute mise en production — voir ci-dessous.
+## Formules et tarifs (HT)
 
-## Étapes pour configurer (mode test, gratuit, aucune carte réelle débitée)
+| Formule | Variable d'environnement | Prix HT / mois |
+|---|---|---|
+| Starter | `STRIPE_PRICE_STARTER_ID` | 9 € |
+| Pro | `STRIPE_PRICE_PRO_ID` (ou l'ancien `STRIPE_PRICE_ID`) | 19 € |
+| Business | `STRIPE_PRICE_BUSINESS_ID` | 49 € |
+| Multi-sociétés (25 organisations) | `STRIPE_PRICE_MULTI_ID` | 199 € |
 
-1. **Crée un compte Stripe** sur stripe.com si tu n'en as pas.
-2. Reste en **mode Test** (interrupteur en haut à droite du dashboard Stripe).
-3. **Crée un produit** : Produits → Ajouter un produit → nom "ProfitOS Pro",
-   prix récurrent (ex. 149 €/mois). Stripe te donne un `Price ID` du type `price_1AbC...`.
-4. **Récupère tes clés API** : Développeurs → Clés API →
-   `Clé secrète` (`sk_test_...`) et `Clé publiable` (`pk_test_...`).
-5. **Configure le webhook** : Développeurs → Webhooks → Ajouter un endpoint.
-   - En local, utilise le [Stripe CLI](https://stripe.com/docs/stripe-cli) :
-     `stripe listen --forward-to localhost:5050/billing/webhook`
-     — il t'affiche un secret `whsec_...` à copier dans `.env`.
-   - En production, l'URL sera `https://tondomaine.com/billing/webhook`, et Stripe
-     te donnera le `whsec_...` correspondant directement dans le dashboard.
-6. **Remplis `.env`** :
+Les prix Stripe doivent être créés **hors taxes** (« Tax behavior : exclusive »).
+TVA 20 % en sus, calculée par Stripe Tax (`automatic_tax`), avec collecte de
+l'adresse de facturation et du numéro de TVA intracommunautaire. Si Stripe Tax
+n'est pas encore activé sur le compte, mettre `STRIPE_AUTOMATIC_TAX=0`
+temporairement (sinon Checkout refuse la session).
+
+## Ce qui est construit
+
+- Bouton « Choisir … » → session Stripe Checkout (`locale=fr`, codes promo
+  acceptés). Si l'organisation est encore en essai, la fin d'essai est reportée
+  dans Stripe (`subscription_data.trial_end`) : payer en avance ne fait perdre
+  aucun jour d'essai.
+- Anti double abonnement : si Stripe connaît déjà un abonnement actif / en essai /
+  impayé pour le client, l'utilisateur est envoyé vers le portail ; les sessions
+  Checkout encore ouvertes sont expirées avant d'en créer une nouvelle.
+- Bouton « Gérer mon abonnement » → Stripe Billing Portal (moyen de paiement,
+  changement de formule, factures, résiliation).
+- Webhook `/billing/webhook` (signé) : seul l'abonnement enregistré
+  (`organizations.stripe_subscription_id`) peut modifier le statut, sauf la toute
+  première association. L'abonnement est relu via l'API Stripe pour éviter les
+  événements livrés dans le désordre. Un `price_id` inconnu ne change jamais la
+  formule (journalisé).
+- Multi-sociétés : les organisations créées depuis une organisation abonnée
+  Multi-sociétés y sont rattachées (`organizations.parent_org_id`) et partagent son
+  plan, son statut et ses limites.
+- Parrainage : abonné → crédit d'un mois sur le solde client Stripe ; en essai →
+  essai prolongé de 30 jours ; sinon → mois mis en attente et imputé au premier
+  paiement.
+
+## Étapes de configuration (mode test)
+
+1. Créez un compte Stripe et restez en **mode Test**.
+2. Créez un produit par formule (Starter, Pro, Business, Multi-sociétés) avec un
+   prix récurrent mensuel HT (9 €, 19 €, 49 €, 199 €). Notez chaque `price_…`.
+3. Activez **Stripe Tax** (Paramètres → Taxes) et l'enregistrement TVA France.
+4. Configurez le **Billing Portal** (Paramètres → Facturation → Portail client) :
+   autorisez le changement de formule entre les quatre prix.
+5. Récupérez les clés API (`sk_test_…`, `pk_test_…`).
+6. Webhook : Développeurs → Webhooks → endpoint `https://votre-domaine/billing/webhook`
+   avec les événements `checkout.session.completed`,
+   `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.payment_succeeded`,
+   `invoice.payment_failed`. En local :
+   `stripe listen --forward-to localhost:5050/billing/webhook`.
+7. Renseignez les variables (dans Render : Environment, elles sont déclarées dans
+   `render.yaml` avec `sync: false`) :
    ```
    STRIPE_SECRET_KEY=sk_test_xxxx
    STRIPE_PUBLISHABLE_KEY=pk_test_xxxx
-   STRIPE_PRICE_ID=price_xxxx
    STRIPE_WEBHOOK_SECRET=whsec_xxxx
+   STRIPE_PRICE_STARTER_ID=price_xxxx
+   STRIPE_PRICE_PRO_ID=price_xxxx
+   STRIPE_PRICE_BUSINESS_ID=price_xxxx
+   STRIPE_PRICE_MULTI_ID=price_xxxx
+   STRIPE_AUTOMATIC_TAX=1
    ```
-7. `pip install -r requirements.txt` (installe la lib `stripe`).
-8. Relance `python app.py`, va sur `/billing`, clique "S'abonner".
-9. Utilise une [carte de test Stripe](https://stripe.com/docs/testing) comme
-   `4242 4242 4242 4242`, n'importe quelle date future, n'importe quel CVC.
-10. Vérifie que tu es bien redirigé, que le statut passe à "Plan PRO — actif" sur
-    `/billing`, et que la table `organizations` a bien `status='ACTIVE_PAID'`.
+8. Testez avec la carte `4242 4242 4242 4242` et vérifiez que `/billing` affiche la
+   formule active et que `organizations.status='ACTIVE_PAID'`.
 
-## Passage en production (argent réel)
+## Passage en production
 
-- Bascule le dashboard Stripe en mode **Live**, recrée le produit et récupère les
-  clés `sk_live_...` / `pk_live_...` / le webhook `whsec_...` en live.
-- Remplace les valeurs dans `.env` de production (jamais les clés live en local).
-- Active Stripe Tax ou la TVA manuelle selon ta situation — non géré par ce code,
-  à configurer côté Stripe si nécessaire.
-
-## Limites connues
-
-- Un seul plan/prix géré (`STRIPE_PRICE_ID` unique). Pour plusieurs plans
-  (Starter/Pro/Enterprise), il faudra étendre `/billing/checkout` pour accepter
-  un `price_id` en paramètre et adapter `billing.html`.
-- Pas de gestion des essais Stripe natifs (`trial_period_days` sur Checkout) —
-  le trial est géré côté ProfitOS (`trial_ends_at`), indépendamment de Stripe,
-  ce qui est volontaire pour ne pas dépendre de Stripe pendant l'essai gratuit.
+- Basculez Stripe en mode **Live**, recréez produits/prix, webhook et clés live, et
+  remplacez les variables dans Render (jamais de clés live en local).
+- Un webhook live et des clés test (ou l'inverse) sont rejetés (`mode mismatch`).

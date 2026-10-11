@@ -3,7 +3,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">RAPPROCHEMENT BANCAIRE</div>
 <h1 class="purchase-title">Rapprochement bancaire</h1>
-<p class="purchase-subtitle">{{ matched_count }}/{{ total_rows }} ligne(s) du relevé rapprochée(s) automatiquement à une facture. Vérifiez et décochez ce qui ne convient pas avant de valider — aucune facture n'est marquée payée sans votre confirmation.</p>
+<p class="purchase-subtitle">{{ matched_count }}/{{ pluralize(total_rows, 'ligne du relevé rapprochée', 'lignes du relevé rapprochées') }} automatiquement à une facture. Vérifiez et décochez ce qui ne convient pas avant de valider — aucune facture n'est marquée payée sans votre confirmation.</p>
 
 <form method="post" action="{{ url_for('reconcile_confirm') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

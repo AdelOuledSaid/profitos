@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">IMMOBILISATION</div>
     <h1 class="purchase-title">{{ asset.label }}</h1>
-    <p class="purchase-subtitle">Acquise le {{ asset.purchase_date|fr_date }} · {{ asset.purchase_amount|fr_number(2) }}&nbsp;€ · amortie sur {{ asset.useful_life_years }} an(s)</p>
+    <p class="purchase-subtitle">Acquise le {{ asset.purchase_date|fr_date }} · {{ asset.purchase_amount|fr_number(2) }}&nbsp;€ · amortie sur {{ pluralize(asset.useful_life_years, 'an') }}</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('fixed_assets_list') }}">← Immobilisations</a>
 </div>

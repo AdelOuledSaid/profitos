@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">OPEN BANKING</div>
+<div class="purchase-eyebrow">BANQUES CONNECTÉES</div>
 <h1 class="purchase-title">Banques</h1>
 <p class="purchase-subtitle">Connectez vos comptes pour synchroniser automatiquement soldes et transactions avec ProfitOS.</p>
 <a class="purchase-nav-btn" href="{{ url_for('banking_rules') }}" style="display:inline-block;margin-bottom:16px;">Règles de catégorisation →</a>
@@ -34,7 +34,7 @@
       {% if swan_configured and swan_environment == 'sandbox' %}
       <form method="post" action="{{ url_for('banking_swan_sync') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="purchase-primary-btn secondary" type="submit">Synchroniser Swan Sandbox</button>
+        <button class="purchase-primary-btn secondary" type="submit">Synchroniser le compte de test</button>
       </form>
       {% endif %}
     </div>
@@ -54,7 +54,7 @@
           <td>{{ a.provider|upper }}</td>
           <td>{{ a.account_type or '—' }}</td>
           <td>{{ a.currency or 'EUR' }}</td>
-          <td><strong>{{ a.balance or 0|fr_number(2) }}&nbsp;€</strong></td>
+          <td><strong>{{ (a.balance or 0)|fr_number(2) }}&nbsp;€</strong></td>
           <td><span class="purchase-status {{ '' if a.disabled else 'paid' }}">{{ 'Désactivé' if a.disabled else 'Actif' }}</span></td>
           {% if active_entities and active_entities|length > 1 %}
           <td>
@@ -91,7 +91,7 @@
       {% for m in reconciliation_suggestions %}
         <tr>
           <td>{{ m.transaction.transaction_date|fr_date or '—' }}<br><span class="purchase-muted">{{ m.transaction.label or '—' }}</span></td>
-          <td><strong>{{ m.transaction.amount or 0|fr_number(2) }}&nbsp;€</strong><br><span class="purchase-muted">Disponible : {{ m.transaction_available|fr_number(2) }}&nbsp;€</span></td>
+          <td><strong>{{ (m.transaction.amount or 0)|fr_number(2) }}&nbsp;€</strong><br><span class="purchase-muted">Disponible : {{ m.transaction_available|fr_number(2) }}&nbsp;€</span></td>
           <td>{{ m.invoice.invoice_number }}</td>
           <td>{{ m.invoice.client_name }}</td>
           <td><strong>{{ m.confidence }}</strong><br><span class="purchase-muted">{{ m.score }}/125 · {{ m.reasons }}</span></td>
@@ -123,7 +123,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number }}</td>
           <td>{{ r.client_name }}</td>
-          <td><strong>{{ r.matched_amount or 0|fr_number(2) }}&nbsp;€</strong></td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -146,7 +146,7 @@
           <td>{{ r.label or '—' }}</td>
           <td>{{ r.invoice_number }}</td>
           <td>{{ r.supplier_name }}</td>
-          <td><strong>{{ r.matched_amount or 0|fr_number(2) }}&nbsp;€</strong></td>
+          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -259,10 +259,10 @@
     <span class="btn btn-secondary" style="pointer-events:none;">Contradictions : {{ accounting_review_queue.contradiction|length }}</span>
   </div>
   {% if accounting_review_queue.stable %}
-    <p style="margin-top:12px;"><strong>{{ accounting_review_queue.stable|length }} opération(s)</strong> prête(s) pour une validation en 1 clic.</p>
+    <p style="margin-top:12px;"><strong>{{ pluralize(accounting_review_queue.stable|length, 'opération') }}</strong> prête{{ 's' if accounting_review_queue.stable|length > 1 }} pour une validation en 1 clic.</p>
   {% endif %}
   {% if accounting_review_queue.contradiction %}
-    <p style="margin-top:8px;"><strong>{{ accounting_review_queue.contradiction|length }} opération(s)</strong> présente(nt) des habitudes contradictoires et nécessite(nt) une vérification manuelle.</p>
+    <p style="margin-top:8px;"><strong>{{ pluralize(accounting_review_queue.contradiction|length, 'opération') }}</strong> {{ 'présentent' if accounting_review_queue.contradiction|length > 1 else 'présente' }} des habitudes contradictoires et {{ 'nécessitent' if accounting_review_queue.contradiction|length > 1 else 'nécessite' }} une vérification manuelle.</p>
   {% endif %}
 </section>
 {% endif %}
@@ -278,7 +278,7 @@
         <tr>
           <td>{{ t.transaction_date|fr_date or '—' }}</td>
           <td>{{ t.label or '—' }}</td>
-          <td><strong>{{ t.amount or 0|fr_number(2) }}&nbsp;€</strong></td>
+          <td><strong>{{ (t.amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             {% set wf = transaction_states.get(t.id, {'state':'pending','remaining':0}) %}
             {% if wf.state == 'reconciled' %}

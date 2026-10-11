@@ -17,9 +17,11 @@ def test_quote_routes_scope_reads_and_writes_by_entity():
 
 
 def test_quote_conversion_propagates_entity_to_invoice():
-    assert "created_at,entity_id)" in INV
-    assert "invoice_number=_next_invoice_number(c,eid)" in INV
-    assert "token,now(),eid))" in INV
+    # v421 : brouillon sans numéro (attribué à l'émission), entité et champs du devis repris.
+    block=INV[INV.index('def invoicing_quote_convert'):INV.index("@app.route('/facturation/devis/<int:quote_id>/pdf')")]
+    assert "base=_quote_invoice_base(q,eid)" in block
+    assert "_insert_draft_invoice(c,base)" in block
+    assert "'entity_id':eid" in INV
 
 
 def test_quote_numbering_is_separate_for_sub_entities():
@@ -28,8 +30,8 @@ def test_quote_numbering_is_separate_for_sub_entities():
 
 
 def test_quote_pdf_uses_document_entity_identity():
-    assert "company_row=resolve_entity(c,eid) if q else None" in INV
-    assert "company_row=resolve_entity(tc,q['entity_id'])" in INV
+    assert "company_row=_seller_identity(c,eid) if q else None" in INV
+    assert "company_row=_seller_identity(tc,q['entity_id'])" in INV
 
 
 def test_explicit_invoice_entity_checks_user_authorization():

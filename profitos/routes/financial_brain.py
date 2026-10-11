@@ -45,16 +45,49 @@ def build_financial_brain():
 
     recover=_safe_float(money['recover_total'])
     expected_recovery=_safe_float(money['recover_expected'])
-    save_annual=_safe_float(money['save_total'])
+    save_total=_safe_float(money['save_total'])
+    save_one_off=_safe_float(money.get('save_one_off'))
+    save_annual=_safe_float(money.get('save_annual'))
     save_monthly=save_annual/12.0
     margin_risk=_safe_float(margin['total'])
 
-    # Score de contrôle financier, et non solvabilité : uniquement les signaux connus.
-    recovery_quality=(expected_recovery/recover*100.0) if recover>0 else 100.0
-    overdue_penalty=min(45.0, recover/1000.0)
-    margin_penalty=min(25.0, margin_risk/1000.0)
-    savings_credit=min(15.0, save_monthly/500.0)
-    control_score=_clamp(70 + 0.20*(recovery_quality-50) - overdue_penalty - margin_penalty + savings_credit)
+    # Même base que Trésorerie & scénarios : solde déclaré, créances (émises + importées),
+    # factures fournisseurs restant à payer, dépenses futures. Une seule source de vérité.
+    cash_forecast=None
+    try:
+        from profitos.routes.cash_intelligence import build_cash_intelligence
+        cash_forecast=build_cash_intelligence()
+    except Exception as e:  # la page reste lisible même si la prévision échoue
+        current_app.logger.warning('Prévision indisponible pour le diagnostic : %s', e)
+
+    # Score de maîtrise financière (et non de solvabilité) : 70 points de départ, puis des
+    # ajustements bornés et EXPLIQUÉS, tous issus des mêmes données que les autres pages.
+    components=[]
+    open_total=_safe_float(cash_forecast and sum(r['amount'] for r in cash_forecast['receivables'])) + _safe_float(cash_forecast and cash_forecast['held_receivables_total'])
+    if recover>0:
+        share=recover/max(open_total,recover)
+        pts=-round(min(30.0, 30.0*share + min(10.0, recover/10000.0)))
+        components.append({'label':'Créances clients en retard','points':pts,
+            'detail':f"{fr_number(recover)} € échus, soit {fr_number(share*100)} % des créances ouvertes"})
+    else:
+        components.append({'label':'Créances clients en retard','points':0,'detail':'Aucune facture client échue.'})
+    level=cash_forecast['alert_level'] if cash_forecast else 'INCOMPLET'
+    cash_pts={'ALERTE':-30,'VIGILANCE':-10,'STABLE':10}.get(level,0)
+    cash_detail={'ALERTE':cash_forecast and cash_forecast['alert'],'VIGILANCE':cash_forecast and cash_forecast['alert'],
+                 'STABLE':'Trajectoire STABLE sur 90 jours (scénario probable de Trésorerie & scénarios).'}.get(level,'Solde bancaire non renseigné : trajectoire non prise en compte.')
+    components.append({'label':'Trésorerie projetée à 90 jours','points':cash_pts,'detail':cash_detail})
+    overdue_payables=_safe_float(cash_forecast and cash_forecast['overdue_payables_total'])
+    if overdue_payables>0:
+        pts=-round(min(15.0, overdue_payables/2000.0))
+        components.append({'label':'Factures fournisseurs en retard','points':pts,
+            'detail':f"{fr_number(overdue_payables)} € à payer dont l'échéance est dépassée"})
+    if margin['available'] and margin_risk>0:
+        components.append({'label':'Érosion de marge (indice de prix)','points':-round(min(15.0, margin_risk/1000.0)),
+            'detail':f"{fr_number(margin_risk)} € de risque indicatif sur les contrats à prix fixe"})
+    if save_total>0:
+        components.append({'label':'Économies identifiées','points':round(min(5.0, save_total/5000.0)),
+            'detail':f"{fr_number(save_total)} € à vérifier (doublons ponctuels et hausses annualisées)"})
+    control_score=_clamp(70 + sum(c['points'] for c in components))
     if control_score>=75: control_level='SOLIDE'
     elif control_score>=55: control_level='À SURVEILLER'
     else: control_level='SOUS TENSION'
@@ -66,8 +99,11 @@ def build_financial_brain():
             reason=f"{fr_number(impact)} € de cash exposé · {r.get('detail','')}"
             action=r.get('next_best_action') or r.get('action')
         elif r['kind']=='SAVE':
-            impact=_safe_float(r['amount'])/12.0
-            reason=f"Économie potentielle annualisée de {fr_number(_safe_float(r['amount']))} €"
+            from .money_hunter import save_nature, SAVE_NATURES
+            annual=SAVE_NATURES.get(save_nature(r['title']),{}).get('annual')
+            impact=_safe_float(r['amount'])/12.0 if annual else _safe_float(r['amount'])
+            reason=(f"Hausse fournisseur annualisée estimée : {fr_number(_safe_float(r['amount']))} €" if annual
+                    else f"Montant ponctuel à vérifier : {fr_number(_safe_float(r['amount']))} €")
             action=r.get('action')
         else:
             impact=0.0
@@ -99,7 +135,9 @@ def build_financial_brain():
         'money':money,'cash_balance':cash_balance,'cash_as_of':(financial_settings['cash_as_of'] if financial_settings else None),
         'control_score':control_score,'control_level':control_level,
         'recover_exposure':round(recover,2),'expected_recovery':round(expected_recovery,2),
-        'save_monthly':round(save_monthly,2),'margin_risk':round(margin_risk,2),'margin':margin,
+        'save_monthly':round(save_monthly,2),'save_one_off':round(save_one_off,2),'save_annual':round(save_annual,2),
+        'margin_risk':round(margin_risk,2),'margin':margin,
+        'score_components':components,'cash_level':level,'cash_forecast':cash_forecast,
         'expense_total':round(_safe_float(expenses['total']),2),'expense_count':int(expenses['n'] or 0),
         'capital_at_risk':round(recover+margin_risk,2),
         'decisions':decisions[:5],'best_decision':decisions[0] if decisions else None,

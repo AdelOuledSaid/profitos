@@ -56,15 +56,24 @@ def register(app):
                 return redirect(url_for('entity_new'))
             iban = (request.form.get('iban') or '').replace(' ', '').upper().strip()
             if iban and not validate_iban(iban):
-                flash("IBAN invalide — vérifie la saisie.")
+                flash("IBAN invalide : vérifiez la saisie.")
+                return redirect(url_for('entity_new'))
+            # Mêmes contrôles que le profil entreprise : SIRET, TVA, code postal, BIC.
+            from profitos.company_profile import parse_company_form
+            _checked, _errors = parse_company_form({'name': name, 'siret': request.form.get('siret'),
+                                                    'vat_number': request.form.get('vat_number'),
+                                                    'postal_code': request.form.get('postal_code'),
+                                                    'bic': request.form.get('bic'), 'iban': iban})
+            if _errors:
+                for e in _errors: flash(e)
                 return redirect(url_for('entity_new'))
             c = cx()
             c.execute(
                 """INSERT INTO entities(name,siret,vat_number,address,postal_code,iban,bic,created_at)
                    VALUES(?,?,?,?,?,?,?,?)""",
-                (name, (request.form.get('siret') or '').strip(), (request.form.get('vat_number') or '').strip(),
-                 (request.form.get('address') or '').strip(), (request.form.get('postal_code') or '').strip(),
-                 iban, (request.form.get('bic') or '').upper().strip(), now()),
+                (name, _checked['siret'], _checked['vat_number'],
+                 (request.form.get('address') or '').strip(), _checked['postal_code'],
+                 iban, _checked['bic'], now()),
             )
             c.commit()
             new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -83,18 +92,23 @@ def register(app):
         if not entity_row:
             c.close(); abort(404)
         error = None
+        form_values = None
         if request.method == 'POST':
-            iban = (request.form.get('iban') or '').replace(' ', '').upper().strip()
-            if iban and not validate_iban(iban):
-                error = "IBAN invalide — vérifie la saisie."
+            from profitos.company_profile import parse_company_form
+            form = request.form.to_dict()
+            form.setdefault('name', entity_row['name'])
+            values, errors = parse_company_form(form)
+            if errors:
+                error = ' '.join(errors)
+                form_values = values
             else:
-                c.execute(
-                    "UPDATE entities SET name=?,siret=?,vat_number=?,address=?,postal_code=?,iban=?,bic=? WHERE id=?",
-                    ((request.form.get('name') or entity_row['name']).strip(),
-                     (request.form.get('siret') or '').strip(), (request.form.get('vat_number') or '').strip(),
-                     (request.form.get('address') or '').strip(), (request.form.get('postal_code') or '').strip(),
-                     iban, (request.form.get('bic') or '').upper().strip(), entity_id),
-                )
+                # Identité légale complète de la filiale : elle figure sur ses propres
+                # factures (forme, capital, RCS, régime de TVA, conditions de paiement).
+                cols = ('name', 'siret', 'vat_number', 'address', 'postal_code', 'city', 'iban', 'bic', 'legal_form',
+                        'share_capital', 'rcs_city', 'rm_number', 'vat_regime', 'vat_on_debits', 'late_penalty_rate',
+                        'escompte_text', 'payment_terms', 'country')
+                c.execute(f"UPDATE entities SET {','.join(f'{k}=?' for k in cols)} WHERE id=?",
+                          [values[k] for k in cols] + [entity_id])
                 c.commit()
                 flash("Entité mise à jour.")
                 return redirect(url_for('entity_detail', entity_id=entity_id))
@@ -103,8 +117,11 @@ def register(app):
         invoice_count = c.execute('SELECT COUNT(*) n FROM outgoing_invoices WHERE entity_id=?', (entity_id,)).fetchone()['n']
         purchase_count = c.execute('SELECT COUNT(*) n FROM purchase_invoices WHERE entity_id=?', (entity_id,)).fetchone()['n']
         c.close()
-        return render_template('entity_detail.html', entity=entity_row, error=error,
-                                invoice_count=invoice_count, purchase_count=purchase_count)
+        if form_values is not None:
+            merged = dict(entity_row); merged.update(form_values); entity_row = merged
+        from profitos.company_profile import LEGAL_FORMS
+        return render_template('entity_detail.html', entity=entity_row, error=error, legal_forms=LEGAL_FORMS,
+                                invoice_count=invoice_count, purchase_count=purchase_count), (400 if error else 200)
 
     @app.route('/entites/consolide')
     @login_required
@@ -116,19 +133,28 @@ def register(app):
         rows = []
         grand_total_sales = 0.0
         grand_total_purchases = 0.0
+        grand_total_receivables = 0.0
+        grand_total_overdue = 0.0
+        from profitos.receivables import open_receivables, summarize
         for e in entities:
             eid = e['id']
             sales = c.execute(
-                "SELECT COALESCE(SUM(total),0) t FROM outgoing_invoices WHERE (entity_id=? OR (? IS NULL AND entity_id IS NULL))",
+                "SELECT COALESCE(SUM(total),0) t FROM outgoing_invoices WHERE (entity_id=? OR (? IS NULL AND entity_id IS NULL)) AND COALESCE(status,'draft') NOT IN ('draft','cancelled')",
                 (eid, eid),
             ).fetchone()['t']
             purchases = c.execute(
                 "SELECT COALESCE(SUM(total),0) t FROM purchase_invoices WHERE (entity_id=? OR (? IS NULL AND entity_id IS NULL))",
                 (eid, eid),
             ).fetchone()['t']
-            rows.append({'entity': e, 'sales': sales, 'purchases': purchases})
+            # Créances ouvertes : factures émises ET importées (vue unique).
+            rec = summarize(open_receivables(c, eid))
+            rows.append({'entity': e, 'sales': sales, 'purchases': purchases,
+                         'receivables': rec['total_due'], 'overdue': rec['overdue_due']})
+            grand_total_receivables += rec['total_due']
+            grand_total_overdue += rec['overdue_due']
             grand_total_sales += sales
             grand_total_purchases += purchases
         c.close()
         return render_template('entities_consolidated.html', rows=rows,
-                                grand_total_sales=grand_total_sales, grand_total_purchases=grand_total_purchases)
+                                grand_total_sales=grand_total_sales, grand_total_purchases=grand_total_purchases,
+                                grand_total_receivables=grand_total_receivables, grand_total_overdue=grand_total_overdue)

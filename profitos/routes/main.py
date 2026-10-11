@@ -27,19 +27,29 @@ def register(app):
 
     @app.route('/mentions-legales')
     def legal_notice():
-        return render_template('legal.html', legal_page='mentions')
+        return _legal('mentions')
+
+    def _support_email():
+        return ((os.environ.get('LEGAL_CONTACT_EMAIL') or os.environ.get('DEMO_REPLY_EMAIL') or '').strip()
+                or 'contact@profitos.fr')
+    app.jinja_env.globals['support_email']=_support_email
+
+    def _legal(page):
+        from profitos.legal import legal_identity, SUBPROCESSORS, RETENTION
+        return render_template('legal.html', legal_page=page, legal=legal_identity(),
+                               subprocessors=SUBPROCESSORS, retention=RETENTION)
 
     @app.route('/politique-confidentialite')
     def privacy_policy():
-        return render_template('legal.html', legal_page='privacy')
+        return _legal('privacy')
 
     @app.route('/cgu')
     def terms_of_use():
-        return render_template('legal.html', legal_page='cgu')
+        return _legal('cgu')
 
     @app.route('/cgv')
     def terms_of_sale():
-        return render_template('legal.html', legal_page='cgv')
+        return _legal('cgv')
 
     @requires_active_plan
     def _home_dashboard():
@@ -47,8 +57,16 @@ def register(app):
         eid=current_entity_id()
         ef='entity_id=?' if eid else 'entity_id IS NULL'
         ep=(eid,) if eid else ()
-        c=cx(); recover=c.execute(f"SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef}",ep).fetchone()['t']; save=c.execute(f"SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef}",ep).fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
-        top=list(c.execute(f"SELECT id,invoice_number title,customer subtitle,MAX(amount-paid_amount,0) value,score,'RECOVER' type FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {ef} ORDER BY score DESC LIMIT 3",ep).fetchall())+list(c.execute(f"SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC LIMIT 2",ep).fetchall())+list(c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall())
+        # Créances : vue unique factures émises + factures importées (profitos/receivables.py).
+        from profitos.receivables import open_receivables, summarize, detail_url
+        c=cx()
+        overdue_rows=[r for r in open_receivables(c,eid) if r['overdue']]
+        recover=summarize(overdue_rows)['overdue_due']
+        save=c.execute(f"SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef}",ep).fetchone()['t']; grow=c.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']; pending=c.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']; verified=c.execute("SELECT COALESCE(SUM(amount),0) t FROM outcomes WHERE verified=1").fetchone()['t']
+        top=[{'id':r['id'],'title':r['invoice_number'] or 'Facture','subtitle':r['customer'],'value':r['outstanding'],'score':r['score'],'type':'RECOVER',
+              'url':detail_url(r),'source_label':r['source_label']} for r in sorted(overdue_rows,key=lambda x:x['score'],reverse=True)[:3]]
+        top+=[dict(x) for x in c.execute(f"SELECT id,title,'' subtitle,value,score,'SAVE' type FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC LIMIT 2",ep).fetchall()]
+        top+=[dict(x) for x in c.execute("SELECT id,title,buyer subtitle,0 value,score,'GROW' type FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC LIMIT 3").fetchall()]
         entity_key=str(eid) if eid else '__ROOT__'
         snaps=c.execute('SELECT * FROM dso_entity_snapshots WHERE entity_key=? ORDER BY snapshot_date ASC LIMIT 30',(entity_key,)).fetchall()
         # Backward compatibility for installations whose historical root snapshots
@@ -70,8 +88,11 @@ def register(app):
         # Checklist d'onboarding — calculée à la volée depuis les données existantes,
         # pas de table dédiée : toujours synchronisée avec la réalité.
         c2=cx()
-        has_company=bool(c2.execute("SELECT 1 FROM company WHERE id=1 AND name IS NOT NULL AND name!=''").fetchone())
-        has_invoices=bool(c2.execute("SELECT 1 FROM invoices LIMIT 1").fetchone())
+        from profitos.company_profile import missing_mandatory_fields
+        _cp=c2.execute("SELECT * FROM company WHERE id=1").fetchone()
+        # « Complété » = toutes les mentions nécessaires pour facturer, pas seulement le nom.
+        has_company=bool(_cp) and not missing_mandatory_fields(dict(_cp))
+        has_invoices=bool(c2.execute("SELECT 1 FROM invoices LIMIT 1").fetchone() or c2.execute("SELECT 1 FROM outgoing_invoices WHERE COALESCE(status,'draft')!='draft' LIMIT 1").fetchone())
         has_expenses=bool(c2.execute("SELECT 1 FROM expenses LIMIT 1").fetchone())
         has_action=bool(c2.execute("SELECT 1 FROM actions LIMIT 1").fetchone())
         c2.close()
@@ -127,26 +148,41 @@ def register(app):
     @app.route('/company',methods=['GET','POST'])
     @login_required
     def company():
+        from profitos.company_profile import PROFILE_FIELDS, parse_company_form, save_company_profile, LEGAL_FORMS
         c=cx()
+        errors=[]
+        form_values=None
         if request.method=='POST':
             if not can_access('settings'):
                 c.close(); flash('Seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.'); return redirect(url_for('company'))
-            dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep
-            vals=(request.form.get('name','').strip(),request.form.get('city','').strip(),dep,allowed,request.form.get('activities','').strip(),request.form.get('certifications','').strip(),
-                  request.form.get('siret','').strip(),request.form.get('address','').strip(),request.form.get('vat_number','').strip(),request.form.get('postal_code','').strip(),
-                  (request.form.get('iban') or '').replace(' ','').upper().strip(),(request.form.get('bic') or '').upper().strip(),now())
-            c.execute('''INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,siret,address,vat_number,postal_code,iban,bic,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,siret=excluded.siret,address=excluded.address,vat_number=excluded.vat_number,postal_code=excluded.postal_code,iban=excluded.iban,bic=excluded.bic,updated_at=excluded.updated_at''',vals); c.commit(); c.close(); flash('Profil entreprise enregistré.')
-            org=current_org()
-            if org and feature_enabled(org['plan'],'advanced_features'):
-                try:flash(f'Marchés publics actualisés : {sync_grow()} opportunité(s) pertinente(s).')
-                except Exception as e:flash(f'Profil enregistré, mais BOAMP est indisponible : {e}')
-            return redirect(url_for('grow'))
+            values,errors=parse_company_form(request.form)
+            if errors:
+                # Les valeurs saisies sont conservées : l'utilisateur corrige sans tout retaper.
+                form_values=values
+            else:
+                try:
+                    save_company_profile(c,values)
+                except Exception:
+                    c.rollback()
+                    app.logger.exception('Enregistrement du profil entreprise impossible')
+                    errors=["Le profil n'a pas pu être enregistré. Réessayez dans quelques instants."]
+                    form_values=values
+            if not errors:
+                c.close()
+                flash('Profil entreprise enregistré.')
+                # Pas d'appel BOAMP ici (jusqu'à 20 s d'attente) : les marchés publics sont
+                # actualisés par la tâche quotidienne, ou à la demande depuis Marchés publics.
+                return redirect(url_for('company'))
         p=c.execute('SELECT * FROM company WHERE id=1').fetchone()
+        if form_values is not None:
+            merged=dict(p) if p else {}
+            merged.update(form_values)
+            p=merged
         from profitos.entities import current_entity_id
         settings_row=weinvoice_entity_settings(c,current_entity_id())
         c.close()
-        return render_template('company.html',p=p,weinvoice=settings_row,
-                               weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV)
+        return render_template('company.html',p=p or {},weinvoice=settings_row,errors=errors,legal_forms=LEGAL_FORMS,
+                               weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV), (400 if errors else 200)
 
     @app.route('/company/weinvoice/test',methods=['POST'])
     @login_required
@@ -215,7 +251,7 @@ def register(app):
         c=cx(); from profitos.entities import current_entity_id
         eid=current_entity_id(); row=weinvoice_entity_settings(c,eid); c.close()
         if not row or not row['weinvoice_company_id']:
-            flash("Aucun identifiant WeInvoice enregistré — lance d'abord l'onboarding.")
+            flash("Aucun identifiant WeInvoice enregistré — lancez d'abord l'inscription à la plateforme depuis le profil entreprise.")
             return redirect(url_for('company'))
         ok,message=weinvoice_refresh_status(row['weinvoice_company_id'], entity_id=eid)
         flash(('✅ ' if ok else '🔴 ') + message)
@@ -340,19 +376,22 @@ def register(app):
     def portfolio():
         """Vue consolidée de toutes les organisations de l'utilisateur — utile pour un
         cabinet comptable qui gère plusieurs clients depuis un seul compte."""
-        orgs=user_organizations()
+        from profitos.routes.cabinet import cabinet_organizations
+        orgs=cabinet_organizations()  # rôle propriétaire/admin/comptable dans CHAQUE organisation listée
         rows=[]
         for org in orgs:
             try:
                 tc=tenant_cx_direct(org['id'])
-                recover=tc.execute("SELECT COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0").fetchone()['t']
+                from profitos.receivables import open_receivables
+                recover=sum(r['outstanding'] for r in open_receivables(tc) if r['overdue'])
                 save=tc.execute("SELECT COALESCE(SUM(value),0) t FROM opportunities WHERE type='SAVE' AND status='OPEN'").fetchone()['t']
                 grow_n=tc.execute("SELECT COUNT(*) c FROM opportunities WHERE type='GROW' AND status='OPEN'").fetchone()['c']
                 pending=tc.execute("SELECT COUNT(*) c FROM actions WHERE status='PENDING'").fetchone()['c']
                 tc.close()
                 rows.append({'org':org,'recover':recover,'save':save,'grow':grow_n,'pending':pending,'error':None})
             except Exception as e:
-                rows.append({'org':org,'recover':0,'save':0,'grow':0,'pending':0,'error':str(e)})
+                current_app.logger.warning('Portfolio tenant unavailable org_id=%s: %s', org['id'], type(e).__name__)
+                rows.append({'org':org,'recover':0,'save':0,'grow':0,'pending':0,'error':'Données momentanément indisponibles.'})
         totals={'recover':sum(r['recover'] for r in rows),'save':sum(r['save'] for r in rows),
                 'grow':sum(r['grow'] for r in rows),'pending':sum(r['pending'] for r in rows)}
         return render_template('portfolio.html',rows=rows,totals=totals)
@@ -425,16 +464,23 @@ def register(app):
         """Téléchargement public authentifié par token — utilisé par le lien envoyé au
         comptable. Régénère l'export RECOVER à la demande (jamais de fichier stocké)."""
         ac=auth_cx()
-        mapping=ac.execute('SELECT * FROM export_tokens WHERE token=?',(token,)).fetchone()
+        mapping=ac.execute('SELECT * FROM export_tokens WHERE token=?',(token_digest(token),)).fetchone()
+        org_row=ac.execute('SELECT * FROM organizations WHERE id=?',(mapping['organization_id'],)).fetchone() if mapping else None
         ac.close()
-        if not mapping:
+        if not mapping or not org_row or not org_has_access(org_row):
             abort(404)
+        created=parse_dt(mapping['created_at'])
+        if not created or datetime.now(timezone.utc)-created>timedelta(days=7):
+            abort(410, description="Ce lien d'export a expiré. Demandez un nouvel envoi à l'entreprise.")
         tc=tenant_cx_direct(mapping['organization_id'])
-        rows=tc.execute("SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 ORDER BY score DESC").fetchall()
-        tc.close()
-        data=[{'Client':r['customer'],'N° facture':r['invoice_number'],'Type':r['kind'],
+        from profitos.receivables import open_receivables
+        try:
+            rows=sorted((r for r in open_receivables(tc) if r['overdue']),key=lambda r:r['score'],reverse=True)
+        finally:
+            tc.close()
+        data=[{'Client':r['customer'],'N° facture':r['invoice_number'],'Origine':r['source_label'],'Type':'Retenue contractuelle' if r['kind']=='RETENTION' else 'Facture',
                'Montant dû (€)':round(r['outstanding'],2),'Jours de retard':r['days_overdue'],
-               "Date d'échéance":r['due_date'],'Statut':r['status'],'Score':r['score']} for r in rows]
+               "Date d'échéance":fr_date(r['due_date']),'Score':r['score']} for r in rows]
         return export_response(data,'profitos-recover')
 
     @app.route('/profit-audit',methods=['GET','POST'])
@@ -462,19 +508,28 @@ def register(app):
         return render_template('profit_audit_public.html',result=result)
 
     @app.route('/demo',methods=['GET','POST'])
+    @rate_limit(5,3600)
     def request_demo():
         """Demande de démo publique — aucune authentification requise."""
         if request.method=='POST':
-            full_name=request.form.get('full_name','').strip()
-            company=request.form.get('company','').strip()
-            email=request.form.get('email','').strip()
-            phone=request.form.get('phone','').strip()
-            sector=request.form.get('sector','').strip()
-            company_size=request.form.get('company_size','').strip()
-            primary_need=request.form.get('primary_need','').strip()
-            message=request.form.get('message','').strip()
+            # Champ piège invisible : un robot le remplit, un humain non.
+            if (request.form.get('website') or '').strip():
+                return render_template('demo_thanks.html',contact_email=os.environ.get('DEMO_REPLY_EMAIL','contact@profitos.fr'))
+            def field(name,limit):
+                return re.sub(r'[\r\n<>]',' ',request.form.get(name,'')).strip()[:limit]
+            full_name=field('full_name',80)
+            company=field('company',120)
+            email=request.form.get('email','').strip()[:160]
+            phone=field('phone',30)
+            sector=field('sector',80)
+            company_size=field('company_size',40)
+            primary_need=field('primary_need',120)
+            message=request.form.get('message','').strip()[:2000]
             if not (full_name and company and email and sector and primary_need):
-                flash('Nom, entreprise, email, secteur et besoin principal sont requis.')
+                flash('Nom, entreprise, e-mail, secteur et besoin principal sont requis.')
+                return redirect(request.url)
+            if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email):
+                flash("Adresse e-mail invalide.")
                 return redirect(request.url)
             ac=auth_cx()
             ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
@@ -493,7 +548,7 @@ def register(app):
             # une adresse humaine afin qu'une réponse ne parte jamais vers noreply@.
             confirmation_html=render_template('email_demo_confirmation.html',full_name=full_name,
                 company=company,reply_email=reply_email)
-            send_email(email,'Votre demande de démonstration ProfitOS',confirmation_html,reply_to=reply_email)
+            if check_recipient_rate('demo_ack',email): send_email(email,'Votre demande de démonstration ProfitOS',confirmation_html,reply_to=reply_email,kind='system')
 
             return render_template('demo_thanks.html',contact_email=reply_email)
         return render_template('demo_request.html')
@@ -502,7 +557,9 @@ def register(app):
     @login_required
     def demo_requests_admin():
         ac=auth_cx()
-        user=ac.execute('SELECT email FROM users WHERE id=?',(session.get('user_id'),)).fetchone()
+        # Adresse vérifiée exigée : sinon n'importe qui pourrait s'inscrire avec l'adresse
+        # d'administration (si elle n'a pas encore de compte) et lire les demandes de démo.
+        user=ac.execute('SELECT email FROM users WHERE id=? AND email_verified=1',(session.get('user_id'),)).fetchone()
         admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip().lower()
         if not user or not admin_email or (user['email'] or '').strip().lower()!=admin_email:
             ac.close(); abort(403)
@@ -513,7 +570,9 @@ def register(app):
     @login_required
     def demo_request_status(request_id):
         ac=auth_cx()
-        user=ac.execute('SELECT email FROM users WHERE id=?',(session.get('user_id'),)).fetchone()
+        # Adresse vérifiée exigée : sinon n'importe qui pourrait s'inscrire avec l'adresse
+        # d'administration (si elle n'a pas encore de compte) et lire les demandes de démo.
+        user=ac.execute('SELECT email FROM users WHERE id=? AND email_verified=1',(session.get('user_id'),)).fetchone()
         admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip().lower()
         if not user or not admin_email or (user['email'] or '').strip().lower()!=admin_email:
             ac.close(); abort(403)
@@ -540,9 +599,8 @@ def register(app):
                 {'name':'Retenues contractuelles','desc':"Suivi des montants retenus et de leur date de libération, avec relance dédiée."},
                 {'name':'Simulateur de caution','desc':"Estime le coût de remplacer une retenue en numéraire par une caution bancaire."},
                 {'name':'Rapprochement bancaire','desc':"Importez un relevé bancaire : ProfitOS propose les correspondances avec les factures ouvertes."},
-                {'name':'Relances email et SMS','desc':"Rédigées automatiquement, jamais envoyées sans votre validation explicite."},
+                {'name':'Relances e-mail et SMS','desc':"Rédigées automatiquement, jamais envoyées sans votre validation explicite."},
                 {'name':'Portail client public','desc':"Lien sécurisé permettant à un client de consulter le statut de sa facture, sans compte."},
-                {'name':'Score de risque partagé','desc':"Signal anonymisé si un acheteur a aussi été signalé en retard par d'autres organisations."},
             ]},
             {'icon':'📉','color':'gold','title':'Économies & marge','features':[
                 {'name':'Doublons de dépenses','desc':"Détecte les paiements en double au même fournisseur."},
@@ -552,23 +610,23 @@ def register(app):
             ]},
             {'icon':'📈','color':'green','title':'Développement commercial','features':[
                 {'name':'Opportunités de marché','desc':"Appels d'offres publics (BOAMP) correspondant à votre profil d'activité."},
-                {'name':'Radar de partenaires','desc':"Trouve des entreprises complémentaires pour répondre ensemble à un marché."},
+                {'name':'Radar de partenaires','desc':"Trouvez des entreprises complémentaires pour répondre ensemble à un marché."},
                 {'name':'Filtres avancés','desc':"Recherche par score, montant ou mot-clé sur toutes vos opportunités."},
             ]},
             {'icon':'🧠','color':'blue','title':'Trésorerie & décisions','features':[
-                {'name':'Prévision de trésorerie','desc':"Projection à 30/60/90 jours, pondérée par la probabilité de chaque opportunité."},
+                {'name':'Prévision de trésorerie','desc':"Projection à 30/60/90 jours à partir de votre solde, de vos factures clients et fournisseurs restant dues et de vos dépenses datées, avec trois scénarios."},
                 {'name':'Simulateur de décision','desc':"Compare un scénario avant/après optimisation, avec les hypothèses toujours visibles."},
-                {'name':'Diagnostic financier','desc':"Score de contrôle financier consolidé, recalculé à chaque nouvelle donnée importée."},
+                {'name':'Diagnostic financier','desc':"Score de maîtrise financière détaillé composante par composante, calculé par des règles d'analyse explicites."},
                 {'name':'Garde-fou de cohérence','desc':"N'invente jamais un revenu ou une charge non déclarée dans les recommandations."},
             ]},
             {'icon':'📅','color':'purple','title':'Pilotage & reporting','features':[
                 {'name':'Calendrier unifié','desc':"Échéances de factures, retenues et deadlines d'appels d'offres, en un seul endroit."},
-                {'name':'Rapport hebdomadaire','desc':"Résumé automatique des nouveautés de la semaine : créances, économies et marchés publics."},
+                {'name':'Rapport hebdomadaire','desc':"Résumé des nouveautés de la semaine (créances, économies, marchés publics) envoyé automatiquement chaque lundi matin (désactivable dans Paramètres)."},
                 {'name':'Rapport mensuel PDF','desc':"Document téléchargeable pour un comité de direction ou une banque."},
-                {'name':'Export vers votre comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement selon la fréquence choisie."},
+                {'name':'Export vers votre comptable','desc':"Lien de téléchargement sécurisé, envoyé automatiquement chaque lundi si l'option est activée dans Paramètres."},
                 {'name':'Journal d\'audit','desc':"Trace exportable de chaque action et changement de statut, utile en cas de contrôle."},
                 {'name':'Performance d\'équipe','desc':"Nombre d'actions traitées par personne, pour objectiver la charge de travail."},
-                {'name':'Benchmark sectoriel','desc':"Compare votre délai de paiement moyen à celui d'autres organisations, anonymisé."},
+                {'name':'Benchmark des délais de paiement','desc':"Facultatif et désactivé par défaut : si vous l'activez dans Paramètres, votre retard moyen (seul chiffre partagé, anonymisé) est comparé à celui des autres organisations volontaires, à partir de 5."},
             ]},
             {'icon':'👥','color':'teal','title':'Organisation & équipe','features':[
                 {'name':'Rôles par personne','desc':"Propriétaire, administrateur, comptable, commercial — chacun ne voit que ce qui le concerne."},
@@ -579,7 +637,7 @@ def register(app):
                 {'name':'Export de vos données','desc':"Téléchargement complet de vos données à tout moment, conforme RGPD."},
                 {'name':'Suppression de compte','desc':"Effacement définitif possible, avec confirmation explicite avant toute suppression."},
                 {'name':'Validation humaine partout','desc':"Aucune relance, aucun envoi, aucune action sensible sans votre approbation."},
-                {'name':'Isolation stricte des données','desc':"Chaque organisation est cloisonnée — aucune donnée financière n'est jamais partagée entre elles."},
+                {'name':'Isolation stricte des données','desc':"Chaque organisation est cloisonnée : aucune donnée financière n'est partagée entre elles, sauf votre retard moyen de paiement si vous activez vous-même le benchmark anonymisé."},
             ]},
             {'icon':'🔗','color':'blue','title':'Intégrations & accès','features':[
                 {'name':'API en lecture seule','desc':"Connectez vos propres outils à vos données ProfitOS."},
@@ -627,10 +685,15 @@ def register(app):
         libérables, deadlines GROW — tout au même endroit, triées par date."""
         c=cx()
         events=[]
-        for r in c.execute("SELECT id,invoice_number,customer,due_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND kind!='RETENTION' AND due_date IS NOT NULL").fetchall():
-            events.append({'date':r['due_date'],'type':'RECOVER','label':f"Facture #{r['invoice_number']} — {r['customer']}",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id']})
-        for r in c.execute("SELECT id,invoice_number,customer,retention_release_date,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date IS NOT NULL").fetchall():
-            events.append({'date':r['retention_release_date'],'type':'RETENTION','label':f"Retenue libérable — {r['customer']} (#{r['invoice_number']})",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id']})
+        # Échéances clients : factures émises ET importées (vue unique des créances).
+        from profitos.receivables import open_receivables, detail_url
+        from profitos.entities import current_entity_id
+        for r in open_receivables(c,current_entity_id()):
+            if r['kind']=='RETENTION':
+                if r['retention_release_date']:
+                    events.append({'date':r['retention_release_date'],'type':'RETENTION','label':f"Retenue libérable — {r['customer']} (#{r['invoice_number']})",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id'],'url':detail_url(r)})
+            elif r['due_date']:
+                events.append({'date':r['due_date'],'type':'RECOVER','label':f"Facture #{r['invoice_number']} — {r['customer']}",'value':r['outstanding'],'detail_kind':'RECOVER','item_id':r['id'],'url':detail_url(r),'source_label':r['source_label']})
         if can_access('grow'):
             for r in c.execute("SELECT id,title,buyer,deadline FROM opportunities WHERE type='GROW' AND status='OPEN' AND deadline IS NOT NULL").fetchall():
                 events.append({'date':r['deadline'],'type':'GROW','label':f"{r['title']} — {r['buyer'] or ''}",'value':0,'detail_kind':'GROW','item_id':r['id']})
@@ -645,21 +708,22 @@ def register(app):
     def _recover_filtered_rows():
         """Applique les filtres/recherche de la query string RECOVER (filter, q, min_amount,
         max_amount, date_from, date_to). Partagé entre l'écran RECOVER et son export."""
-        from profitos.entities import current_entity_id
-        eid=current_entity_id()
-        entity_filter='entity_id=?' if eid else 'entity_id IS NULL'
-        entity_params=(eid,) if eid else ()
+        # Vue unique : factures émises dans ProfitOS + factures importées.
+        from profitos.receivables import open_receivables
         c=cx()
-        active=c.execute(f"SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter} ORDER BY score DESC",entity_params).fetchall()
+        try:
+            all_open=open_receivables(c,current=True)
+        finally:
+            c.close()
+        active=sorted((r for r in all_open if r['overdue']),key=lambda r:r['score'],reverse=True)
         total=sum(x['outstanding'] for x in active)
         filt=request.args.get('filter','all')
         if filt=='overdue':
             rows=[r for r in active if r['kind']!='RETENTION']
         elif filt=='retention':
-            rows=c.execute(f"SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND {entity_filter} ORDER BY COALESCE(retention_release_date,due_date) ASC",entity_params).fetchall()
+            rows=sorted((r for r in all_open if r['kind']=='RETENTION'),key=lambda r:r['retention_release_date'] or r['due_date'] or '')
         else:
             rows=active
-        c.close()
         q=request.args.get('q','').strip()
         min_amount=request.args.get('min_amount','').strip()
         max_amount=request.args.get('max_amount','').strip()
@@ -704,9 +768,9 @@ def register(app):
             flash(f"Quota mensuel d'exports atteint pour la formule {org['plan']} ({quota['used']}/{quota['limit']}). Passez à une formule supérieure.")
             return redirect(url_for('recover'))
         rows,total,filt,q,min_amount,max_amount,date_from,date_to=_recover_filtered_rows()
-        data=[{'Client':r['customer'],'N° facture':r['invoice_number'],'Type':r['kind'],
+        data=[{'Client':r['customer'],'N° facture':r['invoice_number'],'Origine':r['source_label'],'Type':'Retenue contractuelle' if r['kind']=='RETENTION' else 'Facture',
                'Montant dû (€)':round(r['outstanding'],2),'Jours de retard':r['days_overdue'],
-               "Date d'échéance":r['due_date'],'Statut':r['status'],'Score':r['score']} for r in rows]
+               "Date d'échéance":fr_date(r['due_date']),'Score':r['score']} for r in rows]
         record_usage('reports_per_month',organization_id=org['id'])
         return export_response(data,'profitos-recover')
 
@@ -733,9 +797,15 @@ def register(app):
         entity_params=(eid,) if eid else ()
         c=cx(); rows=c.execute(f"SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {entity_filter} ORDER BY score DESC",entity_params).fetchall(); c.close()
         total=sum(x['value'] for x in rows)
+        from profitos.routes.money_hunter import split_save_totals, save_nature_label, reliability_label, SAVE_NATURES, save_nature
+        one_off,annual=split_save_totals(rows)
         q=request.args.get('q','').strip(); min_value=request.args.get('min_value','').strip(); max_value=request.args.get('max_value','').strip()
-        rows=_filter_rows(rows,q,min_value,max_value,['title','details'])
-        return render_template('save.html',rows=rows,total=total,q=q,min_value=min_value,max_value=max_value)
+        rows=[dict(r) for r in _filter_rows(rows,q,min_value,max_value,['title','details'])]
+        for r in rows:
+            r['nature_label']=save_nature_label(r['title'])
+            r['reliability']=reliability_label(r['score'])
+            r['rule']=SAVE_NATURES.get(save_nature(r['title']),{}).get('rule',"règle d'analyse des dépenses")
+        return render_template('save.html',rows=rows,total=total,one_off=one_off,annual=annual,q=q,min_value=min_value,max_value=max_value)
 
     @app.route('/save/export')
     @login_required
@@ -751,8 +821,9 @@ def register(app):
         c=cx(); from profitos.entities import current_entity_id; eid=current_entity_id()
         ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
         rows=c.execute(f"SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' AND {ef} ORDER BY score DESC",ep).fetchall(); c.close()
-        data=[{'Titre':r['title'],'Valeur estimée (€/an)':round(r['value'],2),'Score':r['score'],
-               'Détails':r['details'],'Source':r['source']} for r in rows]
+        from profitos.routes.money_hunter import save_nature_label, reliability_label
+        data=[{'Titre':r['title'],'Montant estimé (€)':round(r['value'],2),'Nature du montant':save_nature_label(r['title']),
+               'Fiabilité':reliability_label(r['score']),'Détails':r['details']} for r in rows]
         record_usage('reports_per_month',organization_id=org['id'])
         return export_response(data,'profitos-save')
 

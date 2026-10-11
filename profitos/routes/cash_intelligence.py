@@ -163,7 +163,9 @@ def compute_cash_forecast(cash_balance, cash_as_of, sales, purchases, expenses, 
     receivables=[]
     held_receivables=[]
     for inv in sales:
-        amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total']),2))
+        # Reste à encaisser = TTC − règlements − avoirs émis (un avoir réduit la créance).
+        credited=_safe_float(inv['credited_total']) if 'credited_total' in inv.keys() else 0.0
+        amount=max(0.0,round(_safe_float(inv['total'])-_safe_float(inv['paid_total'])-credited,2))
         if amount<=.005: continue
         # Une facture refusée, en litige, suspendue ou rejetée côté facturation électronique n'est pas
         # un encaissement fiable : elle sort de la prévision et reste signalée à part.
@@ -180,7 +182,7 @@ def compute_cash_forecast(cash_balance, cash_as_of, sales, purchases, expenses, 
         receivables.append({'id':inv['id'],'invoice_number':inv['invoice_number'],'customer':inv['client_name'],
             'amount':amount,'expected_amount':amount,'expected_date':expected.isoformat(),'due_date':due.isoformat(),
             'days_overdue':overdue,'in_horizon':offset<=HORIZON_DAYS,'suspicious_date':offset>SUSPICIOUS_DUE_DAYS,
-            'source':'outgoing_invoice'})
+            'source':(inv.get('source') if isinstance(inv,dict) else None) or 'outgoing_invoice'})
     receivables.sort(key=lambda r:r['amount'],reverse=True)
     receivables_in_horizon=[r for r in receivables if r['in_horizon']]
     receivables_beyond=sorted((r for r in receivables if not r['in_horizon']),key=lambda r:r['expected_date'])
@@ -213,7 +215,7 @@ def compute_cash_forecast(cash_balance, cash_as_of, sales, purchases, expenses, 
     if cash is not None and top:
         for delay in (7,30,60):
             curve=_simulate_curve(cash,daily_burn,receivables,scheduled_outflows=scheduled_outflows,mode='probable',top_delay=delay,today=today)
-            scenarios.append({'delay':delay,'minimum':curve['minimum'],'min_day':curve['min_day'],'end_90':curve['end_90']})
+            scenarios.append({'delay':delay,'minimum':curve['minimum'],'min_day':curve['min_day'],'end_90':curve['end_90'],'day30':curve['values'][30],'day60':curve['values'][60]})
 
     as_of=_iso_date(cash_as_of)
     balance_age_days=(today-as_of).days if as_of else None
@@ -241,28 +243,31 @@ def compute_cash_forecast(cash_balance, cash_as_of, sales, purchases, expenses, 
         'held_receivables':held_receivables,'held_receivables_total':round(sum(h['amount'] for h in held_receivables),2),
         'top_receivable':top,'scenarios':scenarios,
         'min_cash':min_cash,'min_day':min_day,'risk_day':risk_day,'alert_level':alert_level,'alert':alert,'curves':curves,'chart':chart,
-        'method_note':"Prévision calculée par entité à partir du solde disponible, des factures clients émises restant à encaisser, des factures fournisseurs restant à payer et des dépenses futures enregistrées. Les paiements partiels sont déduits. Les montants à 30 / 60 / 90 jours correspondent au scénario probable. Les flux attendus après 90 jours sont exclus ; les échéances déjà dépassées sont comptées dès J+1. Les scénarios modifient le timing des encaissements (et, en prudent, la part comptée), jamais les écritures comptables."}
+        'method_note':"Prévision calculée par entité à partir du solde disponible, des factures clients restant à encaisser (émises dans ProfitOS ou importées), des factures fournisseurs restant à payer et des dépenses futures enregistrées. Les paiements partiels sont déduits. Les montants à 30 / 60 / 90 jours correspondent au scénario probable. Les flux attendus après 90 jours sont exclus ; les échéances déjà dépassées sont comptées dès J+1. Les scénarios modifient le timing des encaissements (et, en prudent, la part comptée), jamais les écritures comptables."}
 
 
 def build_cash_intelligence():
     """Prévision 90 j fondée sur les soldes réellement ouverts de l'entité active."""
-    # Import tardif : évite une dépendance circulaire au chargement des routes.
-    from profitos.routes.invoicing import _einvoice_hold
     c=cx()
     try:
         from profitos.entities import current_entity_id
         eid=current_entity_id()
         ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
         settings=_cash_settings(c)
-        sales=c.execute(
-            "SELECT oi.*,COALESCE((SELECT SUM(p.amount) FROM outgoing_invoice_payments p WHERE p.invoice_id=oi.id AND COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(oi.entity_id AS TEXT),'')),0) paid_total "
-            "FROM outgoing_invoices oi WHERE oi.entity_id IS ? AND oi.status IN ('sent','partially_paid') ORDER BY oi.due_date,oi.id",(eid,)).fetchall()
+        # Créances : vue unique (factures émises ET factures importées), cf. profitos/receivables.py.
+        from profitos.receivables import open_receivables
+        sales=[{'id':r['id'],'invoice_number':r['invoice_number'],'client_name':r['customer'],
+                'total':r['total'],'paid_total':r['paid'],'credited_total':r['credited'],
+                'due_date':(r['retention_release_date'] if r['kind']=='RETENTION' and r['retention_release_date'] else r['due_date']),
+                'issue_date':r['issue_date'],'einvoice_hold':r['einvoice_hold'],
+                'source':'outgoing_invoice' if r['source']=='outgoing' else 'imported_invoice'}
+               for r in open_receivables(c,eid)]
         purchases=c.execute(
             "SELECT pi.*,COALESCE((SELECT SUM(p.amount) FROM purchase_invoice_payments p WHERE p.purchase_invoice_id=pi.id AND COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(pi.entity_id AS TEXT),'')),0) paid_total "
             "FROM purchase_invoices pi WHERE pi.entity_id IS ? AND COALESCE(pi.status,'unpaid')!='paid' ORDER BY pi.due_date,pi.id",(eid,)).fetchall()
         expenses=c.execute(f"SELECT vendor,description,amount,expense_date,category FROM expenses WHERE expense_date IS NOT NULL AND {ef} ORDER BY expense_date DESC",ep).fetchall()
     finally: c.close()
-    return compute_cash_forecast(settings['cash_balance'],settings['cash_as_of'],sales,purchases,expenses,einvoice_hold=_einvoice_hold)
+    return compute_cash_forecast(settings['cash_balance'],settings['cash_as_of'],sales,purchases,expenses,einvoice_hold=lambda inv:inv.get('einvoice_hold'))
 
 
 def register(app):

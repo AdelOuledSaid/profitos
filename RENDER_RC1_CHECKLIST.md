@@ -6,9 +6,17 @@
 - `DATABASE_URL` : PostgreSQL de production
 - `APP_BASE_URL=https://app.profitos.fr`
 
-## Infrastructure recommandée
-- `REDIS_URL` si Redis est activé pour le rate limiting / services associés
-- `PROFITOS_UPLOAD_DIR` vers un stockage persistant si des uploads locaux sont utilisés
+> Référence à jour : `DEPLOIEMENT_PRODUCTION.md`.
+
+## Infrastructure obligatoire
+- Service web sur plan payant avec le disque `profitos-data` monté sur `/var/data`
+  (un disque limite à une instance et désactive les déploiements sans interruption ;
+  stockage S3 = évolution prévue)
+- `PROFITOS_UPLOAD_DIR=/var/data/uploads` (jamais `/tmp` : refusé par le préflight)
+- `RESEND_API_KEY` (ou `SMTP_HOST`) : refusé par le préflight s'il manque
+- `REDIS_URL` (Key Value) pour le rate limiting partagé
+- Cron `profitos-jobs` (`python scripts/run_job.py --due`) et `JOBS_TRIGGER_TOKEN`
+- `BACKUP_PASSPHRASE` et `BACKUP_S3_*` (voir `RESTORE.md`), PITR PostgreSQL activé
 
 ## Intégrations — configurer uniquement si utilisées
 - Powens : `POWENS_DOMAIN`, `POWENS_CLIENT_ID`, `POWENS_CLIENT_SECRET`, `POWENS_REDIRECT_URI`

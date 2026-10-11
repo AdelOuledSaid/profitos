@@ -26,11 +26,11 @@ def test_no_column_to_column_is_comparison_on_entity_id():
 
 
 def test_receivables_cash_intelligence_and_ereporting_use_the_portable_form():
-    inv = _source('profitos/routes/invoicing.py')
-    assert PORTABLE.format(a='cn.entity_id', b='i.entity_id') in inv
-    assert PORTABLE.format(a='p.entity_id', b='i.entity_id') in inv
+    # v43x : créances clients (page Créances, prévision) centralisées dans profitos/receivables.py.
+    helper = _source('profitos/receivables.py').replace(")=COALESCE(", ") = COALESCE(")
+    assert PORTABLE.format(a='cn.entity_id', b='oi.entity_id') in helper
+    assert PORTABLE.format(a='p.entity_id', b='oi.entity_id') in helper
     cash = _source('profitos/routes/cash_intelligence.py')
-    assert PORTABLE.format(a='p.entity_id', b='oi.entity_id') in cash
     assert PORTABLE.format(a='p.entity_id', b='pi.entity_id') in cash
     assert PORTABLE.format(a='i.entity_id', b='p.entity_id') in _source('profitos/ereporting.py')
 

@@ -26,7 +26,7 @@ def _post(client, url, data=None):
 def _signup(app, plan=None):
     from profitos import runtime as rt
     client = app.test_client()
-    r = _post(client, '/signup', {'full_name': 'Camille Martin', 'email': f'{uuid.uuid4().hex[:10]}@example.com',
+    r = _post(client, '/signup', {'accept_terms': '1', 'full_name': 'Camille Martin', 'email': f'{uuid.uuid4().hex[:10]}@example.com',
                                   'password': PASSWORD, 'company_name': 'Tableau SAS'})
     assert r.status_code in (302, 303)
     if plan:

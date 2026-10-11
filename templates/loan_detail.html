@@ -33,8 +33,9 @@
             {% if i.paid %}
             <span class="purchase-status paid">Réglée</span>
             {% else %}
-            <form method="post" action="{{ url_for('loan_installment_pay',installment_id=i.id) }}">
+            <form method="post" action="{{ url_for('loan_installment_pay',installment_id=i.id) }}" style="display:flex;gap:6px;align-items:center;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="date" name="payment_date" value="{{ [i.due_date, today]|min }}" max="{{ today }}" aria-label="Date du règlement">
               <button type="submit" class="purchase-primary-btn secondary">Marquer réglée</button>
             </form>
             {% endif %}

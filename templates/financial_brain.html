@@ -13,7 +13,7 @@
     <div>
       <div class="purchase-stat-label">SCORE DE MAÎTRISE FINANCIÈRE</div>
       <div class="purchase-stat-value">{{ brain.control_score }}/100</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brain.control_level }}</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brain.control_level }} · <a class="purchase-detail-link" href="#score-detail">détail du calcul</a></div>
     </div>
   </div>
   <div class="purchase-stat">
@@ -41,19 +41,35 @@
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg>
     </div>
     <div>
-      <div class="purchase-stat-label">ÉCONOMIES MENSUELLES</div>
-      <div class="purchase-stat-value">{{ brain.save_monthly|fr_number }}&nbsp;€</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Équivalent mensuel des économies annualisées détectées</div>
+      <div class="purchase-stat-label">ÉCONOMIES IDENTIFIÉES</div>
+      <div class="purchase-stat-value">{{ (brain.save_one_off + brain.save_annual)|fr_number }}&nbsp;€</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brain.save_one_off|fr_number }}&nbsp;€ ponctuels · {{ brain.save_annual|fr_number }}&nbsp;€ de hausses annualisées estimées</div>
     </div>
   </div>
 </div>
+
+<section class="purchase-panel" id="score-detail" style="margin-bottom:20px;">
+  <div class="purchase-eyebrow" style="margin-bottom:8px;">COMMENT LE SCORE EST CALCULÉ</div>
+  <h2 style="color:#fff;">{{ brain.control_score }}/100 · {{ brain.control_level|lower }}</h2>
+  <p class="purchase-muted">Point de départ : 70. Chaque ligne ajoute ou retire des points. Les données sont les mêmes que dans Trésorerie &amp; scénarios et Créances clients (factures émises et importées, factures fournisseurs à payer, solde déclaré). Ce score mesure la maîtrise de vos encaissements et décaissements, pas votre solvabilité.</p>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Composante</th><th>Explication</th><th style="text-align:right;">Points</th></tr></thead>
+      <tbody>
+      {% for comp in brain.score_components %}
+        <tr><td><strong>{{ comp.label }}</strong></td><td>{{ comp.detail }}</td><td style="text-align:right;">{{ comp.points|fr_signed(0, true) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 
 {% if brain.best_decision %}
 <section class="purchase-panel brain-next">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">PROCHAINE MEILLEURE DÉCISION</div>
   <div class="brain-next-grid">
     <div><span class="type {{ brain.best_decision.kind|lower }}">{{ brain.best_decision.kind|label }}</span><h2 style="color:#fff;">{{ brain.best_decision.title }}</h2><p>{{ brain.best_decision.brain_reason }}</p><div class="recommendation-box"><small>ACTION</small><strong>{{ brain.best_decision.brain_action }}</strong></div></div>
-    <div class="brain-next-value">{% if brain.best_decision.amount > 0 %}<strong>{{ brain.best_decision.amount|fr_number }}&nbsp;€</strong>{% endif %}<a class="purchase-primary-btn secondary" href="{{ url_for('detail',kind=brain.best_decision.url_kind,item_id=brain.best_decision.item_id) }}">Agir maintenant</a></div>
+    <div class="brain-next-value">{% if brain.best_decision.amount > 0 %}<strong>{{ brain.best_decision.amount|fr_number }}&nbsp;€</strong>{% endif %}<a class="purchase-primary-btn secondary" href="{{ brain.best_decision.url or url_for('detail',kind=brain.best_decision.url_kind,item_id=brain.best_decision.item_id) }}">Agir maintenant</a></div>
   </div>
 </section>
 {% endif %}
@@ -65,12 +81,12 @@
 
 <section class="purchase-panel" style="margin-top:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">MARCHÉS PUBLICS · CONTRÔLE FINANCIER</div><h2 style="color:#fff;">Peut-on financièrement prendre ce marché ?</h2>
-  {% for g in brain.grow_checks %}<div class="brain-grow"><div><strong>{{ g.title }}</strong><small>{{ g.buyer or 'Acheteur non précisé' }} · Match {{ g.score }}/100</small></div><span class="status">{{ g.decision }}</span><p>{{ g.reason }}</p><p class="purchase-muted"><strong style="color:inherit;">Données requises :</strong> {{ g.missing|join(', ') }}</p><a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=g.id) }}">Ouvrir le marché →</a></div>{% else %}<p class="purchase-empty">Aucun marché public ouvert.</p>{% endfor %}
+  {% for g in brain.grow_checks %}<div class="brain-grow"><div><strong>{{ g.title }}</strong><small>{{ g.buyer or 'Acheteur non précisé' }} · correspondance {{ 'élevée' if g.score >= 85 else ('moyenne' if g.score >= 65 else 'faible') }}</small></div><span class="status">{{ g.decision }}</span><p>{{ g.reason }}</p><p class="purchase-muted"><strong style="color:inherit;">Données requises :</strong> {{ g.missing|join(', ') }}</p><a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=g.id) }}">Ouvrir le marché →</a></div>{% else %}<p class="purchase-empty">Aucun marché public ouvert.</p>{% endfor %}
 </section>
 
 <section class="purchase-panel brain-gaps" style="margin-top:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;color:#ffc149;">QUALITÉ DES DONNÉES</div><h2 style="color:#fff;">Ce que ProfitOS ne sait pas encore</h2>
-  {% if brain.cash_balance is not none %}<div class="bullet">✓ Solde bancaire utilisé : <strong>{{ brain.cash_balance|fr_number }}&nbsp;€</strong>{% if brain.cash_as_of %} au {{ brain.cash_as_of }}{% endif %}.</div>{% endif %}
+  {% if brain.cash_balance is not none %}<div class="bullet">✓ Solde bancaire utilisé : <strong>{{ brain.cash_balance|fr_number }}&nbsp;€</strong>{% if brain.cash_as_of %} au {{ brain.cash_as_of|fr_date }}{% endif %}.</div>{% endif %}
   {% for x in brain.data_gaps %}<div class="bullet warntext">⚠ {{ x }}</div>{% else %}<div class="bullet">✓ Aucun manque bloquant détecté sur les données financières actuellement requises.</div>{% endfor %}
   <p class="purchase-muted">Ces limites empêchent volontairement ProfitOS de produire un faux GO/NO-GO ou une fausse prévision de trésorerie.</p>
 </section>

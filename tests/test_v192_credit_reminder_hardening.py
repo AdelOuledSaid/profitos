@@ -15,24 +15,27 @@ def test_reminders_are_entity_scoped_in_detail_and_send_flow():
 
 
 def test_credit_note_has_accounting_generator_and_entity_idempotence():
-    assert 'def generate_sale_credit_entry(conn, credit):' in ACC
+    assert 'def generate_sale_credit_entry(conn, credit, revenue_account=' in ACC
     assert "_entry_already_exists(conn, 'outgoing_credit_note', credit['id'], entity_id)" in ACC
     assert "source_type='outgoing_credit_note', source_id=credit['id']" in ACC
     assert 'entity_id=entity_id' in ACC
-    assert "{'account_code': '706000', 'debit': credit['subtotal']}" in ACC
-    assert "{'account_code': '445710', 'debit': credit['vat_amount']}" in ACC
+    # v4xx : produits ventilés 707 (biens) / 706 (services) ou 419100 (acompte) ; la TVA
+    # encore en attente (445740) est annulée avant la TVA collectée (445710).
+    assert "account = revenue_account or REVENUE_ACCOUNT_BY_NATURE.get(g['nature'], SERVICES_REVENUE_ACCOUNT)" in ACC
+    assert "{'account_code': VAT_PENDING_ACCOUNT, 'debit': moved['vat']" in ACC
+    assert "{'account_code': VAT_COLLECTED_ACCOUNT, 'debit': rest" in ACC
     assert "'account_code': '411000', 'credit': credit['total']" in ACC
 
 
 def test_credit_creation_is_atomic_with_accounting():
     block=INV[INV.index("def invoicing_credit_new(invoice_id):"):INV.index("@app.route('/facturation/avoir/<int:credit_id>')")]
-    assert 'generate_sale_credit_entry(c,credit)' in block
-    assert "source_type='outgoing_invoice' AND source_id=? AND entity_id IS ?" in block
+    assert 'generate_sale_credit_entry(c,credit,' in block
+    assert "source_type IN ('outgoing_invoice','customer_deposit_invoice','customer_final_invoice') AND source_id=? AND entity_id IS ?" in block
     assert "l'écriture comptable de la facture d'origine est absente" in block
     assert 'except AccountingError as e:' in block
     assert 'c.rollback()' in block
     # no commit is allowed between the credit INSERT and accounting generation
-    tail=block[block.index('INSERT INTO outgoing_credit_notes'):block.index('generate_sale_credit_entry(c,credit)')]
+    tail=block[block.index('INSERT INTO outgoing_credit_notes'):block.index('generate_sale_credit_entry(c,credit,')]
     assert 'c.commit()' not in tail
 
 

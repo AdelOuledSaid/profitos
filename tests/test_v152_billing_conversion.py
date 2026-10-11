@@ -20,7 +20,7 @@ def test_billing_lists_real_plan_limits():
 def test_billing_lists_advanced_features():
     t=(ROOT/'templates'/'billing.html').read_text(encoding='utf-8')
     assert 'Actualisation BOAMP' in t
-    assert 'Envoi email automatique' in t
+    assert 'Envoi e-mail automatique' in t
     assert 'Analyse DCE' in t
 
 

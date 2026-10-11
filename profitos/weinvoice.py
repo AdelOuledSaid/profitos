@@ -288,7 +288,7 @@ def find_client_by_siren(siren):
     # DIAGNOSTIC TEMPORAIRE — à retirer une fois la vraie structure de réponse
     # confirmée. Montre la forme réelle renvoyée par GET /v1/clients (pagination,
     # noms de champs) dans les logs Render.
-    log_ops_event('WEINVOICE_CLIENTS_LIST_DEBUG', 'INFO', detail=str(body)[:1500])
+    # (Diagnostic retiré : la liste complète des clients WeInvoice ne doit pas finir dans les logs.)
 
     if isinstance(body, list):
         clients = body
@@ -459,16 +459,25 @@ def handle_onboarding_webhook(payload):
     if not company_id:
         log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNSCOPED','WARNING',detail='Webhook onboarding sans identifiant organisation/client')
         return False
-    c = cx()
-    try:
-        row=c.execute('SELECT entity_key FROM weinvoice_entity_settings WHERE weinvoice_company_id=?',(str(company_id),)).fetchone()
-        if not row:
-            log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNKNOWN','WARNING',detail=f'company_id={company_id}')
-            return False
-        _store_entity_settings(c, None if row['entity_key']==0 else row['entity_key'], weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=reason or None)
-        c.commit(); return True
-    finally:
-        c.close()
+    # Webhook serveur à serveur : aucune session, donc aucun tenant « courant » (cx() levait
+    # une erreur 500). On cherche l'organisation qui possède cet identifiant WeInvoice.
+    from profitos import db as _dbmod
+    for org_id in list_organization_ids():
+        c=None
+        try:
+            c=_dbmod.connect_tenant(org_id, tenant_db(org_id))
+            row=c.execute('SELECT entity_key FROM weinvoice_entity_settings WHERE weinvoice_company_id=?',(str(company_id),)).fetchone()
+            if row:
+                _store_entity_settings(c, None if row['entity_key']==0 else row['entity_key'], weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=reason or None)
+                c.commit(); return True
+        except Exception:
+            pass
+        finally:
+            if c:
+                try: c.close()
+                except Exception: pass
+    log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNKNOWN','WARNING',detail=f'company_id={company_id}')
+    return False
 
 
 # ---------------------------------------------------------------------------

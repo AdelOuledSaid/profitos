@@ -14,7 +14,7 @@
     <div>
       <div class="purchase-stat-label">RELANCES CLIENTS</div>
       <div class="purchase-stat-value">{{ brief.recover_total|fr_number }}&nbsp;€</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.urgent_recover }} priorité(s) élevée(s)</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ pluralize(brief.urgent_recover, "priorité élevée", "priorités élevées") }}</div>
     </div>
   </div>
   <div class="purchase-stat">
@@ -23,8 +23,8 @@
     </div>
     <div>
       <div class="purchase-stat-label">ÉCONOMIES</div>
-      <div class="purchase-stat-value">{{ brief.save_total|fr_number }}&nbsp;€ / an</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{{ brief.high_save }} signal(aux) fort(s)</div>
+      <div class="purchase-stat-value">{{ brief.save_total|fr_number }}&nbsp;€</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">{% if brief.save_one_off %}{{ brief.save_one_off|fr_number }}&nbsp;€ ponctuels{% endif %}{% if brief.save_one_off and brief.save_annual %} · {% endif %}{% if brief.save_annual %}{{ brief.save_annual|fr_number }}&nbsp;€ de hausses annualisées estimées{% endif %}{% if not brief.save_total %}{{ pluralize(brief.high_save, "signal fort", "signaux forts") }}{% endif %}</div>
     </div>
   </div>
   <div class="purchase-stat">
@@ -35,10 +35,10 @@
       <div class="purchase-stat-label">MARCHÉS PUBLICS</div>
       {% if brief.grow_pipeline > 0 %}
       <div class="purchase-stat-value">{{ brief.grow_pipeline|fr_number }}&nbsp;€</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Opportunités dont la valeur est connue · {{ brief.strong_grow }} correspondance(s) forte(s)</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Opportunités dont la valeur est connue · {{ pluralize(brief.strong_grow, "correspondance forte", "correspondances fortes") }}</div>
       {% else %}
       <div class="purchase-stat-value">{{ brief.grow_count }} opportunité{{ 's' if brief.grow_count != 1 else '' }}</div>
-      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Marchés publics à qualifier · {{ brief.strong_grow }} correspondance(s) forte(s)</div>
+      <div class="purchase-muted" style="font-size:12px;margin-top:4px;">Marchés publics à qualifier · {{ pluralize(brief.strong_grow, "correspondance forte", "correspondances fortes") }}</div>
       {% endif %}
     </div>
   </div>
@@ -47,7 +47,7 @@
 <section class="purchase-panel" style="margin-bottom:20px;">
   <div class="purchase-eyebrow" style="margin-bottom:8px;">SYNTHÈSE</div>
   <h2 style="margin:0 0 8px;color:#fff;font-size:24px;">{{ brief.money_identified|fr_number }}&nbsp;€ identifiés</h2>
-  <p class="purchase-muted">Créances à encaisser + économies potentielles. Les économies sont généralement annualisées : ce total n'est pas une prévision de trésorerie.</p>
+  <p class="purchase-muted">Créances échues à encaisser + économies potentielles (doublons ponctuels et hausses fournisseurs annualisées). Ce total n'est pas une prévision de trésorerie : consultez Trésorerie &amp; scénarios pour l'évolution de votre solde.</p>
   <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:14px;">
     <div><small class="purchase-muted">VALEUR PONDÉRÉE</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.expected_value|fr_number }}&nbsp;€</div></div>
     <div><small class="purchase-muted">SIGNAUX ANALYSÉS</small><div style="font-size:24px;font-weight:800;color:#fff;">{{ brief.recommendation_count }}</div></div>
@@ -102,9 +102,9 @@
       <aside class="money-decision-value">
         {% if r.amount > 0 %}
           <div class="money-amount">{{ r.amount|fr_number }}&nbsp;€</div>
-          <small>{% if r.kind == 'RECOVER' %}à récupérer{% elif r.kind == 'SAVE' %}potentiels{% else %}valeur connue{% endif %}</small>
+          <small>{% if r.kind == 'RECOVER' %}à récupérer{% elif r.kind == 'SAVE' %}{{ r.amount_label }}{% else %}valeur connue{% endif %}</small>
         {% endif %}
-        <a class="button secondary" href="{{ url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a>
+        <a class="button secondary" href="{{ r.url or url_for('detail',kind=r.url_kind,item_id=r.item_id) }}">Ouvrir</a>
       </aside>
     </article>
   {% else %}

@@ -19,10 +19,12 @@ def test_held_invoices_are_filtered_before_they_become_expected_income():
 def test_forecast_returns_the_held_total_separately():
     assert "'held_receivables':held_receivables" in CASH
     assert "'held_receivables_total':round(sum(h['amount'] for h in held_receivables),2)" in CASH
-    assert "from profitos.routes.invoicing import _einvoice_hold" in CASH
+    # v43x : le statut de retenue est calculé par la vue unique des créances.
+    assert "einvoice_hold=lambda inv:inv.get('einvoice_hold')" in CASH
+    assert "from profitos.routes.invoicing import _einvoice_hold" in (ROOT / 'profitos/receivables.py').read_text(encoding='utf-8')
 
 
 def test_page_warns_about_held_receivables_and_keeps_the_empty_state():
-    assert "créance(s) retenue(s), non comptée(s)" in TPL
+    assert "'créance retenue, non comptée', 'créances retenues, non comptées'" in TPL
     assert "exclus de la prévision" in TPL
     assert "Aucune créance ouverte." in TPL

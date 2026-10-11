@@ -2,7 +2,7 @@ from pathlib import Path
 import ast
 ROOT=Path(__file__).resolve().parents[1]
 E=(ROOT/"profitos/ereporting.py").read_text(encoding="utf-8"); I=(ROOT/"profitos/routes/invoicing.py").read_text(encoding="utf-8")
-R=(ROOT/"profitos/runtime.py").read_text(encoding="utf-8"); T=(ROOT/"templates/invoicing_new.html").read_text(encoding="utf-8")
+R=(ROOT/"profitos/runtime.py").read_text(encoding="utf-8"); T=(ROOT/"templates/_invoice_header_fields.html").read_text(encoding="utf-8")
 def test_no_silent_scope_guessing():
     assert "ereporting_scope='b2c'" in E and "ereporting_scope='international_b2b'" in E and "Périmètre e-reporting" in T
 def test_four_flux10_families():

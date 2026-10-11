@@ -43,7 +43,7 @@ def _signup(app, company, paid=True):
     from profitos import runtime as rt
     client = app.test_client()
     email = f"{uuid.uuid4().hex[:10]}@example.com"
-    r = _post(client, '/signup', {'full_name': 'Test', 'email': email, 'password': PASSWORD, 'company_name': company})
+    r = _post(client, '/signup', {'accept_terms': '1', 'full_name': 'Test', 'email': email, 'password': PASSWORD, 'company_name': company})
     assert r.status_code in (302, 303)
     with client.session_transaction() as s:
         org_id, user_id = s['org_id'], s['user_id']
@@ -54,6 +54,21 @@ def _signup(app, company, paid=True):
     return client, email, org_id, user_id
 
 
+def _invite_path(owner):
+    # v4xx : le lien n'est plus dans un message flash (cookie de session) ; il est affiché
+    # une seule fois sur la page de collaboration, depuis un stockage serveur.
+    html = owner.get('/comptabilite/revision/1/cabinet').get_data(as_text=True)
+    m = re.search(r'(/collaboration-comptable/accepter/[^\s<"]+)', html)
+    assert m, 'lien d\'invitation absent de la page'
+    assert '/collaboration-comptable/accepter/' not in owner.get('/comptabilite/revision/1/cabinet').get_data(as_text=True)
+    return m.group(1)
+
+
+def _verify_email(user_id):
+    from profitos import runtime as rt
+    c = rt.auth_cx(); c.execute('UPDATE users SET email_verified=1 WHERE id=?', (user_id,)); c.commit(); c.close()
+
+
 def _tenant(org_id):
     from profitos import runtime as rt
     from profitos import db as dbmod
@@ -62,8 +77,11 @@ def _tenant(org_id):
 
 def test_mark_issued_issues_and_books_a_draft_without_email(app):
     client, _, org_id, _ = _signup(app, 'Emission SAS')
-    _post(client, '/company', {'name': 'Emission SAS', 'siret': '73282932000074', 'address': '1 rue', 'postal_code': '75001', 'city': 'Paris'})
+    # v421 : l'émission exige les mentions obligatoires (forme, capital, RCS, TVA, SIREN client…).
+    _post(client, '/company', {'name': 'Emission SAS', 'siret': '73282932000074', 'address': '1 rue', 'postal_code': '75001', 'city': 'Paris',
+                               'legal_form': 'SAS', 'share_capital': '10000', 'rcs_city': 'Paris', 'vat_number': 'FR44732829320'})
     _post(client, '/facturation/nouvelle', {'client_name': 'Client Courrier', 'due_date': (date.today() + timedelta(days=30)).isoformat(),
+                                            'client_address': '2 rue B\n69001 Lyon', 'client_siren': '552100554',
                                             'label_1': 'Mission', 'qty_1': '1', 'price_1': '1000', 'vat_1': '20'})
     c = _tenant(org_id)
     inv_id = c.execute("SELECT id FROM outgoing_invoices WHERE client_name='Client Courrier'").fetchone()['id']
@@ -107,9 +125,14 @@ def test_external_accountant_can_accept_and_revocation_removes_all_access(app):
     _post(owner, '/comptabilite/revision/nouvelle', {'review_type': 'courante', 'period_label': 'Sept 2026'})
     _post(owner, '/comptabilite/revision/1/cabinet/activer', {'accountant_email': acc_email, 'firm_name': 'Cabinet Expert'})
     _post(owner, '/comptabilite/revision/1/collaboration/inviter', {'email': acc_email})
-    link = next(m for m in _flashes(owner) if 'Invitation créée' in m)
-    path = re.search(r'(/collaboration-comptable/accepter/\S+)', link).group(1)
+    assert not any('/collaboration-comptable/' in m for m in _flashes(owner))
+    path = _invite_path(owner)
     assert f'/accepter/{org_a}/' in path
+
+    # Adresse non vérifiée : acceptation refusée (compte possiblement pré-créé par un tiers).
+    r = _post(accountant, path)
+    assert r.status_code == 302 and '/compte/securite' in r.headers['Location']
+    _verify_email(acc_id)
 
     # Le comptable est connecté sur SA propre organisation (org B).
     assert accountant.get(path).status_code == 200
@@ -144,7 +167,15 @@ def test_invitation_link_cannot_be_used_by_another_email(app):
     _post(owner, '/comptabilite/revision/nouvelle', {'review_type': 'courante', 'period_label': 'Oct 2026'})
     _post(owner, '/comptabilite/revision/1/cabinet/activer', {'accountant_email': 'vrai@cabinet.example', 'firm_name': 'Cabinet'})
     _post(owner, '/comptabilite/revision/1/collaboration/inviter', {'email': 'vrai@cabinet.example'})
-    path = re.search(r'(/collaboration-comptable/accepter/\S+)', next(m for m in _flashes(owner) if 'Invitation' in m)).group(1)
+    path = _invite_path(owner)
     assert other.get(path).status_code == 403
     assert _post(other, path).status_code == 403
     assert other.get(f'/collaboration-comptable/accepter/{org_a}/faux-jeton').status_code == 404
+
+
+def test_test_suite_never_touches_the_production_database():
+    """Garde-fou : même avec un .env ou des variables Windows pointant vers la production,
+    les tests tournent sur SQLite locale (voir tests/conftest.py)."""
+    from profitos import db as dbmod
+    assert dbmod.USE_POSTGRES is False
+    assert not dbmod.DATABASE_URL

@@ -3,18 +3,18 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">ÉCONOMIES</div>
 <h1 class="purchase-title">{{ total|fr_number }}&nbsp;€ d'économies potentielles</h1>
-<p class="purchase-subtitle">Signaux à vérifier, pas économies déjà réalisées.</p>
+<p class="purchase-subtitle">Signaux à vérifier, pas économies déjà réalisées{% if one_off or annual %} : {% if one_off %}{{ one_off|fr_number }}&nbsp;€ de montants ponctuels (doublons, échéances à renégocier){% endif %}{% if one_off and annual %} et {% endif %}{% if annual %}{{ annual|fr_number }}&nbsp;€ de hausses fournisseurs annualisées estimées{% endif %}{% endif %}.</p>
 
 <section class="purchase-panel" style="margin:20px 0;">
   <form method="get" class="formgrid">
-    <label>Recherche<input type="text" name="q" value="{{ q }}" placeholder="ex: fournisseur, assurance..."></label>
-    <label>Valeur min (€/an)<input type="number" name="min_value" value="{{ min_value }}" step="1"></label>
-    <label>Valeur max (€/an)<input type="number" name="max_value" value="{{ max_value }}" step="1"></label>
+    <label>Recherche<input type="text" name="q" value="{{ q }}" placeholder="ex. : fournisseur, assurance…"></label>
+    <label>Montant min (€)<input type="number" name="min_value" value="{{ min_value }}" step="1"></label>
+    <label>Montant max (€)<input type="number" name="max_value" value="{{ max_value }}" step="1"></label>
     <div style="align-self:end;"><button type="submit" class="purchase-primary-btn primary">Filtrer</button></div>
   </form>
 </section>
 
-{% if auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
+{% if auth_org and auth_org.plan in ('TRIAL','PRO','BUSINESS','MULTI') %}
 <div style="margin:0 0 18px;display:flex;gap:8px;">
   <a class="purchase-nav-btn" href="{{ url_for('save_export',format='xlsx',q=q,min_value=min_value,max_value=max_value) }}">Exporter (Excel)</a>
   <a class="purchase-nav-btn" href="{{ url_for('save_export',format='csv',q=q,min_value=min_value,max_value=max_value) }}">Exporter (CSV)</a>
@@ -26,14 +26,14 @@
 <section class="purchase-panel">
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Signal</th><th>Détail</th><th>Valeur</th><th>Confiance</th></tr></thead>
+      <thead><tr><th>Signal</th><th>Détail</th><th>Montant</th><th>Fiabilité</th></tr></thead>
       <tbody>
       {% for r in rows %}
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('detail',kind='SAVE',item_id=r.id) }}"><strong>{{ r.title }}</strong></a></td>
           <td>{{ r.details }}</td>
-          <td><strong>{{ r.value|fr_number }}&nbsp;€</strong></td>
-          <td>{{ r.score }}%</td>
+          <td><strong>{{ r.value|fr_number }}&nbsp;€</strong><br><span class="purchase-muted" style="font-size:12px;">{{ r.nature_label }}</span></td>
+          <td>{{ r.reliability|capitalize }}<br><span class="purchase-muted" style="font-size:12px;">Règle : {{ r.rule }}</span></td>
         </tr>
       {% else %}
         <tr><td colspan="4" class="purchase-empty">Aucun signal d'économie.</td></tr>

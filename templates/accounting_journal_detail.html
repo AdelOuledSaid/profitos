@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">JOURNAL {{ journal.code }}</div>
     <h1 class="purchase-title">{{ journal.label }}</h1>
-    <p class="purchase-subtitle">{{ entries|length }} écriture(s).</p>
+    <p class="purchase-subtitle">{{ pluralize(entries|length, 'écriture') }}.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">← Journaux</a>
 </div>

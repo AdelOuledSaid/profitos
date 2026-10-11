@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ title or 'ProfitOS' }}</title>
+  <title>{% block title %}{{ page_title(request.endpoint, title) }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ asset_url('style.css') }}">
   <link rel="stylesheet" href="{{ asset_url('theme-light.css') }}">
   <link rel="stylesheet" href="{{ asset_url('financial-brain.css') }}">
@@ -17,8 +17,10 @@
   <script src="{{ asset_url('app.js') }}" defer></script>
 </head>
 <body{% if request.endpoint=='home' %} data-tour-auto="1"{% endif %}>
-{% set paid_plan = auth_org and auth_org.plan in ('STARTER','PRO','BUSINESS','MULTI') %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+{# L'essai (TRIAL) = formule Pro ; MULTI inclut tout. #}
+{% set paid_plan = auth_org and auth_org.plan in ('TRIAL','STARTER','PRO','BUSINESS','MULTI') %}
+{% set advanced_plan = auth_org and plan_feature_enabled(auth_org.plan,'advanced_features') %}
 
 <header class="mobilebar">
   <button type="button" class="navtoggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Ouvrir le menu"><span></span><span></span><span></span></button>
@@ -29,6 +31,12 @@
   {% if branding and branding.accent_color %}<div style="height:4px;background:{{ branding.accent_color }};margin:-28px -22px 18px;border-radius:0;"></div>{% endif %}
   <div class="brand">{% if branding and branding.logo_url %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}Profit<span>OS</span>{% endif %}</div>
   <div class="subbrand">Pilotage financier</div>
+  {% if auth_user %}
+  <form method="post" action="{{ url_for('logout') }}" class="sidebar-quick-logout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="logout-link">Déconnexion</button>
+  </form>
+  {% endif %}
 
   {% if active_entities and active_entities|length > 1 %}
   <form method="post" action="{{ url_for('entity_switch') }}" style="margin-bottom:18px;">
@@ -50,11 +58,11 @@
     {% if grp_depenses|trim %}<details class="navgroup"{% if false or ep.startswith('save') or ep=='margin_watch' or ep.startswith('expense_report') or ep.startswith('opportunity') %} open{% endif %}><summary>Dépenses &amp; marges</summary>{{ grp_depenses }}</details>{% endif %}
     {% set grp_dev %}{% if paid_plan and can_access('actions') %}<a href="{{ url_for('actions') }}" data-tour="actions"{% if ep.startswith('action') %} class="active" aria-current="page"{% endif %}>Centre d'actions</a>{% endif %}{% if paid_plan and can_access('grow') %}<a href="{{ url_for('grow') }}" data-tour="grow"{% if ep.startswith('grow') or ep.startswith('dce') %} class="active" aria-current="page"{% endif %}>Marchés publics</a><a href="{{ url_for('partners') }}"{% if ep.startswith('partner') %} class="active" aria-current="page"{% endif %}>Partenaires</a>{% endif %}{% if can_access('impact') %}<a href="{{ url_for('impact') }}"{% if ep=='impact' %} class="active" aria-current="page"{% endif %}>Gains réalisés</a>{% endif %}{% if can_access('weekly') %}<a href="{{ url_for('weekly_report_preview') }}"{% if ep=='weekly_report_preview' %} class="active" aria-current="page"{% endif %}>Rapport hebdomadaire</a>{% endif %}{% endset %}
     {% if grp_dev|trim %}<details class="navgroup"{% if false or ep.startswith('action') or ep.startswith('grow') or ep.startswith('dce') or ep.startswith('partner') or ep=='impact' or ep=='weekly_report_preview' %} open{% endif %}><summary>Actions &amp; croissance</summary>{{ grp_dev }}</details>{% endif %}
-    {% set grp_compta %}{% if auth_org and plan_feature_enabled(auth_org.plan,'accounting_core') %}<a href="{{ url_for('accounting_chart') }}"{% if ep=='accounting_chart' %} class="active" aria-current="page"{% endif %}>Plan comptable</a><a href="{{ url_for('accounting_journals_view') }}"{% if ep.startswith('accounting_journal') or ep.startswith('accounting_entry') %} class="active" aria-current="page"{% endif %}>Journaux</a><a href="{{ url_for('vat_summary') }}"{% if ep=='vat_summary' %} class="active" aria-current="page"{% endif %}>Synthèse TVA</a><a href="{{ url_for('reviews_list') }}"{% if ep.startswith('review') or ep.startswith('accountant') %} class="active" aria-current="page"{% endif %}>Révision comptable</a><a href="{{ url_for('plaquette') }}"{% if ep=='plaquette' %} class="active" aria-current="page"{% endif %}>Comptes annuels / Plaquette</a><a href="{{ url_for('fiscal_workpapers') }}"{% if ep=='fiscal_workpapers' %} class="active" aria-current="page"{% endif %}>Dossiers fiscaux</a><a href="{{ url_for('fixed_assets_list') }}"{% if ep.startswith('fixed_asset') %} class="active" aria-current="page"{% endif %}>Immobilisations</a><a href="{{ url_for('loans_list') }}"{% if ep.startswith('loan') %} class="active" aria-current="page"{% endif %}>Emprunts</a><a href="{{ url_for('finance_leases_list') }}"{% if ep.startswith('finance_lease') %} class="active" aria-current="page"{% endif %}>Crédit-bail</a><a href="{{ url_for('cutoff_list') }}"{% if ep.startswith('cutoff') %} class="active" aria-current="page"{% endif %}>Cut-off (CCA/FNP/FAE)</a><a href="{{ url_for('analytical_axes_list') }}"{% if ep.startswith('analytical') %} class="active" aria-current="page"{% endif %}>Comptabilité analytique</a><a href="{{ url_for('payroll_imports_list') }}"{% if ep.startswith('payroll') %} class="active" aria-current="page"{% endif %}>Paie Silae / PayFit</a>{% endif %}<a href="{{ url_for('cabinet_portfolio') }}"{% if ep.startswith('cabinet') %} class="active" aria-current="page"{% endif %}>Portefeuille clients (cabinet)</a>{% endset %}
+    {% set grp_compta %}{% if auth_org and plan_feature_enabled(auth_org.plan,'accounting_core') %}<a href="{{ url_for('accounting_chart') }}"{% if ep=='accounting_chart' %} class="active" aria-current="page"{% endif %}>Plan comptable</a><a href="{{ url_for('accounting_journals_view') }}"{% if ep.startswith('accounting_journal') or ep.startswith('accounting_entry') %} class="active" aria-current="page"{% endif %}>Journaux</a><a href="{{ url_for('vat_summary') }}"{% if ep=='vat_summary' %} class="active" aria-current="page"{% endif %}>Synthèse TVA</a><a href="{{ url_for('reviews_list') }}"{% if ep.startswith('review') or ep.startswith('accountant') %} class="active" aria-current="page"{% endif %}>Révision comptable</a><a href="{{ url_for('plaquette') }}"{% if ep=='plaquette' %} class="active" aria-current="page"{% endif %}>Comptes annuels / Plaquette</a><a href="{{ url_for('fiscal_workpapers') }}"{% if ep=='fiscal_workpapers' %} class="active" aria-current="page"{% endif %}>Dossiers fiscaux</a><a href="{{ url_for('fixed_assets_list') }}"{% if ep.startswith('fixed_asset') %} class="active" aria-current="page"{% endif %}>Immobilisations</a><a href="{{ url_for('loans_list') }}"{% if ep.startswith('loan') %} class="active" aria-current="page"{% endif %}>Emprunts</a><a href="{{ url_for('finance_leases_list') }}"{% if ep.startswith('finance_lease') %} class="active" aria-current="page"{% endif %}>Crédit-bail</a><a href="{{ url_for('cutoff_list') }}"{% if ep.startswith('cutoff') %} class="active" aria-current="page"{% endif %}>Séparation des exercices (cut-off)</a><a href="{{ url_for('analytical_axes_list') }}"{% if ep.startswith('analytical') %} class="active" aria-current="page"{% endif %}>Comptabilité analytique</a><a href="{{ url_for('payroll_imports_list') }}"{% if ep.startswith('payroll') %} class="active" aria-current="page"{% endif %}>Paie Silae / PayFit</a>{% endif %}{% if auth_org and plan_feature_enabled(auth_org.plan,'multi_entity') and can_access('cabinet') and user_orgs|length > 1 %}<a href="{{ url_for('cabinet_portfolio') }}"{% if ep.startswith('cabinet') %} class="active" aria-current="page"{% endif %}>Portefeuille clients</a>{% endif %}{% endset %}
     {% if grp_compta|trim %}<details class="navgroup"{% if false or ep.startswith('accounting') or ep=='vat_summary' or ep.startswith('review') or ep.startswith('accountant') or ep=='plaquette' or ep.startswith('fiscal') or ep.startswith('fixed_asset') or ep.startswith('loan') or ep.startswith('finance_lease') or ep.startswith('cutoff') or ep.startswith('analytical') or ep.startswith('payroll') or ep.startswith('cabinet') %} open{% endif %}><summary>Comptabilité</summary>{{ grp_compta }}</details>{% endif %}
-    {% set grp_data %}{% if paid_plan and can_access('uploads') %}<a href="{{ url_for('upload_invoices') }}" data-tour="uploads"{% if ep=='upload_invoices' %} class="active" aria-current="page"{% endif %}>Importer des factures</a><a href="{{ url_for('upload_expenses') }}"{% if ep=='upload_expenses' %} class="active" aria-current="page"{% endif %}>Importer des dépenses</a><a href="{{ url_for('upload_bank_statement') }}"{% if ep=='upload_bank_statement' %} class="active" aria-current="page"{% endif %}>Importer un relevé bancaire</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'banking') %}<a href="{{ url_for('banking') }}"{% if ep.startswith('bank') %} class="active" aria-current="page"{% endif %}>Banques connectées</a>{% endif %}{% endif %}<a href="{{ url_for('ecommerce_settings') }}"{% if ep.startswith('ecommerce') %} class="active" aria-current="page"{% endif %}>Shopify / WooCommerce</a>{% if can_access('settings') %}<a href="{{ url_for('integrations') }}"{% if ep=='integrations' %} class="active" aria-current="page"{% endif %}>Intégrations comptables</a><a href="{{ url_for('api_keys') }}"{% if ep=='api_keys' %} class="active" aria-current="page"{% endif %}>API</a>{% endif %}{% endset %}
+    {% set grp_data %}{% if paid_plan and can_access('uploads') %}<a href="{{ url_for('upload_invoices') }}" data-tour="uploads"{% if ep=='upload_invoices' %} class="active" aria-current="page"{% endif %}>Importer des factures</a><a href="{{ url_for('upload_expenses') }}"{% if ep=='upload_expenses' %} class="active" aria-current="page"{% endif %}>Importer des dépenses</a><a href="{{ url_for('upload_bank_statement') }}"{% if ep=='upload_bank_statement' %} class="active" aria-current="page"{% endif %}>Importer un relevé bancaire</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'banking') %}<a href="{{ url_for('banking') }}"{% if ep.startswith('bank') %} class="active" aria-current="page"{% endif %}>Banques connectées</a>{% endif %}{% endif %}{% if auth_org and plan_feature_enabled(auth_org.plan,'api') %}<a href="{{ url_for('ecommerce_settings') }}"{% if ep.startswith('ecommerce') %} class="active" aria-current="page"{% endif %}>Shopify / WooCommerce</a>{% endif %}{% if can_access('settings') %}<a href="{{ url_for('integrations') }}"{% if ep=='integrations' %} class="active" aria-current="page"{% endif %}>Intégrations comptables</a><a href="{{ url_for('api_keys') }}"{% if ep=='api_keys' %} class="active" aria-current="page"{% endif %}>API</a>{% endif %}{% endset %}
     {% if grp_data|trim %}<details class="navgroup"{% if false or ep.startswith('upload') or ep.startswith('bank') or ep.startswith('ecommerce') or ep=='integrations' or ep=='api_keys' %} open{% endif %}><summary>Données &amp; connexions</summary>{{ grp_data }}</details>{% endif %}
-    {% set grp_entreprise %}<a href="{{ url_for('company') }}"{% if ep=='company' %} class="active" aria-current="page"{% endif %}>Profil entreprise</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'multi_entity') %}<a href="{{ url_for('entities_list') }}"{% if ep.startswith('entit') %} class="active" aria-current="page"{% endif %}>Entités (multi-société)</a>{% endif %}{% if can_access('team') %}<a href="{{ url_for('team') }}"{% if ep=='team' or ep=='team_entity_access' or ep.startswith('team_invite') %} class="active" aria-current="page"{% endif %}>Équipe</a><a href="{{ url_for('team_performance') }}"{% if ep=='team_performance' %} class="active" aria-current="page"{% endif %}>Performance de l'équipe</a>{% endif %}{% if can_access('billing') %}<a href="{{ url_for('billing') }}"{% if ep=='billing' %} class="active" aria-current="page"{% endif %}>Abonnement</a>{% endif %}{% if can_access('settings') %}<a href="{{ url_for('settings') }}"{% if ep=='settings' %} class="active" aria-current="page"{% endif %}>Paramètres</a><a href="{{ url_for('swan_settings') }}"{% if ep.startswith('swan') %} class="active" aria-current="page"{% endif %}>Compte Pro</a><a href="{{ url_for('referral') }}"{% if ep=='referral' %} class="active" aria-current="page"{% endif %}>Parrainage</a>{% endif %}{% endset %}
+    {% set grp_entreprise %}<a href="{{ url_for('company') }}"{% if ep=='company' %} class="active" aria-current="page"{% endif %}>Profil entreprise</a>{% if auth_org and plan_feature_enabled(auth_org.plan,'multi_entity') %}<a href="{{ url_for('entities_list') }}"{% if ep.startswith('entit') %} class="active" aria-current="page"{% endif %}>Sociétés du groupe</a>{% endif %}{% if can_access('team') %}<a href="{{ url_for('team') }}"{% if ep=='team' or ep=='team_entity_access' or ep.startswith('team_invite') %} class="active" aria-current="page"{% endif %}>Équipe</a><a href="{{ url_for('team_performance') }}"{% if ep=='team_performance' %} class="active" aria-current="page"{% endif %}>Performance de l'équipe</a>{% endif %}{% if can_access('billing') %}<a href="{{ url_for('billing') }}"{% if ep=='billing' %} class="active" aria-current="page"{% endif %}>Abonnement</a>{% endif %}{% if can_access('settings') %}<a href="{{ url_for('settings') }}"{% if ep=='settings' %} class="active" aria-current="page"{% endif %}>Paramètres</a>{% if swan_enabled() %}<a href="{{ url_for('swan_settings') }}"{% if ep.startswith('swan') %} class="active" aria-current="page"{% endif %}>Compte Pro</a>{% endif %}<a href="{{ url_for('referral') }}"{% if ep=='referral' %} class="active" aria-current="page"{% endif %}>Parrainage</a>{% endif %}<a href="{{ url_for('account_security') }}"{% if ep=='account_security' or ep.startswith('two_factor') %} class="active" aria-current="page"{% endif %}>Sécurité du compte</a>{% endset %}
     {% if grp_entreprise|trim %}<details class="navgroup"{% if false or ep=='company' or ep.startswith('entit') or ep.startswith('team') or ep.startswith('billing') or ep=='settings' or ep.startswith('swan') or ep=='referral' %} open{% endif %}><summary>Entreprise &amp; compte</summary>{{ grp_entreprise }}</details>{% endif %}
   </nav>
 
@@ -81,7 +89,8 @@
       <summary style="font-size:13px;color:#3ddc84;cursor:pointer;">+ Nouvelle organisation</summary>
       <form method="post" action="{{ url_for('org_new') }}" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input name="org_name" placeholder="Nom du client" style="font-size:13px;padding:9px 10px;" required>
+        <label for="sidebar-org-name" style="font-size:12px;color:#a0a0a0;">Nom de la nouvelle organisation</label>
+        <input id="sidebar-org-name" name="org_name" placeholder="ex. : Boulangerie Martin" style="font-size:13px;padding:9px 10px;" required>
         <button type="submit" style="font-size:13px;padding:9px 10px;">Créer</button>
       </form>
     </details>
@@ -99,7 +108,7 @@
   {% endif %}
 </aside>
 
-<main>
+<main id="contenu" tabindex="-1">
   {% if auth_user and (notifications or unseen_changelog) %}
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;position:relative;">
     {% if unseen_changelog %}
@@ -134,27 +143,32 @@
   {% endif %}
   {% if auth_user and not auth_user.email_verified %}
   <div class="flash" style="background:#fffbeb;border-color:#fde68a;color:#78350f;">
-    Votre email n'est pas encore vérifié.
+    Votre adresse e-mail n'est pas encore vérifiée.
     <form method="post" action="{{ url_for('verify_resend') }}" style="display:inline;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" style="background:none;border:none;color:#78350f;text-decoration:underline;cursor:pointer;padding:0;font:inherit;font-weight:700;">Renvoyer l'email de vérification</button>
+      <button type="submit" style="background:none;border:none;color:#78350f;text-decoration:underline;cursor:pointer;padding:0;font:inherit;font-weight:700;">Renvoyer l'e-mail de vérification</button>
     </form>
   </div>
   {% endif %}
 
-  {% if auth_org and auth_org.plan=='TRIAL' %}
+  {% if auth_org and auth_org.plan=='TRIAL' and not auth_org.parent_org_id %}
     {% set td=trial_days_left(auth_org) %}
     {% if td is not none %}
     <div class="flash" style="background:{{ '#fef2f2' if td<=3 else '#eff6ff' }};border-color:{{ '#fecaca' if td<=3 else '#bfdbfe' }};color:{{ '#7f1d1d' if td<=3 else '#1e3a8a' }};">
-      {% if td>0 %}
-        Essai gratuit : {{ td }} jour{{ 's' if td>1 else '' }} restant{{ 's' if td>1 else '' }}.
-        Les imports, les marchés publics, le centre d'actions et l'envoi de rapports nécessitent un abonnement.
+      {% if subscription_state(auth_org)=='TRIAL' %}
+        Essai gratuit : {{ td }} jour{{ 's' if td>1 else '' }} restant{{ 's' if td>1 else '' }}{% if auth_org.trial_ends_at %} (jusqu'au {{ auth_org.trial_ends_at|fr_date }}){% endif %}.
+        Toutes les fonctions de la formule Pro sont incluses pendant l'essai (5 utilisateurs, comptabilité, banque, API).
       {% else %}
-        Votre essai gratuit est terminé.
+        Votre essai gratuit est terminé. Vos données sont conservées et vos exports restent disponibles.
       {% endif %}
-      <a href="{{ url_for('billing') }}" style="text-decoration:underline;color:{{ '#7f1d1d' if td<=3 else '#1e3a8a' }};font-weight:700;">Voir les plans</a>
+      {% if can_access('billing') %}<a href="{{ url_for('billing') }}" style="text-decoration:underline;color:{{ '#7f1d1d' if td<=3 else '#1e3a8a' }};font-weight:700;">Voir les formules</a>{% endif %}
     </div>
     {% endif %}
+  {% elif auth_org and auth_org.status=='PAST_DUE' %}
+    <div class="flash" style="background:#fef2f2;border-color:#fecaca;color:#7f1d1d;">
+      Le dernier paiement de votre abonnement a échoué. Régularisez-le rapidement pour éviter la suspension de l'accès.
+      {% if can_access('billing') and not auth_org.parent_org_id %}<a href="{{ url_for('billing') }}" style="text-decoration:underline;color:#7f1d1d;font-weight:700;">Mettre à jour le paiement</a>{% else %}Contactez le propriétaire du compte.{% endif %}
+    </div>
   {% endif %}
 
   {% with messages=get_flashed_messages() %}

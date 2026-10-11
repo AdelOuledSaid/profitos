@@ -28,23 +28,29 @@ def test_payment_route_computes_balance_and_partial_status_atomically():
     assert "balance=_invoice_balance(c,inv)" in ROUTES
     assert "amount > balance + 0.001" in ROUTES
     assert "generate_sale_partial_payment_entry(c,inv,payment)" in ROUTES
-    assert "new_status='paid' if paid_total" in ROUTES
+    assert "new_status='paid' if _invoice_balance(c,inv) <= 0.005" in ROUTES
     assert "else 'partially_paid'" in ROUTES
     assert 'except AccountingError as e:' in ROUTES
     assert 'c.rollback()' in ROUTES
 
 def test_receivables_are_entity_scoped_and_net_of_payments():
+    # v43x : la page Créances passe par la vue unique profitos/receivables.py (factures émises
+    # ET importées). Le calcul net des règlements et des avoirs y est vérifié.
     block=ROUTES[ROUTES.index('def invoicing_receivables():'):ROUTES.index("@app.route('/facturation/<int:invoice_id>/", ROUTES.index('def invoicing_receivables():'))]
-    assert "i.status IN ('sent','partially_paid') AND i.entity_id IS ?" in block
+    assert 'open_receivables(c,current=True)' in block
+    helper=(ROOT/'profitos/receivables.py').read_text(encoding='utf-8')
+    assert "r['status'] not in ('sent', 'partially_paid', 'overdue')" in helper
     # Rattachement du paiement à l'entité de la facture, sous une forme valable sur PostgreSQL
     # (entity_id est un entier sur les paiements mais du texte sur les bases migrées).
-    assert "COALESCE(CAST(p.entity_id AS TEXT),'') = COALESCE(CAST(i.entity_id AS TEXT),'')" in block
-    assert "total-credited-float(r['paid_total'] or 0)" in block
+    assert "COALESCE(CAST(p.entity_id AS TEXT),'')=COALESCE(CAST(oi.entity_id AS TEXT),'')" in helper
+    assert "max(0.0, total - paid - credited)" in helper
 
 def test_invoice_ui_exposes_payment_history_and_partial_status():
     assert 'Règlements' in DETAIL
     assert 'paid_total' in DETAIL and 'balance_due' in DETAIL
     assert "url_for('invoicing_add_payment'" in DETAIL
-    assert 'Partiellement payée' in DETAIL
-    assert 'Partiellement payée' in LIST
-    assert 'Partiellement réglée' in PUBLIC
+    # v421 : libellé unique « Partiellement payée » (filtre invoice_status_label).
+    assert 'invoice_status_label' in DETAIL
+    assert "'partially_paid': 'Partiellement payée'" in (ROOT / 'profitos' / 'runtime.py').read_text(encoding='utf-8')
+    assert 'Partiellement payée' in LIST or 'invoice_status_label' in LIST
+    assert 'invoice_status_label' in PUBLIC and 'Partiellement réglée' not in PUBLIC

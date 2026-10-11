@@ -248,7 +248,7 @@ def register(app):
             return redirect(url_for('actions'))
         if a['kind']!='RECOVER':
             c.close()
-            flash("L'envoi par email n'est disponible que pour les relances clients.")
+            flash("L'envoi par e-mail n'est disponible que pour les relances clients.")
             return redirect(url_for('actions'))
 
         inv=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(a['opportunity_id'],current_entity_id())).fetchone()
@@ -260,17 +260,21 @@ def register(app):
             )
             return redirect(url_for('actions'))
 
+        quota_error=check_outbound_email_quota('action')
+        if quota_error:
+            flash(quota_error)
+            return redirect(url_for('actions'))
         subject,body=parse_email_draft(a['draft'])
         safe_body=body.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')
         html=(
             '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
             'font-size:14px;color:#111827;white-space:pre-wrap;">'+safe_body+'</div>'
         )
-        result=send_email(inv['customer_email'],subject,html)
+        result=send_email(inv['customer_email'],subject,html,on_behalf_of_org=current_org())
 
         if not result.get('sent'):
             if result.get('dry_run'):
-                flash(f"Service email non configuré — email non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
+                flash(f"Service e-mail non configuré — e-mail non envoyé réellement (mode simulation). Destinataire prévu : {inv['customer_email']}.")
             else:
                 flash("Échec de l'envoi de l'email. L'action reste approuvée et peut être réessayée.")
             return redirect(url_for('actions'))
@@ -281,7 +285,7 @@ def register(app):
         c2.close()
 
         log_status_change('ACTION',a['opportunity_id'],a['kind'],'APPROVED','SENT',note=f"Email envoyé à {inv['customer_email']}")
-        flash(f"Email envoyé à {inv['customer_email']}.")
+        flash(f"E-mail envoyé à {inv['customer_email']}.")
         return redirect(url_for('actions'))
 
     @app.route('/actions/<int:aid>/send-sms',methods=['POST'])

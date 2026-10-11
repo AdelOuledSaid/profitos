@@ -17,7 +17,8 @@ import base64
 import ipaddress
 import re
 
-import requests
+from profitos.crypto import decrypt_secret, encrypt_secret
+from profitos.safe_http import UnsafeDestination, safe_request
 
 SHOPIFY_API_VERSION = '2024-01'
 
@@ -51,12 +52,24 @@ def is_connected(conn, platform):
     return row is not None
 
 
-def get_connection(conn, platform):
-    return conn.execute('SELECT * FROM ecommerce_connections WHERE platform=?', (platform,)).fetchone()
+def get_connection(conn, platform, org_id=None):
+    """Connexion de la plateforme, identifiants déchiffrés (les valeurs
+    historiques stockées en clair sont lues telles quelles)."""
+    row = conn.execute('SELECT * FROM ecommerce_connections WHERE platform=?', (platform,)).fetchone()
+    if not row:
+        return None
+    row = dict(row)
+    for key in ('credential_1', 'credential_2'):
+        row[key] = decrypt_secret(row.get(key), org_id)
+    return row
 
 
-def save_connection(conn, platform, shop_domain, credential_1, credential_2, connected_by):
+def save_connection(conn, platform, shop_domain, credential_1, credential_2, connected_by, org_id=None):
+    """Enregistre la connexion ; le jeton et le secret sont chiffrés (AES-GCM,
+    clé dérivée par organisation — voir profitos/crypto.py)."""
     from datetime import datetime
+    credential_1 = encrypt_secret(credential_1, org_id)
+    credential_2 = encrypt_secret(credential_2, org_id)
     conn.execute(
         """INSERT INTO ecommerce_connections(platform,shop_domain,credential_1,credential_2,connected_at,connected_by)
            VALUES(?,?,?,?,?,?)
@@ -74,15 +87,18 @@ def fetch_shopify_orders(shop_domain, access_token, limit=20):
     shop_domain = normalize_shop_domain(shop_domain, 'shopify')
     url = f"https://{shop_domain}/admin/api/{SHOPIFY_API_VERSION}/orders.json"
     try:
-        resp = requests.get(
-            url, headers={'X-Shopify-Access-Token': access_token},
+        resp = safe_request(
+            'GET', url, headers={'X-Shopify-Access-Token': access_token},
             params={'status': 'any', 'limit': limit, 'order': 'created_at desc'},
             timeout=20,
         )
-    except requests.RequestException as e:
-        raise ValueError(f"Connexion à Shopify impossible : {e}") from e
+    except UnsafeDestination as e:
+        raise ValueError(f"Boutique Shopify refusée : {e}") from e
+    except ConnectionError as e:
+        raise ValueError("Connexion à Shopify impossible.") from e
     if resp.status_code != 200:
-        raise ValueError(f"Appel Shopify échoué ({resp.status_code}) : {resp.text[:300]}")
+        # Code HTTP uniquement : le corps de la réponse distante n'est jamais affiché.
+        raise ValueError(f"Appel Shopify échoué (HTTP {resp.status_code}).")
     orders = resp.json().get('orders', [])
     result = []
     for o in orders:
@@ -109,15 +125,19 @@ def fetch_woocommerce_orders(shop_domain, consumer_key, consumer_secret, limit=2
     auth_bytes = f"{consumer_key}:{consumer_secret}".encode('utf-8')
     auth_header = 'Basic ' + base64.b64encode(auth_bytes).decode('ascii')
     try:
-        resp = requests.get(
-            url, headers={'Authorization': auth_header},
+        # Domaine choisi par le marchand : résolution unique, adresses publiques
+        # uniquement, connexion à l'IP validée (anti-SSRF / DNS rebinding).
+        resp = safe_request(
+            'GET', url, headers={'Authorization': auth_header},
             params={'per_page': limit, 'orderby': 'date', 'order': 'desc'},
             timeout=20,
         )
-    except requests.RequestException as e:
-        raise ValueError(f"Connexion à WooCommerce impossible : {e}") from e
+    except UnsafeDestination as e:
+        raise ValueError(f"Boutique WooCommerce refusée : {e}") from e
+    except ConnectionError as e:
+        raise ValueError("Connexion à WooCommerce impossible.") from e
     if resp.status_code != 200:
-        raise ValueError(f"Appel WooCommerce échoué ({resp.status_code}) : {resp.text[:300]}")
+        raise ValueError(f"Appel WooCommerce échoué (HTTP {resp.status_code}).")
     orders = resp.json()
     result = []
     for o in orders:

@@ -1,26 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">COMPANY PROFILE</div>
+<div class="purchase-eyebrow">PROFIL ENTREPRISE</div>
 <h1 class="purchase-title">Profil entreprise</h1>
-<p class="purchase-subtitle">Le filtre géographique des marchés publics fonctionne par département (pas par rayon de distance).</p>
+<p class="purchase-subtitle">Ces informations figurent sur vos factures (mentions obligatoires). Le filtre géographique des marchés publics fonctionne par département.</p>
 
 <section class="purchase-panel">
+  {% set can_edit_company = can_access('settings') %}
+  {% if not can_edit_company %}<p class="purchase-muted">Consultation seule : seuls le propriétaire ou un administrateur peuvent modifier le profil entreprise.</p>{% endif %}
+  {% if errors %}
+  <div class="purchase-alert-text" role="alert" style="margin-bottom:14px;">
+    <strong>Le profil n'a pas été enregistré :</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
   <form method="post" class="formgrid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Nom<input name="name" value="{{ p.name or '' }}"></label>
+    <fieldset {% if not can_edit_company %}disabled{% endif %} style="display:contents;border:0;">
+    <label>Dénomination<input name="name" value="{{ p.name or '' }}" required></label>
+    <label>Forme juridique
+      <select name="legal_form">
+        <option value="">— Choisir —</option>
+        {% for f in legal_forms %}<option value="{{ f }}" {% if p.legal_form == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Capital social (€)<input name="share_capital" value="{{ p.share_capital or '' }}" placeholder="10 000" inputmode="decimal"></label>
+    <label>Ville du greffe (RCS)<input name="rcs_city" value="{{ p.rcs_city or '' }}" placeholder="Lyon"></label>
+    <label>N° au répertoire des métiers (artisans)<input name="rm_number" value="{{ p.rm_number or '' }}" placeholder="RM 123 456 789 69"></label>
+    <label class="wide">Adresse (figurant sur vos factures)<textarea name="address" rows="2" placeholder="12 rue Example">{{ p.address or '' }}</textarea></label>
+    <label>Code postal<input name="postal_code" value="{{ p.postal_code or '' }}" placeholder="75001" inputmode="numeric"></label>
     <label>Ville<input name="city" value="{{ p.city or '' }}"></label>
-    <label>Département principal<input name="department" value="{{ p.department or '' }}" placeholder="14"></label>
-    <label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments or '' }}" placeholder="14, 50, 61, 27"></label>
-    <label class="wide">Activités<textarea name="activities" rows="4">{{ p.activities or '' }}</textarea></label>
-    <label class="wide">Certifications<input name="certifications" value="{{ p.certifications or '' }}"></label>
-    <label class="wide">Adresse (figurant sur vos factures)<input name="address" value="{{ p.address or '' }}" placeholder="12 rue Example"></label>
-    <label>Code postal<input name="postal_code" value="{{ p.postal_code or '' }}" placeholder="75001"></label>
     <label>SIRET<input name="siret" value="{{ p.siret or '' }}" placeholder="123 456 789 00012"></label>
     <label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number or '' }}" placeholder="FR12345678900"></label>
-    <label>IBAN (pour l'export SEPA virements groupés)<input name="iban" value="{{ p.iban or '' }}" placeholder="FR76 1234 5678 ..."></label>
-    <label>BIC<input name="bic" value="{{ p.bic or '' }}" placeholder="ex: BNPAFRPP"></label>
-    <div class="wide"><button class="purchase-primary-btn primary">Enregistrer et actualiser les marchés publics</button></div>
+    <label>Régime de TVA
+      <select name="vat_regime">
+        <option value="normal" {% if (p.vat_regime or 'normal') == 'normal' %}selected{% endif %}>Assujetti à la TVA (régime réel)</option>
+        <option value="franchise_293B" {% if p.vat_regime == 'franchise_293B' %}selected{% endif %}>Franchise en base (art. 293 B du CGI)</option>
+      </select>
+    </label>
+    <label class="checkbox-label"><input type="checkbox" name="vat_on_debits" {% if (p.vat_on_debits or '0')|string in ('1','on') %}checked{% endif %}> Option pour le paiement de la TVA d'après les débits (prestations de services)</label>
+    <label class="wide">Conditions de paiement (mention sur vos factures)<input name="payment_terms" value="{{ p.payment_terms or '' }}" placeholder="Paiement à 30 jours date de facture, par virement"></label>
+    <label>Taux des pénalités de retard<input name="late_penalty_rate" value="{{ p.late_penalty_rate or '' }}" placeholder="trois fois le taux d'intérêt légal"></label>
+    <label>Escompte pour paiement anticipé<input name="escompte_text" value="{{ p.escompte_text or '' }}" placeholder="Pas d'escompte pour paiement anticipé."></label>
+    <label>Département principal<input name="department" value="{{ p.department or '' }}" placeholder="14"></label>
+    <label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments or '' }}" placeholder="14, 50, 61, 27"></label>
+    <label class="wide">Activités<textarea name="activities" rows="3">{{ p.activities or '' }}</textarea></label>
+    <label class="wide">Certifications<input name="certifications" value="{{ p.certifications or '' }}"></label>
+    {% if can_edit_company %}
+    <label>IBAN (factures et virements groupés)<input name="iban" value="{{ p.iban or '' }}" placeholder="FR76 1234 5678 ..."></label>
+    <label>BIC<input name="bic" value="{{ p.bic or '' }}" placeholder="ex : BNPAFRPP"></label>
+    <div class="wide"><button class="purchase-primary-btn primary">Enregistrer le profil</button></div>
+    {% endif %}
+    </fieldset>
   </form>
 </section>
 
@@ -50,7 +81,7 @@
   </form>
 
   <div style="margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);">
-    <h3 style="margin:0 0 8px;font-size:15px;color:#fff;">Onboarding entreprise (KYB)</h3>
+    <h3 style="margin:0 0 8px;font-size:15px;color:#fff;">Inscription de l'entreprise (vérification d'identité)</h3>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
       <span class="purchase-muted">Statut :</span>
       {% set kyb = (weinvoice.weinvoice_kyb_status or '')|upper %}

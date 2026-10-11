@@ -73,7 +73,7 @@ def register(app):
         run, issues = run_review_diagnostics(c, review_id, entity_id=eid, run_by=current_user()['email'])
         c.close()
         log_activity('REVIEW_DIAGNOSTIC_RUN', f"Révision #{review_id}: {run['blocker_count']} blocage(s), {run['warning_count']} alerte(s)")
-        flash(f"Diagnostic actualisé : {run['blocker_count']} blocage(s), {run['warning_count']} alerte(s).")
+        flash(f"Diagnostic actualisé : {pluralize(run['blocker_count'], 'blocage')}, {pluralize(run['warning_count'], 'alerte')}.")
         return redirect(url_for('review_detail', review_id=review_id))
 
     @app.route('/comptabilite/revision/item/<int:item_id>/toggle', methods=['POST'])
@@ -161,8 +161,10 @@ def register(app):
             activity=c.execute(f"""SELECT * FROM accountant_activity
                                    WHERE collaboration_id=? AND {ce} ORDER BY id DESC LIMIT 100""",rp).fetchall()
         c.close()
+        from profitos.oneshot import pop_secrets
         return render_template('accountant_collaboration.html',review=review,collab=collab,
-                               requests=requests,comments=comments,activity=activity)
+                               requests=requests,comments=comments,activity=activity,
+                               invitation_links=pop_secrets('accountant_invite'))
 
     @app.route('/comptabilite/revision/<int:review_id>/cabinet/activer',methods=['POST'])
     @login_required
@@ -333,8 +335,11 @@ def register(app):
                      VALUES(?,?, 'INVITATION_CREATED',?,?,?)""",
                   (collab['id'],eid,f"Invitation créée pour {email}",created,current_user()['email']))
         c.commit(); c.close()
-        # Token is shown once; no raw invitation token is persisted.
-        flash(f"Invitation créée (valable 7 jours) : {url_for('accountant_invite_accept',org_id=session.get('org_id'),token=raw,_external=True)}")
+        # Le lien n'est montré qu'une fois, depuis un stockage serveur chiffré à lecture
+        # unique (jamais dans le cookie de session) ; seul le haché du jeton est conservé.
+        from profitos.oneshot import store_secret
+        store_secret('accountant_invite',email,f"{app_base_url()}{url_for('accountant_invite_accept',org_id=session.get('org_id'),token=raw)}")
+        flash("Invitation créée (valable 7 jours) : copiez le lien affiché ci-dessous, il ne sera montré qu'une seule fois.")
         return redirect(url_for('accountant_collaboration',review_id=review_id))
 
     @app.route('/collaboration-comptable/accepter/<int:org_id>/<token>', methods=['GET','POST'])
@@ -369,6 +374,11 @@ def register(app):
         user=current_user()
         if (user['email'] or '').strip().lower()!=inv['email'].strip().lower():
             c.close(); abort(403)
+        if not user['email_verified']:
+            # Un compte non vérifié a pu être pré-créé par un tiers avec l'adresse du comptable.
+            c.close()
+            flash("Confirmez d'abord votre adresse e-mail (lien « Renvoyer l'e-mail de vérification » dans Sécurité du compte) pour accepter cette invitation.")
+            return redirect(url_for('account_security'))
         if request.method=='GET':
             c.close()
             return render_template('accountant_invite_accept.html',inv=inv,token=token,org=org)

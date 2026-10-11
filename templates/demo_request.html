@@ -44,7 +44,7 @@
           <label>Entreprise
             <input type="text" name="company" autocomplete="organization" required>
           </label>
-          <label>Email professionnel
+          <label>E-mail professionnel
             <input type="email" name="email" autocomplete="email" required>
           </label>
           <label>Téléphone <span style="font-weight:500;color:#7793bc">(optionnel)</span>
@@ -89,8 +89,9 @@
             <textarea name="message" rows="4" placeholder="Ex. Nous voulons mieux anticiper notre trésorerie et réduire nos retards de paiement."></textarea>
           </label>
 
+          <div style="position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Site web<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
           <button class="demo-submit" type="submit">Demander ma démo</button>
-          <p class="demo-privacy">En envoyant ce formulaire, vous acceptez d'être recontacté au sujet de votre demande de démonstration.</p>
+          <p class="demo-privacy">En envoyant ce formulaire, vous acceptez d'être recontacté au sujet de votre demande de démonstration. Vos données sont traitées conformément à notre <a href="{{ url_for('privacy_policy') }}">politique de confidentialité</a>.</p>
         </form>
       </section>
     </div>

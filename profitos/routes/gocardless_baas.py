@@ -14,8 +14,11 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_gocardless_start(invoice_id):
+        from profitos.ui_labels import gocardless_enabled
+        if not gocardless_enabled():
+            abort(404)  # intégration non activée : aucune trace dans l'interface
         if not is_configured():
-            flash("GoCardless n'est pas configuré côté serveur (GOCARDLESS_ACCESS_TOKEN manquant).")
+            flash("Le prélèvement SEPA n'est pas disponible pour le moment. Contactez le support si vous souhaitez l'activer.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         from profitos.entities import current_entity_id
         eid = current_entity_id()
@@ -27,7 +30,7 @@ def register(app):
         session_token = secrets.token_urlsafe(24)
         session['gc_session_token'] = session_token
         session['gc_invoice_id'] = invoice_id
-        base = os.environ.get('APP_BASE_URL', request.host_url.rstrip('/'))
+        base = app_base_url()
         redirect_uri = f"{base}{url_for('invoicing_gocardless_callback')}"
 
         try:
@@ -51,19 +54,22 @@ def register(app):
         c.close()
         log_activity('GOCARDLESS_MANDATE_STARTED', f"Parcours de mandat démarré pour la facture {inv['invoice_number']}")
         if not flow.get('authorization_url'):
-            flash("GoCardless n'a renvoyé aucune URL d'autorisation — la demande n'a probablement pas abouti.")
+            flash("Le parcours de mandat de prélèvement n'a pas pu démarrer. Réessayez plus tard.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         return redirect(flow['authorization_url'])
 
     @app.route('/facturation/prelevement/retour')
     @login_required
     def invoicing_gocardless_callback():
+        from profitos.ui_labels import gocardless_enabled
+        if not gocardless_enabled():
+            abort(404)
         flow_id = request.args.get('redirect_flow_id')
         session_token = session.pop('gc_session_token', None)
         invoice_id = session.pop('gc_invoice_id', None)
         mandate_row_id = session.pop('gc_mandate_row_id', None)
         if not flow_id or not session_token or not mandate_row_id:
-            flash("Retour de prélèvement invalide — recommence la demande depuis la facture.")
+            flash("Retour de prélèvement invalide — recommencez la demande depuis la facture.")
             return redirect(url_for('invoicing_list'))
 
         try:

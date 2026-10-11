@@ -11,8 +11,8 @@
       <tbody>
       {% for s in stats %}
         <tr>
-          <td><strong>{{ s.name }}</strong><br><small class="purchase-muted">{{ s.total_changes }} action(s) au total</small></td>
-          <td style="text-align:right;"><strong>{{ s.invoices_recovered }}</strong> facture(s) recouvrée(s)</td>
+          <td><strong>{{ s.name }}</strong><br><small class="purchase-muted">{{ pluralize(s.total_changes, 'action') }} au total</small></td>
+          <td style="text-align:right;"><strong>{{ s.invoices_recovered }}</strong> facture{{ 's' if s.invoices_recovered > 1 }} recouvrée{{ 's' if s.invoices_recovered > 1 }}</td>
         </tr>
       {% else %}
         <tr><td colspan="2" class="purchase-empty">Aucune activité enregistrée pour l'instant.</td></tr>

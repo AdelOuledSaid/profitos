@@ -20,8 +20,12 @@ def test_landing_sections_reform_audiences_integrations():
     for anchor in ('facture-electronique', 'pour-qui', 'integrations', 'plateforme'):
         assert f'id="{anchor}"' in LANDING
         assert f'href="#{anchor}"' in LANDING
-    for word in ('Factur-X', 'plateforme agréée', 'Powens', 'GoCardless', 'Silae', 'FEC'):
+    for word in ('Factur-X', 'plateforme agréée', 'Powens', 'Silae', 'FEC'):
         assert word in LANDING
+    # v43x : GoCardless n'est pas proposé au lancement (intégration masquée), et aucune
+    # promesse « déjà prêt » / « connectée » tant que la plateforme agréée n'est pas activée.
+    assert 'GoCardless' not in LANDING
+    assert 'Vous êtes déjà prêt' not in LANDING and "en cours d'activation" in LANDING
     # Pas de connecteur comptable présenté comme disponible
     assert 'prochainement' in LANDING
 

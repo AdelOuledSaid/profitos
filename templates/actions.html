@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS','MULTI') %}
+{% set advanced_plan = auth_org and plan_feature_enabled(auth_org.plan,'advanced_features') %}
 <div class="purchase-page">
 
 <div class="purchase-eyebrow">CENTRE D'ACTIONS</div>
 <h1 class="purchase-title">Décider avant d'agir.</h1>
-<p class="purchase-subtitle">Aucune action externe n'est exécutée automatiquement — un email n'est envoyé qu'après validation humaine explicite.</p>
+<p class="purchase-subtitle">Aucune action externe n'est exécutée automatiquement — un e-mail n'est envoyé qu'après validation humaine explicite.</p>
 
 <h2 style="margin-top:24px;">Actions actives</h2>
 
@@ -46,14 +46,14 @@
       {% if advanced_plan %}
       <form method="post" action="{{ url_for('action_send',aid=a.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button>Envoyer par email</button>
+        <button>Envoyer par e-mail</button>
       </form>
       <form method="post" action="{{ url_for('action_send_sms',aid=a.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="secondary">Envoyer par SMS</button>
       </form>
       {% else %}
-      <a class="button" href="{{ url_for('billing') }}">Envoi email · Pro</a>
+      <a class="button" href="{{ url_for('billing') }}">Envoi e-mail · Pro</a>
       {% endif %}
     {% endif %}
 
@@ -117,7 +117,7 @@
 
         <form method="post" action="{{ url_for('action_delete',aid=a.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="secondary">Supprimer</button>
+          <button type="submit" class="secondary" data-confirm="Supprimer définitivement cet élément ? Cette action est irréversible.">Supprimer</button>
         </form>
         <small class="muted">Supprimer définitivement cette action annulée ?</small>
       </div>

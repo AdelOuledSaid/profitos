@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, g, current_app, jsonify, Response, send_file
 import sqlite3, json, re, math, unicodedata, secrets, functools, os, hashlib, time, io
 try:
     from dotenv import load_dotenv
@@ -19,10 +19,11 @@ import requests
 from pypdf import PdfReader
 from docx import Document
 from . import db as dbmod
+from . import storage as _storage
 from .plan_limits import feature_enabled as plan_feature_enabled
 
 BASE=Path(__file__).resolve().parent.parent
-AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=Path(os.environ.get('PROFITOS_UPLOAD_DIR') or (BASE/'uploads')); UP.mkdir(parents=True,exist_ok=True)
+AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=_storage.UPLOAD_ROOT; UP.mkdir(parents=True,exist_ok=True)  # disque persistant en production (PROFITOS_UPLOAD_DIR)
 BOAMP='https://www.boamp.fr/api/explore/v2.1/catalog/datasets/boamp/records'
 PARIS=ZoneInfo('Europe/Paris')
 
@@ -257,6 +258,18 @@ def init_auth_db():
         ('stripe_customer_id',"ALTER TABLE organizations ADD COLUMN stripe_customer_id TEXT"),
         ('stripe_subscription_id',"ALTER TABLE organizations ADD COLUMN stripe_subscription_id TEXT"),
         ('referral_code',"ALTER TABLE organizations ADD COLUMN referral_code TEXT"),
+        # Organisation qui porte l'abonnement (formule Multi-sociétés) : une
+        # organisation fille hérite du plan et du statut de son parent.
+        ('parent_org_id',"ALTER TABLE organizations ADD COLUMN parent_org_id INTEGER"),
+        # Début de l'impayé : sert au délai de grâce PAST_DUE.
+        ('past_due_since',"ALTER TABLE organizations ADD COLUMN past_due_since TEXT"),
+        # Mois offerts par le parrainage, en attente d'imputation Stripe.
+        ('referral_credit_months',"ALTER TABLE organizations ADD COLUMN referral_credit_months INTEGER DEFAULT 0"),
+        # Benchmark des délais de paiement : participation volontaire (désactivée par défaut).
+        ('benchmark_opt_in',"ALTER TABLE organizations ADD COLUMN benchmark_opt_in INTEGER DEFAULT 0"),
+        # Acceptation des CGU/CGV à l'inscription (date et version).
+        ('terms_accepted_at',"ALTER TABLE organizations ADD COLUMN terms_accepted_at TEXT"),
+        ('terms_version',"ALTER TABLE organizations ADD COLUMN terms_version TEXT"),
     ):
         if col not in org_cols: c.execute(ddl)
     api_keys_cols=[r['name'] for r in c.execute('PRAGMA table_info(api_keys)').fetchall()]
@@ -274,7 +287,13 @@ def init_auth_db():
         ('entity_id',"ALTER TABLE accounting_fec_tokens ADD COLUMN entity_id INTEGER"),
     ):
         if col not in fec_tokens_cols: c.execute(ddl)
-    c.commit(); c.close()
+    c.commit()
+    try:
+        dbmod.upgrade_real_columns(c)
+    except Exception as e:
+        c.rollback()
+        __import__("logging").getLogger("profitos.migrations").warning("conversion des colonnes REAL (auth) non faite (%s)", e)
+    c.close()
     ensure_security_events_table()
 
 
@@ -345,11 +364,11 @@ def list_organization_ids():
         c.close()
 
 def initialize_all_tenant_schemas():
-    count=0
-    for org_id in list_organization_ids():
-        init_tenant_db(org_id)
-        count += 1
-    return count
+    """Compatibilité : migre tous les tenants (isolés) et lève si l'un échoue."""
+    report=migrate_all_tenant_schemas()
+    if report['failed']:
+        raise RuntimeError(f"Migration échouée pour {len(report['failed'])} organisation(s) : {sorted(report['failed'])}")
+    return len(report['up_to_date'])+len(report['migrated'])
 
 def ensure_security_events_table():
     """Crée le journal de sécurité dans la base AUTH active si nécessaire.
@@ -386,7 +405,9 @@ def log_activity(kind, desc):
 def _audit_ip_hash():
     """Pseudonymise l'IP : aucune adresse IP brute n'est stockée."""
     try:
-        raw=(request.headers.get('CF-Connecting-IP') or request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+        # request.remote_addr est déjà corrigé par ProxyFix (proxy Render de confiance) ;
+        # lire X-Forwarded-For brut permettait au client d'imposer une fausse adresse.
+        raw=(request.remote_addr or '').strip()
         if not raw:
             return None
         pepper=os.environ.get('PROFITOS_SECRET_KEY','profitos-audit')
@@ -447,6 +468,9 @@ def current_user():
         session['auth_version']=db_version
     elif int(session_version) != db_version:
         return None
+    from profitos.account_security import session_sid_valid
+    if not session_sid_valid(r['id']):
+        return None
     return r
 
 def current_org():
@@ -483,7 +507,7 @@ def _recover_valid_membership():
     if not uid: return False
     c=auth_cx(); m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(uid,)).fetchone(); c.close()
     if not m: return False
-    session['org_id']=m['organization_id']; session['role']=m['role']
+    session['org_id']=m['organization_id']; session['role']=m['role']; session.pop('current_entity_id',None)
     if hasattr(g,'current_membership'): delattr(g,'current_membership')
     init_tenant_db(m['organization_id'])
     return True
@@ -521,11 +545,11 @@ def safe_next_url(target):
     return target
 
 
-def password_error(password):
-    if len(password)<10: return 'Le mot de passe doit contenir au moins 10 caractères.'
-    if not re.search(r'[A-Za-z]',password) or not re.search(r'\d',password):
-        return 'Le mot de passe doit contenir au moins une lettre et un chiffre.'
-    return None
+def password_error(password, email=None):
+    """Politique de mot de passe : 12 caractères minimum, absent de la liste des
+    mots de passe les plus courants, sans la partie locale de l'adresse e-mail."""
+    from profitos.account_security import password_policy_error
+    return password_policy_error(password, email)
 
 
 def validate_webhook_url(url):
@@ -581,18 +605,37 @@ def save_upload(file_storage, category, allowed_extensions):
     org_id=session.get('org_id')
     if not org_id:
         raise ValueError('Organisation non sélectionnée.')
-    target_dir=UP/f'org_{int(org_id)}'/category
-    target_dir.mkdir(parents=True,exist_ok=True)
+    target_dir=_storage.upload_dir(org_id,category)
     target=target_dir/f'{secrets.token_hex(16)}{ext}'
     file_storage.save(target)
     try:
         if not _signature_ok(target,ext):
             raise ValueError('Le contenu du fichier ne correspond pas au format attendu.')
+        check_spreadsheet_bomb(target)
         return target, original
     except Exception:
         target.unlink(missing_ok=True)
         raise
 
+
+MAX_SPREADSHEET_UNCOMPRESSED=80*1024*1024   # 80 Mo décompressés
+MAX_SPREADSHEET_RATIO=100                     # un xlsx réel se compresse rarement au-delà de 1:30
+
+def check_spreadsheet_bomb(path):
+    """Refuse un classeur Excel « bombe » : quelques centaines de Ko qui se décompressent en
+    centaines de Mo et saturent la mémoire du serveur (un seul worker en production)."""
+    p=Path(path)
+    if p.suffix.lower() not in ('.xlsx','.xlsm'):
+        return
+    import zipfile
+    try:
+        with zipfile.ZipFile(p) as z:
+            total=sum(i.file_size for i in z.infolist())
+    except zipfile.BadZipFile:
+        raise ValueError('Fichier Excel illisible ou corrompu.')
+    size=max(p.stat().st_size,1)
+    if total>MAX_SPREADSHEET_UNCOMPRESSED or total/size>MAX_SPREADSHEET_RATIO:
+        raise ValueError('Fichier Excel trop volumineux une fois décompressé : découpez-le en plusieurs fichiers.')
 
 def cleanup_upload(path):
     try:
@@ -646,12 +689,17 @@ STRIPE_PLANS={
     'STARTER': {'name':'Starter','price_eur':9,'price_id':STRIPE_PRICE_STARTER_ID},
     'PRO': {'name':'Pro','price_eur':19,'price_id':STRIPE_PRICE_PRO_ID},
     'BUSINESS': {'name':'Business','price_eur':49,'price_id':STRIPE_PRICE_BUSINESS_ID},
-    'MULTI': {'name':'Multi-Entity','price_eur':199,'price_id':STRIPE_PRICE_MULTI_ID},
+    'MULTI': {'name':'Multi-sociétés','price_eur':199,'price_id':STRIPE_PRICE_MULTI_ID},
 }
 STRIPE_PRICE_TO_PLAN={v['price_id']:k for k,v in STRIPE_PLANS.items() if v.get('price_id')}
 # Un abonnement ne doit jamais être activé sans webhook signé : c'est Stripe,
 # et non la page de succès du navigateur, qui fait foi.
 BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_TO_PLAN)
+# TVA française sur l'abonnement SaaS : calcul automatique Stripe Tax (désactivable
+# uniquement si Stripe Tax n'est pas encore activé sur le compte).
+STRIPE_AUTOMATIC_TAX=os.environ.get('STRIPE_AUTOMATIC_TAX','1').strip().lower() not in ('0','false','no','off')
+# Délai de grâce après un échec de paiement (statut PAST_DUE) avant blocage.
+PAST_DUE_GRACE_DAYS=int(os.environ.get('PROFITOS_PAST_DUE_GRACE_DAYS','7') or 7)
 
 def get_stripe():
     if not BILLING_ENABLED: return None
@@ -659,56 +707,220 @@ def get_stripe():
     stripe.api_key=STRIPE_SECRET_KEY
     return stripe
 
+def _row_get(row, key, default=None):
+    if row is None: return default
+    try:
+        value=row.get(key, default) if hasattr(row,'get') else row[key]
+    except (KeyError, IndexError):
+        return default
+    return default if value is None else value
+
+def billing_org(org):
+    """Organisation qui porte l'abonnement : le parent pour une organisation
+    rattachée à une formule Multi-sociétés, sinon l'organisation elle-même."""
+    if not org: return org
+    parent_id=_row_get(org,'parent_org_id')
+    if not parent_id or str(parent_id)==str(_row_get(org,'id')): return org
+    c=auth_cx()
+    try:
+        parent=c.execute('SELECT * FROM organizations WHERE id=?',(parent_id,)).fetchone()
+    finally:
+        c.close()
+    if parent: return parent
+    # Parent supprimé : l'organisation fille ne doit jamais conserver seule un
+    # accès payant hérité.
+    orphan=dict(org)
+    orphan['status']='CANCELED'
+    return orphan
+
+def effective_plan(org):
+    """Plan réellement applicable (celui du parent pour une organisation fille)."""
+    from .plan_limits import normalize_plan
+    b=billing_org(org)
+    return normalize_plan(_row_get(b,'plan','TRIAL'))
+
 def trial_days_left(org):
     if not org or not org['trial_ends_at']: return None
     end=parse_dt(org['trial_ends_at'])
     if not end: return None
-    return max(0,(end-datetime.now(timezone.utc)).days)
+    remaining=(end-datetime.now(timezone.utc)).total_seconds()
+    # Arrondi au jour supérieur : un essai de 14 jours affiche « 14 jours restants » le
+    # jour de l'inscription (et non 13), puis 0 seulement une fois l'échéance passée.
+    return max(0, int(-(-remaining // 86400)))
+
+def trial_is_active(org):
+    if not org or (_row_get(org,'plan','TRIAL') or 'TRIAL').upper()!='TRIAL': return False
+    if _row_get(org,'status')=='CANCELED': return False
+    if not _row_get(org,'trial_ends_at'): return True
+    end=parse_dt(org['trial_ends_at'])
+    return end is None or end>datetime.now(timezone.utc)
+
+def past_due_grace_end(org):
+    """Fin du délai de grâce d'une organisation PAST_DUE (datetime UTC) ou None."""
+    if not org or _row_get(org,'status')!='PAST_DUE': return None
+    start=parse_dt(_row_get(org,'past_due_since') or _row_get(org,'updated_at') or '')
+    if not start: return None
+    return start+timedelta(days=PAST_DUE_GRACE_DAYS)
+
+def subscription_state(org):
+    """État d'abonnement lisible : ACTIVE, TRIAL, TRIAL_EXPIRED, PAST_DUE_GRACE,
+    PAST_DUE_BLOCKED, CANCELED ou INACTIVE (calculé sur l'organisation payeuse)."""
+    b=billing_org(org)
+    if not b: return 'INACTIVE'
+    status=_row_get(b,'status')
+    if status=='ACTIVE_PAID': return 'ACTIVE'
+    if status=='PAST_DUE':
+        end=past_due_grace_end(b)
+        return 'PAST_DUE_GRACE' if (end is None or end>datetime.now(timezone.utc)) else 'PAST_DUE_BLOCKED'
+    if status=='CANCELED': return 'CANCELED'
+    if (_row_get(b,'plan','TRIAL') or 'TRIAL').upper()=='TRIAL':
+        return 'TRIAL' if trial_is_active(b) else 'TRIAL_EXPIRED'
+    return 'INACTIVE'
 
 def org_has_access(org):
     """True si l'organisation peut utiliser l'app.
 
-    En production, une configuration Stripe absente ou incomplète ne doit jamais
-    ouvrir l'accès par défaut. Le mode permissif sans Stripe reste réservé au
-    développement local.
+    Règles (sur l'organisation payeuse, c.-à-d. le parent Multi-sociétés) :
+    abonnement ACTIVE_PAID, essai en cours, ou impayé PAST_DUE encore dans le
+    délai de grâce. Un essai valide reste utilisable même si Stripe n'est pas
+    encore configuré ; le mode permissif total reste réservé au développement.
     """
     if not org:
         return False
     if not BILLING_ENABLED:
-        return os.environ.get("PROFITOS_ENV", "development").strip().lower() != "production"
-    if org['status'] == 'ACTIVE_PAID':
-        return True
-    if org['plan'] == 'TRIAL':
-        days = trial_days_left(org)
-        return days is None or days > 0
-    return False
+        # Mode permissif réservé aux environnements explicitement non production
+        # (PROFITOS_ENV absent ou inconnu = production, cf. config.is_production).
+        from profitos.config import is_production
+        if not is_production():
+            return True
+        # Production sans Stripe : on n'ouvre jamais l'accès par défaut, on
+        # applique les règles ci-dessous (essai valide, abonnement existant).
+    # PAST_DUE = paiement refusé : accès maintenu pendant le délai de grâce
+    # (PAST_DUE_GRACE_DAYS, bandeau d'alerte), puis bloqué.
+    return subscription_state(org) in ('ACTIVE','TRIAL','PAST_DUE_GRACE')
 
 def requires_active_plan(fn):
     """À poser sur les routes de valeur (dashboard, recover/save/grow...). Redirige
-    vers /billing si le trial est expiré et qu'aucun abonnement actif n'existe."""
+    vers la page « Abonnement inactif » (accessible à tous les rôles, sans boucle
+    de redirection) si ni essai ni abonnement actif n'existe."""
     @functools.wraps(fn)
     def wrapped(*a,**kw):
         org=current_org()
         if not org_has_access(org):
-            flash("Votre période d'essai est terminée. Choisissez un plan pour continuer à utiliser ProfitOS.")
-            return redirect(url_for('billing'))
+            from profitos.feature_access import is_readonly_export_request
+            if is_readonly_export_request():
+                return fn(*a,**kw)  # exports en lecture seule toujours disponibles
+            return redirect(url_for('subscription_inactive'))
         return fn(*a,**kw)
     return wrapped
+
+def sync_child_orgs(acx, parent_org_id):
+    """Recopie plan/statut du parent sur ses organisations rattachées.
+    'acx' est une connexion auth ouverte : l'appelant gère le commit."""
+    parent=acx.execute('SELECT plan,status FROM organizations WHERE id=?',(parent_org_id,)).fetchone()
+    if not parent: return
+    acx.execute('UPDATE organizations SET plan=?,status=?,updated_at=? WHERE parent_org_id=?',
+                (parent['plan'],parent['status'],now(),parent_org_id))
+
+def team_seat_available(org_id):
+    """True si l'organisation peut accueillir un membre de plus selon sa formule
+    effective (après une baisse de formule, aucune nouvelle adhésion au-delà)."""
+    from .plan_limits import within_limit
+    c=auth_cx()
+    try:
+        org=c.execute('SELECT * FROM organizations WHERE id=?',(org_id,)).fetchone()
+        if not org: return False
+        n=c.execute('SELECT COUNT(*) AS n FROM memberships WHERE organization_id=?',(org_id,)).fetchone()['n']
+    finally:
+        c.close()
+    return within_limit(effective_plan(org),'team_members',n,1)
+
+def plan_overage(org):
+    """Ce qui dépasse la formule actuelle après un changement de formule
+    (aucune donnée n'est supprimée) : {'members': [...], 'organizations': [...],
+    'team_limit': n, 'org_limit': n}. Listes vides si tout est conforme."""
+    from .plan_limits import plan_limit
+    result={'members':[],'organizations':[],'team_limit':None,'org_limit':None}
+    if not org: return result
+    plan=effective_plan(org); payer=billing_org(org) or org
+    team_limit=plan_limit(plan,'team_members'); org_limit=plan_limit(plan,'organizations')
+    result['team_limit']=team_limit; result['org_limit']=org_limit
+    c=auth_cx()
+    try:
+        if team_limit is not None:
+            members=c.execute('SELECT u.email,u.full_name,m.role FROM memberships m JOIN users u ON u.id=m.user_id '
+                              'WHERE m.organization_id=? ORDER BY m.id',(org['id'],)).fetchall()
+            result['members']=[(m['full_name'] or m['email']) for m in members[int(team_limit):]]
+        if org_limit is not None:
+            orgs=c.execute('SELECT id,name FROM organizations WHERE id=? OR parent_org_id=? ORDER BY id',
+                           (payer['id'],payer['id'])).fetchall()
+            result['organizations']=[o['name'] for o in orgs[int(org_limit):]]
+    finally:
+        c.close()
+    return result
 
 # ---------------------------------------------------------------------------
 # Rôles équipe — accès par module. Un OWNER a toujours tout ; les autres
 # rôles sont volontairement restreints à leur périmètre métier.
 # ---------------------------------------------------------------------------
-ROLES=['OWNER','ADMIN','COMPTABLE','COMMERCIAL','MEMBER']
-ROLE_LABELS={'OWNER':'Propriétaire','ADMIN':'Administrateur','COMPTABLE':'Comptable (Recover/Save)',
-             'COMMERCIAL':'Commercial (Grow)','MEMBER':'Membre (accès complet)'}
+ROLES=['OWNER','ADMIN','COMPTABLE','COMMERCIAL','MEMBER','LECTURE']
+ROLE_LABELS={'OWNER':'Propriétaire','ADMIN':'Administrateur','COMPTABLE':'Comptable',
+             'COMMERCIAL':'Commercial','MEMBER':'Membre','LECTURE':'Lecture seule'}
 AREA_ACCESS={
-    'OWNER':{'recover','save','grow','actions','impact','weekly','uploads','settings','billing','team','invoicing'},
-    'ADMIN':{'recover','save','grow','actions','impact','weekly','uploads','settings','team','invoicing'},
-    'COMPTABLE':{'recover','save','impact','weekly','uploads','actions','invoicing'},
+    'OWNER':{'recover','save','grow','actions','impact','weekly','uploads','settings','billing','team','invoicing','accounting','banking','pilotage','cabinet'},
+    'ADMIN':{'recover','save','grow','actions','impact','weekly','uploads','settings','team','invoicing','accounting','banking','pilotage','cabinet'},
+    'COMPTABLE':{'recover','save','impact','weekly','uploads','actions','invoicing','accounting','banking','pilotage','cabinet'},
     'COMMERCIAL':{'grow','actions'},
-    'MEMBER':{'recover','save','grow','actions','impact','weekly','uploads','invoicing'},
+    'MEMBER':{'recover','save','grow','actions','impact','weekly','uploads','invoicing','accounting','banking','pilotage'},
+    # Lecture seule : consultation des modules, aucune écriture (voir enforce_role_areas).
+    'LECTURE':{'recover','save','grow','actions','impact','weekly','invoicing','accounting','banking','pilotage'},
 }
+# Seules écritures permises au rôle LECTURE : son propre compte et sa session.
+LECTURE_ALLOWED_POST={'logout','toggle_theme','changelog_seen','org_switch','entity_switch','verify_resend',
+                      'account_password_change','account_email_change','two_factor_setup','two_factor_disable',
+                      'two_factor_recovery_codes','login_two_factor','team_invitation','delete_account'}
+
+# Contrôle des rôles par module entier : toute route d'un module sensible exige la zone
+# correspondante, même si le décorateur @require_area a été oublié sur une route.
+MODULE_AREAS={
+    'profitos.routes.accounting':'accounting','profitos.routes.loans':'accounting',
+    'profitos.routes.finance_leases':'accounting','profitos.routes.analytics':'accounting',
+    'profitos.routes.reviews':'accounting','profitos.routes.payroll':'accounting',
+    'profitos.routes.bank_sync':'banking','profitos.routes.swan_baas':'banking',
+    'profitos.routes.gocardless_baas':'banking',
+    'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
+    'profitos.routes.decision_simulator':'pilotage','profitos.routes.money_hunter':'pilotage',
+    'profitos.routes.cabinet':'cabinet',
+}
+ENDPOINT_AREAS={
+    'cash_forecast':'pilotage','monthly_report_pdf':'pilotage',
+    'entity_new':'settings','entity_detail':'settings',
+    'mileage_rate_settings':'settings',
+}
+POST_ONLY_AREAS={'onboarding':'settings','company':'settings'}
+ROLE_GUARD_EXEMPT={'accountant_invite_accept','entity_switch','static'}
+
+def enforce_role_areas():
+    if not session.get('user_id') or not session.get('org_id'):
+        return
+    endpoint=request.endpoint
+    if not endpoint or endpoint in ROLE_GUARD_EXEMPT:
+        return
+    if (request.method in ('POST','PUT','PATCH','DELETE') and endpoint not in LECTURE_ALLOWED_POST
+            and current_role()=='LECTURE'):
+        log_security_event('ROLE_READ_ONLY_DENIED','BLOCKED',user_id=session.get('user_id'),
+                           organization_id=session.get('org_id'),target=f'write:{endpoint}')
+        flash("Votre rôle « Lecture seule » ne permet pas de modifier les données.")
+        return redirect(request.referrer if safe_next_url(urlsplit(request.referrer or '').path) else url_for('home'))
+    fn=current_app.view_functions.get(endpoint)
+    area=ENDPOINT_AREAS.get(endpoint) or MODULE_AREAS.get(getattr(fn,'__module__',''))
+    if not area and request.method=='POST':
+        area=POST_ONLY_AREAS.get(endpoint)
+    if area and not can_access(area):
+        log_security_event('ROLE_AREA_DENIED','BLOCKED',user_id=session.get('user_id'),
+                           organization_id=session.get('org_id'),target=f'{area}:{endpoint}')
+        flash("Votre rôle ne donne pas accès à cette section.")
+        return redirect(url_for('home'))
 KIND_TO_AREA={'RECOVER':'recover','SAVE':'save','GROW':'grow'}
 
 def can_access(area):
@@ -782,11 +994,14 @@ def csrf_protect():
         if request.path.startswith('/api/v1/'):
             return
         token=session.get('csrf_token'); sent=request.form.get('csrf_token') or request.headers.get('X-CSRF-Token')
-        if not token or not sent or not secrets.compare_digest(token,sent):
+        # compare_digest lève TypeError sur une chaîne non ASCII : comparer des octets.
+        if (not isinstance(token,str) or not isinstance(sent,str) or not token or not sent
+                or not secrets.compare_digest(token.encode('utf-8'),sent.encode('utf-8'))):
             abort(400,description='CSRF token invalide ou manquant.')
         # Défense supplémentaire en production : si Origin/Referer est présent, il doit être same-origin.
         source=request.headers.get('Origin') or request.headers.get('Referer')
-        if source and os.environ.get('PROFITOS_ENV','development').lower()=='production':
+        from profitos.config import is_production
+        if source and is_production():
             try:
                 p=urlsplit(source)
                 if p.netloc and p.netloc.lower()!=request.host.lower():
@@ -801,14 +1016,130 @@ def csrf_protect():
 # Exécuté une seule fois par organisation et par process (mise en cache en
 # mémoire) pour éviter de relancer la migration à chaque requête.
 # ---------------------------------------------------------------------------
+# v400 : le set est protégé par un verrou (gunicorn --threads) et la
+# migration complète n'est rejouée que si la version du script de schéma
+# stockée dans le tenant (table schema_version) diffère de celle du code.
+import threading as _threading
+import logging as _logging
 _tenant_schema_checked=set()
+_tenant_schema_lock=_threading.Lock()
+_tenant_migration_locks={}
+_migration_log=_logging.getLogger('profitos.migrations')
+_migration_state=_threading.local()
+_TENANT_SCHEMA_VERSION=None
+
+
+def _migration_warn(message):
+    """Remplace les print() « ATTENTION … ignorée » : log WARNING visible dans
+    les logs Render et collecte pour le rapport de migration du preDeploy."""
+    _migration_log.warning('%s', message)
+    collected=getattr(_migration_state,'warnings',None)
+    if collected is not None:
+        collected.append(str(message)[:300])
+
+
+def tenant_schema_version():
+    """Empreinte du script de migration tenant (code + seeds).
+
+    Toute modification de _migrate_tenant_schema (nouvelle table, colonne,
+    index) change l'empreinte et déclenche la migration des tenants au
+    prochain preDeploy ou au premier accès."""
+    global _TENANT_SCHEMA_VERSION
+    if _TENANT_SCHEMA_VERSION is None:
+        import inspect
+        h=hashlib.sha256()
+        try:
+            from profitos.accounting import seed_accounting_defaults
+            from profitos.expenses import seed_mileage_rate_table
+            for fn in (_migrate_tenant_schema, seed_accounting_defaults, seed_mileage_rate_table):
+                h.update(inspect.getsource(fn).encode('utf-8'))
+        except Exception:
+            h.update(Path(__file__).read_bytes())
+        _TENANT_SCHEMA_VERSION=h.hexdigest()[:20]
+    return _TENANT_SCHEMA_VERSION
+
+
+def _tenant_schema_current(org_id):
+    """Vérification bon marché (1 requête) de la version du schéma tenant."""
+    try:
+        c=dbmod.connect_tenant(org_id, tenant_db(org_id))
+    except Exception:
+        return False
+    try:
+        row=c.execute('SELECT version FROM schema_version WHERE id=1').fetchone()
+        return bool(row and row['version']==tenant_schema_version())
+    except Exception:
+        return False
+    finally:
+        c.close()
+
+
+def _record_tenant_schema_version(org_id):
+    c=dbmod.connect_tenant(org_id, tenant_db(org_id))
+    try:
+        c.execute('CREATE TABLE IF NOT EXISTS schema_version(id INTEGER PRIMARY KEY CHECK(id=1),version TEXT NOT NULL,applied_at TEXT)')
+        c.execute('INSERT INTO schema_version(id,version,applied_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,applied_at=excluded.applied_at',
+                  (tenant_schema_version(),now()))
+        c.commit()
+    finally:
+        c.close()
+
+
+def migrate_tenant(org_id, force=False):
+    """Migre un tenant si nécessaire. Retourne un dict de rapport.
+
+    status : 'up_to_date' | 'migrated' | 'migrated_with_warnings'.
+    Les exceptions remontent à l'appelant (isolation gérée par
+    migrate_all_tenant_schemas)."""
+    org_id=int(org_id)
+    if not force and _tenant_schema_current(org_id):
+        return {'org_id':org_id,'status':'up_to_date','warnings':[]}
+    with _tenant_schema_lock:
+        lock=_tenant_migration_locks.setdefault(org_id,_threading.Lock())
+    with lock:
+        if not force and _tenant_schema_current(org_id):
+            return {'org_id':org_id,'status':'up_to_date','warnings':[]}
+        previous=getattr(_migration_state,'warnings',None)
+        _migration_state.warnings=[]
+        try:
+            _migrate_tenant_schema(org_id)
+            warnings=list(_migration_state.warnings)
+        finally:
+            _migration_state.warnings=previous
+        if warnings:
+            # Version non enregistrée : la migration sera retentée au prochain
+            # déploiement / accès, et le rapport preDeploy la signale.
+            return {'org_id':org_id,'status':'migrated_with_warnings','warnings':warnings}
+        _record_tenant_schema_version(org_id)
+        return {'org_id':org_id,'status':'migrated','warnings':[]}
+
+
+def migrate_all_tenant_schemas(force=False):
+    """Migre tous les tenants avec isolation des erreurs par organisation."""
+    report={'version':tenant_schema_version(),'up_to_date':[],'migrated':[],'warnings':{},'failed':{}}
+    for org_id in list_organization_ids():
+        try:
+            r=migrate_tenant(org_id, force=force)
+        except Exception as exc:
+            _migration_log.exception('Migration tenant org_%s ÉCHOUÉE', org_id)
+            report['failed'][org_id]=f'{type(exc).__name__}: {str(exc)[:200]}'
+            continue
+        if r['status']=='up_to_date':
+            report['up_to_date'].append(org_id)
+        else:
+            report['migrated'].append(org_id)
+            if r['warnings']:
+                report['warnings'][org_id]=r['warnings']
+    return report
+
 
 def ensure_tenant_schema():
     org_id=session.get('org_id')
     if org_id and org_id not in _tenant_schema_checked:
         try:
             init_tenant_db()
-            _tenant_schema_checked.add(org_id)
+            with _tenant_schema_lock:
+                _tenant_schema_checked.add(org_id)
         except Exception as e:
             # Fail closed : ne jamais servir une organisation avec un schéma
             # potentiellement partiellement migré. Les détails restent côté logs.
@@ -818,7 +1149,101 @@ def ensure_tenant_schema():
             )
             abort(503, description='Schéma de données temporairement indisponible.')
 
-def init_tenant_db(org_id=None):
+_aging_refreshed={}
+
+
+def refresh_invoice_aging(c, today=None):
+    """Recalcule le retard (days_overdue) et le score des créances importées à la date
+    du jour (Europe/Paris). Le retard stocké à l'import vieillissait : une facture
+    échue la veille de l'import restait « 1 jour de retard » indéfiniment."""
+    from zoneinfo import ZoneInfo
+    today = today or datetime.now(ZoneInfo('Europe/Paris')).date()
+    rows = c.execute("SELECT id,amount,paid_amount,due_date,retention_release_date,kind,status,days_overdue,score FROM invoices "
+                     "WHERE LOWER(COALESCE(status,''))!='paid'").fetchall()
+    changed = 0
+    for r in rows:
+        ref = parse_date(r['retention_release_date']) if r['kind'] == 'RETENTION' and r['retention_release_date'] else parse_date(r['due_date'])
+        days = max(0, (today - ref).days) if ref and ref <= today else 0
+        score = invoice_score(r['amount'] or 0, days, r['paid_amount'] or 0) if days > 0 else 0
+        if days != (r['days_overdue'] or 0) or score != (r['score'] or 0):
+            c.execute('UPDATE invoices SET days_overdue=?,score=? WHERE id=?', (days, score, r['id']))
+            changed += 1
+    if changed:
+        c.commit()
+    return changed
+
+
+def refresh_invoice_aging_hook():
+    """Avant requête : retard des créances calculé au jour de lecture (une fois par
+    organisation et par jour, coût négligeable ensuite)."""
+    org_id = session.get('org_id')
+    if not org_id or request.endpoint in ('static', 'healthz', 'readyz', 'ops_health'):
+        return
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo('Europe/Paris')).date()
+    if _aging_refreshed.get(org_id) == today:
+        return
+    try:
+        c = tenant_cx_direct(org_id)
+        try:
+            refresh_invoice_aging(c, today)
+        finally:
+            c.close()
+        _aging_refreshed[org_id] = today
+    except Exception:
+        current_app.logger.warning('Actualisation du retard des créances impossible', exc_info=True)
+
+
+_ENTITY_GUARD_EXEMPT=('static','logout','login','healthz','readyz','ops_health','org_switch')
+
+def enforce_entity_access():
+    """Applique côté serveur la restriction d'un utilisateur à certaines entités (filiales).
+
+    - l'entité active en session est toujours une entité autorisée (sinon : la première
+      autorisée ; aucune -> 403) ;
+    - tout ``entity_id`` envoyé par un formulaire ou dans l'URL est vérifié, pour qu'un
+      utilisateur limité à une filiale ne puisse ni lire ni écrire dans une autre.
+    Sans restriction configurée (cas par défaut), rien ne change."""
+    uid=session.get('user_id'); org_id=session.get('org_id')
+    if not uid or not org_id or request.endpoint in _ENTITY_GUARD_EXEMPT:
+        return
+    from profitos.entities import user_has_entity_restrictions, user_can_access_entity, accessible_entities
+    tc=tenant_cx_direct(org_id)
+    try:
+        if not user_has_entity_restrictions(tc, uid):
+            return
+        active=session.get('current_entity_id')
+        if not user_can_access_entity(tc, uid, active):
+            allowed=accessible_entities(tc, uid)
+            if not allowed:
+                abort(403)
+            session['current_entity_id']=allowed[0]['id']
+        for source in (request.form, request.args):
+            if 'entity_id' not in source:
+                continue
+            raw=(source.get('entity_id') or '').strip()
+            if raw in ('', 'None', 'null', '0'):
+                target=None
+            else:
+                try:
+                    target=int(raw)
+                except ValueError:
+                    abort(400)
+            if not user_can_access_entity(tc, uid, target):
+                log_security_event('ENTITY_ACCESS_DENIED','BLOCKED',user_id=uid,organization_id=org_id,target=str(target))
+                abort(403)
+    finally:
+        tc.close()
+
+def init_tenant_db(org_id=None, force=False):
+    """Initialise/migre le schéma d'une organisation (no-op si déjà à jour)."""
+    org_id = org_id or session.get('org_id')
+    if not org_id:
+        raise RuntimeError('Organisation requise pour initialiser le schéma tenant')
+    return migrate_tenant(org_id, force=force)
+
+
+def _migrate_tenant_schema(org_id=None):
     org_id = org_id or session.get('org_id')
     if not org_id:
         raise RuntimeError('Organisation requise pour initialiser le schéma tenant')
@@ -1908,13 +2333,13 @@ def init_tenant_db(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
-            print(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
 
     try:
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : index WeInvoice achats ignoré ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice achats ignoré ({e})")
 
     # Lot F final — suivi/preuve des transmissions e-reporting existantes
     for col, decl in (
@@ -1924,7 +2349,7 @@ def init_tenant_db(org_id=None):
         try:
             cols=[r['name'] for r in c.execute('PRAGMA table_info(ereporting_transmissions)').fetchall()]
             if col not in cols: c.execute(f'ALTER TABLE ereporting_transmissions ADD COLUMN {col} {decl}')
-        except Exception as e: print(f"[ProfitOS] ATTENTION : migration e-reporting final {col} ignorée ({e})")
+        except Exception as e: _migration_warn(f"[ProfitOS] ATTENTION : migration e-reporting final {col} ignorée ({e})")
     try: c.commit()
     except Exception: pass
 
@@ -1934,7 +2359,7 @@ def init_tenant_db(org_id=None):
         try:
             cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_invoices)').fetchall()]
             if col not in cols: c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}')
-        except Exception as e: print(f"[ProfitOS] ATTENTION : migration e-reporting {col} ignorée ({e})")
+        except Exception as e: _migration_warn(f"[ProfitOS] ATTENTION : migration e-reporting {col} ignorée ({e})")
     try: c.commit()
     except Exception: pass
 
@@ -1951,12 +2376,12 @@ def init_tenant_db(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE outgoing_credit_notes ADD COLUMN {col} {decl}')
         except Exception as e:
-            print(f"[ProfitOS] ATTENTION : migration avoir électronique {col} ignorée ({e})")
+            _migration_warn(f"[ProfitOS] ATTENTION : migration avoir électronique {col} ignorée ({e})")
     try:
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_weinvoice_remote ON outgoing_credit_notes(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : index WeInvoice avoirs ignoré ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice avoirs ignoré ({e})")
 
     # V220 — rattache les actions historiques à l'entité de leur source quand elle est connue.
     try:
@@ -1969,7 +2394,7 @@ def init_tenant_db(org_id=None):
         c.execute('CREATE INDEX IF NOT EXISTS idx_analytical_tags_entity ON analytical_tags(entity_id)')
         c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : migration multi-entités V220 ignorée ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : migration multi-entités V220 ignorée ({e})")
 
     # Pass 24 — migration des anciens budgets achats globaux vers la société
     # principale, puis clé composite (catégorie, entité). SQLite ne permet pas
@@ -1993,7 +2418,7 @@ def init_tenant_db(org_id=None):
             c.commit()
     except Exception as e:
         c.rollback()
-        print(f"[ProfitOS] ATTENTION : migration purchase_budgets v24 ignorée ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : migration purchase_budgets v24 ignorée ({e})")
 
     # Pass 14 — métadonnées typées des factures d'acompte/finales.
     for col, decl in (('invoice_kind', "TEXT DEFAULT 'standard'"),
@@ -2006,7 +2431,7 @@ def init_tenant_db(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}'); c.commit()
         except Exception as e:
-            print(f"[ProfitOS] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
+            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
     # WeInvoice multi-entités : entity_key=0 représente la société mère.
     # L'ancienne configuration globale est reprise seulement pour la société mère.
     try:
@@ -2017,7 +2442,7 @@ def init_tenant_db(org_id=None):
                     (legacy['weinvoice_status'] or 'disconnected',legacy['weinvoice_last_check_at'],legacy['weinvoice_last_error'],legacy['weinvoice_company_id'],legacy['weinvoice_kyb_status'] or 'not_started',legacy['weinvoice_onboarded_at'],now(),now()))
                 c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
 
     # v1.8.9 — clôture comptable isolée par entité. L'ancienne clôture globale est reprise
     # uniquement pour la société mère (entity_key=0). Ce bloc se trouvait par erreur dans
@@ -2031,14 +2456,14 @@ def init_tenant_db(org_id=None):
                       (legacy_closure['closed_until'], legacy_closure['closed_at'], legacy_closure['closed_by']))
             c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : reprise de la clôture comptable globale ignorée ({e})")
+        _migration_warn(f"reprise de la clôture comptable globale ignorée ({e})")
 
     try:
         c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_outgoing_invoice_recurring_run ON outgoing_invoices(recurring_template_id, recurring_run_date) WHERE recurring_template_id IS NOT NULL")
         c.execute("CREATE INDEX IF NOT EXISTS ix_recurring_templates_due ON recurring_invoice_templates(entity_id,status,next_run_date)")
         c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : index facturation récurrente ignoré ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : index facturation récurrente ignoré ({e})")
 
     # Lot F production — l'index dépend de colonnes absentes des anciens tenants.
     # Il doit donc être créé APRES la migration douce ci-dessus.
@@ -2046,7 +2471,7 @@ def init_tenant_db(org_id=None):
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        print(f"[ProfitOS] ATTENTION : index WeInvoice achats non créé ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice achats non créé ({e})")
     # v383 — idempotence forte des frais bancaires : une seule écriture
     # bank_fee par mouvement et par entité, y compris sous requêtes concurrentes.
     try:
@@ -2056,7 +2481,80 @@ def init_tenant_db(org_id=None):
         c.commit()
     except Exception as e:
         c.rollback()
-        print(f"[ProfitOS] ATTENTION : index unique bank_fee non créé ({e})")
+        _migration_warn(f"[ProfitOS] ATTENTION : index unique bank_fee non créé ({e})")
+    # La société mère a entity_id NULL : un index (entity_id, …) laisse passer les doublons
+    # (NULL ≠ NULL en SQL). Index sur COALESCE pour garantir une seule écriture par
+    # mouvement bancaire, catégorisation comme frais, même sous double clic simultané.
+    try:
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_source_all
+                     ON accounting_entries(COALESCE(CAST(entity_id AS TEXT),''), source_type, source_id)
+                     WHERE source_type IN ('bank_fee','bank_categorization')""")
+        c.commit()
+    except Exception as e:
+        c.rollback()
+        _migration_warn(f"index unique des écritures bancaires non créé ({e})")
+
+    # v4xx — mentions légales des factures, numérotation à l'émission, TVA par taux,
+    # TVA sur encaissements, FEC (référence de pièce, lettrage daté, auxiliaires).
+    _v4_columns = (
+        [('company', col, 'TEXT') for col in ('legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
+                                              'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country')]
+        + [('entities', col, 'TEXT') for col in ('city', 'legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
+                                                 'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country')]
+        + [('outgoing_invoices', col, 'TEXT') for col in ('vat_pending_json', 'service_date', 'vat_treatment',
+                                                          'vat_exemption_reason', 'client_is_public', 'payment_terms')]
+        + [('outgoing_quotes', col, 'TEXT') for col in ('client_siren', 'operation_nature', 'delivery_address',
+                                                        'client_vat_number', 'counterparty_country')]
+        + [('delivery_notes', col, 'TEXT') for col in ('client_siren', 'operation_nature', 'billing_address', 'due_date')]
+        + [('finance_leases', 'vat_rate', 'REAL'), ('purchase_invoices', 'duplicate_ack', 'TEXT')]
+        + [('invoicing_clients', 'country', 'TEXT'), ('invoicing_clients', 'is_public', 'TEXT'),
+           ('accounting_entries', 'piece_ref', 'TEXT'), ('accounting_entry_lines', 'lettrage_date', 'TEXT'),
+           ('accounting_entry_lines', 'vat_rate', 'REAL'), ('accounting_entry_lines', 'vat_base', 'REAL')]
+    )
+    for table, col, decl in _v4_columns:
+        try:
+            cols=[r['name'] for r in c.execute(f'PRAGMA table_info({table})').fetchall()]
+            if cols and col not in cols:
+                c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {decl}'); c.commit()
+        except Exception as e:
+            c.rollback()
+            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+    try:
+        # fiscal_year porte la série : '<type>:<année>' (invoice:2026, credit:2026, delivery:2026).
+        c.execute("""CREATE TABLE IF NOT EXISTS invoice_number_sequences(
+            entity_key INTEGER NOT NULL DEFAULT 0,
+            fiscal_year TEXT NOT NULL,
+            last_sequence INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(entity_key,fiscal_year))""")
+        c.execute("""CREATE TABLE IF NOT EXISTS accounting_auxiliary_codes(
+            entity_key INTEGER NOT NULL DEFAULT 0,
+            root TEXT NOT NULL,
+            name_key TEXT NOT NULL,
+            aux_code TEXT NOT NULL,
+            label TEXT,
+            created_at TEXT,
+            PRIMARY KEY(entity_key,root,name_key))""")
+        c.commit()
+    except Exception as e:
+        c.rollback()
+        _migration_warn(f"[ProfitOS] ATTENTION : tables de numérotation/auxiliaires non créées ({e})")
+    # Un numéro de facture définitif est unique par entité. Les brouillons n'ont plus de
+    # numéro (NULL) : index partiel. Si des doublons historiques existent, l'index n'est
+    # pas créé (message en log) — à corriger manuellement avant de relancer.
+    try:
+        c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS ux_outgoing_invoices_entity_number
+                     ON outgoing_invoices(COALESCE(CAST(entity_id AS TEXT),''), invoice_number)
+                     WHERE invoice_number IS NOT NULL""")
+        c.commit()
+    except Exception as e:
+        c.rollback()
+        _migration_warn(f"[ProfitOS] ATTENTION : index unique des numéros de facture non créé ({e})")
+
+    try:
+        dbmod.upgrade_real_columns(c)
+    except Exception as e:
+        c.rollback()
+        _migration_warn(f"conversion des colonnes REAL en DOUBLE PRECISION non faite ({e})")
 
     from profitos.accounting import seed_accounting_defaults
     seed_accounting_defaults(c)
@@ -2085,7 +2583,13 @@ def parse_dt(v):
 def fmt_deadline(v):
     d=parse_dt(v)
     if not d:return None
-    d=d.astimezone(PARIS); months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+    months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+    raw=str(v)
+    # Date seule (ou minuit UTC, heure inconnue) : pas d'heure « 01:00 » due au fuseau.
+    if len(raw.strip())<=10 or (d.astimezone(timezone.utc).hour==0 and d.astimezone(timezone.utc).minute==0):
+        u=d.astimezone(timezone.utc)
+        return f'{u.day} {months[u.month-1]} {u.year}'
+    d=d.astimezone(PARIS)
     return f'{d.day} {months[d.month-1]} {d.year} à {d:%H:%M}'
 
 def days_left(v):
@@ -2153,24 +2657,40 @@ def sparkline_svg(values,width=260,height=56,color='#5fe0ac',stretch=False):
             f'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
             f'<circle cx="{last_x}" cy="{last_y}" r="3.5" fill="{color}"/></svg>')
 
-def bars_svg(labels_values,width=420,height=140,color='#5fe0ac'):
+FR_MONTHS_SHORT=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.']
+
+def bars_svg(labels_values,width=420,height=140,color='#5fe0ac',negative_color='#ff6e78'):
     """Barres verticales SVG simples (pas de lib JS), pour la prévision de trésorerie.
-    labels_values : liste de tuples (label, valeur)."""
+    labels_values : liste de tuples (label, valeur). Les valeurs négatives descendent sous une
+    ligne de base (signe moins typographique « − » dans les étiquettes)."""
     if not labels_values: return None
-    vals=[v for _,v in labels_values]
-    hi=max(max(vals,default=0),1)
+    vals=[float(v or 0) for _,v in labels_values]
+    hi=max(max(vals),0.0); lo=min(min(vals),0.0)
+    span=(hi-lo) or 1.0
     n=len(labels_values); pad=10; gap=14
+    top=18; bottom=height-30
+    usable=bottom-top
     bar_w=(width-2*pad-gap*(n-1))/n
-    bars=[]; labels=[]
+    zero_y=top+usable*(hi/span)
+    bars=[f'<line x1="{pad}" x2="{width-pad}" y1="{zero_y:.1f}" y2="{zero_y:.1f}" stroke="#8fa9d3" stroke-opacity=".35"/>']; labels=[]
     for i,(label,v) in enumerate(labels_values):
+        v=float(v or 0)
         x=pad+i*(bar_w+gap)
-        h=(v/hi)*(height-40) if hi else 0
-        y=height-30-h
-        bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="4" fill="{color}"/>')
-        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{y-6:.1f}" font-size="11" fill="#dbe6ff" text-anchor="middle">{fr_number(v)}</text>')
-        labels.append(f'<text x="{x+bar_w/2:.1f}" y="{height-10:.1f}" font-size="11" fill="#8fa9d3" text-anchor="middle">{label}</text>')
+        h=abs(v)/span*usable
+        y=zero_y-h if v>=0 else zero_y
+        fill=color if v>=0 else negative_color
+        bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="4" fill="{fill}"/>')
+        ty=(y-6) if v>=0 else min(bottom-2,y+h+13)
+        bars.append(f'<text x="{x+bar_w/2:.1f}" y="{ty:.1f}" font-size="11" fill="currentColor" text-anchor="middle">{fr_signed(v)}</text>')
+        # Libellés échappés : un nom de fournisseur venu d'un PDF reçu par e-mail ne doit
+        # jamais injecter de balises dans la page (le SVG est affiché avec |safe).
+        label=str(label)
+        if len(label)==7 and label[:4].isdigit() and label[4]=='-' and label[5:].isdigit() and 1<=int(label[5:])<=12:
+            label=f"{FR_MONTHS_SHORT[int(label[5:])-1]} {label[2:4]}"  # « 2026-10 » -> « oct. 26 »
+        safe_label=label.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
+        labels.append(f'<text x="{x+bar_w/2:.1f}" y="{height-10:.1f}" font-size="11" fill="#8fa9d3" text-anchor="middle">{safe_label}</text>')
     return (f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
-            f'xmlns="http://www.w3.org/2000/svg">'+''.join(bars)+''.join(labels)+'</svg>')
+            f'xmlns="http://www.w3.org/2000/svg" role="img">'+''.join(bars)+''.join(labels)+'</svg>')
 
 TAX={
  'renovation':['rénovation','renovation','réhabilitation','rehabilitation'],
@@ -2221,18 +2741,58 @@ def score_market(rec,p):
         else:s+=3; reasons.append('délai de réponse disponible')
     return max(0,min(100,s)),deps,reasons,warns
 
-def sync_grow():
+def fetch_boamp_records():
+    """Derniers avis BOAMP (une requête, partagée par toutes les organisations
+    lors du job planifié boamp_refresh)."""
+    r=requests.get(BOAMP,params={'limit':100,'order_by':'dateparution DESC'},timeout=20); r.raise_for_status()
+    return r.json().get('results',[])
+
+
+def _grow_key(source_url, title, buyer):
+    return ('url:'+source_url.strip()) if source_url else ('tb:'+norm(title)+'|'+norm(buyer))
+
+
+def sync_grow(rows=None):
+    """Met à jour les opportunités GROW depuis BOAMP.
+
+    v400 : upsert par avis (URL BOAMP) au lieu de tout supprimer/recréer —
+    created_at et status sont conservés, donc un appel d'offres n'est
+    « nouveau » qu'une fois et les actions liées gardent leur opportunité.
+    Les avis disparus du flux sont retirés seulement s'ils sont encore OPEN et
+    échus (ou sans date limite et vus il y a plus de 30 jours)."""
     p=profile()
     if not p:return 0
-    r=requests.get(BOAMP,params={'limit':100,'order_by':'dateparution DESC'},timeout=20); r.raise_for_status(); rows=r.json().get('results',[])
-    c=cx(); c.execute("DELETE FROM opportunities WHERE type='GROW'"); n=0
+    if rows is None:
+        rows=fetch_boamp_records()
+    c=cx(); n=0
+    existing={}
+    for row in c.execute("SELECT id,title,buyer,source_url,status,deadline,created_at FROM opportunities WHERE type='GROW'").fetchall():
+        existing.setdefault(_grow_key(row['source_url'],row['title'],row['buyer']),row)
+    seen=set()
     for rec in rows:
         score,deps,reasons,warns=score_market(rec,p)
         if score<55:continue
         title=first(rec,'objet','title','titre') or 'Marché public BOAMP'; buyer=first(rec,'nomacheteur','acheteur') or 'Acheteur public'
-        c.execute("""INSERT INTO opportunities(type,title,value,score,details,source,source_url,buyer,departments,deadline,reasons,warnings,raw_json,status,created_at)
-                     VALUES('GROW',?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?)""",
-                  (title,0,score,f'Acheteur : {buyer}','BOAMP',first(rec,'url_avis','url'),buyer,json.dumps(deps,ensure_ascii=False),first(rec,'datelimitereponse','date_limite_reponse'),json.dumps(reasons,ensure_ascii=False),json.dumps(warns,ensure_ascii=False),json.dumps(rec,ensure_ascii=False,default=str),now())); n+=1
+        url=first(rec,'url_avis','url')
+        key=_grow_key(url,title,buyer)
+        if key in seen: continue
+        seen.add(key)
+        values=(title,0,score,f'Acheteur : {buyer}','BOAMP',url,buyer,json.dumps(deps,ensure_ascii=False),first(rec,'datelimitereponse','date_limite_reponse'),json.dumps(reasons,ensure_ascii=False),json.dumps(warns,ensure_ascii=False),json.dumps(rec,ensure_ascii=False,default=str))
+        if key in existing:
+            c.execute("""UPDATE opportunities SET title=?,value=?,score=?,details=?,source=?,source_url=?,buyer=?,departments=?,deadline=?,reasons=?,warnings=?,raw_json=?
+                         WHERE id=?""",values+(existing[key]['id'],))
+        else:
+            c.execute("""INSERT INTO opportunities(type,title,value,score,details,source,source_url,buyer,departments,deadline,reasons,warnings,raw_json,status,created_at)
+                         VALUES('GROW',?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?)""",values+(now(),))
+        n+=1
+    today_iso=date.today().isoformat()
+    stale_before=(datetime.now(timezone.utc)-timedelta(days=30)).isoformat()
+    for key,row in existing.items():
+        if key in seen or (row['status'] or 'OPEN')!='OPEN':
+            continue
+        deadline=str(row['deadline'] or '')[:10]
+        if (deadline and deadline<today_iso) or (not deadline and str(row['created_at'] or '')<stale_before):
+            c.execute('DELETE FROM opportunities WHERE id=?',(row['id'],))
     c.execute('INSERT INTO audit_runs(run_type,rows_processed,signals_found,created_at) VALUES(?,?,?,?)',('GROW',len(rows),n,now())); c.commit(); c.close(); return n
 
 
@@ -2241,45 +2801,279 @@ def tenant_cx_direct(org_id):
     """Connexion tenant sans dépendre de la session (utilisée par le digest hebdomadaire, hors requête HTTP)."""
     return dbmod.connect_tenant(org_id, tenant_db(org_id))
 
+def _digest_seen_table(c):
+    c.execute('CREATE TABLE IF NOT EXISTS weekly_digest_seen(item_key TEXT PRIMARY KEY,first_reported_at TEXT)')
+
+
+def _digest_key(kind, row):
+    if kind=='RECOVER':
+        return f"inv:{norm(row['customer'])}:{norm(row['invoice_number'])}"
+    if kind=='GROW':
+        return 'grow:'+_grow_key(row['source_url'],row['title'],row['buyer'])
+    return f"save:{norm(row['title'])}"
+
+
 def compute_weekly_digest(org_id, days=7):
-    """Calcule les nouveautés RECOVER/SAVE/GROW des `days` derniers jours pour une organisation.
-    Retourne un dict prêt à être injecté dans le template email + utilisé pour la preview HTML."""
+    """Nouveautés RECOVER/SAVE/GROW pour le rapport hebdomadaire.
+
+    v400 : « nouveau » signifie « jamais présenté dans un rapport envoyé »
+    (table tenant weekly_digest_seen, alimentée après un envoi réussi) et non
+    plus « created_at < 7 jours » : un import de factures ou une actualisation
+    BOAMP recrée les lignes, ce qui faisait réapparaître chaque semaine les
+    mêmes factures en retard et appels d'offres. Avant le tout premier rapport,
+    on retombe sur la fenêtre de `days` jours pour ne pas envoyer tout l'historique.
+    Retourne un dict prêt à être injecté dans le template email + la preview HTML."""
     since=(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()
     c=tenant_cx_direct(org_id)
-    new_recover=c.execute(
-        "SELECT *,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND created_at>=? ORDER BY score DESC",
-        (since,)).fetchall()
-    new_save=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' AND created_at>=? ORDER BY score DESC",(since,)).fetchall()
-    new_grow=c.execute("SELECT * FROM opportunities WHERE type='GROW' AND status='OPEN' AND created_at>=? ORDER BY score DESC",(since,)).fetchall()
-    c.close()
-    recover_total=sum(max(r['amount']-r['paid_amount'],0) for r in new_recover)
-    save_total=sum(r['value'] for r in new_save)
+    try:
+        # Créances échues : factures émises ET importées (vue unique, profitos/receivables.py).
+        from profitos.receivables import open_receivables
+        recover=sorted((r for r in open_receivables(c) if r['overdue']),key=lambda r:r['score'],reverse=True)
+        save=c.execute("SELECT * FROM opportunities WHERE type='SAVE' AND status='OPEN' ORDER BY score DESC").fetchall()
+        grow=c.execute("SELECT * FROM opportunities WHERE type='GROW' AND status='OPEN' ORDER BY score DESC").fetchall()
+        try:
+            _digest_seen_table(c); c.commit()
+            seen={r['item_key'] for r in c.execute('SELECT item_key FROM weekly_digest_seen').fetchall()}
+        except Exception:
+            seen=set()
+    finally:
+        c.close()
+    keys=[]
+    def fresh(kind, rows):
+        out=[]
+        for r in rows:
+            k=_digest_key(kind,r); keys.append(k)
+            if (k not in seen) if seen else (str(r['created_at'] or '')>=since):
+                out.append(r)
+        return out
+    new_recover=fresh('RECOVER',recover); new_save=fresh('SAVE',save); new_grow=fresh('GROW',grow)
+    recover_total=sum(r['outstanding'] for r in new_recover)
+    save_total=sum(r['value'] or 0 for r in new_save)
     return {
         'period_days':days,
         'recover_total':recover_total,'recover_count':len(new_recover),'recover_top':list(new_recover[:3]),
         'save_total':save_total,'save_count':len(new_save),'save_top':list(new_save[:3]),
         'grow_count':len(new_grow),'grow_top':list(new_grow[:3]),
         'has_signal':bool(new_recover or new_save or new_grow),
+        'seen_keys':keys,
     }
 
-def send_email(to_email, subject, html, dry_run=None, reply_to=None):
+OUTBOUND_EMAIL_DAILY_QUOTA={'TRIAL':int(os.environ.get('EMAIL_QUOTA_TRIAL','30')),
+                            'PAID':int(os.environ.get('EMAIL_QUOTA_PAID','500'))}
+RECIPIENT_HOURLY_LIMIT=int(os.environ.get('EMAIL_RECIPIENT_HOURLY_LIMIT','3'))
+
+
+def _email_hash(email):
+    return hashlib.sha256(('profitos-rcpt:'+(email or '').strip().lower()).encode('utf-8')).hexdigest()
+
+
+def check_outbound_email_quota(kind, recipient=None, record=False):
+    """Contrôle avant tout e-mail EXTERNE envoyé au nom d'une organisation (factures,
+    devis, relances, invitations, actions, export comptable...).
+
+    Renvoie None si l'envoi est autorisé, sinon un message français expliquant le refus :
+    - l'adresse e-mail de l'utilisateur qui agit doit être vérifiée ;
+    - quota quotidien par organisation (essai : 30/jour, payant : 500/jour, ajustables
+      par EMAIL_QUOTA_TRIAL / EMAIL_QUOTA_PAID).
+    Avec record=True, l'envoi est comptabilisé lorsqu'il est autorisé."""
+    uid=session.get('user_id'); oid=session.get('org_id')
+    if not uid or not oid:
+        return None
+    c=auth_cx()
+    try:
+        u=c.execute('SELECT email_verified FROM users WHERE id=?',(uid,)).fetchone()
+        if not u or not u['email_verified']:
+            return ("Confirmez d'abord votre adresse e-mail pour envoyer des e-mails depuis ProfitOS "
+                    "(lien « Renvoyer l'e-mail de vérification » dans Paramètres).")
+        org=c.execute('SELECT plan,status FROM organizations WHERE id=?',(oid,)).fetchone()
+        paid=bool(org and (org['status'] in ('ACTIVE_PAID','PAST_DUE')))
+        limit=OUTBOUND_EMAIL_DAILY_QUOTA['PAID' if paid else 'TRIAL']
+        since=(datetime.now(timezone.utc)-timedelta(days=1)).isoformat()
+        sent=c.execute('SELECT COUNT(*) n FROM outbound_email_log WHERE organization_id=? AND created_at>=?',
+                       (oid,since)).fetchone()['n']
+        if sent>=limit:
+            log_security_event('EMAIL_QUOTA','BLOCKED',target=str(kind)[:40])
+            return (f"Limite d'envoi atteinte : {limit} e-mails par 24 heures pour votre formule. "
+                    "Réessayez plus tard ou contactez le support.")
+        if record:
+            c.execute('INSERT INTO outbound_email_log(organization_id,user_id,kind,recipient_hash,created_at) VALUES(?,?,?,?,?)',
+                      (oid,uid,str(kind)[:40],_email_hash(recipient) if recipient else None,now()))
+            c.commit()
+        return None
+    finally:
+        c.close()
+
+
+def check_recipient_rate(kind, recipient, limit=None, window_seconds=3600):
+    """Limite le nombre d'e-mails d'un même type vers une même adresse (mot de passe
+    oublié, accusé de demande de démo...) : 3 par heure par défaut. Renvoie True si
+    l'envoi est autorisé (et le comptabilise)."""
+    limit=RECIPIENT_HOURLY_LIMIT if limit is None else limit
+    if not recipient:
+        return False
+    digest=_email_hash(recipient)
+    since=(datetime.now(timezone.utc)-timedelta(seconds=window_seconds)).isoformat()
+    c=auth_cx()
+    try:
+        n=c.execute('SELECT COUNT(*) n FROM outbound_email_log WHERE recipient_hash=? AND kind=? AND created_at>=?',
+                    (digest,str(kind)[:40],since)).fetchone()['n']
+        if n>=limit:
+            return False
+        c.execute('INSERT INTO outbound_email_log(organization_id,user_id,kind,recipient_hash,created_at) VALUES(?,?,?,?,?)',
+                  (None,None,str(kind)[:40],digest,now()))
+        c.commit()
+        return True
+    finally:
+        c.close()
+
+
+
+def mark_weekly_digest_reported(org_id, digest):
+    """Après un envoi réussi : les éléments présentés ne seront plus « nouveaux »."""
+    keys=(digest or {}).get('seen_keys') or []
+    if not keys:
+        return 0
+    c=tenant_cx_direct(org_id)
+    try:
+        _digest_seen_table(c)
+        stamp=now()
+        for k in keys:
+            c.execute('INSERT OR IGNORE INTO weekly_digest_seen(item_key,first_reported_at) VALUES(?,?)',(k,stamp))
+        c.commit()
+    finally:
+        c.close()
+    return len(keys)
+
+
+EMAIL_SEND_FAILED_MESSAGE=("Le service d'email n'a pas pu envoyer le message. Réessayez dans quelques minutes ; "
+                           "si le problème persiste, contactez le support.")
+
+
+def mask_email(value):
+    """a***@domaine.fr — pour les logs (jamais d'adresse complète)."""
+    value=str(value or '')
+    if '@' not in value:
+        return '***'
+    local,domain=value.rsplit('@',1)
+    return f"{local[:1]}***@{domain}"
+
+
+def _sender_address(from_value):
+    """Extrait l'adresse d'un en-tête « Nom <adresse> »."""
+    m=re.search(r'<([^>]+)>',from_value or '')
+    return (m.group(1) if m else (from_value or '')).strip()
+
+
+def _org_sender_context(org):
+    """Nom affiché, reply-to et pied de page pour un email envoyé au nom d'une
+    organisation (factures, devis, relances). Best-effort : ne bloque jamais l'envoi."""
+    from markupsafe import escape
+    org_id=None; org_name=''
+    try:
+        if isinstance(org,int):
+            org_id=org
+        else:
+            org_id=org['id']; org_name=org['name'] or ''
+    except Exception:
+        pass
+    reply_to=None; company=None
+    try:
+        ac=auth_cx()
+        try:
+            if org_id and not org_name:
+                row=ac.execute('SELECT name FROM organizations WHERE id=?',(org_id,)).fetchone()
+                org_name=(row['name'] if row else '') or ''
+            if org_id:
+                owner=ac.execute(
+                    "SELECT users.email FROM memberships JOIN users ON users.id=memberships.user_id "
+                    "WHERE memberships.organization_id=? AND memberships.role='OWNER' ORDER BY memberships.id LIMIT 1",
+                    (org_id,)).fetchone()
+                reply_to=owner['email'] if owner else None
+        finally:
+            ac.close()
+    except Exception:
+        pass
+    if org_id:
+        try:
+            tc=tenant_cx_direct(org_id)
+            try:
+                company=tc.execute('SELECT * FROM company WHERE id=1').fetchone()
+            finally:
+                tc.close()
+        except Exception:
+            company=None
+    clean_name=re.sub(r'[\r\n"<>,;:@\\]',' ',org_name or '').strip()[:60] or 'Votre fournisseur'
+    legal=(company['name'] if company and company['name'] else org_name) or ''
+    parts=[legal]
+    if company:
+        address=' '.join(x for x in (company['address'],company['postal_code'],company['city']) if x)
+        if address: parts.append(address)
+        if company['siret']: parts.append(f"SIRET {company['siret']}")
+    footer=(
+        '<div style="max-width:640px;margin:8px auto 24px;padding:0 16px;font-family:-apple-system,Segoe UI,Roboto,'
+        'Helvetica,Arial,sans-serif;font-size:12px;color:#6b7280;">'
+        + ' — '.join(str(escape(x)) for x in parts if x)
+        + '<br>Message envoyé via ProfitOS. Pour toute question, répondez directement à cet email.</div>'
+    )
+    return clean_name,reply_to,footer
+
+
+def _append_footer(html, footer):
+    if not footer:
+        return html
+    idx=html.lower().rfind('</body>')
+    return html[:idx]+footer+html[idx:] if idx!=-1 else html+footer
+
+
+def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, on_behalf_of_org=None, headers=None):
     """Envoie un email transactionnel.
+
+    ``kind='system'`` : e-mail de compte (vérification, réinitialisation, sécurité),
+    jamais soumis au quota. Tout autre envoi déclenché depuis une session
+    d'organisation est un e-mail EXTERNE : adresse de l'expéditeur vérifiée et quota
+    quotidien de l'organisation exigés (voir check_outbound_email_quota).
 
     Ordre de préférence en production :
     1. Resend API si RESEND_API_KEY est configurée ;
     2. SMTP historique si SMTP_HOST est configuré ;
-    3. dry-run local sinon.
+    3. dry-run local sinon (journalisé en avertissement OPS EMAIL_SIMULATED).
+
+    on_behalf_of_org : organisation (dict/Row ou id) au nom de laquelle on écrit
+    à SON client final -> expéditeur « <Organisation> via ProfitOS », reply-to
+    vers l'organisation (et non noreply), pied de page avec ses mentions.
+    En cas d'échec, 'error' contient un message générique en français ; le
+    détail technique reste dans les logs (adresse masquée).
 
     La clé Resend reste uniquement dans les variables d'environnement Render.
     """
     resend_key=os.environ.get('RESEND_API_KEY','').strip()
     smtp_host=os.environ.get('SMTP_HOST','').strip()
     from_email=os.environ.get('RESEND_FROM_EMAIL','ProfitOS <noreply@profitos.fr>').strip()
+    smtp_from=os.environ.get('SMTP_FROM',from_email)
+    headers=dict(headers or {})
 
+    if on_behalf_of_org is not None:
+        display,org_reply_to,footer=_org_sender_context(on_behalf_of_org)
+        from_email=f"{display} via ProfitOS <{_sender_address(from_email)}>"
+        smtp_from=f"{display} via ProfitOS <{_sender_address(smtp_from)}>"
+        reply_to=reply_to or org_reply_to
+        html=_append_footer(html,footer)
+
+    simulated_by_default = dry_run is None and not (resend_key or smtp_host)
     if dry_run is None:
         dry_run = not (resend_key or smtp_host)
     if dry_run:
+        if simulated_by_default:
+            log_ops_event('EMAIL_SIMULATED','WARNING',detail=f'to={mask_email(to_email)} subject={str(subject)[:80]}')
         return {'sent':False,'dry_run':True,'provider':'dry-run','to':to_email,'subject':subject,'html':html}
+
+    if kind!='system':
+        try:
+            blocked=check_outbound_email_quota(kind or 'external', to_email, record=True)
+        except RuntimeError:
+            blocked=None  # hors requête (tâches planifiées) : pas de session à contrôler
+        if blocked:
+            return {'sent':False,'blocked':True,'provider':'quota','error':blocked,'to':to_email,'subject':subject}
 
     if resend_key:
         try:
@@ -2293,33 +3087,50 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None):
             }
             if reply_to:
                 params['reply_to'] = reply_to
+            if headers:
+                params['headers'] = headers
             result=resend.Emails.send(params)
             email_id = result.get('id') if isinstance(result,dict) else getattr(result,'id',None)
             return {'sent':True,'provider':'resend','id':email_id,'to':to_email,'subject':subject}
         except Exception as exc:
-            current_app.logger.exception('Resend email failed for %s', to_email)
-            return {'sent':False,'provider':'resend','error':str(exc),'to':to_email,'subject':subject}
+            _email_log_failure('Resend email failed for %s (%s)', to_email, exc)
+            return {'sent':False,'provider':'resend','error':EMAIL_SEND_FAILED_MESSAGE,'to':to_email,'subject':subject}
 
     # Compatibilité SMTP conservée pour le développement ou un fournisseur secondaire.
     try:
         import smtplib
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
+        from email.utils import formataddr, parseaddr
         msg=MIMEMultipart('alternative')
         msg['Subject']=subject
-        msg['From']=os.environ.get('SMTP_FROM',from_email)
+        name,addr=parseaddr(smtp_from)
+        msg['From']=formataddr((name,addr)) if name else addr
         msg['To']=to_email
         if reply_to:
             msg['Reply-To']=reply_to
-        msg.attach(MIMEText(html,'html'))
-        with smtplib.SMTP(smtp_host,int(os.environ.get('SMTP_PORT',587))) as server:
+        for key,value in headers.items():
+            msg[key]=value
+        msg.attach(MIMEText(html,'html','utf-8'))
+        with smtplib.SMTP(smtp_host,int(os.environ.get('SMTP_PORT',587)),timeout=30) as server:
             server.starttls()
             server.login(os.environ.get('SMTP_USER',''),os.environ.get('SMTP_PASSWORD',''))
-            server.sendmail(msg['From'],[to_email],msg.as_string())
+            server.sendmail(addr,[to_email],msg.as_string())
         return {'sent':True,'provider':'smtp','to':to_email,'subject':subject}
     except Exception as exc:
-        current_app.logger.exception('SMTP email failed for %s', to_email)
-        return {'sent':False,'provider':'smtp','error':str(exc),'to':to_email,'subject':subject}
+        _email_log_failure('SMTP email failed for %s (%s)', to_email, exc)
+        return {'sent':False,'provider':'smtp','error':EMAIL_SEND_FAILED_MESSAGE,'to':to_email,'subject':subject}
+
+
+def _email_log_failure(message, to_email, exc):
+    import logging
+    try:
+        logger=current_app.logger
+    except Exception:
+        logger=logging.getLogger('profitos.email')
+    # Jamais l'adresse complète ni le message d'erreur brut (peut contenir l'adresse).
+    logger.error(message, mask_email(to_email), type(exc).__name__)
+    log_ops_event('EMAIL_SEND_FAILED','ERROR',detail=f'to={mask_email(to_email)} error={type(exc).__name__}')
 
 def send_sms(to_phone, body, dry_run=None):
     """Envoie un SMS via Twilio si TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER
@@ -2371,9 +3182,24 @@ def api_key_required(fn):
         c=auth_cx()
         row=c.execute('SELECT * FROM api_keys WHERE key_hash=? AND revoked_at IS NULL',
                       (hash_api_key(raw_key),)).fetchone()
-        if not row:
+        if not row or (row.get('expires_at') and str(row['expires_at'])<=now()):
             c.close()
-            return jsonify({'error':'invalid_api_key','message':'Clé API invalide ou révoquée.'}),401
+            return jsonify({'error':'invalid_api_key','message':'Clé API invalide, expirée ou révoquée.'}),401
+        # Une clé n'ouvre pas plus de droits que l'abonnement : organisation résiliée ou essai
+        # expiré -> refus, comme pour l'interface web.
+        org=c.execute('SELECT * FROM organizations WHERE id=?',(row['organization_id'],)).fetchone()
+        if not org or not org_has_access(org):
+            c.close()
+            return jsonify({'error':'subscription_inactive','message':"L'abonnement de cette organisation n'est pas actif."}),403
+        # Une clé créée par un membre retiré de l'équipe n'est plus valable.
+        creator=(row['created_by'] or '').strip().lower()
+        if creator:
+            still_member=c.execute('SELECT 1 FROM memberships JOIN users ON users.id=memberships.user_id '
+                                   'WHERE LOWER(users.email)=? AND memberships.organization_id=?',
+                                   (creator,row['organization_id'])).fetchone()
+            if not still_member:
+                c.execute('UPDATE api_keys SET revoked_at=? WHERE id=? AND revoked_at IS NULL',(now(),row['id'])); c.commit(); c.close()
+                return jsonify({'error':'invalid_api_key','message':'Clé API invalide ou révoquée.'}),401
         c.execute('UPDATE api_keys SET last_used_at=? WHERE id=?',(now(),row['id'])); c.commit(); c.close()
         g.api_org_id=row['organization_id']
         g.api_key_id=row['id']
@@ -2382,7 +3208,12 @@ def api_key_required(fn):
         g.api_scopes=_api_scope_set(raw_scopes)
         g.api_key_scope='read_write' if 'write' in g.api_scopes else 'read'
         return fn(*args,**kwargs)
-    return wrapped
+    # Limite de débit par clé (et non par IP) : 600 requêtes par minute et par clé.
+    return limiter.limit('600 per minute', key_func=_api_rate_key, methods=None, override_defaults=True)(wrapped)
+
+def _api_rate_key():
+    header=request.headers.get('Authorization','')
+    return 'api:'+hashlib.sha256(header.encode('utf-8')).hexdigest()[:32] if header else get_remote_address()
 
 def api_scope_required(*required):
     """Exige tous les scopes indiqués. 'write' implique toujours 'read'."""
@@ -2419,6 +3250,11 @@ def sync_buyer_signals(org_id, invoices_rows):
     """Met à jour les signaux de risque acheteur partagés entre organisations, à partir
     des factures en retard de CETTE organisation. Agrégation anonymisée : les autres
     organisations ne voient jamais QUI a signalé quoi, seulement un compte et une moyenne."""
+    # RGPD : la mutualisation des retards de paiement entre clients ProfitOS fait de ProfitOS
+    # un responsable de traitement distinct (art. 28.10) et peut viser des personnes physiques.
+    # Désactivée tant qu'une base contractuelle (opt-in + clause CGV) n'est pas en place.
+    if os.environ.get('BUYER_SIGNALS_ENABLED','0').strip()!='1':
+        return
     from collections import defaultdict
     by_customer=defaultdict(list)
     for r in invoices_rows:
@@ -2452,15 +3288,33 @@ def buyer_risk_lookup(customer_name, exclude_org_id):
     c=auth_cx()
     rows=c.execute('SELECT * FROM buyer_signals WHERE buyer_name_norm=? AND organization_id!=?',(key,exclude_org_id)).fetchall()
     c.close()
-    if not rows: return None
+    # Seuil d'anonymat : jamais d'information issue de moins de 5 autres organisations.
+    if not rows or len(rows) < 5 or os.environ.get('BUYER_SIGNALS_ENABLED','0').strip()!='1': return None
     org_count=len(rows)
     total_invoices=sum(r['invoice_count'] for r in rows)
     avg_days=sum(r['avg_days_overdue']*r['invoice_count'] for r in rows)/total_invoices if total_invoices else 0
     return {'org_count':org_count,'total_invoices':total_invoices,'avg_days':round(avg_days)}
 
+def benchmark_opted_in(org_id, c=None):
+    """Participation volontaire de l'organisation au benchmark anonymisé (défaut : non)."""
+    own=c is None
+    c=c or auth_cx()
+    try:
+        row=c.execute('SELECT benchmark_opt_in FROM organizations WHERE id=?',(org_id,)).fetchone()
+        return bool(row and row['benchmark_opt_in'])
+    except Exception:
+        return False
+    finally:
+        if own: c.close()
+
 def sync_sector_dso(org_id, avg_days_overdue):
-    """Alimente le benchmark sectoriel anonymisé (moyenne DSO inter-organisations)."""
+    """Alimente le benchmark anonymisé (moyenne DSO inter-organisations), UNIQUEMENT pour une
+    organisation qui a choisi d'y participer dans Paramètres."""
     c=auth_cx()
+    if not benchmark_opted_in(org_id, c):
+        c.execute('DELETE FROM sector_dso_signals WHERE organization_id=?',(org_id,))
+        c.commit(); c.close()
+        return
     c.execute('''INSERT INTO sector_dso_signals(organization_id,snapshot_date,avg_days_overdue,updated_at)
                  VALUES(?,?,?,?)
                  ON CONFLICT(organization_id,snapshot_date) DO UPDATE SET
@@ -2469,25 +3323,52 @@ def sync_sector_dso(org_id, avg_days_overdue):
     c.commit(); c.close()
 
 def sector_dso_benchmark(exclude_org_id):
-    """Moyenne DSO des autres organisations (leur dernier relevé chacune), anonymisée."""
+    """Moyenne DSO des autres organisations (leur dernier relevé chacune), anonymisée.
+    Réservée aux organisations participantes, et calculée uniquement sur les organisations
+    qui ont elles-mêmes accepté de participer (opt-in dans Paramètres)."""
     c=auth_cx()
-    rows=c.execute('SELECT organization_id,MAX(snapshot_date) d FROM sector_dso_signals WHERE organization_id!=? GROUP BY organization_id',(exclude_org_id,)).fetchall()
+    if not benchmark_opted_in(exclude_org_id, c):
+        c.close(); return None
+    rows=c.execute('SELECT s.organization_id,MAX(s.snapshot_date) d FROM sector_dso_signals s JOIN organizations o ON o.id=s.organization_id '
+                   'WHERE s.organization_id!=? AND COALESCE(o.benchmark_opt_in,0)=1 GROUP BY s.organization_id',(exclude_org_id,)).fetchall()
     if not rows: c.close(); return None
     values=[]
     for r in rows:
         v=c.execute('SELECT avg_days_overdue FROM sector_dso_signals WHERE organization_id=? AND snapshot_date=?',(r['organization_id'],r['d'])).fetchone()
         if v and v['avg_days_overdue'] is not None: values.append(v['avg_days_overdue'])
     c.close()
-    if not values: return None
+    # Seuil d'anonymat : en dessous de 5 organisations, la moyenne révélerait le
+    # comportement de paiement d'un client identifiable.
+    if len(values) < 5: return None
     return {'org_count':len(values),'avg_days':round(sum(values)/len(values))}
 
-def export_response(rows, filename_base):
+_FORMULA_PREFIXES=('=','+','-','@','\t','\r')
+
+def spreadsheet_safe(value):
+    """Neutralise l'injection de formules (CSV/XLSX) : un texte commençant par = + - @
+    (ex. un nom de client « =HYPERLINK(...) » venu d'un import ou d'un e-mail fournisseur)
+    est préfixé d'une apostrophe pour être affiché comme du texte. Les nombres sont intacts."""
+    if isinstance(value,str) and value.startswith(_FORMULA_PREFIXES):
+        if re.fullmatch(r'-?\d+(?:[.,]\d+)?',value.strip()):
+            return value
+        return "'"+value
+    return value
+
+def export_response(rows, filename_base, french_csv=True):
     """Exporte une liste de dicts en CSV ou XLSX selon ?format=csv|xlsx (défaut xlsx).
-    Partagé par tous les blueprints (RECOVER/SAVE/GROW, audit, etc.)."""
+    Partagé par tous les blueprints (RECOVER/SAVE/GROW, audit, etc.).
+
+    CSV « Excel français » par défaut : séparateur « ; » et virgule décimale (1234,56),
+    ouvert tel quel par Excel en français. french_csv=False : séparateur « , » et point
+    décimal (échange avec un outil anglo-saxon)."""
     fmt=request.args.get('format','xlsx').lower()
+    rows=[{k:spreadsheet_safe(v) for k,v in dict(r).items()} for r in rows]
     df=pd.DataFrame(rows)
     if fmt=='csv':
-        csv_bytes=df.to_csv(index=False).encode('utf-8-sig')  # BOM : accents corrects dans Excel FR
+        if french_csv:
+            csv_bytes=df.to_csv(index=False,sep=';',decimal=',').encode('utf-8-sig')
+        else:
+            csv_bytes=df.to_csv(index=False).encode('utf-8-sig')  # BOM : accents corrects dans Excel FR
         return Response(csv_bytes,mimetype='text/csv',
             headers={'Content-Disposition':f'attachment; filename="{filename_base}.csv"'})
     buf=io.BytesIO()
@@ -2517,35 +3398,80 @@ def resolve_public_invoice_token(token):
 def send_accountant_export(org, email, dry_run=None):
     """Envoie au comptable un LIEN de téléchargement sécurisé (pas de pièce jointe brute) —
     le lien régénère l'export RECOVER à la demande, toujours à jour au moment du clic."""
-    token=secrets.token_urlsafe(20)
+    token=secrets.token_urlsafe(32)
     c=auth_cx()
+    # Seule l'empreinte du jeton est stockée ; le lien expire après 7 jours.
     c.execute('INSERT INTO export_tokens(token,organization_id,export_type,created_at) VALUES(?,?,?,?)',
-        (token,org['id'],'recover',now())); c.commit(); c.close()
-    base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
+        (token_digest(token),org['id'],'recover',now())); c.commit(); c.close()
+    base=app_base_url()
     link=f"{base}{url_for('export_download',token=token)}"
     html=render_template('email_transactional.html',title=f"Export ProfitOS — {org['name']}",
         intro=f"Voici le lien pour télécharger l'export des créances de {org['name']}, toujours à jour au moment du clic.",
-        cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien reste valable — contactez l\'organisation si vous n\'êtes pas concerné(e).')
+        cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien est valable 7 jours. Si vous n\'êtes pas concerné(e), ignorez ce message.')
     return send_email(email,f"Export ProfitOS — {org['name']}",html,dry_run=dry_run)
 
+def _grant_stripe_month_credit(org, months=1):
+    """Crédite le solde client Stripe de 'months' mois de la formule actuelle
+    (montant HT négatif = crédit imputé sur les prochaines factures). Retourne
+    True si le crédit a été enregistré chez Stripe."""
+    stripe=get_stripe()
+    if not stripe or not org or not _row_get(org,'stripe_customer_id'): return False
+    plan=STRIPE_PLANS.get((_row_get(org,'plan') or '').upper())
+    if not plan: return False
+    stripe.Customer.create_balance_transaction(
+        org['stripe_customer_id'],
+        amount=-int(plan['price_eur'])*100*int(months),
+        currency='eur',
+        description=f"Parrainage ProfitOS : {int(months)} mois offert{'s' if int(months) > 1 else ''}",
+        idempotency_key=f"profitos-referral-credit-{org['id']}-{_row_get(org,'referral_credit_months',0)}-{months}-{datetime.now(timezone.utc):%Y%m%d}",
+    )
+    return True
+
+def apply_pending_referral_credit(acx, org_id):
+    """Impute chez Stripe les mois de parrainage en attente d'une organisation
+    devenue (ou redevenue) payante. Best-effort, appelé depuis le webhook."""
+    try:
+        org=acx.execute('SELECT * FROM organizations WHERE id=?',(org_id,)).fetchone()
+        months=int(_row_get(org,'referral_credit_months',0) or 0)
+        if not org or months<=0 or org['status']!='ACTIVE_PAID': return
+        if _grant_stripe_month_credit(org, months):
+            acx.execute('UPDATE organizations SET referral_credit_months=0,updated_at=? WHERE id=?',(now(),org_id))
+    except Exception:
+        current_app.logger.exception('Pending referral credit failed org_id=%s', org_id)
+
 def reward_referrer_if_any(acx, referred_org_id):
-    """Accorde 1 mois gratuit au parrain quand l'organisation parrainée devient payante.
+    """Accorde 1 mois offert au parrain quand l'organisation parrainée devient payante.
     'acx' est une connexion auth déjà ouverte (appelé depuis le webhook Stripe, qui gère
     lui-même le commit global) — on ne ferme pas la connexion ici, on ne fait qu'écrire.
-    Best-effort : ne doit jamais faire échouer le traitement du webhook Stripe."""
+    Best-effort : ne doit jamais faire échouer le traitement du webhook Stripe.
+
+    - parrain abonné (Stripe configuré) : crédit d'un mois sur le solde client
+      Stripe, déduit automatiquement de sa prochaine facture ;
+    - parrain en essai en cours : l'essai est prolongé de 30 jours ;
+    - sinon (essai expiré, abonnement résilié, Stripe indisponible) : le mois est
+      mis en attente et imputé dès le prochain paiement (jamais de réactivation
+      gratuite d'un essai expiré)."""
     try:
         ref=acx.execute("SELECT * FROM referrals WHERE referred_org_id=? AND status='PENDING'",(referred_org_id,)).fetchone()
         if not ref: return
         acx.execute("UPDATE referrals SET status='REWARDED',rewarded_at=? WHERE id=?",(now(),ref['id']))
-        # Récompense simple et robuste : prolonge le trial_ends_at du parrain de 30 jours.
-        # Fonctionne aussi bien pour un parrain encore en essai que déjà payant (le champ
-        # est simplement stocké, sans effet si le parrain a déjà un abonnement Stripe actif).
         referrer=acx.execute('SELECT * FROM organizations WHERE id=?',(ref['referrer_org_id'],)).fetchone()
-        if referrer:
+        if not referrer: return
+        credited=False
+        if referrer['status'] in ('ACTIVE_PAID','PAST_DUE'):
+            try:
+                credited=_grant_stripe_month_credit(referrer, 1)
+            except Exception:
+                current_app.logger.exception('Stripe referral credit failed org_id=%s', referrer['id'])
+                credited=False
+        elif trial_is_active(referrer):
             base=parse_dt(referrer['trial_ends_at']) or datetime.now(timezone.utc)
             new_end=max(base,datetime.now(timezone.utc))+timedelta(days=30)
-            acx.execute('UPDATE organizations SET trial_ends_at=?,updated_at=? WHERE id=?',(new_end.isoformat(),now(),ref['referrer_org_id']))
-            log_activity('REFERRAL_REWARDED',f"Parrainage récompensé (organisation #{referred_org_id} devenue payante)")
+            acx.execute('UPDATE organizations SET trial_ends_at=?,updated_at=? WHERE id=?',(new_end.isoformat(),now(),referrer['id']))
+            credited=True
+        if not credited:
+            acx.execute('UPDATE organizations SET referral_credit_months=COALESCE(referral_credit_months,0)+1,updated_at=? WHERE id=?',(now(),referrer['id']))
+        current_app.logger.info('Referral rewarded referrer=%s referred=%s credited=%s',referrer['id'],referred_org_id,credited)
     except Exception:
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
@@ -2554,7 +3480,7 @@ CHANGELOG_ENTRIES=[
     {'date':'2026-08-22','title':'Score de risque acheteur croisé, benchmark sectoriel DSO, calendrier unifié'},
     {'date':'2026-08-22','title':'Programme de parrainage, portail client public, rapprochement bancaire'},
     {'date':'2026-08-20','title':'Prévision de trésorerie, simulateur de caution, radar de partenaires'},
-    {'date':'2026-08-18','title':'Rôles équipe, PWA installable, export CSV/Excel'},
+    {'date':'2026-08-18','title':'Rôles équipe, application installable sur mobile, export CSV/Excel'},
 ]
 
 def notify_org(text):
@@ -2574,16 +3500,83 @@ def notify_org(text):
         pass
 
 
+def app_base_url():
+    """URL publique de l'application pour les liens envoyés par e-mail.
+
+    En production, APP_BASE_URL est obligatoire (vérifié au démarrage) : l'en-tête Host
+    de la requête n'est JAMAIS utilisé, sinon un attaquant pourrait faire pointer un lien
+    de réinitialisation de mot de passe vers son propre domaine. Le repli sur l'hôte de
+    la requête est réservé au développement local."""
+    from profitos.config import is_production
+    configured=(os.environ.get('APP_BASE_URL') or '').strip().rstrip('/')
+    if configured:
+        return configured
+    if is_production():
+        raise RuntimeError('APP_BASE_URL doit être défini en production.')
+    try:
+        return request.host_url.rstrip('/')
+    except RuntimeError:
+        return 'http://localhost:5050'
+
+WEEKLY_UNSUB_SALT='weekly-report-unsubscribe'
+
+
+def weekly_unsubscribe_token(user_id):
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(current_app.config['SECRET_KEY'],salt=WEEKLY_UNSUB_SALT).dumps({'u':int(user_id)})
+
+
+def weekly_unsubscribe_user_id(token):
+    from itsdangerous import URLSafeSerializer, BadSignature
+    try:
+        data=URLSafeSerializer(current_app.config['SECRET_KEY'],salt=WEEKLY_UNSUB_SALT).loads(token)
+        return int(data['u'])
+    except (BadSignature,KeyError,TypeError,ValueError):
+        return None
+
+
+def _weekly_recipients(org_id):
+    c=auth_cx()
+    try:
+        base=("SELECT users.id,users.email{extra} FROM memberships JOIN users ON users.id=memberships.user_id "
+              "WHERE memberships.organization_id=? AND memberships.role='OWNER' AND COALESCE(users.is_active,1)=1 ORDER BY memberships.id")
+        try:
+            rows=c.execute(base.format(extra=',COALESCE(users.weekly_report_enabled,1) AS enabled'),(org_id,)).fetchall()
+        except Exception:
+            c.rollback()
+            rows=[dict(r,enabled=1) for r in c.execute(base.format(extra=''),(org_id,)).fetchall()]
+    finally:
+        c.close()
+    return rows
+
+
 def send_weekly_email(org, digest, dry_run=None):
-    """Envoie (ou simule) le rapport hebdomadaire par email pour une organisation."""
-    c=auth_cx(); recipient=c.execute(
-        "SELECT users.email FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.organization_id=? AND memberships.role='OWNER' ORDER BY memberships.id LIMIT 1",
-        (org['id'],)).fetchone(); c.close()
-    if not recipient: return {'sent':False,'reason':'no_owner_email'}
-    to_email=recipient['email']
-    html=render_template('email_weekly.html',org=org,digest=digest,app_url=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050'))
-    subject=f"Your Weekly Profit Report — {org['name']}"
-    return send_email(to_email,subject,html,dry_run=dry_run)
+    """Envoie (ou simule) le rapport hebdomadaire aux propriétaires abonnés.
+
+    Chaque destinataire reçoit son lien de désinscription (pied de page +
+    en-têtes List-Unsubscribe / List-Unsubscribe-Post, RFC 8058). Les éléments
+    présentés sont marqués comme « déjà signalés » après un envoi réussi."""
+    owners=_weekly_recipients(org['id'])
+    if not owners: return {'sent':False,'reason':'no_owner_email'}
+    recipients=[r for r in owners if int(r['enabled'] or 0)==1]
+    if not recipients: return {'sent':False,'reason':'unsubscribed','to':''}
+    app_url=app_base_url()
+    subject=f"Votre rapport financier de la semaine — {org['name']}"
+    results=[]
+    for r in recipients:
+        token=weekly_unsubscribe_token(r['id'])
+        unsubscribe_url=f"{app_url}/email/desinscription/{token}"
+        one_click_url=f"{app_url}/api/v1/email/unsubscribe/{token}"
+        html=render_template('email_weekly.html',org=org,digest=digest,app_url=app_url,unsubscribe_url=unsubscribe_url)
+        headers={'List-Unsubscribe':f'<{one_click_url}>','List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}
+        results.append(send_email(r['email'],subject,html,dry_run=dry_run,headers=headers))
+    sent=any(x.get('sent') for x in results)
+    if sent:
+        try: mark_weekly_digest_reported(org['id'],digest)
+        except Exception: current_app.logger.exception('weekly digest marking failed org=%s',org['id'])
+    return {'sent':sent,'dry_run':all(x.get('dry_run') for x in results),
+            'to':', '.join(r['email'] for r in recipients),'results':results,
+            'error':next((x.get('error') for x in results if x.get('error')),None)}
 
 def gen_token():
     # Le token brut n'est jamais stocké en base à partir de V1.3.3.
@@ -2617,12 +3610,12 @@ def send_verification_email(user, dry_run=None):
     c=auth_cx()
     c.execute('UPDATE users SET verification_token=?,verification_sent_at=? WHERE id=?',(digest,now(),user['id']))
     c.commit(); c.close()
-    base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
+    base=app_base_url()
     link=f"{base}{url_for('verify_email',token=token)}"
-    html=render_template('email_transactional.html',title='Confirm your email',
-        intro='Click below to confirm your ProfitOS account email address. This link expires in 24 hours.',
-        cta_label='Verify email',cta_url=link,footer='If you did not create a ProfitOS account, you can ignore this email.')
-    return send_email(user['email'],'Confirm your ProfitOS account',html,dry_run=dry_run)
+    html=render_template('email_transactional.html',title='Confirmez votre adresse e-mail',
+        intro='Cliquez sur le bouton ci-dessous pour confirmer l’adresse e-mail de votre compte ProfitOS. Ce lien est valable 24 heures.',
+        cta_label='Confirmer mon adresse',cta_url=link,footer='Si vous n’avez pas créé de compte ProfitOS, vous pouvez ignorer ce message.')
+    return send_email(user['email'],'Confirmez votre compte ProfitOS',html,dry_run=dry_run,kind='system')
 
 def send_reset_email(user, dry_run=None):
     token=gen_token()
@@ -2631,12 +3624,12 @@ def send_reset_email(user, dry_run=None):
     c=auth_cx()
     c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(digest,expires,user['id']))
     c.commit(); c.close()
-    base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
+    base=app_base_url()
     link=f"{base}{url_for('reset_password',token=token)}"
-    html=render_template('email_transactional.html',title='Reset your password',
-        intro='Click below to choose a new password. This link expires in 1 hour.',
-        cta_label='Reset password',cta_url=link,footer='If you did not request this, you can ignore this email — your password will not change.')
-    return send_email(user['email'],'Reset your ProfitOS password',html,dry_run=dry_run)
+    html=render_template('email_transactional.html',title='Réinitialisez votre mot de passe',
+        intro='Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien est valable 1 heure.',
+        cta_label='Choisir un nouveau mot de passe',cta_url=link,footer='Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : votre mot de passe reste inchangé.')
+    return send_email(user['email'],'Réinitialisation de votre mot de passe ProfitOS',html,dry_run=dry_run,kind='system')
 
 def extract_document_text(path):
     ext=path.suffix.lower()
@@ -2698,7 +3691,7 @@ def analyze_dce_text(text, opp, p):
     score=int(opp['score'] or 50)
     reasons=[]; warnings=[]
     if certs:
-        reasons.append(f"{len(certs)} exigence(s)/certification(s) détectée(s)")
+        reasons.append(f"{pluralize(len(certs), 'exigence ou certification détectée', 'exigences ou certifications détectées')}")
     if missing:
         score-=min(30,10*len(missing)); warnings.append('Certifications à vérifier : '+', '.join(missing))
     else:
@@ -2790,6 +3783,20 @@ def commercial_context():
 def security_session_context():
     if session.get('user_id'):
         session.permanent=True
+        from profitos.account_security import session_expired
+        if request.endpoint!='static' and session_expired():
+            # Déconnexion après inactivité (SESSION_IDLE_MINUTES, 2 h par défaut) ou au-delà
+            # de la durée absolue (SESSION_HOURS, 12 h) : la session est révoquée côté serveur.
+            from profitos.account_security import revoke_current_session
+            try:
+                revoke_current_session()
+            except Exception:
+                pass
+            session.clear()
+            if request.method=='GET' and not request.path.startswith('/api/'):
+                flash('Votre session a expiré. Veuillez vous reconnecter.')
+                return redirect(url_for('login',next=request.path if request.path.startswith('/') else None))
+            abort(401)
 
 def asset_url(filename):
     """URL statique avec un paramètre de version basé sur la date de modification
@@ -2861,6 +3868,83 @@ def fr_date(value, with_time=False):
     return result
 
 
+def pluralize(n, singular, plural=None, with_number=True):
+    """Accord en nombre : pluralize(1, 'facture') -> « 1 facture », pluralize(3, 'signal', 'signaux')
+    -> « 3 signaux ». Remplace les « (s) » / « (aux) » des libellés. 0 et 1 sont au singulier
+    (règle française)."""
+    try:
+        count = float(n or 0)
+    except (TypeError, ValueError):
+        count = 0
+    word = singular if abs(count) < 2 else (plural or singular + 's')
+    if not with_number:
+        return word
+    shown = fr_number(count, 0) if float(count).is_integer() else fr_number(count, 1)
+    return f"{shown}\u00a0{word}"
+
+
+FR_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+             'septembre', 'octobre', 'novembre', 'décembre']
+
+
+def fr_month(value):
+    """« 2026-10 » ou « 2026-10-08 » -> « octobre 2026 »."""
+    s = str(value or '')
+    if len(s) >= 7 and s[:4].isdigit() and s[4] == '-' and s[5:7].isdigit() and 1 <= int(s[5:7]) <= 12:
+        return f"{FR_MONTHS[int(s[5:7]) - 1]} {s[:4]}"
+    return value
+
+
+def fr_signed(value, decimals=0, plus=False):
+    """Montant signé avec le vrai signe moins (−) ; « 0 » jamais affiché « −0 »."""
+    try:
+        v = round(float(value), decimals)
+    except (TypeError, ValueError):
+        return value
+    if v == 0:
+        return fr_number(0, decimals)
+    return ('\u2212' if v < 0 else ('+' if plus else '')) + fr_number(abs(v), decimals)
+
+
+def fr_datetime_paris(value):
+    """Horodatage ISO (UTC) -> « jj/mm/aaaa HH:MM » à l'heure de Paris."""
+    if not value:
+        return ''
+    try:
+        d = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except ValueError:
+        return fr_date(value, with_time=True)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    d = d.astimezone(PARIS)
+    return d.strftime('%d/%m/%Y %H:%M')
+
+
+INVOICE_STATUS_LABELS = {
+    'draft': 'Brouillon', 'sent': 'Émise', 'partially_paid': 'Partiellement payée',
+    'paid': 'Payée', 'overdue': 'En retard', 'cancelled': 'Annulée', 'issued': 'Émis',
+}
+
+
+def invoice_status_label(status):
+    """Libellé français d'un statut de facture (jamais la valeur brute « cancelled »)."""
+    return INVOICE_STATUS_LABELS.get(str(status or ''), str(status or ''))
+
+
+def invoice_label(inv):
+    """Numéro d'une facture émise, ou « Brouillon n°<id> » (numéro attribué à l'émission)."""
+    try:
+        number = inv['invoice_number']
+    except (KeyError, IndexError, TypeError):
+        number = None
+    if number:
+        return number
+    try:
+        return f"Brouillon n°{inv['id']}"
+    except (KeyError, IndexError, TypeError):
+        return 'Brouillon'
+
+
 def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
@@ -2869,14 +3953,37 @@ def init_runtime(app):
     app.jinja_env.globals['ROLES'] = ROLES
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['trial_days_left'] = trial_days_left
+    app.jinja_env.globals['subscription_state'] = subscription_state
+    app.jinja_env.globals['plan_overage'] = plan_overage
+    from .plan_limits import FEATURE_LABELS
+    app.jinja_env.globals['FEATURE_LABELS'] = FEATURE_LABELS
     app.jinja_env.globals['current_role'] = current_role
     app.jinja_env.globals['asset_url'] = asset_url
+    from profitos import ui_labels as _ui_labels
+    _ui_labels.register(app)
+    from profitos.receivables import detail_url as _receivable_url
+    app.jinja_env.globals['receivable_url'] = _receivable_url
+    app.jinja_env.globals['pluralize'] = pluralize
+    app.jinja_env.filters['pluralize'] = pluralize
+    app.jinja_env.filters['fr_month'] = fr_month
+    app.jinja_env.filters['fr_signed'] = fr_signed
+    app.jinja_env.filters['fr_datetime_paris'] = fr_datetime_paris
     app.jinja_env.filters['fr_number'] = fr_number
     app.jinja_env.filters['fr_date'] = fr_date
     app.jinja_env.filters['label'] = display_label
+    from profitos import invoice_amounts as _amounts
+    app.jinja_env.filters['fr_qty'] = _amounts.fr_qty
+    app.jinja_env.filters['fr_price'] = _amounts.fr_price
+    app.jinja_env.filters['fr_rate'] = _amounts.fr_rate
+    app.jinja_env.filters['fr_rate_plain'] = lambda v: _amounts.fr_rate(v)[:-2] if v not in (None, '') else ''
+    app.jinja_env.filters['invoice_label'] = invoice_label
+    app.jinja_env.filters['invoice_status_label'] = invoice_status_label
     from profitos.sepa import format_iban
     app.jinja_env.filters['format_iban'] = format_iban
     app.before_request(csrf_protect)
     app.before_request(security_session_context)
     app.before_request(ensure_tenant_schema)
+    app.before_request(refresh_invoice_aging_hook)
+    app.before_request(enforce_entity_access)
+    app.before_request(enforce_role_areas)
     app.context_processor(commercial_context)

@@ -24,7 +24,24 @@ Chaque réponse contient :
 Les requêtes >= 1500 ms et les réponses HTTP 5xx génèrent un log structuré `OPS`
 dans Render, corrélable avec le `request_id`.
 
-## Sauvegarde PostgreSQL
+## Suivi des erreurs et disponibilité
+- **Sentry** (optionnel) : définir `SENTRY_DSN` (web et cron). Données personnelles exclues
+  (`send_default_pii=False`, emails masqués, cookies / corps / chaîne de requête filtrés).
+- **Journal d'accès gunicorn** (`gunicorn.conf.py`) : chemin sans chaîne de requête,
+  segments de type jeton masqués, Referer non journalisé.
+- **Sonde externe** : vérifier `https://app.profitos.fr/readyz` chaque minute (UptimeRobot,
+  Better Stack…) avec alerte ; Render utilise aussi `/readyz` comme health check.
+- **Événements OPS** à surveiller dans les logs : `HTTP_5XX`, `SLOW_REQUEST`,
+  `JOB_ORG_FAILED`, `JOB_FAILED`, `EMAIL_SEND_FAILED`, `EMAIL_SIMULATED`,
+  `RETENTION_PURGE_UNAVAILABLE`.
+
+## Sauvegarde automatique (à jour)
+La tâche planifiée `backup` (2 h, Paris) exécute `scripts/backup.py` : dump PostgreSQL +
+archive des documents, chiffrés, envoyés sur S3 ou conservés sur le disque persistant.
+Procédure de restauration et exercice : `RESTORE.md`. Les sections ci-dessous décrivent
+l'ancien script manuel, conservé pour dépannage.
+
+## Sauvegarde PostgreSQL manuelle (historique)
 Script :
 `python scripts/backup_postgres.py`
 

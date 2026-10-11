@@ -2,7 +2,7 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">PORTEFEUILLE</div>
-<h1 class="purchase-title">Vue consolidée — {{ rows|length }} organisation(s)</h1>
+<h1 class="purchase-title">Vue consolidée — {{ pluralize(rows|length, 'organisation') }}</h1>
 <p class="purchase-subtitle">Utile si vous gérez plusieurs clients depuis un seul compte (cabinet comptable, groupe multi-sociétés).</p>
 
 <div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
@@ -32,9 +32,9 @@
         <tr>
           <td>
             <strong>{{ r.org.name }}</strong><br>
-            {% if r.error %}<small class="purchase-alert-text">Erreur d'accès : {{ r.error }}</small>{% else %}<small class="purchase-muted">{{ r.pending }} action(s) en attente</small>{% endif %}
+            {% if r.error %}<small class="purchase-alert-text">Erreur d'accès : {{ r.error }}</small>{% else %}<small class="purchase-muted">{{ pluralize(r.pending, 'action') }} en attente</small>{% endif %}
           </td>
-          <td>{% if not r.error %}{{ r.recover|fr_number }}&nbsp;€ à encaisser · {{ r.save|fr_number }}&nbsp;€ d'économies · {{ r.grow }} marché(s) public(s){% endif %}</td>
+          <td>{% if not r.error %}{{ r.recover|fr_number }}&nbsp;€ à encaisser · {{ r.save|fr_number }}&nbsp;€ d'économies · {{ pluralize(r.grow, 'marché public', 'marchés publics') }}{% endif %}</td>
           <td style="text-align:right;">
             <form method="post" action="{{ url_for('org_switch',org_id=r.org.id) }}" style="margin:0;display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

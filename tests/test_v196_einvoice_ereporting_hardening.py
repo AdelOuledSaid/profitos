@@ -37,7 +37,7 @@ def test_ereporting_staging_supports_transactions_and_payments():
 
 def test_invoice_compliance_uses_owning_entity_and_ui_shows_history():
     detail=INV[INV.index('def invoicing_detail(invoice_id):'):INV.index("@app.route('/facturation/<int:invoice_id>/pdf')")]
-    assert "resolve_entity(c,inv['entity_id'])" in detail
+    assert "_seller_identity(c,inv['entity_id'])" in detail
     assert "SELECT * FROM company WHERE id=1" not in detail
     assert 'Historique de transmission' in TPL
     assert 'plateforme agréée' in TPL

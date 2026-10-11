@@ -16,7 +16,7 @@
 <p class="muted">{{ company.name if company else '' }} · {{ q.client_name }} · {{ q.issue_date|fr_date }}</p>
 <section class="panel">
 {% for it in items %}
-<div class="simpleline"><span>{{ it.label }} · {{ it.qty }} × {{ it.unit_price|fr_number(2) }}&nbsp;€ · TVA {{ it.vat_rate }}%</span><span>{{ it.line_total|fr_number(2) }}&nbsp;€</span></div>
+<div class="simpleline"><span>{{ it.label }} · {{ it.qty|fr_qty }} × {{ it.unit_price|fr_price }}&nbsp;€ · TVA {{ it.vat_rate|fr_rate }}</span><span>{{ it.line_total|fr_number(2) }}&nbsp;€</span></div>
 {% endfor %}
 <div class="simpleline"><span>Sous-total HT</span><span>{{ q.subtotal|fr_number(2) }}&nbsp;€</span></div>
 <div class="simpleline"><span>TVA</span><span>{{ q.vat_amount|fr_number(2) }}&nbsp;€</span></div>

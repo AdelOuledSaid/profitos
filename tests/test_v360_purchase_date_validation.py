@@ -7,7 +7,7 @@ INV=(ROOT/'profitos/routes/invoicing.py').read_text(encoding='utf-8')
 def test_purchase_form_dates_are_strictly_validated_and_canonicalized():
     helper=INV.split('def _purchase_form_date',1)[1].split('def _purchase_pdf_date',1)[0]
     assert 'date.fromisoformat(value).isoformat()' in helper
-    assert 'AAAA-MM-JJ' in helper
+    assert 'jj/mm/aaaa' in helper  # v421 : message au format d'affichage français
 
 
 def test_purchase_new_validates_dates_before_insert():

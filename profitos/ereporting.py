@@ -5,13 +5,14 @@ VAT_RATES={0,0.9,1.05,1.75,2.1,5.5,7,8.5,9.2,9.6,10,13,19.6,20,20.6}
 CATEGORIES={'TLB1','TPS1','TNT1','TMA1'}
 def _money(v): return round(float(v or 0),2)
 def _vat_buckets(invoice):
-    out=defaultdict(lambda:[0.0,0.0])
-    for line in json.loads(invoice['line_items'] or '[]'):
+    """Base et TVA par taux, TVA calculée une fois par taux sur la base arrondie
+    (mêmes chiffres que la facture et son écriture comptable)."""
+    from profitos.invoice_amounts import vat_breakdown
+    items=json.loads(invoice['line_items'] or '[]')
+    for line in items:
         rate=float(line.get('vat_rate') or 0)
-        if rate not in VAT_RATES: raise ValueError(f"Taux TVA e-reporting non admis: {rate:g}")
-        net=_money(line.get('line_total')); vat=round(net*rate/100,2)
-        out[rate][0]+=net; out[rate][1]+=vat
-    return {r:(round(x[0],2),round(x[1],2)) for r,x in out.items()}
+        if rate not in VAT_RATES: raise ValueError(f"Taux TVA e-reporting non admis : {str(rate).replace('.',',')} %")
+    return {b['rate']:(b['base'],b['vat']) for b in vat_breakdown(items)}
 def _payment_split(invoice,amount):
     b=_vat_buckets(invoice); gross={r:round(n+v,2) for r,(n,v) in b.items()}; total=sum(gross.values())
     if total<=0:return []
@@ -26,7 +27,7 @@ def _tx_number(entity_id,flow_type,anchor_date,ids):
 def build_flux10(conn,entity_id,anchor_date,flow_type):
     if flow_type=='AggregatedCustomerTransactionReport':
         rows=conn.execute("""SELECT * FROM outgoing_invoices WHERE entity_id IS ?
-          AND ereporting_scope='b2c' AND issue_date=? AND status!='draft' ORDER BY id""",(entity_id,anchor_date)).fetchall()
+          AND ereporting_scope='b2c' AND issue_date=? AND status IN ('sent','partially_paid','paid') ORDER BY id""",(entity_id,anchor_date)).fetchall()
         agg=defaultdict(lambda:[0,0.0,0.0])
         for x in rows:
             cat=x['ereporting_category']
@@ -36,7 +37,7 @@ def build_flux10(conn,entity_id,anchor_date,flow_type):
                 'netAmount':round(v[1],2),'vatAmount':round(v[2],2)} for (d,cat),v in agg.items()]
     elif flow_type=='UnitaryCustomerTransactionReport':
         rows=conn.execute("""SELECT * FROM outgoing_invoices WHERE entity_id IS ?
-          AND ereporting_scope='international_b2b' AND issue_date=? AND status!='draft' ORDER BY id""",(entity_id,anchor_date)).fetchall()
+          AND ereporting_scope='international_b2b' AND issue_date=? AND status IN ('sent','partially_paid','paid') ORDER BY id""",(entity_id,anchor_date)).fetchall()
         lines=[]
         for x in rows:
             country=(x['counterparty_country'] or '').upper()

@@ -351,3 +351,30 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 })();
+
+// Confirmation avant une action irréversible : data-confirm="message" sur un bouton, un lien
+// ou un formulaire. Sans JavaScript, l'action reste possible (le serveur reste le garde-fou).
+(function () {
+  function message(el) {
+    return el && el.getAttribute && el.getAttribute('data-confirm');
+  }
+  document.addEventListener('click', function (event) {
+    var el = event.target.closest && event.target.closest('[data-confirm]');
+    if (!el || el.tagName === 'FORM') return;
+    if (!window.confirm(message(el))) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    } else if (el.form || el.closest('form')) {
+      (el.form || el.closest('form')).setAttribute('data-confirmed', '1');
+    }
+  }, true);
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute('data-confirm')) return;
+    if (form.getAttribute('data-confirmed') === '1') { form.removeAttribute('data-confirmed'); return; }
+    if (!window.confirm(message(form))) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
+})();
