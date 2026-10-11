@@ -8,14 +8,14 @@
 
 {% if new_key %}
 <section class="purchase-panel" style="margin:20px 0;border-color:rgba(61,220,132,.4);">
-  <p><strong style="color:#fff;">Copie cette clé maintenant</strong> — elle ne sera plus jamais affichée en clair.</p>
+  <p><strong style="color:#fff;">Copiez cette clé maintenant</strong> — elle ne sera plus jamais affichée en clair.</p>
   <code style="display:block;padding:12px;background:rgba(0,0,0,.3);border-radius:8px;word-break:break-all;font-size:13px;">{{ new_key }}</code>
 </section>
 {% endif %}
 
 <section class="purchase-panel" style="margin:20px 0;">
   <h2 style="color:#fff;">Utilisation</h2>
-  <pre style="background:rgba(0,0,0,.3);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">curl -H "Authorization: Bearer TA_CLE_API" {{ request.host_url }}api/v1/summary</pre>
+  <pre style="background:rgba(0,0,0,.3);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">curl -H "Authorization: Bearer VOTRE_CLE_API" {{ request.host_url }}api/v1/summary</pre>
   <p class="purchase-muted" style="font-size:12px;">Lecture (toute clé) : <code>/api/v1/recover</code>, <code>/api/v1/save</code>, <code>/api/v1/grow</code>, <code>/api/v1/summary</code>, <code>/api/v1/purchase-invoices</code>, <code>/api/v1/purchase-invoices/&lt;id&gt;</code>, <code>/api/v1/invoices</code>, <code>/api/v1/invoices/&lt;id&gt;</code>, <code>/api/v1/suppliers</code>, <code>/api/v1/entities</code>.</p>
   <p class="purchase-muted" style="font-size:12px;">Écriture (clé « Lecture + écriture » uniquement) : <code>POST /api/v1/purchase-invoices</code>, <code>POST /api/v1/purchase-invoices/&lt;id&gt;/mark-paid</code>, <code>POST /api/v1/expense-reports</code>, <code>POST /api/v1/invoices</code>, <code>POST /api/v1/suppliers</code>.</p>
 </section>
@@ -29,13 +29,13 @@
         <tr>
           <td>
             <strong>{{ k.key_prefix }}...</strong> <span class="purchase-status" style="font-size:11px;">{{ k.scopes or k.scope or 'read' }}{% if k.entity_id %} · entité #{{ k.entity_id }}{% else %} · société principale{% endif %}</span><br>
-            <small class="purchase-muted">Créée le {{ k.created_at|fr_date }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at|fr_date }}{% endif %}</small>
+            <small class="purchase-muted">Créée le {{ k.created_at|fr_date }} par {{ k.created_by }}{% if k.last_used_at %} · dernière utilisation {{ k.last_used_at|fr_date }}{% endif %}{% if k.expires_at %} · expire le {{ k.expires_at|fr_date }}{% endif %}</small>
           </td>
           <td style="text-align:right;">
             {% if k.revoked_at %}<span class="purchase-status">Révoquée</span>{% else %}
             <form method="post" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ k.id }}">
-              <button type="submit" class="purchase-primary-btn secondary">Révoquer</button>
+              <button type="submit" class="purchase-primary-btn secondary" data-confirm="Révoquer définitivement ? Cette action est irréversible.">Révoquer</button>
             </form>
             {% endif %}
           </td>
@@ -52,8 +52,9 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
   <label><input type="checkbox" name="scopes" value="read" checked> Lecture</label>
   <label><input type="checkbox" name="scopes" value="write"> Écriture métier</label>
-  <label><input type="checkbox" name="scopes" value="webhooks"> Webhooks</label>
   <label>Entité <input name="entity_id" inputmode="numeric" placeholder="vide = société principale" style="width:190px;"></label>
+  <label>Expire le (facultatif) <input type="date" name="expires_at"></label>
+  <label>Votre mot de passe <input type="password" name="current_password" autocomplete="current-password" required style="width:170px;"></label>
   <button class="purchase-primary-btn primary">Générer une nouvelle clé</button>
 </form>
 </div>

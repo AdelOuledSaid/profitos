@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-{% set advanced_plan = auth_org and auth_org.plan in ('PRO','BUSINESS') %}
+{% set advanced_plan = auth_org and plan_feature_enabled(auth_org.plan,'advanced_features') %}
 <div class="purchase-page">
 
 <div class="purchase-toolbar">
   <div>
-    <div class="purchase-eyebrow">GROW · LIVE BOAMP</div>
+    <div class="purchase-eyebrow">MARCHÉS PUBLICS · BOAMP</div>
     <h1 class="purchase-title">Opportunités de marchés publics</h1>
-    <p class="purchase-subtitle">Filtrées selon tes métiers et départements.</p>
+    <p class="purchase-subtitle">Filtrées selon vos métiers et départements.</p>
   </div>
   {% if not needs_profile %}
     {% if advanced_plan %}
@@ -42,7 +42,7 @@
 
 {% if needs_profile %}
 <section class="purchase-panel">
-  <h2 style="color:#fff;">Configure ton entreprise</h2>
+  <h2 style="color:#fff;">Configurez votre entreprise</h2>
   <a class="purchase-primary-btn primary" href="{{ url_for('company') }}">Créer le profil</a>
 </section>
 {% else %}
@@ -57,7 +57,7 @@
           <tr>
             <td>
               <a class="purchase-detail-link" href="{{ url_for('detail',kind='GROW',item_id=r.id) }}">
-                <span class="purchase-status paid">{{ r.score }}/100 MATCH</span>
+                <span class="purchase-status paid">Correspondance {{ 'élevée' if r.score >= 85 else ('moyenne' if r.score >= 65 else 'faible') }}</span>
                 <strong style="display:block;margin-top:6px;">{{ r.title }}</strong>
               </a>
               <small class="purchase-muted">{{ r.buyer }} · Départements : {{ jlist(r.departments)|join(', ') or 'non précisés' }}</small>
@@ -69,7 +69,7 @@
             <td style="text-align:right;white-space:nowrap;">
               {% if r.deadline %}
                 <strong>{{ fmt_deadline(r.deadline) }}</strong><br>
-                <small class="purchase-muted">{% set d=days_left(r.deadline) %}{% if d is not none %}{{ d }} jours{% endif %}</small>
+                <small class="purchase-muted">{% set d=days_left(r.deadline) %}{% if d is not none %}{{ pluralize(d, 'jour') }}{% endif %}</small>
               {% endif %}
             </td>
           </tr>

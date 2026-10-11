@@ -7,7 +7,7 @@ Suit le même motif fpdf2 déjà établi dans profitos/routes/invoicing.py
 nettoyage de texte, pas de police Unicode embarquée — ce document n'a pas
 besoin de la conformité Factur-X qui, elle, exige DejaVuSans.
 """
-from profitos.runtime import fr_number
+from profitos.runtime import fr_number, fr_date
 
 
 def _safe(text):
@@ -39,7 +39,7 @@ def render_plaquette_pdf(company_name, entity_label, as_of_date, exercice_start,
         pdf.cell(0, 10, _safe(title), ln=1)
         pdf.set_font('Helvetica', '', 10); pdf.set_text_color(107, 114, 128)
         pdf.cell(0, 6, _safe(f"{company_name}{' — ' + entity_label if entity_label else ''}"), ln=1)
-        pdf.cell(0, 6, _safe(f"Exercice du {exercice_start} au {as_of_date}"), ln=1)
+        pdf.cell(0, 6, _safe(f"Exercice du {fr_date(str(exercice_start))} au {fr_date(str(as_of_date))}"), ln=1)
         pdf.ln(6)
 
     def line(label, amount, bold=False, indent=0):

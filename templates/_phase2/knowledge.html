@@ -73,7 +73,7 @@
 
 <div class="twocol">
 <section class="panel"><h2>Références enregistrées</h2>
-{% for r in refs %}<div class="simpleline"><div><strong>{{ r.title }}</strong><small>{{ r.client }} · {{ r.year }} · {{ "{:,.0f}".format(r.value) }} €</small></div></div>{% else %}<p class="muted">Aucune référence.</p>{% endfor %}
+{% for r in refs %}<div class="simpleline"><div><strong>{{ r.title }}</strong><small>{{ r.client }} · {{ r.year }} · {{ "{:,.0f}".format(r.value) }}&nbsp;€</small></div></div>{% else %}<p class="muted">Aucune référence.</p>{% endfor %}
 </section>
 <section class="panel"><h2>Équipe enregistrée</h2>
 {% for t in team %}<div class="simpleline"><div><strong>{{ t.name }}</strong><small>{{ t.role }} · {{ t.years_experience }} ans</small></div></div>{% else %}<p class="muted">Aucun membre.</p>{% endfor %}

@@ -1,4 +1,5 @@
 import json
+from profitos.accounting import paris_today
 from profitos.runtime import *
 from profitos.feature_access import requires_feature
 from profitos.accounting import (AccountingError, generate_fec, fec_filename,
@@ -38,7 +39,7 @@ def register(app):
             cutoff_type = request.form.get('cutoff_type')
             label = (request.form.get('label') or '').strip()
             counterpart_account_code = (request.form.get('counterpart_account_code') or '').strip()
-            period_end_date = request.form.get('period_end_date') or date.today().isoformat()
+            period_end_date = request.form.get('period_end_date') or paris_today().isoformat()
             try:
                 amount = float(request.form.get('amount') or 0)
             except ValueError:
@@ -66,14 +67,14 @@ def register(app):
         ).fetchall()
         c.close()
         return render_template('cutoff_new.html', accounts=accounts, cutoff_labels=CUTOFF_LABELS,
-                                today=date.today().isoformat())
+                                today=paris_today().isoformat())
 
     @app.route('/comptabilite/cutoff/<int:cutoff_id>/extourner', methods=['POST'])
     @login_required
     @requires_feature('accounting_core')
     def cutoff_reverse(cutoff_id):
         from profitos.entities import current_entity_id
-        reversal_date = request.form.get('reversal_date') or date.today().isoformat()
+        reversal_date = request.form.get('reversal_date') or paris_today().isoformat()
         c = cx()
         try:
             reverse_cutoff_entry(c, cutoff_id, reversal_date, created_by=current_user()['email'], entity_id=current_entity_id())
@@ -249,7 +250,7 @@ def register(app):
         if request.method == 'POST':
             selected_ids = [int(x) for x in request.form.getlist('line_id')]
             if len(selected_ids) < 2:
-                error = "Sélectionne au moins deux lignes à lettrer ensemble."
+                error = "Sélectionnez au moins deux lignes à lettrer ensemble."
             else:
                 placeholders = ','.join('?' * len(selected_ids))
                 rows = c.execute(
@@ -271,13 +272,10 @@ def register(app):
                     if abs(total) > 0.01:
                         error = f"Le débit et le crédit ne s'équilibrent pas (écart de {fr_number(abs(total),2)} €)."
                     else:
-                        from profitos.accounting import _next_lettrage_code
+                        from profitos.accounting import _next_lettrage_code, set_lettrage
                         code_letter = _next_lettrage_code(c)
-                        for r in rows:
-                            c.execute(
-                                'UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?',
-                                (code_letter, r['id']),
-                            )
+                        # Date de lettrage mémorisée (colonne FEC « DateLet »).
+                        set_lettrage(c, [r['id'] for r in rows], code_letter)
                         c.commit()
                         flash(f"{len(rows)} lignes lettrées ({code_letter}).")
                         return redirect(url_for('accounting_lettrage', account_code=account_code))
@@ -391,19 +389,19 @@ def register(app):
         ac = auth_cx()
         ac.execute(
             'INSERT INTO accounting_fec_tokens(token,organization_id,date_from,date_to,created_at,entity_id) VALUES(?,?,?,?,?,?)',
-            (token, org['id'], date_from, date_to, now(), entity_id),
+            (token_digest(token), org['id'], date_from, date_to, now(), entity_id),
         )
         ac.commit(); ac.close()
 
-        base = os.environ.get('APP_BASE_URL', request.host_url.rstrip('/'))
+        base = app_base_url()
         link = f"{base}{url_for('accounting_fec_download', token=token)}"
         html = render_template(
             'email_transactional.html', title=f"Export FEC — {identity['name']}",
             intro=(f"Voici le lien pour télécharger le Fichier des Écritures Comptables (FEC) de "
-                   f"{identity['name']} pour la période du {date_from} au {date_to}. Le lien régénère "
+                   f"{identity['name']} pour la période du {fr_date(date_from)} au {fr_date(date_to)}. Le lien régénère "
                    f"l'export à jour à chaque clic."),
             cta_label='Télécharger le FEC', cta_url=link,
-            footer="Ce lien est valable 7 jours — contacte l'organisation si tu n'es pas concerné(e).",
+            footer="Ce lien est valable 7 jours — contactez l'organisation si vous n'êtes pas concerné(e).",
         )
         result = send_email(settings['accountant_email'], f"Export FEC — {identity['name']}", html)
         if result.get('dry_run'):
@@ -420,7 +418,7 @@ def register(app):
         demande (jamais de fichier stocké)."""
         ac = auth_cx()
         mapping = ac.execute(
-            'SELECT * FROM accounting_fec_tokens WHERE token=?', (token,)
+            'SELECT * FROM accounting_fec_tokens WHERE token=?', (token_digest(token),)
         ).fetchone()
         ac.close()
         if not mapping:
@@ -479,7 +477,7 @@ def register(app):
             ).fetchone()['n']
             if not closed_until:
                 error = "La date de clôture est obligatoire."
-            elif not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", closed_until):
+            elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", closed_until):
                 error = "La date de clôture est invalide."
             else:
                 try:
@@ -517,6 +515,31 @@ def register(app):
         ).fetchone()['n']
         c.close()
         return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error)
+
+    @app.route('/comptabilite/cloture/a-nouveaux', methods=['POST'])
+    @login_required
+    @requires_feature('accounting_core')
+    def accounting_opening_entries():
+        """Clôture d'exercice : à-nouveaux (journal AN) au lendemain de la clôture, résultat
+        porté en 120000 (bénéfice) ou 129000 (perte)."""
+        from profitos.entities import current_entity_id
+        from profitos.accounting import generate_opening_entries, AccountingError
+        start = (request.form.get('exercice_start') or '').strip()
+        end = (request.form.get('exercice_end') or '').strip()
+        try:
+            date.fromisoformat(start); date.fromisoformat(end)
+        except ValueError:
+            flash("Dates d'exercice invalides."); return redirect(url_for('accounting_closure'))
+        c = cx()
+        try:
+            generate_opening_entries(c, start, end, current_entity_id(), created_by=session.get('user_id'))
+        except AccountingError as e:
+            c.rollback(); c.close(); flash(f"À-nouveaux non générés : {e}")
+            return redirect(url_for('accounting_closure'))
+        c.close()
+        log_activity('ACCOUNTING_OPENING_ENTRIES', f"À-nouveaux générés (exercice {start} → {end})")
+        flash(f"À-nouveaux générés au lendemain du {fr_date(end)} (journal AN), résultat porté en 120000 / 129000.")
+        return redirect(url_for('accounting_closure'))
 
     @app.route('/comptabilite/immobilisations', methods=['GET', 'POST'])
     @login_required
@@ -595,7 +618,7 @@ def register(app):
             'SELECT * FROM fixed_asset_depreciation_runs WHERE asset_id=? ORDER BY period_label', (asset_id,)
         ).fetchall()
         posted_total = sum(r['amount'] for r in runs)
-        current_year = date.today().year
+        current_year = paris_today().year
         preview = None
         try:
             preview = compute_depreciation_for_year(c, asset, current_year)
@@ -621,7 +644,7 @@ def register(app):
         asset = c.execute(f'SELECT * FROM fixed_assets WHERE id=? AND {ef}', ep).fetchone()
         if not asset:
             c.close(); abort(404)
-        period = (request.form.get('period_label') or str(date.today().year)).strip()
+        period = (request.form.get('period_label') or str(paris_today().year)).strip()
         try:
             calendar_year = int(period)
         except ValueError:
@@ -657,7 +680,7 @@ def register(app):
         c.commit(); c.close()
         log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée")
         flash("Immobilisation marquée cédée. Aucune écriture de sortie/plus-value générée automatiquement — "
-              "à saisir manuellement avec ton expert-comptable selon le prix de cession réel.")
+              "à saisir manuellement avec votre expert-comptable selon le prix de cession réel.")
         return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
 
     def _vat_snapshot(c, eid, date_from, date_to):
@@ -697,9 +720,11 @@ def register(app):
         # Factures émises de la période sans écriture de vente.
         row=c.execute(
             f"""SELECT COUNT(*) n FROM outgoing_invoices i
-                WHERE i.issue_date BETWEEN ? AND ? AND i.status<>'draft' AND {ef}
+                WHERE i.issue_date BETWEEN ? AND ? AND i.status IN ('sent','partially_paid','paid') AND {ef}
                 AND NOT EXISTS(SELECT 1 FROM accounting_entries e WHERE e.source_type IN ('outgoing_invoice','customer_deposit_invoice','customer_final_invoice') AND e.source_id=i.id AND {('e.entity_id=i.entity_id' if eid else 'e.entity_id IS NULL')})""",
             (date_from,date_to)+ep).fetchone()
+        # Brouillons et brouillons annulés exclus : ils n'ont ni numéro ni écriture et ne
+        # doivent jamais bloquer le verrouillage d'une période de TVA.
         checks.append({'code':'sales_posted','ok':int(row['n'] or 0)==0,'count':int(row['n'] or 0),
                        'label':'Factures clients émises comptabilisées'})
         # Achats validés de la période sans écriture fournisseur.
@@ -721,8 +746,8 @@ def register(app):
         ef = 'e.entity_id=?' if eid else 'e.entity_id IS NULL'
         ep = (eid,) if eid else ()
         c = cx()
-        date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
-        date_to = request.values.get('date_to') or date.today().isoformat()
+        date_from = request.values.get('date_from') or f"{paris_today().year}-01-01"
+        date_to = request.values.get('date_to') or paris_today().isoformat()
         try:
             parsed_date_from = date.fromisoformat(date_from)
             parsed_date_to = date.fromisoformat(date_to)
@@ -817,6 +842,9 @@ def register(app):
             stale=(max_entry_id > int(declaration['snapshot_max_entry_id'] or 0) or
                    abs(collected-float(declaration['collected_amount'] or 0))>0.01 or
                    abs(deductible-float(declaration['deductible_amount'] or 0))>0.01)
+        from profitos.accounting import ca3_collected_by_rate, pending_vat_balance
+        ca3_rates=ca3_collected_by_rate(c,date_from,date_to,eid)
+        pending_vat=pending_vat_balance(c,date_to,eid)
         history=c.execute("SELECT * FROM vat_declarations WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC LIMIT 12", ep).fetchall()
         fiscal_history=c.execute("SELECT * FROM tax_declaration_preparations WHERE " + ('entity_id=?' if eid else 'entity_id IS NULL') + " ORDER BY period_end DESC,id DESC LIMIT 12", ep).fetchall()
         c.close()
@@ -826,7 +854,7 @@ def register(app):
                                 declaration=declaration, checks=checks, stale=stale,
                                 entry_count=entry_count, history=history,
                                 declaration_type=declaration_type, fiscal_preparation=fiscal_preparation,
-                                fiscal_history=fiscal_history)
+                                fiscal_history=fiscal_history, ca3_rates=ca3_rates, pending_vat=pending_vat)
 
     @app.route('/comptabilite/fiscalite', methods=['GET', 'POST'])
     @login_required
@@ -835,8 +863,8 @@ def register(app):
         """Dossier de travail fiscal interne. Ne produit ni EDI-TDFC ni dépôt DGFiP."""
         from profitos.entities import current_entity_id
         eid = current_entity_id(); c = cx()
-        date_from = request.values.get('date_from') or f"{date.today().year}-01-01"
-        date_to = request.values.get('date_to') or date.today().isoformat()
+        date_from = request.values.get('date_from') or f"{paris_today().year}-01-01"
+        date_to = request.values.get('date_to') or paris_today().isoformat()
         try:
             parsed_date_from = date.fromisoformat(date_from)
             parsed_date_to = date.fromisoformat(date_to)
@@ -913,8 +941,8 @@ def register(app):
         identity = resolve_entity(c, eid)
 
         if request.method == 'POST':
-            as_of_date = request.form.get('as_of_date') or date.today().isoformat()
-            exercice_start = request.form.get('exercice_start') or f"{date.today().year}-01-01"
+            as_of_date = request.form.get('as_of_date') or paris_today().isoformat()
+            exercice_start = request.form.get('exercice_start') or f"{paris_today().year}-01-01"
             if exercice_start > as_of_date:
                 c.close()
                 flash("La date de début d'exercice doit précéder la date de clôture.")
@@ -964,5 +992,5 @@ def register(app):
             )
 
         c.close()
-        return render_template('plaquette.html', today=date.today().isoformat(),
-                                year_start=f"{date.today().year}-01-01")
+        return render_template('plaquette.html', today=paris_today().isoformat(),
+                                year_start=f"{paris_today().year}-01-01")

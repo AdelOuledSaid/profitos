@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-<div class="purchase-eyebrow">CALENDAR</div>
+<div class="purchase-eyebrow">ÉCHÉANCIER</div>
 <h1 class="purchase-title">Échéances à venir</h1>
-<p class="purchase-subtitle">Factures en retard, retenues contractuelles libérables et deadlines de marchés publics, en un seul endroit.{% if past_count %} {{ past_count }} échéance(s) déjà passée(s) non affichée(s).{% endif %}</p>
+<p class="purchase-subtitle">Factures en retard, retenues contractuelles libérables et dates limites des marchés publics, en un seul endroit.{% if past_count %} {{ pluralize(past_count, 'échéance déjà passée non affichée', 'échéances déjà passées non affichées') }}.{% endif %}</p>
 
 <section class="purchase-panel" style="margin-top:20px;">
   <div class="purchase-table-wrap">
@@ -12,13 +12,13 @@
       {% for e in upcoming %}
         <tr>
           <td>
-            <a class="purchase-detail-link" href="{{ url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
-              <span class="purchase-status">{{ e.type }}</span>
+            <a class="purchase-detail-link" href="{{ e.url or url_for('detail',kind=e.detail_kind,item_id=e.item_id) }}" aria-label="Ouvrir {{ e.label }}">
+              <span class="purchase-status">{{ e.type|label }}</span>
               <strong style="margin-left:8px;">{{ e.label }}</strong>
             </a><br>
-            <small class="purchase-muted">{{ e.date }}</small>
+            <small class="purchase-muted">{{ e.date|fr_date }}</small>
           </td>
-          <td style="text-align:right;">{% if e.value %}<strong>{{ e.value|fr_number }} €</strong>{% endif %}</td>
+          <td style="text-align:right;">{% if e.value %}<strong>{{ e.value|fr_number }}&nbsp;€</strong>{% endif %}</td>
         </tr>
       {% else %}
         <tr><td class="purchase-empty">Aucune échéance à venir pour l'instant.</td></tr>

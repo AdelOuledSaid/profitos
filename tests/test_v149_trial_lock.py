@@ -11,7 +11,9 @@ def test_paid_plan_helper_only_accepts_paid_plans():
     t=_read("profitos","feature_access.py")
     assert 'PAID_PLANS = {"STARTER", "PRO", "BUSINESS", "MULTI"}' in t
     assert 'def requires_paid_plan(fn):' in t
-    assert 'TRIAL/FREE sont bloqués' in t
+    # V4 : l'essai en cours = formule Pro ; essai expiré / abonnement inactif bloqués.
+    assert 'Essai expiré / abonnement inactif : bloqués' in t
+    assert 'trial_is_active(payer) and org_has_access(org)' in t
 
 
 def test_imports_are_paid_only():

@@ -12,7 +12,41 @@ il ne fait que fournir la structure et le moteur. La génération automatique
 d'écritures à partir des factures/dépenses/relevés bancaires est un chantier
 séparé, construit au-dessus de ce module.
 """
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
+import json
+
+from profitos import invoice_amounts as amounts
+
+PARIS_TZ = ZoneInfo('Europe/Paris')
+
+
+def paris_today():
+    """Date du jour en France (Europe/Paris). Le serveur tourne en UTC : entre minuit
+    et 1 h/2 h du matin, date.today()/UTC donnait encore la veille — une facture émise
+    le 1er janvier à 0 h 30 était datée et numérotée sur l'année précédente."""
+    return datetime.now(PARIS_TZ).date()
+
+
+def paris_date_of(iso_timestamp):
+    """Date (Europe/Paris) d'un horodatage ISO UTC stocké en base ; '' si illisible."""
+    if not iso_timestamp:
+        return ''
+    try:
+        dt = datetime.fromisoformat(str(iso_timestamp).replace('Z', '+00:00'))
+    except ValueError:
+        return str(iso_timestamp)[:10]
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(PARIS_TZ).date().isoformat()
+
+
+# Comptes de TVA et de produits utilisés par les écritures de vente.
+VAT_COLLECTED_ACCOUNT = '445710'
+VAT_PENDING_ACCOUNT = '445740'      # TVA collectée en attente (TVA sur encaissements)
+GOODS_REVENUE_ACCOUNT = '707000'    # Ventes de marchandises
+SERVICES_REVENUE_ACCOUNT = '706000'  # Prestations de services
+REVENUE_ACCOUNT_BY_NATURE = {'biens': GOODS_REVENUE_ACCOUNT, 'services': SERVICES_REVENUE_ACCOUNT}
 
 
 # --- Plan comptable par défaut (PCG français, sous-ensemble courant) -------
@@ -23,10 +57,14 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     # Classe 1 — Capitaux
     ('101000', 'Capital social', 1, False),
     ('106800', 'Autres réserves', 1, False),
+    ('110000', 'Report à nouveau (solde créditeur)', 1, False),
+    ('119000', 'Report à nouveau (solde débiteur)', 1, False),
     ('120000', "Résultat de l'exercice (bénéfice)", 1, False),
     ('129000', "Résultat de l'exercice (perte)", 1, False),
     ('164000', "Emprunts auprès des établissements de crédit", 1, False),
-    ('455000', 'Associés - comptes courants', 1, False),
+    # Comptes courants d'associés : dettes envers les associés (classe 4), jamais des
+    # capitaux propres — classés en classe 1, ils gonflaient les fonds propres du bilan.
+    ('455000', 'Associés - comptes courants', 4, False),
     # Classe 2 — Immobilisations
     ('218300', 'Matériel de bureau et informatique', 2, False),
     ('281830', 'Amortissements du matériel de bureau et informatique', 2, False),
@@ -37,10 +75,16 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('418000', 'Clients - Produits non encore facturés', 4, False),
     ('419100', 'Clients - Avances et acomptes reçus sur commandes', 4, False),
     ('421000', 'Personnel - rémunérations dues', 4, False),
+    ('425000', 'Personnel - avances et acomptes', 4, False),
+    ('427000', 'Personnel - oppositions', 4, False),
+    ('428200', 'Dettes provisionnées pour congés à payer', 4, False),
     ('431000', 'Sécurité sociale', 4, False),
+    ('437000', 'Autres organismes sociaux', 4, False),
+    ('442100', "Prélèvement à la source (impôt sur le revenu)", 4, False),
     ('445510', 'TVA à décaisser', 4, False),
     ('445660', 'TVA déductible sur autres biens et services', 4, False),
     ('445710', 'TVA collectée', 4, False),
+    ('445740', 'TVA collectée en attente (TVA sur encaissements)', 4, False),
     ('447000', 'Autres impôts, taxes et versements assimilés', 4, False),
     ('467000', 'Autres comptes débiteurs ou créditeurs', 4, True),
     ('486000', "Charges constatées d'avance", 4, False),
@@ -65,8 +109,20 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     ('626000', 'Frais postaux et de télécommunications', 6, False),
     ('627000', 'Services bancaires', 6, False),
     ('628100', 'Cotisations diverses', 6, False),
+    ('631100', 'Taxe sur les salaires', 6, False),
+    ('633300', 'Participation des employeurs à la formation professionnelle continue', 6, False),
     ('641000', 'Rémunérations du personnel', 6, False),
+    ('641100', 'Salaires, appointements', 6, False),
+    ('641200', 'Congés payés', 6, False),
+    ('641300', 'Primes et gratifications', 6, False),
+    ('641400', 'Indemnités et avantages divers', 6, False),
     ('645000', 'Charges de sécurité sociale et de prévoyance', 6, False),
+    ('645100', "Cotisations à l'URSSAF", 6, False),
+    ('645200', 'Cotisations aux mutuelles', 6, False),
+    ('645300', 'Cotisations aux caisses de retraite', 6, False),
+    ('645400', "Cotisations à l'assurance chômage", 6, False),
+    ('645800', 'Cotisations aux autres organismes sociaux', 6, False),
+    ('647000', 'Autres charges sociales', 6, False),
     ('661000', "Charges d'intérêts", 6, False),
     ('671000', 'Charges exceptionnelles', 6, False),
     ('681000', "Dotations aux amortissements", 6, False),
@@ -142,89 +198,313 @@ def _category_account(conn, category):
     return row['account_code'] if row else '606800'
 
 
-def generate_sale_entry(conn, invoice):
+def _row_get(row, key, default=None):
+    try:
+        keys = row.keys()
+    except AttributeError:
+        return default
+    return row[key] if key in keys else default
+
+
+def _invoice_items(invoice):
+    try:
+        return json.loads(_row_get(invoice, 'line_items') or '[]')
+    except (TypeError, ValueError):
+        return []
+
+
+def _vat_due_on_payment(invoice, nature):
+    """TVA exigible à l'encaissement : prestations de services sans option pour les
+    débits (CGI art. 269, 2-c). Les livraisons de biens sont exigibles à la livraison."""
+    return nature == 'services' and not int(_row_get(invoice, 'vat_on_debits') or 0)
+
+
+def _sale_revenue_and_vat_lines(invoice, credit_side='credit', revenue_override=None, items=None):
+    """Lignes produits (707 biens / 706 services) et TVA (445710 exigible ou 445740 en
+    attente) d'une facture de vente, ventilées par nature et par taux. Les montants
+    reprennent exactement le calcul de la facture (TVA par taux arrondie une fois).
+
+    Retourne (lignes, pending) où pending = {taux: {'vat','base'}} pour la TVA mise en
+    attente jusqu'à l'encaissement. Les lignes de déduction d'acomptes (facture finale)
+    sont exclues des produits : elles sont apurées par le compte 419100."""
+    items = items if items is not None else _invoice_items(invoice)
+    default_nature = _row_get(invoice, 'operation_nature') or 'services'
+    if default_nature == 'mixte':
+        default_nature = 'services'
+    revenue = {}
+    vat_lines = {}
+    pending = {}
+    if not items:
+        # Données historiques sans lignes exploitables : une seule ligne de produit.
+        account = revenue_override or REVENUE_ACCOUNT_BY_NATURE.get(default_nature, SERVICES_REVENUE_ACCOUNT)
+        lines = [{'account_code': account, credit_side: float(_row_get(invoice, 'subtotal') or 0)}]
+        if float(_row_get(invoice, 'vat_amount') or 0):
+            lines.append({'account_code': VAT_COLLECTED_ACCOUNT, credit_side: float(_row_get(invoice, 'vat_amount') or 0)})
+        return lines, pending
+    for g in amounts.nature_rate_breakdown(items, default_nature):
+        nature = g['nature']
+        if nature != 'deduction':
+            account = revenue_override or REVENUE_ACCOUNT_BY_NATURE[nature]
+            revenue[account] = round(revenue.get(account, 0.0) + g['base'], 2)
+        if not g['vat']:
+            continue
+        vat_nature = nature
+        if nature == 'deduction':
+            # La TVA d'acompte déjà facturée suit la nature dominante de la facture.
+            vat_nature = default_nature
+        vat_account = VAT_PENDING_ACCOUNT if _vat_due_on_payment(invoice, vat_nature) else VAT_COLLECTED_ACCOUNT
+        key = (vat_account, g['rate'])
+        cur = vat_lines.setdefault(key, {'vat': 0.0, 'base': 0.0})
+        cur['vat'] = round(cur['vat'] + g['vat'], 2)
+        cur['base'] = round(cur['base'] + g['base'], 2)
+    lines = []
+    for account in sorted(revenue):
+        if round(revenue[account], 2):
+            lines.append({'account_code': account, credit_side: revenue[account]} if revenue[account] > 0
+                         else {'account_code': account, ('debit' if credit_side == 'credit' else 'credit'): -revenue[account]})
+    for (account, rate), v in sorted(vat_lines.items()):
+        if not round(v['vat'], 2):
+            continue
+        if v['vat'] > 0:
+            lines.append({'account_code': account, credit_side: v['vat'], 'vat_rate': rate, 'vat_base': v['base']})
+        else:
+            lines.append({'account_code': account, ('debit' if credit_side == 'credit' else 'credit'): -v['vat'],
+                          'vat_rate': rate, 'vat_base': -v['base']})
+        if account == VAT_PENDING_ACCOUNT:
+            pending[str(rate)] = {'vat': v['vat'], 'base': v['base']}
+    return lines, pending
+
+
+def _store_vat_pending(conn, invoice, pending):
+    try:
+        conn.execute('UPDATE outgoing_invoices SET vat_pending_json=? WHERE id=? AND entity_id IS ?',
+                     (json.dumps(pending), invoice['id'], _row_get(invoice, 'entity_id')))
+    except Exception:
+        # Colonne absente sur un schéma très ancien : la TVA reste en attente au bilan,
+        # elle sera virée manuellement — jamais une écriture de vente bloquée pour ça.
+        pass
+
+
+def _read_vat_pending(conn, invoice_id, entity_id):
+    try:
+        row = conn.execute('SELECT vat_pending_json FROM outgoing_invoices WHERE id=? AND entity_id IS ?',
+                           (invoice_id, entity_id)).fetchone()
+    except Exception:
+        return {}
+    if not row or not row['vat_pending_json']:
+        return {}
+    try:
+        data = json.loads(row['vat_pending_json'])
+    except (TypeError, ValueError):
+        return {}
+    return {k: {'vat': float(v.get('vat') or 0), 'base': float(v.get('base') or 0)} for k, v in data.items()}
+
+
+def _pending_transfer(pending, share, settle_all):
+    """Part de la TVA en attente à rendre exigible pour un encaissement (ou à annuler
+    pour un avoir) représentant `share` du solde restant dû. Retourne
+    ({taux: {'vat','base'}} transférés, pending restant)."""
+    moved, left = {}, {}
+    for rate, v in pending.items():
+        if settle_all:
+            t_vat, t_base = v['vat'], v['base']
+        else:
+            t_vat = min(v['vat'], amounts.money(v['vat'] * share))
+            t_base = min(v['base'], amounts.money(v['base'] * share))
+        if t_vat:
+            moved[rate] = {'vat': round(t_vat, 2), 'base': round(t_base, 2)}
+        rest = {'vat': round(v['vat'] - t_vat, 2), 'base': round(v['base'] - t_base, 2)}
+        if rest['vat']:
+            left[rate] = rest
+    return moved, left
+
+
+def _invoice_open_balance(conn, invoice, exclude_payment_id=None):
+    """Reste dû TTC (encaissements et avoirs émis déduits) avant l'événement courant."""
+    entity_id = _row_get(invoice, 'entity_id')
+    paid = conn.execute(
+        'SELECT COALESCE(SUM(amount),0) AS n FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ? AND id<>?',
+        (invoice['id'], entity_id, exclude_payment_id or 0)).fetchone()['n']
+    try:
+        credited = conn.execute(
+            "SELECT COALESCE(SUM(total),0) AS n FROM outgoing_credit_notes WHERE original_invoice_id=? AND entity_id IS ? AND status='issued'",
+            (invoice['id'], entity_id)).fetchone()['n']
+    except Exception:
+        credited = 0
+    return round(float(_row_get(invoice, 'total') or 0) - float(paid or 0) - float(credited or 0), 2)
+
+
+def generate_sale_entry(conn, invoice, commit=True):
     """Génère l'écriture de vente (journal VE) pour une facture client émise :
-    Clients (411) au débit du TTC, Prestations de services (706) et TVA
-    collectée (445710) au crédit. invoice : ligne de outgoing_invoices.
-    Idempotent — ne crée rien si déjà généré pour cette facture."""
+    Clients (411) au débit du TTC ; au crédit, Ventes de marchandises (707) pour les
+    biens et Prestations de services (706) pour les services, et la TVA :
+    - 445710 « TVA collectée » quand elle est exigible à la facturation (biens, ou
+      services avec option pour les débits) ;
+    - 445740 « TVA collectée en attente » pour les services sans option débits : elle
+      devient exigible à l'encaissement (virement 445740 -> 445710 à chaque règlement).
+    invoice : ligne de outgoing_invoices. Idempotent."""
     entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
     if _entry_already_exists(conn, 'outgoing_invoice', invoice['id'], entity_id):
         return None
     lines = [
         {'account_code': '411000', 'debit': invoice['total'], 'auxiliary_name': invoice['client_name']},
-        {'account_code': '706000', 'credit': invoice['subtotal']},
     ]
-    if invoice['vat_amount']:
-        lines.append({'account_code': '445710', 'credit': invoice['vat_amount']})
-    return create_entry(
-        conn, 'VE', invoice['issue_date'] or date.today(),
+    product_lines, pending = _sale_revenue_and_vat_lines(invoice)
+    lines.extend(product_lines)
+    entry_id = create_entry(
+        conn, 'VE', invoice['issue_date'] or paris_today(),
         f"Facture {invoice['invoice_number']} — {invoice['client_name']}",
         lines, source_type='outgoing_invoice', source_id=invoice['id'],
-        entity_id=entity_id,
+        entity_id=entity_id, piece_ref=invoice['invoice_number'], commit=False,
     )
+    _store_vat_pending(conn, invoice, pending)
+    if commit:
+        conn.commit()
+    return entry_id
 
 
 
-def generate_customer_deposit_entry(conn, invoice):
+def generate_customer_deposit_entry(conn, invoice, commit=True):
     """Comptabilise une facture d'acompte sans reconnaître prématurément le CA.
 
-    411 au débit du TTC, 4191 au crédit du HT d'acompte et TVA collectée au
-    crédit. Idempotent par facture et entité.
+    411 au débit du TTC, 4191 au crédit du HT d'acompte et TVA au crédit (445710, ou
+    445740 pour un acompte sur prestation de services exigible à l'encaissement).
+    Idempotent par facture et entité.
     """
     entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
     if _entry_already_exists(conn, 'customer_deposit_invoice', invoice['id'], entity_id):
         return None
     lines=[
         {'account_code':'411000','debit':invoice['total'],'auxiliary_name':invoice['client_name']},
-        {'account_code':'419100','credit':invoice['subtotal']},
     ]
-    if invoice['vat_amount']:
-        lines.append({'account_code':'445710','credit':invoice['vat_amount']})
-    return create_entry(conn,'VE',invoice['issue_date'] or date.today(),
+    product_lines, pending = _sale_revenue_and_vat_lines(invoice, revenue_override='419100')
+    lines.extend(product_lines)
+    entry_id = create_entry(conn,'VE',invoice['issue_date'] or paris_today(),
         f"Facture d'acompte {invoice['invoice_number']} — {invoice['client_name']}",
-        lines,source_type='customer_deposit_invoice',source_id=invoice['id'],entity_id=entity_id)
+        lines,source_type='customer_deposit_invoice',source_id=invoice['id'],entity_id=entity_id,
+        piece_ref=invoice['invoice_number'], commit=False)
+    _store_vat_pending(conn, invoice, pending)
+    if commit:
+        conn.commit()
+    return entry_id
 
 
-def generate_customer_final_entry(conn, invoice):
+def generate_customer_final_entry(conn, invoice, commit=True):
     """Comptabilise la facture finale et apure le HT des acomptes déjà facturés."""
     entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
     if _entry_already_exists(conn, 'customer_final_invoice', invoice['id'], entity_id):
         return None
     applied_ht=float(invoice['deposit_applied_subtotal'] or 0) if 'deposit_applied_subtotal' in invoice.keys() else 0.0
-    gross_ht=round(float(invoice['subtotal'] or 0)+applied_ht,2)
+    items = _invoice_items(invoice)
+    for it in items:
+        # Factures finales antérieures : la déduction était une ligne à prix négatif.
+        if not it.get('deposit_deduction') and str(it.get('label') or '').startswith('Déduction acomptes'):
+            it['deposit_deduction'] = True
     lines=[{'account_code':'411000','debit':invoice['total'],'auxiliary_name':invoice['client_name']}]
     if applied_ht:
         lines.append({'account_code':'419100','debit':applied_ht})
-    lines.append({'account_code':'706000','credit':gross_ht})
-    if invoice['vat_amount']:
-        lines.append({'account_code':'445710','credit':invoice['vat_amount']})
-    return create_entry(conn,'VE',invoice['issue_date'] or date.today(),
+    product_lines, pending = _sale_revenue_and_vat_lines(invoice, items=items)
+    lines.extend(product_lines)
+    entry_id = create_entry(conn,'VE',invoice['issue_date'] or paris_today(),
         f"Facture finale {invoice['invoice_number']} — {invoice['client_name']}",
-        lines,source_type='customer_final_invoice',source_id=invoice['id'],entity_id=entity_id)
+        lines,source_type='customer_final_invoice',source_id=invoice['id'],entity_id=entity_id,
+        piece_ref=invoice['invoice_number'], commit=False)
+    _store_vat_pending(conn, invoice, pending)
+    if commit:
+        conn.commit()
+    return entry_id
 
-def generate_sale_credit_entry(conn, credit):
+def generate_sale_credit_entry(conn, credit, revenue_account=None):
     """Génère l'écriture comptable d'un avoir client émis.
 
-    L'écriture inverse la vente d'origine : produits et TVA au débit, client
-    (411) au crédit. Elle est idempotente par avoir et par entité.
+    L'écriture inverse la vente d'origine : produits (707 biens / 706 services, ou
+    419100 pour un avoir sur facture d'acompte) et TVA au débit, client (411) au
+    crédit. La TVA encore en attente d'encaissement (445740) de la facture d'origine
+    est annulée en priorité, au prorata ; le reste minore la TVA collectée (445710).
+    Idempotente par avoir et par entité.
     """
     entity_id = credit['entity_id'] if 'entity_id' in credit.keys() else None
     if _entry_already_exists(conn, 'outgoing_credit_note', credit['id'], entity_id):
         return None
-    lines = [
-        {'account_code': '706000', 'debit': credit['subtotal']},
-    ]
-    if credit['vat_amount']:
-        lines.append({'account_code': '445710', 'debit': credit['vat_amount']})
+    original = None
+    if _row_get(credit, 'original_invoice_id'):
+        original = conn.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?',
+                                (credit['original_invoice_id'], entity_id)).fetchone()
+    items = _invoice_items(credit)
+    default_nature = (_row_get(original, 'operation_nature') if original is not None else None) or 'services'
+    if default_nature == 'mixte':
+        default_nature = 'services'
+    lines = []
+    if items:
+        revenue = {}
+        vat_by_rate = {}
+        for g in amounts.nature_rate_breakdown(items, default_nature):
+            if g['nature'] == 'deduction':
+                # Avoir sur facture finale : la part « acomptes déduits » réintègre l'acompte
+                # (419100), comme l'écriture de la facture finale l'avait apuré.
+                account = '419100'
+            else:
+                account = revenue_account or REVENUE_ACCOUNT_BY_NATURE.get(g['nature'], SERVICES_REVENUE_ACCOUNT)
+            revenue[account] = round(revenue.get(account, 0.0) + g['base'], 2)
+            if g['vat']:
+                cur = vat_by_rate.setdefault(str(g['rate']), {'vat': 0.0, 'base': 0.0})
+                cur['vat'] = round(cur['vat'] + g['vat'], 2)
+                cur['base'] = round(cur['base'] + g['base'], 2)
+        # Écart d'arrondi éventuel entre le détail des lignes et les totaux stockés.
+        diff_ht = round(float(credit['subtotal'] or 0) - sum(revenue.values()), 2)
+        if diff_ht and revenue:
+            k = max(revenue, key=lambda a: revenue[a])
+            revenue[k] = round(revenue[k] + diff_ht, 2)
+        for account in sorted(revenue):
+            if revenue[account] > 0:
+                lines.append({'account_code': account, 'debit': revenue[account]})
+            elif revenue[account] < 0:
+                lines.append({'account_code': account, 'credit': -revenue[account]})
+        pending_moved = {}
+        if original is not None:
+            pending = _read_vat_pending(conn, original['id'], entity_id)
+            if pending:
+                balance = _invoice_open_balance(conn, original)
+                # L'avoir vient d'être inséré : il est déjà déduit du solde, on le réintègre.
+                balance_before = round(balance + float(credit['total'] or 0), 2)
+                share = float(credit['total'] or 0) / balance_before if balance_before > 0.005 else 1.0
+                moved, left = _pending_transfer(pending, min(share, 1.0), share >= 0.9999)
+                for rate, v in moved.items():
+                    cap = vat_by_rate.get(rate, {'vat': 0.0})['vat']
+                    if v['vat'] > cap:
+                        v['vat'] = cap
+                    pending_moved[rate] = v
+                left = {r: {'vat': round(pending[r]['vat'] - pending_moved.get(r, {'vat': 0})['vat'], 2),
+                            'base': round(pending[r]['base'] - pending_moved.get(r, {'base': 0})['base'], 2)}
+                        for r in pending}
+                _store_vat_pending(conn, original, {r: v for r, v in left.items() if v['vat']})
+        vat_total = 0.0
+        for rate in sorted(vat_by_rate, key=float):
+            v = vat_by_rate[rate]
+            moved = pending_moved.get(rate, {'vat': 0.0, 'base': 0.0})
+            if moved['vat']:
+                lines.append({'account_code': VAT_PENDING_ACCOUNT, 'debit': moved['vat'], 'vat_rate': float(rate), 'vat_base': moved['base']})
+            rest = round(v['vat'] - moved['vat'], 2)
+            if rest:
+                lines.append({'account_code': VAT_COLLECTED_ACCOUNT, 'debit': rest, 'vat_rate': float(rate),
+                              'vat_base': round(v['base'] - moved['base'], 2)})
+            vat_total = round(vat_total + v['vat'], 2)
+        diff_vat = round(float(credit['vat_amount'] or 0) - vat_total, 2)
+        if diff_vat:
+            lines.append({'account_code': VAT_COLLECTED_ACCOUNT, 'debit' if diff_vat > 0 else 'credit': abs(diff_vat)})
+    else:
+        lines.append({'account_code': revenue_account or SERVICES_REVENUE_ACCOUNT, 'debit': credit['subtotal']})
+        if credit['vat_amount']:
+            lines.append({'account_code': VAT_COLLECTED_ACCOUNT, 'debit': credit['vat_amount']})
     lines.append({
         'account_code': '411000', 'credit': credit['total'],
         'auxiliary_name': credit['client_name'],
     })
     return create_entry(
-        conn, 'VE', credit['issue_date'] or date.today(),
+        conn, 'VE', credit['issue_date'] or paris_today(),
         f"Avoir {credit['credit_number']} — {credit['client_name']}",
         lines, source_type='outgoing_credit_note', source_id=credit['id'],
-        entity_id=entity_id,
+        entity_id=entity_id, piece_ref=credit['credit_number'],
     )
 
 
@@ -274,22 +554,31 @@ def _letter_pair(conn, account_code, original_source_type, original_source_id, n
     if abs(original_amount - new_amount) > 0.01:
         return
     code = _next_lettrage_code(conn)
-    conn.execute('UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?', (code, original_line['id']))
-    conn.execute('UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?', (code, new_line['id']))
+    set_lettrage(conn, [original_line['id'], new_line['id']], code)
     conn.commit()
 
 
-def generate_sale_payment_entry(conn, invoice):
+def set_lettrage(conn, line_ids, code, lettrage_date=None):
+    """Lettre des lignes et mémorise la date de lettrage (colonne FEC « DateLet »)."""
+    when = (lettrage_date or paris_today()).isoformat() if not isinstance(lettrage_date, str) else lettrage_date
+    for line_id in line_ids:
+        try:
+            conn.execute('UPDATE accounting_entry_lines SET lettrage_code=?,lettrage_date=? WHERE id=?', (code, when, line_id))
+        except Exception:
+            conn.execute('UPDATE accounting_entry_lines SET lettrage_code=? WHERE id=?', (code, line_id))
+
+
+def generate_sale_payment_entry(conn, invoice, payment_date=None):
     """Génère l'écriture de règlement (journal BQ) quand une facture client
     est marquée payée : Banque (512) au débit, Clients (411) au crédit.
     Lettre automatiquement cette écriture avec la facture d'origine sur le
-    compte 411. Idempotent."""
+    compte 411. Datée du jour réel de l'encaissement. Idempotent."""
     source_type = 'outgoing_invoice_payment'
     entity_id = invoice['entity_id'] if 'entity_id' in invoice.keys() else None
     if _entry_already_exists(conn, source_type, invoice['id'], entity_id):
         return None
     entry_id = create_entry(
-        conn, 'BQ', date.today(),
+        conn, 'BQ', payment_date or paris_today(),
         f"Règlement facture {invoice['invoice_number']} — {invoice['client_name']}",
         [
             {'account_code': '512000', 'debit': invoice['total']},
@@ -301,7 +590,7 @@ def generate_sale_payment_entry(conn, invoice):
     return entry_id
 
 
-def generate_sale_partial_payment_entry(conn, invoice, payment):
+def generate_sale_partial_payment_entry(conn, invoice, payment, commit=True):
     """Comptabilise un règlement client individuel. Chaque règlement possède
     sa propre clé source, ce qui autorise plusieurs paiements sur une facture
     tout en restant idempotent. Le lettrage complet est laissé au moteur de
@@ -313,15 +602,38 @@ def generate_sale_partial_payment_entry(conn, invoice, payment):
     source_type = 'outgoing_invoice_payment_v2'
     if _entry_already_exists(conn, source_type, payment['id'], entity_id):
         return None
-    return create_entry(
-        conn, 'BQ', payment['payment_date'] or date.today(),
-        f"Règlement facture {invoice['invoice_number']} — {invoice['client_name']}",
-        [
+    lines = [
             {'account_code': '512000', 'debit': amount},
             {'account_code': '411000', 'credit': amount, 'auxiliary_name': invoice['client_name']},
-        ],
+    ]
+    # TVA sur encaissements : la part de TVA en attente (445740) correspondant à ce
+    # règlement devient exigible (445710), au prorata du solde restant dû ; le
+    # règlement qui solde la facture vire tout le reliquat (pas d'écart d'arrondi).
+    pending = _read_vat_pending(conn, invoice['id'], entity_id)
+    left = pending
+    if pending:
+        balance_before = _invoice_open_balance(conn, invoice, exclude_payment_id=payment['id'])
+        settle_all = amount >= balance_before - 0.005
+        share = amount / balance_before if balance_before > 0.005 else 1.0
+        moved, left = _pending_transfer(pending, min(share, 1.0), settle_all)
+        for rate in sorted(moved, key=float):
+            v = moved[rate]
+            lines.append({'account_code': VAT_PENDING_ACCOUNT, 'debit': v['vat'], 'vat_rate': float(rate), 'vat_base': v['base'],
+                          'label': f"TVA exigible sur encaissement — facture {invoice['invoice_number']}"})
+            lines.append({'account_code': VAT_COLLECTED_ACCOUNT, 'credit': v['vat'], 'vat_rate': float(rate), 'vat_base': v['base'],
+                          'label': f"TVA exigible sur encaissement — facture {invoice['invoice_number']}"})
+    entry_id = create_entry(
+        conn, 'BQ', payment['payment_date'] or paris_today(),
+        f"Règlement facture {invoice['invoice_number']} — {invoice['client_name']}",
+        lines,
         source_type=source_type, source_id=payment['id'], entity_id=entity_id,
+        piece_ref=_row_get(payment, 'reference') or invoice['invoice_number'], commit=False,
     )
+    if pending:
+        _store_vat_pending(conn, invoice, left)
+    if commit:
+        conn.commit()
+    return entry_id
 
 
 def generate_purchase_entry(conn, purchase, commit=True):
@@ -340,13 +652,46 @@ def generate_purchase_entry(conn, purchase, commit=True):
         'auxiliary_name': purchase['supplier_name'],
     })
     return create_entry(
-        conn, 'AC', purchase['issue_date'] or date.today(),
+        conn, 'AC', purchase['issue_date'] or paris_today(),
         f"Facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         lines, source_type='purchase_invoice', source_id=purchase['id'],
         entity_id=purchase['entity_id'] if 'entity_id' in purchase.keys() else None,
-        commit=commit,
+        commit=commit, piece_ref=purchase['invoice_number'],
     )
 
+
+
+def reverse_purchase_entry(conn, purchase, commit=False):
+    """Extourne l'écriture d'achat d'une facture fournisseur corrigée ou rejetée.
+
+    L'écriture d'origine n'est jamais modifiée ni supprimée (inaltérabilité) : on passe une
+    écriture inverse à la même date, puis on renomme la source de l'écriture d'origine
+    (« purchase_invoice_superseded:n ») pour qu'une nouvelle écriture « purchase_invoice »
+    puisse être générée avec les montants corrigés. Retourne False s'il n'y avait rien à extourner."""
+    entity_id = purchase['entity_id'] if 'entity_id' in purchase.keys() else None
+    entity_key = int(entity_id) if entity_id is not None else 0
+    original = conn.execute(
+        "SELECT * FROM accounting_entries WHERE source_type='purchase_invoice' AND source_id=? AND entity_id IS ? LIMIT 1",
+        (purchase['id'], entity_id)).fetchone()
+    if not original:
+        return False
+    n = conn.execute(
+        "SELECT COUNT(*) AS n FROM accounting_entries WHERE source_type LIKE 'purchase_invoice_superseded:%%' AND source_id=? AND entity_id IS ?",
+        (purchase['id'], entity_id)).fetchone()['n'] + 1
+    lines = conn.execute(
+        'SELECT account_code,auxiliary_name,debit,credit FROM accounting_entry_lines WHERE entry_id=? ORDER BY line_order',
+        (original['id'],)).fetchall()
+    reversed_lines = [{'account_code': l['account_code'], 'auxiliary_name': l['auxiliary_name'],
+                       'debit': l['credit'] or 0, 'credit': l['debit'] or 0} for l in lines]
+    superseded = f'purchase_invoice_superseded:{n}'
+    conn.execute("UPDATE accounting_entries SET source_type=? WHERE id=?", (superseded, original['id']))
+    conn.execute("UPDATE accounting_source_claims SET source_type=? WHERE entity_key=? AND source_type='purchase_invoice' AND source_id=?",
+                 (superseded, entity_key, purchase['id']))
+    create_entry(conn, 'AC', original['entry_date'],
+                 f"Extourne — {original['label']}", reversed_lines,
+                 source_type=f'purchase_invoice_reversal:{n}', source_id=purchase['id'],
+                 entity_id=entity_id, commit=commit)
+    return True
 
 
 def generate_purchase_credit_entry(conn, credit, commit=True):
@@ -358,22 +703,22 @@ def generate_purchase_credit_entry(conn, credit, commit=True):
            {'account_code':charge_account,'credit':credit['subtotal']}]
     if credit['vat_amount']:
         lines.append({'account_code':'445660','credit':credit['vat_amount']})
-    return create_entry(conn,'AC',credit['issue_date'] or date.today(),
+    return create_entry(conn,'AC',credit['issue_date'] or paris_today(),
         f"Avoir fournisseur {credit['credit_number']} — {credit['supplier_name']}",
         lines,source_type='purchase_credit_note',source_id=credit['id'],entity_id=entity_id,commit=commit)
 
 
-def generate_purchase_payment_entry(conn, purchase):
+def generate_purchase_payment_entry(conn, purchase, payment_date=None):
     """Génère l'écriture de règlement (journal BQ) quand une facture
     fournisseur est marquée payée : Fournisseurs (401) au débit, Banque (512)
     au crédit. Lettre automatiquement cette écriture avec la facture
-    d'origine sur le compte 401. Idempotent."""
+    d'origine sur le compte 401. Datée du jour réel du paiement. Idempotent."""
     source_type = 'purchase_invoice_payment'
     entity_id = purchase['entity_id'] if 'entity_id' in purchase.keys() else None
     if _entry_already_exists(conn, source_type, purchase['id'], entity_id):
         return None
     entry_id = create_entry(
-        conn, 'BQ', date.today(),
+        conn, 'BQ', payment_date or paris_today(),
         f"Règlement facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         [
             {'account_code': '401000', 'debit': purchase['total'], 'auxiliary_name': purchase['supplier_name']},
@@ -394,7 +739,7 @@ def generate_purchase_partial_payment_entry(conn, purchase, payment):
     source_type = 'purchase_invoice_payment_v2'
     if _entry_already_exists(conn, source_type, payment['id'], entity_id):
         return None
-    return create_entry(conn, 'BQ', payment['payment_date'] or date.today(),
+    return create_entry(conn, 'BQ', payment['payment_date'] or paris_today(),
         f"Règlement facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         [
             {'account_code':'401000','debit':amount,'auxiliary_name':purchase['supplier_name']},
@@ -427,6 +772,9 @@ def seed_accounting_defaults(conn):
             ' VALUES(?,?,?)',
             (category, account_code, now),
         )
+    # Bases existantes : 455000 (comptes courants d'associés) était classé en capitaux
+    # propres. C'est une dette (classe 4) — reclassement idempotent.
+    conn.execute("UPDATE accounting_chart_of_accounts SET account_class=4 WHERE code='455000' AND account_class=1")
     conn.commit()
 
 
@@ -475,11 +823,16 @@ def _next_piece_number(conn, journal_code, entry_date, entity_id=None):
 
 def create_entry(conn, journal_code, entry_date, label, lines,
                   source_type=None, source_id=None, created_by=None, entity_id=None,
-                  commit=True):
+                  commit=True, piece_ref=None):
     """Crée une écriture comptable en partie double, avec ses lignes.
 
+    piece_ref : référence de la pièce justificative (numéro de facture, d'avoir…),
+    exportée dans la colonne FEC « PieceRef » ; à défaut, le numéro de pièce interne.
+
     lines : liste de dicts {account_code, debit=0, credit=0, label=None,
-    auxiliary_name=None}. Chaque ligne doit avoir soit un débit soit un
+    auxiliary_name=None, vat_rate=None, vat_base=None}. vat_rate/vat_base renseignent
+    le taux et la base HT d'une ligne de TVA (déclaration CA3 par taux).
+    Chaque ligne doit avoir soit un débit soit un
     crédit (jamais les deux, jamais aucun des deux) et référencer un compte
     existant dans accounting_chart_of_accounts.
 
@@ -546,6 +899,8 @@ def create_entry(conn, journal_code, entry_date, label, lines,
             'label': raw.get('label') or label,
             'debit': debit,
             'credit': credit,
+            'vat_rate': raw.get('vat_rate'),
+            'vat_base': raw.get('vat_base'),
         })
 
     if abs(total_debit - total_credit) > 0.01:
@@ -589,12 +944,24 @@ def create_entry(conn, journal_code, entry_date, label, lines,
         (journal_code, piece_number, entry_date_str, label, source_type, source_id, created_by, now, entity_id),
     )
     entry_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    if piece_ref:
+        conn.execute('UPDATE accounting_entries SET piece_ref=? WHERE id=?', (str(piece_ref)[:120], entry_id))
     if claim_key is not None:
         conn.execute(
             'UPDATE accounting_source_claims SET entry_id=? WHERE entity_key=? AND source_type=? AND source_id=?',
             (entry_id, *claim_key),
         )
     for order, ln in enumerate(clean_lines):
+        if ln['vat_rate'] is not None:
+            conn.execute(
+                'INSERT INTO accounting_entry_lines'
+                '(entry_id,account_code,auxiliary_name,label,debit,credit,line_order,vat_rate,vat_base)'
+                ' VALUES(?,?,?,?,?,?,?,?,?)',
+                (entry_id, ln['account_code'], ln['auxiliary_name'], ln['label'],
+                 ln['debit'], ln['credit'], order, float(ln['vat_rate']),
+                 round(float(ln['vat_base']), 2) if ln['vat_base'] is not None else None),
+            )
+            continue
         conn.execute(
             'INSERT INTO accounting_entry_lines'
             '(entry_id,account_code,auxiliary_name,label,debit,credit,line_order)'
@@ -608,12 +975,14 @@ def create_entry(conn, journal_code, entry_date, label, lines,
 
 
 # --- Export FEC (Fichier des Écritures Comptables) -------------------------
-# Format réglementaire français (arrêté du 29 juillet 2013, art. L47 A du LPF) :
-# 18 colonnes obligatoires, séparateur "|", encodage UTF-8, montants au format
-# décimal avec point (jamais de séparateur de milliers, jamais de virgule —
-# c'est un format de données réglementaire, pas un affichage humain : ne
-# jamais y appliquer fr_number). Nom de fichier imposé : SIREN + FEC +
-# date de clôture (AAAAMMJJ) + .txt.
+# Format réglementaire français (arrêté du 29 juillet 2013, art. A47 A-1 du LPF) :
+# 18 colonnes obligatoires, séparateur "|", montants avec la VIRGULE comme
+# séparateur décimal (art. A47 A-1 : « les montants … avec la virgule comme
+# séparateur décimal »), sans séparateur de milliers — ne jamais y appliquer
+# fr_number (espaces insécables). Encodage : UTF-8 sans BOM (accepté par l'outil
+# Test Compta Demat ; l'arrêté autorise aussi ISO 8859-15). Le caractère "|"
+# et les retours à la ligne sont retirés des libellés. Nom de fichier imposé :
+# SIREN + FEC + date de clôture (AAAAMMJJ) + .txt.
 #
 # AVERTISSEMENT : cet export est construit du mieux possible à partir de la
 # spécification connue, mais n'a pas pu être vérifié contre un validateur FEC
@@ -638,10 +1007,66 @@ def _fec_date(value):
 
 
 def _fec_amount(value):
-    """Formate un montant au format FEC : point décimal, deux décimales,
-    aucun séparateur de milliers. Ne jamais utiliser fr_number ici — le FEC
-    est un format de données, pas un affichage destiné à un humain."""
-    return f"{float(value or 0):.2f}"
+    """Formate un montant au format FEC : virgule décimale, deux décimales,
+    aucun séparateur de milliers (1234,50). Ne jamais utiliser fr_number ici —
+    il insère des espaces insécables entre les milliers."""
+    return f"{float(value or 0):.2f}".replace('.', ',')
+
+
+def _fec_text(value):
+    """Libellé FEC sûr : sans séparateur "|" ni saut de ligne/tabulation."""
+    s = '' if value is None else str(value)
+    for ch in ('\r\n', '\n', '\r', '\t'):
+        s = s.replace(ch, ' ')
+    return s.replace('|', '/').strip()
+
+
+_AUX_PREFIX = {'411': 'C', '401': 'F', '421': 'S', '467': 'D', '419': 'C', '455': 'A'}
+
+
+def _auxiliary_codes(conn, entity_id, pairs):
+    """Codes auxiliaires stables (CompAuxNum) par tiers : C00001 pour un client,
+    F00001 pour un fournisseur… Attribués une fois, mémorisés, jamais réattribués :
+    le même tiers garde le même code d'un export à l'autre."""
+    entity_key = int(entity_id) if entity_id is not None else 0
+    out = {}
+    try:
+        existing = conn.execute(
+            'SELECT root,name_key,aux_code FROM accounting_auxiliary_codes WHERE entity_key=?', (entity_key,)).fetchall()
+    except Exception:
+        existing = None
+    if existing is None:
+        # Table absente (schéma non migré) : codes dérivés, stables mais non mémorisés.
+        for account, name in pairs:
+            root = str(account)[:3]
+            key = ' '.join(str(name).lower().split())
+            out[(account, name)] = _AUX_PREFIX.get(root, 'T') + ''.join(ch for ch in key.upper() if ch.isalnum())[:10]
+        return out
+    known = {(r['root'], r['name_key']): r['aux_code'] for r in existing}
+    counters = {}
+    for r in existing:
+        try:
+            prefix = r['aux_code'][0]
+            counters[prefix] = max(counters.get(prefix, 0), int(r['aux_code'][1:]))
+        except (ValueError, IndexError, TypeError):
+            pass
+    created = False
+    for account, name in sorted(set(pairs), key=lambda p: (str(p[0]), str(p[1]).lower())):
+        root = str(account)[:3]
+        key = ' '.join(str(name).lower().split())
+        code = known.get((root, key))
+        if not code:
+            prefix = _AUX_PREFIX.get(root, 'T')
+            counters[prefix] = counters.get(prefix, 0) + 1
+            code = f"{prefix}{counters[prefix]:05d}"
+            conn.execute('INSERT OR IGNORE INTO accounting_auxiliary_codes(entity_key,root,name_key,aux_code,label,created_at) VALUES(?,?,?,?,?,?)',
+                         (entity_key, root, key, code, str(name)[:200], datetime.utcnow().isoformat()))
+            known[(root, key)] = code
+            created = True
+        out[(account, name)] = code
+    if created:
+        conn.commit()
+    return out
 
 
 def generate_fec(conn, date_from, date_to, entity_id=None):
@@ -652,13 +1077,19 @@ def generate_fec(conn, date_from, date_to, entity_id=None):
     en base), jamais « toutes les entités confondues » : chaque entité est
     un sujet fiscal distinct et doit avoir son propre fichier FEC, jamais un
     mélange. Retourne une liste de listes de chaînes — une ligne par
-    écriture comptable, dans l'ordre chronologique puis par numéro de pièce."""
+    écriture comptable, classées par journal, puis par date d'écriture, puis par
+    numéro de pièce (EcritureNum).
+
+    - CompAuxNum / CompAuxLib : code auxiliaire stable du tiers (C00001…) et son nom,
+      au lieu du compte collectif 411000 répété pour tous les clients ;
+    - PieceRef : numéro du document justificatif (facture, avoir…) ;
+    - DateLet : date du lettrage quand la ligne est lettrée."""
     if entity_id:
         entries = conn.execute(
             """SELECT e.*, j.label AS journal_label FROM accounting_entries e
                JOIN accounting_journals j ON j.code = e.journal_code
                WHERE e.entry_date BETWEEN ? AND ? AND e.entity_id=?
-               ORDER BY e.entry_date, e.journal_code, e.piece_number""",
+               ORDER BY e.journal_code, e.entry_date, e.id""",
             (str(date_from), str(date_to), entity_id),
         ).fetchall()
     else:
@@ -666,11 +1097,12 @@ def generate_fec(conn, date_from, date_to, entity_id=None):
             """SELECT e.*, j.label AS journal_label FROM accounting_entries e
                JOIN accounting_journals j ON j.code = e.journal_code
                WHERE e.entry_date BETWEEN ? AND ? AND e.entity_id IS NULL
-               ORDER BY e.entry_date, e.journal_code, e.piece_number""",
+               ORDER BY e.journal_code, e.entry_date, e.id""",
             (str(date_from), str(date_to)),
         ).fetchall()
 
     rows = [FEC_COLUMNS]
+    all_lines = []
     for e in entries:
         lines = conn.execute(
             """SELECT l.*, a.label AS account_label FROM accounting_entry_lines l
@@ -679,29 +1111,60 @@ def generate_fec(conn, date_from, date_to, entity_id=None):
                WHERE l.entry_id=? ORDER BY l.line_order""",
             (e['entity_id'], e['id']),
         ).fetchall()
-        validation_date = _fec_date(e['created_at'][:10]) if e['created_at'] else _fec_date(e['entry_date'])
+        all_lines.append((e, lines))
+    aux = _auxiliary_codes(conn, entity_id, [(l['account_code'], l['auxiliary_name'])
+                                             for _, lines in all_lines for l in lines if l['auxiliary_name']])
+    numbers = fec_entry_numbers(conn, entries, entity_id)
+    for e, lines in all_lines:
+        validation_date = _fec_date(paris_date_of(e['created_at'])) if e['created_at'] else _fec_date(e['entry_date'])
+        piece_ref = _row_get(e, 'piece_ref') or e['piece_number']
         for l in lines:
+            aux_code = aux.get((l['account_code'], l['auxiliary_name'])) if l['auxiliary_name'] else ''
             rows.append([
                 e['journal_code'],
-                e['journal_label'],
-                e['piece_number'],
+                _fec_text(e['journal_label']),
+                numbers.get(e['id'], e['piece_number']),
                 _fec_date(e['entry_date']),
                 l['account_code'],
-                l['account_label'],
-                l['account_code'] if l['auxiliary_name'] else '',
-                l['auxiliary_name'] or '',
-                e['piece_number'],
+                _fec_text(l['account_label']),
+                aux_code or '',
+                _fec_text(l['auxiliary_name'] or ''),
+                _fec_text(piece_ref),
                 _fec_date(e['entry_date']),
-                l['label'] or e['label'],
+                _fec_text(l['label'] or e['label']),
                 _fec_amount(l['debit']),
                 _fec_amount(l['credit']),
-                l['lettrage_code'] or '',
-                '',
+                _fec_text(l['lettrage_code'] or ''),
+                # Lettrage antérieur à la mémorisation de sa date : date de validation à défaut.
+                (_fec_date(_row_get(l, 'lettrage_date')) or validation_date) if l['lettrage_code'] else '',
                 validation_date,
                 '',
                 '',
             ])
     return rows
+
+
+def fec_entry_numbers(conn, entries, entity_id=None):
+    """EcritureNum chronologique : par journal et par année civile, les écritures sont
+    numérotées dans l'ordre (date d'écriture, ordre de saisie) depuis le 1er janvier —
+    une écriture saisie après coup à une date antérieure (règlement daté du jour réel)
+    reprend sa place chronologique. Le numéro de pièce interne reste inchangé en base
+    ; seules les périodes ouvertes peuvent encore recevoir des écritures, la
+    numérotation d'une période clôturée est donc définitive."""
+    out = {}
+    groups = {}
+    for e in entries:
+        groups.setdefault((e['journal_code'], str(e['entry_date'])[:4]), True)
+    ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    for journal, year in groups:
+        ids = conn.execute(
+            f"""SELECT id FROM accounting_entries WHERE journal_code=? AND entry_date BETWEEN ? AND ? AND {ef}
+                ORDER BY entry_date, id""",
+            (journal, f'{year}-01-01', f'{year}-12-31', *ep)).fetchall()
+        for n, row in enumerate(ids, start=1):
+            out[row['id']] = f"{journal}-{year}-{n:05d}"
+    return out
 
 
 def fec_filename(siret, date_to):
@@ -751,6 +1214,27 @@ def compute_depreciation_for_year(conn, asset, calendar_year):
     return round(min(theoretical, max(remaining, 0.0)), 2)
 
 
+def depreciation_period_end(period_label):
+    """Date de fin de la période d'amortissement : « 2025 » -> 31/12/2025,
+    « 2025-03 » -> 31/03/2025, « 2025-T2 » -> 30/06/2025 ; à défaut, aujourd'hui."""
+    import calendar
+    import re as _re
+    period = str(period_label or '').strip()
+    m = _re.fullmatch(r'(\d{4})', period)
+    if m:
+        return f"{period}-12-31"
+    m = _re.fullmatch(r'(\d{4})-(\d{2})', period)
+    if m and 1 <= int(m.group(2)) <= 12:
+        y, mo = int(m.group(1)), int(m.group(2))
+        return f"{y:04d}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
+    m = _re.fullmatch(r'(\d{4})-[TtQq]([1-4])', period)
+    if m:
+        y, q = int(m.group(1)), int(m.group(2))
+        mo = q * 3
+        return f"{y:04d}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
+    return paris_today().isoformat()
+
+
 def generate_depreciation_entry(conn, asset, period_label, amount):
     """Enregistre une dotation aux amortissements pour une période donnée :
     débite le compte de charge (681xxx), crédite le compte d'amortissement
@@ -766,8 +1250,12 @@ def generate_depreciation_entry(conn, asset, period_label, amount):
         return None
     if amount <= 0:
         raise AccountingError("Aucune dotation à comptabiliser pour cette période (actif déjà totalement amorti).")
+    # La dotation d'une année est rattachée à la fin de cette période (31/12), pas au
+    # jour où l'utilisateur clique : passée en janvier N+1, elle tombait sur le mauvais
+    # exercice.
+    entry_date = depreciation_period_end(period_label)
     entry_id = create_entry(
-        conn, 'OD', date.today(),
+        conn, 'OD', entry_date,
         f"Dotation aux amortissements — {asset['label']} ({period_label})",
         [
             {'account_code': asset['expense_account'], 'debit': amount},
@@ -939,17 +1427,33 @@ def compute_bilan(conn, as_of_date, exercice_start_date, entity_id=None):
 
     ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
     ep = (entity_id,) if entity_id else ()
+    # Point de départ des soldes : les à-nouveaux (journal AN) du dernier exercice
+    # clôturé s'ils existent — ils reprennent déjà les soldes antérieurs et le résultat.
+    opening = last_opening_date(conn, as_of_date, entity_id)
+    since_clause = ' AND e.entry_date>=?' if opening else ''
+    since_params = (opening,) if opening else ()
     rows = conn.execute(
         f"""SELECT l.account_code, a.account_class, a.label,
                COALESCE(SUM(l.debit),0) total_debit, COALESCE(SUM(l.credit),0) total_credit
             FROM accounting_entry_lines l
             JOIN accounting_entries e ON e.id=l.entry_id
             JOIN accounting_chart_of_accounts a ON a.code=l.account_code
-            WHERE e.entry_date<=? AND a.account_class IN (1,2,4,5) AND {ef}
+            WHERE e.entry_date<=? AND a.account_class IN (1,2,4,5) AND {ef}{since_clause}
             GROUP BY l.account_code, a.account_class, a.label
             ORDER BY l.account_code""",
-        (str(as_of_date), *ep),
+        (str(as_of_date), *ep, *since_params),
     ).fetchall()
+    # Résultats des exercices précédents non encore repris en à-nouveaux : sans eux, le
+    # bilan était déséquilibré dès la deuxième année (les soldes de trésorerie et de tiers
+    # cumulent tout l'historique, le résultat seulement l'exercice en cours).
+    prior_start = opening or '0000-01-01'
+    try:
+        prior_end = (date.fromisoformat(str(exercice_start_date)[:10]) - timedelta(days=1)).isoformat()
+    except ValueError:
+        prior_end = None
+    resultats_anterieurs = 0.0
+    if prior_end and prior_end >= prior_start:
+        resultats_anterieurs = compute_compte_resultat(conn, prior_start, prior_end, entity_id)['resultat']
 
     immobilisations_brutes = 0.0
     amortissements = 0.0
@@ -984,11 +1488,18 @@ def compute_bilan(conn, as_of_date, exercice_start_date, entity_id=None):
                 if net:
                     detail_passif_tiers.append({'code': code, 'label': label, 'amount': -net})
         elif klass == 1:
-            if code == '164000':
+            if code.startswith('16'):
                 emprunts += -net
+            elif code.startswith('455'):
+                # Compte courant d'associé resté en classe 1 sur un plan personnalisé :
+                # c'est une dette, jamais des capitaux propres.
+                dettes += -net
+                if net:
+                    detail_passif_tiers.append({'code': code, 'label': label, 'amount': -net})
             else:
                 capitaux_propres_hors_resultat += -net
 
+    capitaux_propres_hors_resultat += resultats_anterieurs
     immobilisations_nettes = round(immobilisations_brutes - amortissements, 2)
     total_actif = round(immobilisations_nettes + creances + disponibilites, 2)
     total_passif = round(capitaux_propres_hors_resultat + resultat_exercice + emprunts + dettes, 2)
@@ -1001,7 +1512,145 @@ def compute_bilan(conn, as_of_date, exercice_start_date, entity_id=None):
     }
     passif = {
         'capitaux_propres': round(capitaux_propres_hors_resultat, 2), 'resultat_exercice': resultat_exercice,
+        'resultats_anterieurs': round(resultats_anterieurs, 2),
         'emprunts': round(emprunts, 2), 'dettes': round(dettes, 2), 'total': total_passif,
         'detail_tiers': detail_passif_tiers,
     }
     return actif, passif, resultat_data
+
+
+def last_opening_date(conn, as_of_date, entity_id=None):
+    """Date des derniers à-nouveaux (journal AN) au plus tard à as_of_date, ou None."""
+    ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    row = conn.execute(
+        f"SELECT MAX(entry_date) d FROM accounting_entries WHERE journal_code='AN' AND source_type='opening_balance' AND entry_date<=? AND {ef}",
+        (str(as_of_date), *ep)).fetchone()
+    return row['d'] if row and row['d'] else None
+
+
+def generate_opening_entries(conn, exercice_start, exercice_end, entity_id=None, created_by=None):
+    """Clôture d'exercice : génère les à-nouveaux (journal AN) datés du lendemain de la
+    clôture.
+
+    - chaque compte de bilan (classes 1 à 5) est repris pour son solde, tiers par tiers
+      pour les comptes collectifs (le lettrage reste possible) ;
+    - le résultat de l'exercice (produits - charges de exercice_start à exercice_end)
+      est porté en 120000 (bénéfice, crédit) ou 129000 (perte, débit), en attente
+      d'affectation par l'assemblée ;
+    - les résultats d'exercices antérieurs jamais repris sont portés en report à
+      nouveau (110000 créditeur / 119000 débiteur).
+    L'écriture est équilibrée par construction (balance générale équilibrée).
+    Idempotent : une seule ouverture par date et par entité."""
+    start = date.fromisoformat(str(exercice_start)[:10])
+    end = date.fromisoformat(str(exercice_end)[:10])
+    if start > end:
+        raise AccountingError("La date de début d'exercice doit précéder la date de clôture.")
+    opening_day = end + timedelta(days=1)
+    source_id = int(opening_day.strftime('%Y%m%d'))
+    if _entry_already_exists(conn, 'opening_balance', source_id, entity_id):
+        raise AccountingError(f"Les à-nouveaux au {opening_day.strftime('%d/%m/%Y')} ont déjà été générés.")
+    ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    previous = last_opening_date(conn, end.isoformat(), entity_id)
+    since_clause = ' AND e.entry_date>=?' if previous else ''
+    since_params = (previous,) if previous else ()
+    balances = conn.execute(
+        f"""SELECT l.account_code, COALESCE(l.auxiliary_name,'') aux, a.account_class,
+               COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c
+            FROM accounting_entry_lines l
+            JOIN accounting_entries e ON e.id=l.entry_id
+            JOIN accounting_chart_of_accounts a ON a.code=l.account_code
+            WHERE e.entry_date<=? AND a.account_class IN (1,2,3,4,5) AND {ef}{since_clause}
+            GROUP BY l.account_code, COALESCE(l.auxiliary_name,''), a.account_class
+            ORDER BY l.account_code""",
+        (end.isoformat(), *ep, *since_params)).fetchall()
+    lines = []
+    for b in balances:
+        net = round(float(b['d']) - float(b['c']), 2)
+        if not net:
+            continue
+        ln = {'account_code': b['account_code'], 'label': 'À-nouveau'}
+        if b['aux']:
+            ln['auxiliary_name'] = b['aux']
+        if net > 0:
+            ln['debit'] = net
+        else:
+            ln['credit'] = -net
+        lines.append(ln)
+    if previous and previous > start.isoformat():
+        # Les charges et produits antérieurs aux derniers à-nouveaux sont déjà repris.
+        start = date.fromisoformat(previous)
+    resultat = compute_compte_resultat(conn, start.isoformat(), end.isoformat(), entity_id)['resultat']
+    prior = 0.0
+    prior_from = previous or '0000-01-01'
+    prior_to = (start - timedelta(days=1)).isoformat()
+    if prior_to >= prior_from:
+        prior = compute_compte_resultat(conn, prior_from, prior_to, entity_id)['resultat']
+    if round(resultat, 2):
+        if resultat > 0:
+            lines.append({'account_code': '120000', 'credit': round(resultat, 2), 'label': "Résultat de l'exercice (bénéfice)"})
+        else:
+            lines.append({'account_code': '129000', 'debit': round(-resultat, 2), 'label': "Résultat de l'exercice (perte)"})
+    if round(prior, 2):
+        if prior > 0:
+            lines.append({'account_code': '110000', 'credit': round(prior, 2), 'label': 'Report à nouveau'})
+        else:
+            lines.append({'account_code': '119000', 'debit': round(-prior, 2), 'label': 'Report à nouveau'})
+    if len(lines) < 2:
+        raise AccountingError("Aucun solde à reprendre en à-nouveaux pour cet exercice.")
+    return create_entry(conn, 'AN', opening_day,
+                        f"À-nouveaux au {opening_day.strftime('%d/%m/%Y')} (clôture du {end.strftime('%d/%m/%Y')})",
+                        lines, source_type='opening_balance', source_id=source_id,
+                        created_by=created_by, entity_id=entity_id)
+
+
+# --- TVA collectée par taux (préparation CA3) ---------------------------------------------
+# Lignes de la déclaration 3310-CA3 (opérations en France métropolitaine) par taux.
+CA3_LINES = {
+    20.0: ('08', 'Taux normal 20 %'),
+    10.0: ('9B', 'Taux réduit 10 %'),
+    5.5: ('09', 'Taux réduit 5,5 %'),
+    2.1: ('2,1 %', 'Taux particulier 2,1 % (France métropolitaine)'),
+}
+
+
+def ca3_collected_by_rate(conn, date_from, date_to, entity_id=None):
+    """TVA collectée exigible de la période, ventilée par taux à partir des mouvements
+    du compte 445710 (TVA sur encaissements comprise : elle n'y arrive qu'au règlement).
+
+    Retourne une liste triée {'line','label','rate','base','vat'} ; les lignes de TVA
+    historiques sans taux mémorisé sont regroupées en « non ventilé » (rate=None)."""
+    ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    rows = conn.execute(
+        f"""SELECT l.vat_rate AS rate,
+                   COALESCE(SUM(l.credit-l.debit),0) AS vat,
+                   COALESCE(SUM(CASE WHEN l.credit>0 THEN COALESCE(l.vat_base,0) ELSE -COALESCE(l.vat_base,0) END),0) AS base
+            FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+            WHERE l.account_code=? AND e.entry_date BETWEEN ? AND ? AND {ef}
+            GROUP BY l.vat_rate""",
+        (VAT_COLLECTED_ACCOUNT, str(date_from), str(date_to), *ep)).fetchall()
+    out = []
+    for r in rows:
+        vat = round(float(r['vat'] or 0), 2)
+        if not vat:
+            continue
+        rate = None if r['rate'] is None else amounts.rate_key(r['rate'])
+        line, label = CA3_LINES.get(rate, ('—', f"Autre taux ({amounts.fr_rate(rate)})" if rate is not None
+                                           else 'TVA non ventilée (écritures antérieures au suivi par taux)'))
+        out.append({'line': line, 'label': label, 'rate': rate, 'base': round(float(r['base'] or 0), 2), 'vat': vat})
+    out.sort(key=lambda x: (x['rate'] is None, -(x['rate'] or 0)))
+    return out
+
+
+def pending_vat_balance(conn, as_of, entity_id=None):
+    """Solde de TVA collectée en attente d'encaissement (445740) à une date."""
+    ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    row = conn.execute(
+        f"""SELECT COALESCE(SUM(l.credit-l.debit),0) n FROM accounting_entry_lines l
+            JOIN accounting_entries e ON e.id=l.entry_id
+            WHERE l.account_code=? AND e.entry_date<=? AND {ef}""",
+        (VAT_PENDING_ACCOUNT, str(as_of), *ep)).fetchone()
+    return round(float(row['n'] or 0), 2)

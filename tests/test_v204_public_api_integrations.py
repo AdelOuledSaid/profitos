@@ -38,13 +38,17 @@ def test_v204_webhooks_are_signed_ssrf_protected_and_entity_scoped():
     assert "hmac.new" in WH
     assert "X-ProfitOS-Signature" in WH
     assert "X-ProfitOS-Event-Id" in WH
-    assert "allow_redirects=False" in WH
-    assert "ip.is_private" in WH and "ip.is_link_local" in WH
+    # v4xx : envoi via profitos/safe_http.py (IP épinglée, aucune redirection suivie).
+    SAFE = (ROOT / 'profitos/safe_http.py').read_text(encoding='utf-8')
+    assert "safe_request(" in WH and "redirect=False" in SAFE
+    assert "ip.is_private" in SAFE and "ip.is_link_local" in SAFE and "100.64.0.0/10" in SAFE
     assert "entity_id=?" in WH or "entity_id IS NULL" in WH
     assert "webhook_subscriptions','entity_id'" in RUNTIME
 
 def test_v204_ui_exposes_fine_grained_scopes_not_legacy_only():
     assert 'name="scopes" value="read"' in UI
     assert 'name="scopes" value="write"' in UI
-    assert 'name="scopes" value="webhooks"' in UI
+    # v4xx : portée « webhooks » retirée (aucune route ne la vérifiait).
+    assert 'name="scopes" value="webhooks"' not in UI
+    assert 'name="expires_at"' in UI and 'name="current_password"' in UI
     assert 'name="entity_id"' in UI

@@ -37,7 +37,7 @@ This runs Waitress instead of Flask's development server.
 Linux / Railway / Render style command:
 
 ```bash
-gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
+gunicorn --workers 2 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --bind 0.0.0.0:$PORT wsgi:app
 ```
 
 ## Health check
@@ -77,3 +77,7 @@ The existing PostgreSQL compatibility layer is preserved, but it still needs int
 ## V1.3 — Production Hardening
 
 Sécurité des sessions, headers HTTP, CSRF same-origin, uploads isolés et validés, anti open-redirect, validation des webhooks, request IDs, pages d’erreur sûres et tests de sécurité de base. Voir `SECURITY.md` et `PRODUCTION_CHECKLIST.md`.
+
+## Production
+
+Render : voir `DEPLOIEMENT_PRODUCTION.md` (disque persistant, cron, sauvegardes `RESTORE.md`).

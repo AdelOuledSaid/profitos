@@ -1,6 +1,6 @@
 from pathlib import Path
 R=Path("profitos/runtime.py").read_text(encoding="utf-8")
-C=Path("profitos/core/runtime.py").read_text(encoding="utf-8")
+C=Path("profitos/runtime.py").read_text(encoding="utf-8")
 
 def test_v299_preserves_lotA_dso_schema_in_both_runtimes():
     for source in (R,C):

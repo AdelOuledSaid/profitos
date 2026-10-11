@@ -1,6 +1,6 @@
 from pathlib import Path
 
-CORE=Path("profitos/core/runtime.py").read_text(encoding="utf-8")
+CORE=Path("profitos/runtime.py").read_text(encoding="utf-8")
 RUNTIME=Path("profitos/runtime.py").read_text(encoding="utf-8")
 IMPORTS=Path("profitos/routes/imports.py").read_text(encoding="utf-8")
 MAIN=Path("profitos/routes/main.py").read_text(encoding="utf-8")

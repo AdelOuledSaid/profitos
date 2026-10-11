@@ -21,7 +21,8 @@ def test_v208_raw_token_is_never_persisted():
     create=RV[RV.index("def accountant_invite_create"):RV.index("def accountant_invite_accept")]
     assert "hashlib.sha256(raw.encode()).hexdigest()" in create
     assert "token_hash" in create
-    assert "raw invitation token is persisted" in create
+    # v4xx : lien montré une seule fois depuis un stockage serveur chiffré (pas en flash).
+    assert "seul le haché du jeton est conservé" in create and "store_secret('accountant_invite'" in create
 
 def test_v208_acceptance_requires_logged_in_matching_email_and_expiry():
     accept=RV[RV.index("def accountant_invite_accept"):RV.index("def accountant_invite_revoke")]
@@ -34,8 +35,8 @@ def test_v208_acceptance_grants_accountant_membership_and_one_entity_only():
     accept=RV[RV.index("def accountant_invite_accept"):RV.index("def accountant_invite_revoke")]
     assert "role='COMPTABLE'" in accept or "'COMPTABLE'" in accept
     assert "DELETE FROM user_entity_access WHERE user_id=?" in accept
-    assert "INSERT INTO user_entity_access(user_id,entity_id)" in accept
-    assert "(user['id'],inv['entity_id'])" in accept
+    assert "INSERT INTO user_entity_access(user_id,entity_id,created_at)" in accept
+    assert "(user['id'],inv['entity_id'],now())" in accept
 
 def test_v208_revoke_removes_entity_access_and_is_audited():
     revoke=RV[RV.index("def accountant_invite_revoke"):]

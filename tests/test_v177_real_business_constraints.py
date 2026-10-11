@@ -58,7 +58,7 @@ def test_hire_never_gets_installment_language_from_engine():
 def test_v177_ui_has_explicit_real_constraints():
     t=(ROOT/'templates/decision_simulator.html').read_text(encoding='utf-8')
     for text in [
-        'AI CFO · EXPLAINABLE PLANNER · V1.7.7',
+        'SIMULATEUR DE DÉCISION',
         'CONTRAINTES RÉELLES',
         'Report négociable',
         'Paiement fractionnable',

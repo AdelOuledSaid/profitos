@@ -25,8 +25,15 @@ def validate_outgoing_invoice(inv):
             net=float(line.get('line_total')); rate=float(line.get('vat_rate') or 0)
             if not math.isfinite(net) or not math.isfinite(rate): raise ValueError
             if rate not in ALLOWED_VAT: errors.append(f"Ligne {i} : taux de TVA non admis.")
-            calc_ht+=net; calc_vat+=round(net*rate/100,2)
+            calc_ht+=net
         except Exception: errors.append(f"Ligne {i} : montant/TVA invalide.")
+    # TVA calculée une fois par taux sur la base arrondie, puis additionnée (BR-CO-14/17) :
+    # mêmes chiffres que la facture, le PDF, le XML et l'écriture comptable.
+    try:
+        from profitos.invoice_amounts import vat_breakdown
+        calc_vat=sum(b['vat'] for b in vat_breakdown(items))
+    except Exception:
+        calc_vat=0.0
     def money(x):
         try:
             y=float(x); return y if math.isfinite(y) else None
@@ -34,9 +41,9 @@ def validate_outgoing_invoice(inv):
     ht,tva,ttc=money(inv['subtotal']),money(inv['vat_amount']),money(inv['total'])
     if None in (ht,tva,ttc): errors.append("Totaux de facture invalides.")
     else:
-        if abs(round(calc_ht,2)-round(ht,2))>0.02: errors.append("Total HT incohérent avec les lignes.")
-        if abs(round(calc_vat,2)-round(tva,2))>0.02: errors.append("TVA incohérente avec les lignes.")
-        if abs(round(ht+tva,2)-round(ttc,2))>0.02: errors.append("Total TTC incohérent.")
+        if abs(round(calc_ht,2)-round(ht,2))>0.005: errors.append("Total HT incohérent avec les lignes.")
+        if abs(round(calc_vat,2)-round(tva,2))>0.005: errors.append("TVA incohérente avec la somme des TVA par taux (BR-CO-14).")
+        if abs(round(ht+tva,2)-round(ttc,2))>0.005: errors.append("Total TTC incohérent.")
     siren=(inv['client_siren'] or '').strip() if 'client_siren' in inv.keys() else ''
     if siren and (len(siren)!=9 or not siren.isdigit()): errors.append("SIREN client invalide.")
     return errors

@@ -15,7 +15,7 @@ def test_recurring_schema_and_unique_cycle_guard_exist():
 def test_generator_is_entity_scoped_and_creates_drafts():
     block=INV[INV.index('def _generate_due_recurring_invoices'):INV.index('def register(app):')]
     assert "WHERE entity_id IS ? AND status='active'" in block
-    assert "'draft'" in block
+    assert "_insert_draft_invoice(c," in block  # statut 'draft' par défaut, sans numéro
     assert 'recurring_template_id' in block and 'recurring_run_date' in block
     assert 'recurring_invoice_runs' in block
 

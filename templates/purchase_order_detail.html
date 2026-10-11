@@ -63,9 +63,9 @@
         <tr>
           <td>{{ l.description }}</td>
           <td style="text-align:right;">{{ l.quantity }}</td>
-          <td style="text-align:right;">{{ l.unit_price|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ l.unit_price|fr_number(2) }}&nbsp;€</td>
           <td style="text-align:right;">{{ l.quantity_received }}{% if l.quantity_received < l.quantity %} <span class="purchase-alert-text" style="font-size:11px;">partiel</span>{% endif %}</td>
-          <td style="text-align:right;"><strong>{{ (l.quantity*l.unit_price)|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;"><strong>{{ (l.quantity*l.unit_price)|fr_number(2) }}&nbsp;€</strong></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -73,7 +73,7 @@
   </div>
   <div class="purchase-total-line" style="margin-top:16px;">
     <span class="purchase-muted">Total</span>
-    <strong>{{ total|fr_number(2) }} €</strong>
+    <strong>{{ total|fr_number(2) }}&nbsp;€</strong>
   </div>
 </section>
 
@@ -87,7 +87,7 @@
       {% for inv in linked_invoices %}
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('purchase_detail',purchase_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
-          <td style="text-align:right;"><strong>{{ inv.total|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;"><strong>{{ inv.total|fr_number(2) }}&nbsp;€</strong></td>
           <td>{{ 'Payée' if inv.status=='paid' else 'À payer' }}</td>
         </tr>
       {% endfor %}

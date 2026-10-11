@@ -47,6 +47,13 @@ def is_configured():
     return bool(os.environ.get('SWAN_CLIENT_ID') and os.environ.get('SWAN_CLIENT_SECRET'))
 
 
+def feature_enabled():
+    """« Compte Pro » visible et utilisable uniquement si Swan est configuré ET
+    explicitement activé (SWAN_ENABLED=1). Sinon le menu est masqué et les routes
+    répondent 404."""
+    return is_configured() and (os.environ.get('SWAN_ENABLED') or '').strip() == '1'
+
+
 def write_operations_enabled():
     # Les mutations compte/carte de cette base n'ont pas encore été validées
     # contre un projet Swan Sandbox. Fail-closed jusqu'à validation explicite.
@@ -550,3 +557,106 @@ def request_card(token, swan_account_id, holder_name, environment=None):
         'status': cards[0]['status'] if cards else None,
         'consent_url': consent.get('consentUrl'),
     }
+
+
+# ---------------------------------------------------------------------------
+# Rattachement des comptes Swan aux organisations ProfitOS.
+#
+# Un projet Swan (SWAN_CLIENT_ID) contient les comptes de TOUS les clients
+# ProfitOS : sans rattachement explicite, chaque organisation verrait — et pourrait
+# débiter — les comptes des autres. Un compte n'est visible et utilisable que s'il
+# a été rattaché à l'organisation lors de SON parcours (demande de compte ou
+# onboarding créé depuis cette organisation).
+# ---------------------------------------------------------------------------
+
+def _auth():
+    from profitos.runtime import auth_cx
+    return auth_cx()
+
+
+def _now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def bind_account(org_id, account_id, entity_id=None):
+    """Rattache un compte Swan à une organisation. Refuse un compte déjà rattaché
+    à une AUTRE organisation (ValueError)."""
+    account_id = str(account_id or '').strip()
+    if not account_id:
+        return False
+    c = _auth()
+    try:
+        row = c.execute('SELECT organization_id FROM swan_account_bindings WHERE swan_account_id=?', (account_id,)).fetchone()
+        if row and int(row['organization_id']) != int(org_id):
+            raise ValueError("Ce compte Swan est rattaché à une autre organisation.")
+        if not row:
+            c.execute('INSERT INTO swan_account_bindings(swan_account_id,organization_id,entity_id,environment,created_at) '
+                      'VALUES(?,?,?,?,?)', (account_id, int(org_id), entity_id, current_environment(), _now_iso()))
+            c.commit()
+        return True
+    finally:
+        c.close()
+
+
+def bind_onboarding(org_id, onboarding_id, entity_id=None):
+    onboarding_id = str(onboarding_id or '').strip()
+    if not onboarding_id:
+        return False
+    c = _auth()
+    try:
+        if not c.execute('SELECT 1 FROM swan_onboarding_bindings WHERE onboarding_id=?', (onboarding_id,)).fetchone():
+            c.execute('INSERT INTO swan_onboarding_bindings(onboarding_id,organization_id,entity_id,environment,created_at) '
+                      'VALUES(?,?,?,?,?)', (onboarding_id, int(org_id), entity_id, current_environment(), _now_iso()))
+            c.commit()
+        return True
+    finally:
+        c.close()
+
+
+def bound_account_ids(org_id):
+    c = _auth()
+    try:
+        return {r['swan_account_id'] for r in c.execute(
+            'SELECT swan_account_id FROM swan_account_bindings WHERE organization_id=?', (int(org_id),)).fetchall()}
+    finally:
+        c.close()
+
+
+def organization_for_resource(resource_id):
+    """Organisation propriétaire d'un compte ou d'un onboarding Swan (webhooks)."""
+    resource_id = str(resource_id or '').strip()
+    if not resource_id:
+        return None
+    c = _auth()
+    try:
+        for table, col in (('swan_account_bindings', 'swan_account_id'), ('swan_onboarding_bindings', 'onboarding_id')):
+            row = c.execute(f'SELECT organization_id FROM {table} WHERE {col}=?', (resource_id,)).fetchone()
+            if row:
+                return int(row['organization_id'])
+        return None
+    finally:
+        c.close()
+
+
+def sync_onboarding_accounts(token, org_id):
+    """Pour chaque onboarding créé par l'organisation, rattache le compte ouvert à
+    l'issue de l'onboarding (lecture seule côté Swan ; structure GraphQL à valider
+    en Sandbox). Ne lève jamais : renvoie le nombre de comptes rattachés."""
+    c = _auth()
+    try:
+        rows = c.execute('SELECT onboarding_id,entity_id FROM swan_onboarding_bindings WHERE organization_id=?',
+                         (int(org_id),)).fetchall()
+    finally:
+        c.close()
+    bound = 0
+    query = 'query ProfitOSOnboardingAccount($id: ID!) { onboarding(id: $id) { account { id } } }'
+    for row in rows:
+        try:
+            data = graphql_query(token, query, {'id': row['onboarding_id']})
+            account_id = (((data.get('onboarding') or {}).get('account') or {}).get('id') or '').strip()
+            if account_id and bind_account(org_id, account_id, row['entity_id']):
+                bound += 1
+        except Exception:
+            continue
+    return bound

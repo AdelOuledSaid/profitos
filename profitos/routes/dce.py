@@ -18,7 +18,7 @@ def register(app):
         if not opp: c.close(); abort(404)
         f=request.files.get('file')
         if not f or not f.filename:
-            c.close(); flash('Choisis un document DCE.'); return redirect(url_for('detail',kind='GROW',item_id=opportunity_id))
+            c.close(); flash('Choisissez un document DCE.'); return redirect(url_for('detail',kind='GROW',item_id=opportunity_id))
         path=None
         try:
             path, original_name=save_upload(f,'dce',ALLOWED_DCE_EXTENSIONS)

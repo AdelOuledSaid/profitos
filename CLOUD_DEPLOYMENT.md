@@ -1,50 +1,32 @@
-# ProfitOS V1.2 — Cloud Deployment
+# ProfitOS — Cloud Deployment
 
-## Railway
+La cible de production est **Render** : procédure complète, variables et tâches planifiées
+dans `DEPLOIEMENT_PRODUCTION.md`. Sauvegardes et restauration : `RESTORE.md`.
 
-Le projet fournit `railway.json`.
+## Render (résumé)
 
-1. Poussez le dossier sur GitHub.
-2. Créez un projet Railway depuis le repo.
-3. Ajoutez un service PostgreSQL au même projet.
-4. Dans le service web, créez `DATABASE_URL` en référence à l'URL du service Postgres.
-5. Définissez `PROFITOS_ENV=production`, `PROFITOS_SECRET_KEY` et `APP_BASE_URL`.
-6. Railway exécutera le pre-deploy `python scripts/cloud_preflight.py --init-tenants`.
-7. Le healthcheck est `/readyz`.
+1. New → Blueprint → dépôt GitHub : `render.yaml` crée le service web `profitos`
+   (plan payant + disque persistant `/var/data`), le cron `profitos-jobs`, le Key Value et
+   la base `profitos-db`.
+2. Renseigner les variables `sync: false`.
+3. Les migrations s'exécutent en `preDeployCommand` (`scripts/cloud_preflight.py --init-tenants`).
+4. Health check : `/readyz`.
 
-Commande de démarrage :
+## Documents clients
 
-```bash
-gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT wsgi:app
-```
+Les documents (factures d'achat, justificatifs, documents cabinet) sont écrits dans
+`PROFITOS_UPLOAD_DIR`, qui doit être un **disque persistant** (`/var/data/uploads` sur Render).
+Ne jamais utiliser `/tmp` : les fichiers disparaîtraient à chaque redéploiement, et le
+préflight refuse cette configuration en production. Un disque Render limite le service à une
+instance et désactive les déploiements sans interruption ; un backend S3 est l'évolution
+prévue (`profitos/storage.py`).
 
-## Render
+## Railway (alternative)
 
-Le projet fournit `render.yaml` avec un Web Service et un Render Postgres.
-
-1. Poussez le repo sur GitHub/GitLab/Bitbucket.
-2. Dans Render : New → Blueprint.
-3. Sélectionnez le repo.
-4. Render crée le service `profitos` et la base `profitos-db`.
-5. Renseignez les variables marquées `sync: false`.
-6. Le healthcheck est `/readyz`.
-
-## Uploads en V1.2
-
-Les documents sont encore écrits sur le système de fichiers local. Sur les plateformes à disque éphémère, configurez :
-
-```bash
-PROFITOS_UPLOAD_DIR=/tmp/profitos-uploads
-```
-
-Ces fichiers peuvent disparaître lors d'un redéploiement. Le stockage objet persistant est prévu pour V1.3.
+`railway.json` exécute le préflight en pre-deploy. Il faut ajouter un **volume** Railway et
+pointer `PROFITOS_UPLOAD_DIR` dessus, puis créer un cron Railway lançant
+`python scripts/run_job.py --due` toutes les heures.
 
 ## Vérifications après déploiement
 
-- `GET /healthz` → liveness
-- `GET /readyz` → base joignable
-- signup/login/logout
-- création organisation
-- import test factures
-- récupération GROW / BOAMP
-- webhook Stripe en mode test si activé
+Voir la section 6 de `DEPLOIEMENT_PRODUCTION.md`.

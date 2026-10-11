@@ -1,4 +1,5 @@
 from profitos.runtime import *
+from profitos.accounting import paris_today as _paris_today
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 import base64
@@ -67,6 +68,7 @@ def _ai_extract_pdf_fields(path, prompt, required_fields):
             "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
             "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
         )
+    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
     file_bytes = path.read_bytes()
     b64 = base64.b64encode(file_bytes).decode('utf-8')
     headers = {
@@ -223,6 +225,7 @@ def _ai_extract_bank_statement_rows(path):
             "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
             "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
         )
+    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
     file_bytes = path.read_bytes()
     b64 = base64.b64encode(file_bytes).decode('utf-8')
     prompt = (
@@ -476,7 +479,7 @@ def _load_invoice_uploads(files):
                 if path: cleanup_upload(path)
         if errors:
             preview=' | '.join(errors[:5])
-            extra=f' (+{len(errors)-5} autre(s))' if len(errors)>5 else ''
+            extra=f" (+{pluralize(len(errors)-5, 'autre', 'autres')})" if len(errors)>5 else ''
             raise ValueError('Import PDF interrompu : '+preview+extra)
         if not rows:
             raise ValueError('Aucune facture PDF exploitable.')
@@ -615,7 +618,7 @@ def register(app):
             count+=1
             log_status_change('INVOICE',iid,'RECOVER',old,'paid',note='Rapprochement bancaire')
         log_activity('BANK_RECONCILIATION',f'{count} facture(s) rapprochée(s) et marquée(s) payée(s)')
-        flash(f'{count} facture(s) marquée(s) comme payée(s) suite au rapprochement bancaire.')
+        flash(f"{pluralize(count, 'facture marquée comme payée', 'factures marquées comme payées')} suite au rapprochement bancaire.")
         return redirect(url_for('recover'))
 
     @app.route('/upload/invoices',methods=['GET','POST'])
@@ -665,7 +668,7 @@ def register(app):
                 for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
             # Ne remplace que les factures de CETTE entité — importer pour une filiale
             # ne doit jamais effacer les données déjà importées pour une autre.
-            c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=date.today(); signals=0; retentions=0
+            c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=_paris_today(); signals=0; retentions=0
             # Nettoie les liens publics devenus orphelins (leur facture a été supprimée
             # ci-dessus), sans jamais toucher aux tokens des factures d'autres entités
             # qui, elles, existent toujours.
@@ -768,11 +771,11 @@ def register(app):
 
             if urgent['n']:
                 notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
-            msg=f'Factures analysées · {signals} signaux RECOVER.'
-            if retentions: msg+=f' Dont {retentions} retenue(s) de garantie détectée(s).'
+            msg=f"Factures analysées · {pluralize(signals, 'créance à relancer détectée', 'créances à relancer détectées')}."
+            if retentions: msg+=f" Dont {pluralize(retentions, 'retenue de garantie détectée', 'retenues de garantie détectées')}."
             flash(msg)
             if anomalies:
-                flash(f"⚠ {len(anomalies)} anomalie(s) détectée(s) par rapport à l'import précédent — voir Settings → Activity Log pour le détail.")
+                flash(f"⚠ {pluralize(len(anomalies), 'anomalie détectée', 'anomalies détectées')} par rapport à l'import précédent : voir Paramètres → Journal d'activité pour le détail.")
             return redirect(url_for('recover'))
 
         return render_template('upload.html',title='Importer les factures',kind='invoices')
@@ -790,8 +793,8 @@ def register(app):
         for (v,a,d),n in counter.items():
             if n>1:
                 out.append(dict(title=f'Doublon potentiel — {v.title()}',value=a*(n-1),score=90,
-                    details=f'{n} dépenses identiques détectées le {d}.',
-                    reasons=['même fournisseur, montant et date'],warnings=['vérification humaine requise']))
+                    details=f"{n} dépenses identiques détectées le {fr_date(d) if d else 'même jour'} : {fr_number(a*(n-1),2)} € à récupérer une seule fois si le doublon est confirmé.",
+                    reasons=['même fournisseur, montant et date'],warnings=['montant ponctuel, non annualisé','vérification humaine requise']))
         return out
 
     def detect_price_increases(clean):
@@ -804,8 +807,8 @@ def register(app):
             if len(ms)>=2 and vals[ms[-2]]>0 and vals[ms[-1]]>vals[ms[-2]]*1.2:
                 prev,curr=vals[ms[-2]],vals[ms[-1]]
                 out.append(dict(title=f'Hausse fournisseur — {v}',value=(curr-prev)*12,score=75,
-                    details=f'{fr_number(prev)} € → {fr_number(curr)} € entre les deux derniers mois.',
-                    reasons=['hausse mensuelle supérieure à 20 %'],warnings=['annualisation indicative']))
+                    details=f'{fr_number(prev)} € → {fr_number(curr)} € entre les deux derniers mois. Hausse annualisée estimée : {fr_number((curr-prev)*12)} € si le nouveau tarif se maintient 12 mois.',
+                    reasons=['hausse mensuelle supérieure à 20\u00a0%'],warnings=['hausse annualisée estimée : projection sur 12 mois, pas une économie certaine']))
         return out
 
     def detect_stale_contracts(clean):
@@ -818,7 +821,7 @@ def register(app):
             rows.sort(); last_date,last_amount=rows[-1]; gap_days=(today-last_date).days
             if gap_days>=330 and len(rows)>=1:
                 out.append(dict(title=f'Contrat à vérifier — {v.title()} ({fam})',value=round(last_amount,0),score=70,
-                    details=f'Dernière dépense {fam} détectée il y a {gap_days} jours ({last_date.isoformat()}).',
+                    details=f'Dernière dépense {fam} détectée il y a {gap_days} jours (le {fr_date(last_date.isoformat())}). Montant indiqué : dernière échéance, à renégocier.',
                     reasons=[f'catégorie {fam} récurrente sans dépense récente'],
                     warnings=['obtenir 3 devis avant renouvellement automatique']))
         return out

@@ -3,32 +3,36 @@
 <div class="purchase-page">
 <div class="purchase-toolbar">
   <div>
-    <div class="purchase-eyebrow">MULTI-ENTITÉS</div>
+    <div class="purchase-eyebrow">MULTI-SOCIÉTÉS</div>
     <h1 class="purchase-title">Vue consolidée</h1>
-    <p class="purchase-subtitle">Chiffre d'affaires et achats par entité, et total groupe.</p>
+    <p class="purchase-subtitle">Chiffre d'affaires facturé, achats et créances clients à encaisser (factures émises et importées) par entité, et total groupe.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('entities_list') }}">← Entités</a>
 </div>
 
-<div class="purchase-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px;">
+<div class="purchase-stats" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:24px;">
   <div class="purchase-stat">
-    <div><div class="purchase-stat-label">VENTES GROUPE</div><div class="purchase-stat-value">{{ grand_total_sales|fr_number(2) }} €</div></div>
+    <div><div class="purchase-stat-label">VENTES GROUPE</div><div class="purchase-stat-value">{{ grand_total_sales|fr_number(2) }}&nbsp;€</div></div>
   </div>
   <div class="purchase-stat">
-    <div><div class="purchase-stat-label">ACHATS GROUPE</div><div class="purchase-stat-value">{{ grand_total_purchases|fr_number(2) }} €</div></div>
+    <div><div class="purchase-stat-label">ACHATS GROUPE</div><div class="purchase-stat-value">{{ grand_total_purchases|fr_number(2) }}&nbsp;€</div></div>
+  </div>
+  <div class="purchase-stat">
+    <div><div class="purchase-stat-label">À ENCAISSER GROUPE</div><div class="purchase-stat-value">{{ grand_total_receivables|fr_number(2) }}&nbsp;€</div>{% if grand_total_overdue %}<div class="purchase-muted">dont {{ grand_total_overdue|fr_number(2) }}&nbsp;€ en retard</div>{% endif %}</div>
   </div>
 </div>
 
 <section class="purchase-panel">
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Entité</th><th style="text-align:right;">Ventes</th><th style="text-align:right;">Achats</th></tr></thead>
+      <thead><tr><th>Entité</th><th style="text-align:right;">Ventes</th><th style="text-align:right;">Achats</th><th style="text-align:right;">À encaisser</th></tr></thead>
       <tbody>
       {% for r in rows %}
         <tr>
           <td><strong>{{ r.entity.name }}</strong>{% if r.entity.id is none %} <span class="purchase-status">Société mère</span>{% endif %}</td>
-          <td style="text-align:right;">{{ r.sales|fr_number(2) }} €</td>
-          <td style="text-align:right;">{{ r.purchases|fr_number(2) }} €</td>
+          <td style="text-align:right;">{{ r.sales|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;">{{ r.purchases|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;">{{ r.receivables|fr_number(2) }}&nbsp;€{% if r.overdue %}<br><span class="purchase-alert-text" style="font-size:12px;">dont {{ r.overdue|fr_number(2) }}&nbsp;€ en retard</span>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

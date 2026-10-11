@@ -16,7 +16,7 @@ def test_v161_today_actions_exist():
     assert 'today_actions' in t
     page=(ROOT/'templates'/'money_hunter.html').read_text(encoding='utf-8')
     assert 'À FAIRE AUJOURD’HUI' in page
-    assert 'Priority Score' in page
+    assert 'Score de priorité' in page
     assert 'Pourquoi :' in page
 
 

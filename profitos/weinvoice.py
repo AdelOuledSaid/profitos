@@ -12,6 +12,7 @@ Le client_secret ne doit JAMAIS apparaître dans un template, un log, ou être
 committé dans Git — il ne vit que dans les variables d'environnement Render
 (WEINVOICE_CLIENT_ID, WEINVOICE_CLIENT_SECRET, WEINVOICE_ENV).
 """
+import json
 import requests
 import hmac
 import hashlib
@@ -287,7 +288,7 @@ def find_client_by_siren(siren):
     # DIAGNOSTIC TEMPORAIRE — à retirer une fois la vraie structure de réponse
     # confirmée. Montre la forme réelle renvoyée par GET /v1/clients (pagination,
     # noms de champs) dans les logs Render.
-    log_ops_event('WEINVOICE_CLIENTS_LIST_DEBUG', 'INFO', detail=str(body)[:1500])
+    # (Diagnostic retiré : la liste complète des clients WeInvoice ne doit pas finir dans les logs.)
 
     if isinstance(body, list):
         clients = body
@@ -458,16 +459,25 @@ def handle_onboarding_webhook(payload):
     if not company_id:
         log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNSCOPED','WARNING',detail='Webhook onboarding sans identifiant organisation/client')
         return False
-    c = cx()
-    try:
-        row=c.execute('SELECT entity_key FROM weinvoice_entity_settings WHERE weinvoice_company_id=?',(str(company_id),)).fetchone()
-        if not row:
-            log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNKNOWN','WARNING',detail=f'company_id={company_id}')
-            return False
-        _store_entity_settings(c, None if row['entity_key']==0 else row['entity_key'], weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=reason or None)
-        c.commit(); return True
-    finally:
-        c.close()
+    # Webhook serveur à serveur : aucune session, donc aucun tenant « courant » (cx() levait
+    # une erreur 500). On cherche l'organisation qui possède cet identifiant WeInvoice.
+    from profitos import db as _dbmod
+    for org_id in list_organization_ids():
+        c=None
+        try:
+            c=_dbmod.connect_tenant(org_id, tenant_db(org_id))
+            row=c.execute('SELECT entity_key FROM weinvoice_entity_settings WHERE weinvoice_company_id=?',(str(company_id),)).fetchone()
+            if row:
+                _store_entity_settings(c, None if row['entity_key']==0 else row['entity_key'], weinvoice_kyb_status=status, weinvoice_last_check_at=now(), weinvoice_last_error=reason or None)
+                c.commit(); return True
+        except Exception:
+            pass
+        finally:
+            if c:
+                try: c.close()
+                except Exception: pass
+    log_ops_event('WEINVOICE_ONBOARDING_WEBHOOK_UNKNOWN','WARNING',detail=f'company_id={company_id}')
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1028,6 +1038,36 @@ def download_inbound_invoice_original(organization_id, remote_id, timeout=30):
     return resp.content
 
 
+def _json_or_empty(resp):
+    """Corps JSON de la réponse, ou {} s'il est vide ou illisible (jamais d'exception)."""
+    try:
+        data=resp.json()
+    except ValueError:
+        return {}
+    return data if isinstance(data,dict) else {'data':data}
+
+
+def _api_error_message(resp,data,context):
+    """Message d'erreur lisible pour l'utilisateur à partir d'une réponse non 2xx."""
+    detail=''
+    if isinstance(data,dict):
+        detail=data.get('message') or data.get('detail') or data.get('error') or data.get('title') or ''
+        if isinstance(detail,(dict,list)):
+            detail=json.dumps(detail,ensure_ascii=False)[:500]
+    if not detail:
+        detail=(getattr(resp,'text','') or '')[:500]
+    return f"{context} : l'API WeInvoice a répondu {resp.status_code}" + (f" — détail : {detail}" if detail else "")
+
+
+def _ereporting_http(method,url,**kwargs):
+    """Appel HTTP e-reporting : une coupure réseau devient une WeInvoiceAPIError, que les
+    routes savent afficher, au lieu d'une erreur 500."""
+    try:
+        return requests.request(method,url,**kwargs)
+    except requests.RequestException as e:
+        raise WeInvoiceAPIError(f"Connexion à {WEINVOICE_BASE_URL} impossible : {e}") from e
+
+
 _EREPORTING_FLOW_TYPES={
     'AggregatedCustomerTransactionReport',
     'UnitaryCustomerTransactionReport',
@@ -1045,7 +1085,7 @@ def submit_ereporting_flow(organization_id, payload, timeout=30):
     if payload['flowType'] not in _EREPORTING_FLOW_TYPES:
         raise WeInvoiceAPIError("flowType e-reporting invalide")
     token=fetch_access_token(credential_set='invoicing')
-    resp=requests.post(f"{WEINVOICE_BASE_URL}/v1/e-reporting/flows",
+    resp=_ereporting_http('POST',f"{WEINVOICE_BASE_URL}/v1/e-reporting/flows",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),
                  'Content-Type':'application/json','Accept':'application/json'},
         json=payload,timeout=timeout)
@@ -1056,7 +1096,7 @@ def submit_ereporting_flow(organization_id, payload, timeout=30):
 
 def list_ereporting_transmissions(organization_id, timeout=20):
     token=fetch_access_token(credential_set='invoicing')
-    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions",
+    resp=_ereporting_http('GET',f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
     data=_json_or_empty(resp)
@@ -1066,7 +1106,7 @@ def list_ereporting_transmissions(organization_id, timeout=20):
 
 def get_ereporting_transmission(organization_id, transmission_id, timeout=20):
     token=fetch_access_token(credential_set='invoicing')
-    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}",
+    resp=_ereporting_http('GET',f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
     data=_json_or_empty(resp)
@@ -1077,7 +1117,7 @@ def get_ereporting_transmission(organization_id, transmission_id, timeout=20):
 def get_ereporting_proof(organization_id, transmission_id, timeout=30):
     """Retourne la preuve fiscale §7.3 (JSON : verdict, motifs, chaîne SHA-256, archives)."""
     token=fetch_access_token(credential_set='invoicing')
-    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}/proof",
+    resp=_ereporting_http('GET',f"{WEINVOICE_BASE_URL}/v1/e-reporting/transmissions/{transmission_id}/proof",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
     data=_json_or_empty(resp)
@@ -1088,7 +1128,7 @@ def get_ereporting_proof(organization_id, transmission_id, timeout=30):
 
 def get_ereporting_fiscal_settings(organization_id, timeout=20):
     token=fetch_access_token(credential_set='invoicing')
-    resp=requests.get(f"{WEINVOICE_BASE_URL}/v1/e-reporting/fiscal-settings",
+    resp=_ereporting_http('GET',f"{WEINVOICE_BASE_URL}/v1/e-reporting/fiscal-settings",
         headers={'Authorization':f'Bearer {token}','X-Org-Id':str(organization_id),'Accept':'application/json'},
         timeout=timeout)
     data=_json_or_empty(resp)

@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">CABINET · PRODUCTION</div>
     <h1 class="purchase-title">Portefeuille clients</h1>
-    <p class="purchase-subtitle">Cockpit multi-dossiers : révision, blocages, demandes cabinet, clôture et temps de {{ month_label }}.</p>
+    <p class="purchase-subtitle">Tableau de bord multi-dossiers : révision, blocages, demandes cabinet, clôture et temps de {{ month_label }}.</p>
   </div>
   <a class="purchase-primary-btn primary" href="{{ url_for('cabinet_time_new') }}">+ Saisir du temps</a>
 </div>
@@ -21,7 +21,7 @@
       <tbody>
       {% for r in rows %}
         <tr>
-          <td><strong>{{ r.org.name }}</strong>{% if r.entities_count %}<br><small>{{ r.entities_count }} entité(s)</small>{% endif %}</td>
+          <td><strong>{{ r.org.name }}</strong>{% if r.entities_count %}<br><small>{{ pluralize(r.entities_count, 'société', 'sociétés') }}</small>{% endif %}</td>
           <td><strong>{{ r.health }}</strong></td>
           <td style="text-align:right;">{{ r.reviews_pending }} / {{ r.reviews_total }}</td>
           <td style="text-align:right;">{{ r.blockers }}</td>

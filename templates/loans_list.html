@@ -17,8 +17,8 @@
       {% for l in loans %}
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('loan_detail',loan_id=l.id) }}"><strong>{{ l.lender_name }}</strong></a></td>
-          <td style="text-align:right;">{{ l.principal_amount|fr_number(2) }} €</td>
-          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;">{{ l.principal_amount|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>{{ l.annual_rate|fr_number(2) }} %</td>
           <td><span class="purchase-status {{ 'paid' if l.status=='paid_off' else '' }}">{{ 'Soldé' if l.status=='paid_off' else 'Actif' }}</span></td>
         </tr>

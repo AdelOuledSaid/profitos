@@ -94,9 +94,9 @@ def exchange_code_for_token(provider, code, redirect_uri):
     try:
         resp = requests.post(cfg['token_url'], data=data, timeout=20)
     except requests.RequestException as e:
-        raise ValueError(f"Connexion au serveur {cfg['label']} impossible : {e}") from e
+        raise ValueError(f"Connexion au serveur {cfg['label']} impossible.") from e
     if resp.status_code != 200:
-        raise ValueError(f"Échec de l'échange OAuth {cfg['label']} ({resp.status_code}) : {resp.text[:200]}")
+        raise ValueError(f"Échec de l'échange OAuth {cfg['label']} (HTTP {resp.status_code}).")
     payload = resp.json()
     expires_in = payload.get('expires_in')
     expires_at = (datetime.utcnow() + timedelta(seconds=int(expires_in))).isoformat() if expires_in else None
@@ -125,7 +125,7 @@ def refresh_access_token(provider, refresh_token):
     try:
         resp = requests.post(cfg['token_url'], data=data, timeout=20)
     except requests.RequestException as e:
-        raise ValueError(f"Connexion au serveur {cfg['label']} impossible : {e}") from e
+        raise ValueError(f"Connexion au serveur {cfg['label']} impossible.") from e
     if resp.status_code != 200:
         raise ValueError(f"Échec du renouvellement du jeton {cfg['label']} ({resp.status_code}).")
     payload = resp.json()
@@ -138,15 +138,20 @@ def _ensure_valid_token(conn, connection):
     """Rafraîchit le jeton d'accès si sa date d'expiration est dépassée (ou
     proche), et met à jour la connexion en base. Retourne le jeton d'accès
     valide à utiliser pour l'appel API qui suit."""
+    from profitos.crypto import decrypt_secret, encrypt_secret
     expires_at = connection['token_expires_at']
     if expires_at and datetime.fromisoformat(expires_at) > datetime.utcnow() + timedelta(minutes=2):
-        return connection['access_token']
-    refreshed = refresh_access_token(connection['provider'], connection['refresh_token'])
+        return decrypt_secret(connection['access_token'])
+    refresh_token = decrypt_secret(connection['refresh_token'])
+    refreshed = refresh_access_token(connection['provider'], refresh_token)
     if not refreshed:
         raise ValueError("Jeton expiré et aucun jeton de renouvellement disponible — reconnexion nécessaire.")
+    # Jetons OAuth chiffrés au repos (AES-GCM, sous-clé par organisation) ; un ancien
+    # jeton stocké en clair est rechiffré au passage.
     conn.execute(
-        'UPDATE cloud_storage_connections SET access_token=?,token_expires_at=? WHERE id=?',
-        (refreshed['access_token'], refreshed['expires_at'], connection['id']),
+        'UPDATE cloud_storage_connections SET access_token=?,refresh_token=?,token_expires_at=? WHERE id=?',
+        (encrypt_secret(refreshed['access_token']), encrypt_secret(refresh_token),
+         refreshed['expires_at'], connection['id']),
     )
     conn.commit()
     return refreshed['access_token']
@@ -228,3 +233,27 @@ def download_file(conn, connection, file_id):
         return resp.content
 
     raise ValueError(f"Fournisseur inconnu : {connection['provider']!r}.")
+
+
+def revoke_tokens(connection, org_id=None):
+    """Révocation best effort des jetons OAuth chez le fournisseur (suppression
+    du compte / déconnexion). N'échoue jamais : renvoie True si le fournisseur
+    a accepté la révocation."""
+    from profitos.crypto import decrypt_secret
+    try:
+        access = decrypt_secret(connection['access_token'], org_id)
+        refresh = decrypt_secret(connection['refresh_token'], org_id)
+    except Exception:
+        return False
+    try:
+        if connection['provider'] == 'dropbox' and access:
+            resp = requests.post('https://api.dropboxapi.com/2/auth/token/revoke',
+                                 headers={'Authorization': f'Bearer {access}'}, timeout=10)
+            return resp.status_code == 200
+        if connection['provider'] == 'google_drive' and (refresh or access):
+            resp = requests.post('https://oauth2.googleapis.com/revoke', data={'token': refresh or access},
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=10)
+            return resp.status_code == 200
+    except requests.RequestException:
+        return False
+    return False

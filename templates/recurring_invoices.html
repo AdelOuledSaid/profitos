@@ -2,7 +2,7 @@
 {% block content %}
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <div><h1 class="h3 mb-1">Facturation récurrente</h1><p class="text-muted mb-0">Générez automatiquement des factures brouillon à chaque échéance.</p></div>
+    <div><h1 class="h3 mb-1">Facturation récurrente</h1><p class="text-muted mb-0">Chaque matin, ProfitOS génère automatiquement en brouillon les factures arrivées à échéance et vous prévient par email. Rien n'est envoyé à vos clients sans votre validation.</p></div>
     <form method="post" action="{{ url_for('recurring_invoices_generate') }}"><button class="btn btn-primary" type="submit">Générer les échéances dues</button></form>
   </div>
   <div class="card mb-4"><div class="card-body">
@@ -26,7 +26,7 @@
   </div></div>
   <div class="card"><div class="card-body"><h2 class="h5">Récurrences</h2>
     <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Client</th><th>Fréquence</th><th>Prochaine génération</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-    {% for r in rows %}<tr><td>{{ r.client_name }}</td><td>{{ r.frequency }}</td><td>{{ r.next_run_date }}</td><td>{{ r.status }}</td><td>
+    {% for r in rows %}<tr><td>{{ r.client_name }}</td><td>{{ r.frequency }}</td><td>{{ r.next_run_date|fr_date }}</td><td>{{ r.status }}</td><td>
       <form class="d-inline" method="post" action="{{ url_for('recurring_invoice_status',template_id=r.id) }}">
       {% if r.status == 'active' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="pause">Pause</button>{% elif r.status == 'paused' %}<button class="btn btn-sm btn-outline-success" name="action" value="resume">Reprendre</button>{% endif %}
       {% if r.status not in ('stopped','completed') %}<button class="btn btn-sm btn-outline-danger" name="action" value="stop">Arrêter</button>{% endif %}</form>

@@ -12,8 +12,9 @@ def test_ecommerce_duplicate_detection_is_scoped_to_current_entity():
 
 def test_ecommerce_invoice_sequence_count_is_entity_scoped():
     b=_sync()
-    assert "SELECT COUNT(*) n FROM outgoing_invoices WHERE entity_id IS ?" in b
-    assert "(entity_id,)" in b
+    # v421 : plus de numéro « FA-SHOPIFY-… » fabriqué à l'import : brouillon sans numéro.
+    assert "invoice_number = None" in b
+    assert "SELECT COUNT(*) n FROM outgoing_invoices WHERE entity_id IS ?" not in b
 
 def test_ecommerce_import_mapping_records_entity():
     b=_sync()

@@ -4,8 +4,8 @@
 <div class="purchase-toolbar">
   <div>
     <div class="purchase-eyebrow">COMPTABILITÉ ANALYTIQUE</div>
-    <h1 class="purchase-title">Axes et tags</h1>
-    <p class="purchase-subtitle">Des dimensions indépendantes du plan comptable légal — projet, département, centre de coût — pour analyser ta rentabilité autrement que par compte.</p>
+    <h1 class="purchase-title">Axes et étiquettes analytiques</h1>
+    <p class="purchase-subtitle">Des dimensions indépendantes du plan comptable légal — projet, département, centre de coût — pour analyser votre rentabilité autrement que par compte.</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('analytical_profitability') }}">Rapport de rentabilité →</a>
 </div>
@@ -35,7 +35,7 @@
           <td style="text-align:right;">
             <form method="post" action="{{ url_for('analytical_tag_delete',tag_id=tg.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="purchase-primary-btn secondary">Supprimer</button>
+              <button type="submit" class="purchase-primary-btn secondary" data-confirm="Supprimer définitivement cet élément ? Cette action est irréversible.">Supprimer</button>
             </form>
           </td>
         </tr>

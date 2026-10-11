@@ -2,10 +2,75 @@ from profitos.runtime import *
 import uuid
 
 
+CABINET_ALLOWED_EXTENSIONS={'.pdf','.png','.jpg','.jpeg','.webp','.heic','.doc','.docx','.xls','.xlsx','.csv','.txt','.odt','.ods','.zip','.xml'}
+
+
 def _cabinet_docs_dir(org_id):
     root = UP / "cabinet_documents" / str(int(org_id))
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+CABINET_ROLES = ('OWNER', 'ADMIN', 'COMPTABLE')
+
+
+def cabinet_role(organization_id):
+    """Rôle de l'utilisateur DANS l'organisation visée par l'URL (et non dans
+    l'organisation active de la session) : être propriétaire de A ne donne aucun
+    droit cabinet sur B, où l'on n'est peut-être que commercial."""
+    ac = auth_cx()
+    try:
+        m = ac.execute(
+            'SELECT m.role FROM memberships m JOIN organizations o ON o.id=m.organization_id '
+            'WHERE m.user_id=? AND m.organization_id=? AND o.deleted_at IS NULL',
+            (session.get('user_id'), int(organization_id)),
+        ).fetchone()
+    finally:
+        ac.close()
+    return m['role'] if m else None
+
+
+def _entity_restricted(organization_id):
+    """Un utilisateur limité à certaines entités de ce dossier ne voit pas les
+    éléments transverses (documents, indicateurs consolidés) de l'organisation."""
+    from profitos.entities import user_has_entity_restrictions
+    try:
+        tc = tenant_cx_direct(int(organization_id))
+    except Exception:
+        return True
+    try:
+        return user_has_entity_restrictions(tc, session.get('user_id'))
+    except Exception:
+        return False
+    finally:
+        tc.close()
+
+
+def require_cabinet_access(organization_id, org_wide=True):
+    """404 si l'utilisateur n'est pas propriétaire/administrateur/comptable de
+    l'organisation de l'URL (ou s'il est restreint à certaines entités pour une
+    donnée transverse). Renvoie la ligne organisation."""
+    role = cabinet_role(organization_id)
+    if role not in CABINET_ROLES or (org_wide and _entity_restricted(organization_id)):
+        log_security_event('CABINET_ACCESS_DENIED', 'BLOCKED', target=f'org:{int(organization_id)}')
+        abort(404)
+    org = next((o for o in user_organizations() if o['id'] == int(organization_id)), None)
+    if not org:
+        abort(404)
+    return org
+
+
+def cabinet_organizations(org_wide=True):
+    """Dossiers sur lesquels l'utilisateur a un rôle cabinet."""
+    ac = auth_cx()
+    try:
+        roles = {r['organization_id']: r['role'] for r in ac.execute(
+            'SELECT organization_id, role FROM memberships WHERE user_id=?', (session.get('user_id'),)).fetchall()}
+    finally:
+        ac.close()
+    return [o for o in user_organizations()
+            if roles.get(o['id']) in CABINET_ROLES and not o.get('deleted_at')
+            and not (org_wide and _entity_restricted(o['id']))]
 
 
 def register(app):
@@ -18,7 +83,7 @@ def register(app):
         indicateurs sont volontairement agrégés au niveau du dossier : aucune
         donnée comptable d'un client n'est jointe à celle d'un autre client.
         """
-        orgs = user_organizations()
+        orgs = cabinet_organizations()
         month_start = date.today().replace(day=1).isoformat()
 
         ac = auth_cx()
@@ -89,16 +154,12 @@ def register(app):
     @login_required
     def cabinet_open_client(organization_id):
         """Bascule explicitement vers un dossier autorisé puis ouvre sa révision."""
-        ac = auth_cx()
-        membership = ac.execute(
-            'SELECT role FROM memberships WHERE user_id=? AND organization_id=?',
-            (session.get('user_id'), organization_id),
-        ).fetchone()
-        ac.close()
-        if not membership:
+        role = cabinet_role(organization_id)
+        if not role:
             abort(404)
         session['org_id'] = organization_id
-        session['role'] = membership['role']
+        session['role'] = role
+        session.pop('current_entity_id', None)
         init_tenant_db()
         log_activity('CABINET_CLIENT_OPENED', 'Ouverture du dossier depuis le portefeuille cabinet')
         return redirect(url_for('reviews_list'))
@@ -106,7 +167,7 @@ def register(app):
     @app.route('/cabinet/temps', methods=['GET', 'POST'])
     @login_required
     def cabinet_time_new():
-        orgs = user_organizations()
+        orgs = cabinet_organizations(org_wide=False)
         if request.method == 'POST':
             org_id_raw = request.form.get('organization_id')
             try:
@@ -115,7 +176,7 @@ def register(app):
                 flash("Client invalide.")
                 return redirect(url_for('cabinet_time_new'))
             if org_id not in {o['id'] for o in orgs}:
-                flash("Tu n'as pas accès à ce client.")
+                flash("Vous n'avez pas accès à ce client.")
                 return redirect(url_for('cabinet_time_new'))
             entry_date = request.form.get('entry_date') or date.today().isoformat()
             try:
@@ -144,10 +205,7 @@ def register(app):
     @app.route('/cabinet/temps/<int:organization_id>')
     @login_required
     def cabinet_time_list(organization_id):
-        orgs = user_organizations()
-        if organization_id not in {o['id'] for o in orgs}:
-            abort(404)
-        org = next(o for o in orgs if o['id'] == organization_id)
+        org = require_cabinet_access(organization_id)
         ac = auth_cx()
         entries = ac.execute(
             """SELECT cte.*, u.full_name, u.email FROM cabinet_time_entries cte
@@ -162,10 +220,7 @@ def register(app):
     @app.route('/cabinet/documents/<int:organization_id>', methods=['GET', 'POST'])
     @login_required
     def cabinet_documents(organization_id):
-        orgs = user_organizations()
-        if organization_id not in {o['id'] for o in orgs}:
-            abort(404)
-        org = next(o for o in orgs if o['id'] == organization_id)
+        org = require_cabinet_access(organization_id)
 
         if request.method == 'POST':
             uploaded = request.files.get('file')
@@ -173,7 +228,10 @@ def register(app):
             if not uploaded or not uploaded.filename:
                 flash("Aucun fichier sélectionné.")
                 return redirect(url_for('cabinet_documents', organization_id=organization_id))
-            ext = os.path.splitext(uploaded.filename)[1][:10]
+            ext = os.path.splitext(uploaded.filename)[1].lower()[:10]
+            if ext not in CABINET_ALLOWED_EXTENSIONS:
+                flash("Type de fichier non autorisé (PDF, images, Word, Excel, CSV, texte ou ZIP).")
+                return redirect(url_for('cabinet_documents', organization_id=organization_id))
             stored_name = uuid.uuid4().hex + ext
             dest = _cabinet_docs_dir(organization_id) / stored_name
             uploaded.save(str(dest))
@@ -200,9 +258,7 @@ def register(app):
     @app.route('/cabinet/documents/<int:organization_id>/<int:doc_id>/telecharger')
     @login_required
     def cabinet_document_download(organization_id, doc_id):
-        orgs = user_organizations()
-        if organization_id not in {o['id'] for o in orgs}:
-            abort(404)
+        require_cabinet_access(organization_id)
         ac = auth_cx()
         doc = ac.execute(
             'SELECT * FROM cabinet_documents WHERE id=? AND organization_id=?', (doc_id, organization_id)
@@ -213,7 +269,7 @@ def register(app):
         path = _cabinet_docs_dir(organization_id) / doc['stored_name']
         if not path.is_file():
             abort(404)
-        return Response(
-            path.read_bytes(), mimetype='application/octet-stream',
-            headers={'Content-Disposition': f'attachment; filename="{doc["filename"]}"'},
-        )
+        # send_file encode correctement les noms accentués (RFC 5987) et neutralise les
+        # guillemets/retours à la ligne : un nom non latin-1 provoquait une erreur 500.
+        return send_file(path, mimetype='application/octet-stream', as_attachment=True,
+                         download_name=os.path.basename(doc['filename'] or 'document'))

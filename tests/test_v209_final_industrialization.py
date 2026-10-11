@@ -34,8 +34,8 @@ def test_v209_pending_api_purchase_is_not_posted_before_approval():
 def test_v209_api_invoice_numbering_is_entity_scoped_and_serialized():
     b=block("api_create_invoice","api_list_purchase_invoices")
     assert "BEGIN IMMEDIATE" in b
-    assert "ef,ep=_entity_where()" in b
-    assert "WHERE {ef} AND invoice_number LIKE ?" in b
+    # v421 : brouillon API sans numéro ; numéro légal attribué à l'émission (série verrouillée).
+    assert "invoice_number=None" in b
     assert "SELECT COUNT(*) n FROM outgoing_invoices" not in b
 
 def test_v209_entity_bound_key_cannot_enumerate_other_entities():
@@ -45,7 +45,8 @@ def test_v209_entity_bound_key_cannot_enumerate_other_entities():
 
 def test_v209_production_controls_remain_enabled():
     assert "def csrf_protect" in RT
-    assert "secrets.compare_digest(token,sent)" in RT
+    # v4xx : comparaison sur des octets (un jeton non ASCII donne 400 et non 500).
+    assert "secrets.compare_digest(token.encode('utf-8'),sent.encode('utf-8'))" in RT
     assert "def init_rate_limiter" in RT
     assert "def production_dependency_status" in RT
     assert "def database_readiness" in RT

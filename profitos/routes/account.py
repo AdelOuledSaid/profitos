@@ -1,8 +1,13 @@
 from profitos.runtime import *
 from profitos.runtime import _token_user
-from profitos.plan_limits import PLAN_LIMITS, plan_limit, within_limit, feature_enabled
+from profitos import account_security as acsec
+from profitos.plan_limits import PLAN_LIMITS, FEATURE_LABELS, plan_limit, within_limit, feature_enabled
 from profitos.plan_usage import quota_state
 
+
+
+# Version des CGU/CGV acceptées à l'inscription (enregistrée avec la date d'acceptation).
+TERMS_VERSION='2026-10'
 
 
 def register(app):
@@ -14,30 +19,45 @@ def register(app):
         if not name: flash("Nom d'organisation requis."); return redirect(url_for('settings'))
 
         active_org=current_org()
-        active_plan=(active_org['plan'] if active_org else 'TRIAL')
+        # Formule Multi-sociétés : la nouvelle organisation est rattachée à
+        # l'organisation payeuse et hérite de son plan/statut (pas d'essai séparé).
+        payer=billing_org(active_org) if active_org else None
+        active_plan=effective_plan(active_org) if active_org else 'TRIAL'
+        attach_to=None
+        if payer and (plan_limit(active_plan,'organizations') or 0)>1 and org_has_access(payer) and current_role()=='OWNER':
+            attach_to=payer
         c=auth_cx()
 
-        owned_count=c.execute(
-            "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
-            (session['user_id'],)
-        ).fetchone()['n']
+        if attach_to:
+            owned_count=c.execute(
+                'SELECT COUNT(*) AS n FROM organizations WHERE id=? OR parent_org_id=?',
+                (attach_to['id'],attach_to['id'])
+            ).fetchone()['n']
+        else:
+            owned_count=c.execute(
+                "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
+                (session['user_id'],)
+            ).fetchone()['n']
 
         if not within_limit(active_plan,'organizations',owned_count,1):
             c.close()
             limit=plan_limit(active_plan,'organizations')
             log_security_event('PLAN_LIMIT','BLOCKED',target='organizations')
             flash(
-                f"Votre formule {active_plan} autorise au maximum {limit} organisation(s). "
+                f"Votre formule {active_plan} autorise au maximum {pluralize(limit, 'organisation')}. "
                 "Passez à une formule supérieure pour en créer davantage."
             )
             return redirect(url_for('settings'))
         slug=re.sub(r'[^a-z0-9]+','-',norm(name)).strip('-') or 'company'; base=slug; i=1
         while c.execute('SELECT id FROM organizations WHERE slug=?',(slug,)).fetchone(): i+=1; slug=f'{base}-{i}'
-        trial=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
-        c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,created_at,updated_at) VALUES(?,?,'TRIAL','ACTIVE',?,?,?)",(name,slug,trial,now(),now()))
+        if attach_to:
+            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,parent_org_id,created_at,updated_at) VALUES(?,?,?,?,NULL,?,?,?)",(name,slug,attach_to['plan'],attach_to['status'],attach_to['id'],now(),now()))
+        else:
+            trial=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
+            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,created_at,updated_at) VALUES(?,?,'TRIAL','ACTIVE',?,?,?)",(name,slug,trial,now(),now()))
         oid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
         c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,'OWNER',?)",(session['user_id'],oid,now())); c.commit(); c.close()
-        session['org_id']=oid; session['role']='OWNER'; init_tenant_db()
+        session['org_id']=oid; session['role']='OWNER'; session.pop('current_entity_id',None); init_tenant_db()
         tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
         log_activity('ORG_CREATED',f'Organisation créée : {name}')
         flash(f'Organisation "{name}" créée et sélectionnée.')
@@ -50,7 +70,7 @@ def register(app):
         if not m:
             flash("Vous n'appartenez pas à cette organisation.")
             return redirect(request.referrer or url_for('home'))
-        session['org_id']=org_id; session['role']=m['role']; init_tenant_db()
+        session['org_id']=org_id; session['role']=m['role']; session.pop('current_entity_id',None); init_tenant_db()
         log_activity('ORG_SWITCH','Changement d\'organisation active')
         return redirect(url_for('home'))
 
@@ -62,17 +82,41 @@ def register(app):
             session['pending_ref_code']=request.args.get('ref','').strip()
         if request.method=='POST':
             name=request.form.get('full_name','').strip(); email=request.form.get('email','').strip().lower(); pw=request.form.get('password',''); company=request.form.get('company_name','').strip()
+            # En cas d'erreur, la saisie (hors mot de passe) est conservée.
+            session['signup_form']={'full_name':name[:120],'email':email[:254],'company_name':company[:200]}
             if not name or not email or not pw or not company: flash('Tous les champs sont obligatoires.'); return redirect(request.url)
-            err=password_error(pw)
+            if request.form.get('accept_terms')!='1':
+                flash("Veuillez accepter les conditions générales d'utilisation et de vente pour créer votre compte."); return redirect(request.url)
+            if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email) or len(email)>254:
+                flash('Adresse e-mail invalide.'); return redirect(request.url)
+            from profitos.legal import is_prelaunch, prelaunch_allowed_emails
+            if is_prelaunch() and email not in prelaunch_allowed_emails():
+                flash("Les inscriptions ouvrent très bientôt. Laissez-nous vos coordonnées via « Demander une démo » : nous vous prévenons dès l'ouverture.")
+                return redirect(url_for('request_demo'))
+            err=password_error(pw,email)
             if err: flash(err); return redirect(request.url)
             c=auth_cx()
-            if c.execute('SELECT id FROM users WHERE email=?',(email,)).fetchone(): c.close(); flash('Un compte existe déjà avec cet e-mail.'); return redirect(url_for('login'))
+            existing=c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
+            if existing:
+                c.close()
+                # Message identique à une inscription réussie (pas d'énumération des comptes) ;
+                # le titulaire réel de l'adresse est prévenu par e-mail.
+                acsec.dummy_password_check(pw)
+                if check_recipient_rate('signup_existing',email):
+                    acsec.notify_user(existing,'Tentative de création de compte',
+                        "Quelqu'un a essayé de créer un compte ProfitOS avec votre adresse e-mail, qui possède déjà un compte. "
+                        "Si c'était vous, connectez-vous ou utilisez « Mot de passe oublié ». Sinon, vous pouvez ignorer ce message.",
+                        cta_label='Me connecter',cta_endpoint='login')
+                log_security_event('SIGNUP_EXISTING_EMAIL','BLOCKED',user_id=existing['id'],target='account')
+                flash("Vérifiez votre boîte de réception : un e-mail vient de vous être envoyé pour finaliser l'accès à votre compte.")
+                return redirect(url_for('login'))
             slug=re.sub(r'[^a-z0-9]+','-',norm(company)).strip('-') or 'company'; base=slug; i=1
             while c.execute('SELECT id FROM organizations WHERE slug=?',(slug,)).fetchone(): i+=1; slug=f'{base}-{i}'
             from datetime import timedelta
             trial=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
             referral_code=secrets.token_urlsafe(6)
-            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,referral_code,created_at,updated_at) VALUES(?,?,'TRIAL','ACTIVE',?,?,?,?)",(company,slug,trial,referral_code,now(),now())); oid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            c.execute("INSERT INTO organizations(name,slug,plan,status,trial_ends_at,referral_code,created_at,updated_at,terms_accepted_at,terms_version) VALUES(?,?,'TRIAL','ACTIVE',?,?,?,?,?,?)",(company,slug,trial,referral_code,now(),now(),now(),TERMS_VERSION)); oid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            session.pop('signup_form',None)
             c.execute('INSERT INTO users(email,password_hash,full_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)',(email,generate_password_hash(pw),name,now(),now())); uid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,'OWNER',?)",(uid,oid,now())); c.commit()
 
@@ -87,19 +131,19 @@ def register(app):
                         (referrer['id'],oid,'PENDING',now())); c.commit()
 
             user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone(); c.close()
-            session.clear(); session.permanent=True; session['user_id']=uid; session['org_id']=oid; session['role']='OWNER'; session['auth_version']=int(user.get('auth_version') or 0); init_tenant_db()
+            acsec.start_user_session(user,oid,'OWNER'); init_tenant_db()
             tc=cx(); tc.execute("INSERT OR IGNORE INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,0,'EUR','fr-FR',1,?,?)",(now(),now())); tc.commit(); tc.close()
             log_activity('SIGNUP',f'Création organisation {company}')
             result=send_verification_email(user)
             if result.get('sent'):
-                flash('Compte créé. Un email de confirmation a été envoyé.')
+                flash('Compte créé. Un e-mail de confirmation a été envoyé.')
             elif result.get('dry_run'):
-                flash("Compte créé. Vérification email : service email non configuré, aucun email envoyé (mode simulation).")
+                flash("Compte créé. Vérification e-mail : service e-mail non configuré, aucun e-mail envoyé (mode simulation).")
             else:
                 current_app.logger.error('Verification email failed after signup: %s', result.get('error','unknown error'))
                 flash("Compte créé, mais l'email de confirmation n'a pas pu être envoyé. Utilisez « Renvoyer l'email de vérification » dans votre compte.")
             return redirect(url_for('onboarding'))
-        return render_template('signup.html')
+        return render_template('signup.html',form=session.pop('signup_form',{}),terms_version=TERMS_VERSION)
 
     @app.route('/login',methods=['GET','POST'])
     @rate_limit(8,300)
@@ -108,7 +152,16 @@ def register(app):
         if request.method=='POST':
             email=request.form.get('email','').strip().lower(); pw=request.form.get('password','')
             c=auth_cx(); u=c.execute('SELECT * FROM users WHERE email=? AND is_active=1',(email,)).fetchone()
-            if not u or not check_password_hash(u['password_hash'],pw):
+            locked_until=acsec.account_locked_until(u) if u else None
+            if locked_until:
+                c.close()
+                acsec.dummy_password_check(pw)
+                log_security_event('LOGIN_LOCKED','BLOCKED',user_id=u['id'],target='account')
+                flash('Trop de tentatives infructueuses : la connexion à ce compte est temporairement bloquée. Réessayez dans quelques minutes.')
+                return redirect(request.url)
+            # Vérification à temps constant : une adresse inconnue calcule aussi un hachage.
+            password_ok=check_password_hash(u['password_hash'],pw) if u else acsec.dummy_password_check(pw)
+            if not u or not password_ok:
                 failed_uid=u['id'] if u else None
                 failed_org=None
                 if u:
@@ -116,13 +169,25 @@ def register(app):
                     failed_org=fm['organization_id'] if fm else None
                 c.close()
                 log_security_event('LOGIN_FAILED','FAILURE',user_id=failed_uid,organization_id=failed_org,target='account')
+                if u and acsec.register_login_failure(u):
+                    log_security_event('ACCOUNT_LOCKED','BLOCKED',user_id=u['id'],organization_id=failed_org,target='account')
                 flash('E-mail ou mot de passe incorrect.')
+                session['login_email']=email[:254]  # l'adresse reste saisie après une erreur
                 return redirect(request.url)
-            m=c.execute('SELECT * FROM memberships WHERE user_id=? ORDER BY id LIMIT 1',(u['id'],)).fetchone(); c.close()
+            m=c.execute('SELECT memberships.* FROM memberships JOIN organizations o ON o.id=memberships.organization_id '
+                        'WHERE memberships.user_id=? ORDER BY (o.deleted_at IS NOT NULL), memberships.id LIMIT 1',(u['id'],)).fetchone(); c.close()
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
-            session.clear(); session.permanent=True; session['user_id']=u['id']; session['org_id']=m['organization_id']; session['role']=m['role']; session['auth_version']=int(u.get('auth_version') or 0); init_tenant_db(); log_activity('LOGIN','Connexion'); log_security_event('LOGIN_SUCCESS','SUCCESS',user_id=u['id'],organization_id=m['organization_id'],target='account')
-            return redirect(safe_next_url(request.args.get('next')) or url_for('home'))
-        return render_template('login.html')
+            acsec.reset_login_failures(u['id'])
+            next_url=safe_next_url(request.args.get('next'))
+            if acsec.user_has_2fa(u):
+                # Second facteur exigé avant d'ouvrir la session.
+                session.clear()
+                session['pending_2fa']={'uid':u['id'],'org':m['organization_id'],'at':now(),'next':next_url}
+                return redirect(url_for('login_two_factor'))
+            session.pop('login_email',None)
+            acsec.start_user_session(u,m['organization_id'],m['role']); init_tenant_db(); log_activity('LOGIN','Connexion'); log_security_event('LOGIN_SUCCESS','SUCCESS',user_id=u['id'],organization_id=m['organization_id'],target='account')
+            return redirect(next_url or url_for('home'))
+        return render_template('login.html',login_email=session.pop('login_email',''))
 
     @app.route('/logout',methods=['POST'])
     @login_required
@@ -130,10 +195,19 @@ def register(app):
         if session.get('user_id'):
             log_activity('LOGOUT','Déconnexion')
             log_security_event('LOGOUT','SUCCESS',target='account')
+            # Les sessions sont des cookies signés : sans révocation côté serveur, un cookie
+            # copié restait valide jusqu'à expiration après la déconnexion. Chaque session a
+            # désormais un identifiant révocable : seule CETTE session (cet appareil) est
+            # fermée. Une session ouverte avant cette version n'a pas d'identifiant : on
+            # retombe alors sur l'incrément d'auth_version (toutes les sessions).
+            if not acsec.revoke_current_session():
+                c=auth_cx()
+                c.execute('UPDATE users SET auth_version=COALESCE(auth_version,0)+1 WHERE id=?',(session['user_id'],))
+                c.commit(); c.close()
         session.clear(); return redirect(url_for('login'))
 
     @app.route('/verify/<token>')
-    @rate_limit(20,900)
+    @limiter.limit('20 per 900 seconds', override_defaults=True)
     def verify_email(token):
         u,stored_token=_token_user('verification',token)
         if not u:
@@ -165,7 +239,7 @@ def register(app):
             flash("Lien de vérification invalide ou déjà utilisé.")
             return redirect(url_for('login'))
         log_security_event('EMAIL_VERIFY','SUCCESS',user_id=u['id'],target='account')
-        flash('Adresse email vérifiée. Merci !')
+        flash('Adresse e-mail vérifiée. Merci !')
         return redirect(url_for('home') if session.get('user_id') else url_for('login'))
 
     @app.route('/verify/resend',methods=['POST'])
@@ -174,13 +248,13 @@ def register(app):
     def verify_resend():
         u=current_user()
         if u['email_verified']:
-            flash('Votre email est déjà vérifié.')
+            flash('Votre e-mail est déjà vérifié.')
         else:
             result=send_verification_email(u)
             if result.get('sent'):
-                flash("Email de vérification renvoyé.")
+                flash("E-mail de vérification renvoyé.")
             elif result.get('dry_run'):
-                flash("Service email non configuré — email non envoyé (mode simulation).")
+                flash("Service e-mail non configuré — e-mail non envoyé (mode simulation).")
             else:
                 flash("L'email n'a pas pu être envoyé pour le moment. Réessayez dans quelques minutes.")
         return redirect(request.referrer or url_for('home'))
@@ -191,13 +265,17 @@ def register(app):
         if request.method=='POST':
             email=request.form.get('email','').strip().lower()
             c=auth_cx(); u=c.execute('SELECT * FROM users WHERE email=? AND is_active=1',(email,)).fetchone(); c.close()
-            if u:
+            if u and check_recipient_rate('password_reset',email):
                 send_reset_email(u)
                 log_security_event('PASSWORD_RESET_REQUEST','ACCEPTED',user_id=u['id'],target='account')
+            elif u:
+                # Plus de 3 demandes par heure pour cette adresse : aucun nouvel e-mail
+                # (anti-harcèlement), message identique pour ne rien révéler.
+                log_security_event('PASSWORD_RESET_REQUEST','THROTTLED',user_id=u['id'],target='account')
             else:
                 log_security_event('PASSWORD_RESET_REQUEST','ACCEPTED',target='unknown_account')
             # Message volontairement identique que le compte existe ou non, pour ne pas révéler les emails inscrits.
-            flash("Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé.")
+            flash("Si un compte existe avec cet e-mail, un lien de réinitialisation vient d'être envoyé.")
             return redirect(url_for('login'))
         return render_template('forgot_password.html')
 
@@ -221,7 +299,7 @@ def register(app):
 
         if request.method=='POST':
             pw=request.form.get('password',''); pw2=request.form.get('password_confirm','')
-            err=password_error(pw)
+            err=password_error(pw,u['email'])
             if err:
                 flash(err); return redirect(request.url)
             if pw!=pw2:
@@ -232,10 +310,11 @@ def register(app):
             # 2) toutes les anciennes sessions de ce compte sont invalidées.
             c=auth_cx()
             result=c.execute(
-                'UPDATE users SET password_hash=?,reset_token=NULL,reset_token_expires=NULL,'
-                'auth_version=COALESCE(auth_version,0)+1,updated_at=? '
+                # Le lien a été reçu dans la boîte mail : l'adresse est donc prouvée.
+                'UPDATE users SET password_hash=?,reset_token=NULL,reset_token_expires=NULL,email_verified=1,'
+                'auth_version=COALESCE(auth_version,0)+1,password_changed_at=?,failed_login_count=0,locked_until=NULL,updated_at=? '
                 'WHERE id=? AND reset_token=?',
-                (generate_password_hash(pw),now(),u['id'],stored_token)
+                (generate_password_hash(pw),now(),now(),u['id'],stored_token)
             )
             c.commit(); c.close()
             if getattr(result,'rowcount',0)!=1:
@@ -243,6 +322,11 @@ def register(app):
                 return redirect(url_for('forgot_password'))
 
             log_security_event('PASSWORD_RESET','SUCCESS',user_id=u['id'],target='account')
+            acsec.revoke_all_sessions(u['id'])
+            acsec.notify_user(u,'Mot de passe modifié',
+                "Le mot de passe de votre compte ProfitOS vient d'être modifié. Si vous n'êtes pas à l'origine "
+                "de ce changement, réinitialisez-le immédiatement et contactez le support.",
+                cta_label='Réinitialiser mon mot de passe',cta_endpoint='forgot_password')
             # La session courante, si elle existe, ne doit pas survivre au changement.
             session.clear()
             flash('Mot de passe mis à jour. Toutes les anciennes sessions ont été invalidées. Vous pouvez vous reconnecter.')
@@ -253,11 +337,31 @@ def register(app):
     @app.route('/onboarding',methods=['GET','POST'])
     @login_required
     def onboarding():
+        from profitos.company_profile import parse_company_form, save_company_profile, LEGAL_FORMS, TEXT_FIELDS
         c=cx(); p=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close(); org=current_org()
+        errors=[]
         if request.method=='POST':
-            company=request.form.get('company_name','').strip(); city=request.form.get('city','').strip(); dep=request.form.get('department','').strip(); allowed=request.form.get('allowed_departments','').strip() or dep; activities=request.form.get('activities','').strip(); certs=request.form.get('certifications','').strip()
-            c=cx(); c.execute("INSERT INTO company(id,name,city,department,allowed_departments,activities,certifications,updated_at) VALUES(1,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,city=excluded.city,department=excluded.department,allowed_departments=excluded.allowed_departments,activities=excluded.activities,certifications=excluded.certifications,updated_at=excluded.updated_at",(company,city,dep,allowed,activities,certs,now())); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,1,'EUR','fr-FR',1,?,?) ON CONFLICT(id) DO UPDATE SET onboarding_complete=1,updated_at=excluded.updated_at",(now(),now())); c.commit(); c.close(); log_activity('ONBOARDING_COMPLETE','Profil entreprise complété'); flash('Onboarding terminé.'); return redirect(url_for('home'))
-        return render_template('onboarding.html',profile=p,org=org)
+            # Étape « Identité de l'entreprise » (SIRET, adresse, TVA, forme juridique) + profil
+            # marchés publics facultatif. Mêmes contrôles que le profil entreprise.
+            merged={k:((p[k] if p and k in p.keys() else '') or '') for k in TEXT_FIELDS}
+            form=dict(request.form)
+            form['name']=request.form.get('company_name','').strip() or request.form.get('name','').strip()
+            for k in TEXT_FIELDS:
+                if k in form: merged[k]=form[k]
+            values,errors=parse_company_form(merged)
+            if not errors:
+                c=cx()
+                save_company_profile(c,values)
+                c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,created_at,updated_at) VALUES(1,1,'EUR','fr-FR',1,?,?) ON CONFLICT(id) DO UPDATE SET onboarding_complete=1,updated_at=excluded.updated_at",(now(),now()))
+                c.commit(); c.close()
+                # Le nom saisi devient aussi le nom de l'organisation (barre latérale, e-mails).
+                if values['name'] and org:
+                    ac=auth_cx(); ac.execute('UPDATE organizations SET name=?,updated_at=? WHERE id=?',(values['name'][:200],now(),org['id'])); ac.commit(); ac.close()
+                log_activity('ONBOARDING_COMPLETE','Profil entreprise complété')
+                flash('Configuration enregistrée. Vous pouvez importer vos premières factures ou en créer une.')
+                return redirect(url_for('home'))
+            p=values
+        return render_template('onboarding.html',profile=p,org=org,errors=errors,legal_forms=LEGAL_FORMS),(400 if errors else 200)
 
     @app.route('/integrations',methods=['GET','POST'])
     @login_required
@@ -284,7 +388,7 @@ def register(app):
                 c.commit()
                 log_activity('INTEGRATION_INTEREST',f'Intérêt exprimé pour {provider}')
             c.close()
-            flash(f"Merci ! On te préviendra dès que la connexion {provider} sera disponible.")
+            flash(f"Merci ! Nous vous préviendrons dès que la connexion {provider} sera disponible.")
             return redirect(url_for('integrations'))
         ac=auth_cx(); requested=ac.execute('SELECT provider FROM integration_interest WHERE organization_id=?',(org['id'],)).fetchall(); ac.close()
         requested_providers={r['provider'] for r in requested}
@@ -301,7 +405,7 @@ def register(app):
         ac=auth_cx()
         referred=ac.execute('SELECT r.*,o.name FROM referrals r JOIN organizations o ON o.id=r.referred_org_id WHERE r.referrer_org_id=? ORDER BY r.id DESC',(org['id'],)).fetchall()
         ac.close()
-        base_url=os.environ.get('APP_BASE_URL',request.host_url.rstrip('/'))
+        base_url=app_base_url()
         referral_link=f"{base_url}{url_for('signup')}?ref={org['referral_code']}"
         return render_template('referral.html',org=org,referred=referred,referral_link=referral_link)
 
@@ -319,9 +423,15 @@ def register(app):
             logo_url=request.form.get('logo_url','').strip() or None
             accent_color=request.form.get('accent_color','').strip() or None
             if logo_url and not validate_logo_url(logo_url): flash('URL de logo invalide (https requis).'); return redirect(request.url)
-            if accent_color and not validate_hex_color(accent_color): flash('Couleur invalide — utilise un format hexadécimal (#111827).'); return redirect(request.url)
+            if accent_color and not validate_hex_color(accent_color): flash('Couleur invalide : utilisez un format hexadécimal (ex. : #111827).'); return redirect(request.url)
             require_validation=1 if request.form.get('require_purchase_validation')=='on' else 0
-            c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,accountant_email,weekly_export_enabled,logo_url,accent_color,require_purchase_validation,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,accountant_email=excluded.accountant_email,weekly_export_enabled=excluded.weekly_export_enabled,logo_url=excluded.logo_url,accent_color=excluded.accent_color,require_purchase_validation=excluded.require_purchase_validation,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,accountant_email,weekly_export,logo_url,accent_color,require_validation,now(),now())); c.commit(); c.close(); log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
+            c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,accountant_email,weekly_export_enabled,logo_url,accent_color,require_purchase_validation,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,accountant_email=excluded.accountant_email,weekly_export_enabled=excluded.weekly_export_enabled,logo_url=excluded.logo_url,accent_color=excluded.accent_color,require_purchase_validation=excluded.require_purchase_validation,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,accountant_email,weekly_export,logo_url,accent_color,require_validation,now(),now())); c.commit(); c.close()
+            # Benchmark anonymisé des délais de paiement : participation volontaire (désactivée par défaut).
+            opt_in=1 if request.form.get('benchmark_opt_in')=='on' else 0
+            ac=auth_cx(); ac.execute('UPDATE organizations SET benchmark_opt_in=? WHERE id=?',(opt_in,session['org_id']))
+            if not opt_in: ac.execute('DELETE FROM sector_dso_signals WHERE organization_id=?',(session['org_id'],))
+            ac.commit(); ac.close()
+            log_activity('SETTINGS_UPDATE','Paramètres mis à jour'); flash('Paramètres enregistrés.'); return redirect(url_for('settings'))
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close(); ac=auth_cx(); activity=ac.execute('SELECT * FROM activity_log WHERE organization_id=? ORDER BY id DESC LIMIT 30',(session['org_id'],)).fetchall(); ac.close(); return render_template('settings.html',app_settings=s,org=current_org(),user=current_user(),activity=activity)
 
     @app.route('/settings/send-accountant-export',methods=['POST'])
@@ -334,14 +444,14 @@ def register(app):
         org=current_org()
         c=cx(); s=c.execute('SELECT * FROM app_settings WHERE id=1').fetchone(); c.close()
         if not s or not s['accountant_email']:
-            flash("Renseigne d'abord l'email de ton comptable dans Settings."); return redirect(url_for('settings'))
+            flash("Renseignez d'abord l'e-mail de votre comptable dans Paramètres."); return redirect(url_for('settings'))
         result=send_accountant_export(org,s['accountant_email'])
         if result.get('dry_run'):
-            flash(f"SMTP/Resend non configuré — email non envoyé (mode simulation) à {s['accountant_email']}.")
+            flash(f"SMTP/Resend non configuré — e-mail non envoyé (mode simulation) à {s['accountant_email']}.")
         elif result.get('sent'):
             flash(f"Export envoyé à {s['accountant_email']}.")
         else:
-            flash(f"Échec de l'envoi : {result.get('error','erreur inconnue')}")
+            flash(f"Échec de l'envoi : {result.get('error') if result.get('blocked') else 'le service e-mail est indisponible, réessayez plus tard.'}")
         return redirect(url_for('settings'))
 
     @app.route('/settings/security-events')
@@ -357,9 +467,14 @@ def register(app):
                 'FROM security_events WHERE organization_id=? ORDER BY id DESC LIMIT 200',
                 (session['org_id'],)
             ).fetchall()
+            ids=sorted({r['user_id'] for r in rows if r['user_id']})
+            user_emails={}
+            if ids:
+                q='SELECT id,email FROM users WHERE id IN (%s)'%','.join('?'*len(ids))
+                user_emails={r['id']:r['email'] for r in c.execute(q,ids).fetchall()}
         finally:
             c.close()
-        return render_template('security_events.html',events=rows)
+        return render_template('security_events.html',events=rows,user_emails=user_emails)
 
     @app.route('/settings/audit-export')
     @login_required
@@ -400,7 +515,12 @@ def register(app):
     @login_required
     @require_area('team')
     def team():
-        c=auth_cx(); rows=c.execute('SELECT memberships.*,users.email,users.full_name FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.organization_id=? ORDER BY memberships.id',(session['org_id'],)).fetchall(); c.close(); return render_template('team.html',members=rows)
+        c=auth_cx(); rows=c.execute('SELECT memberships.*,users.email,users.full_name FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.organization_id=? ORDER BY memberships.id',(session['org_id'],)).fetchall()
+        pending=c.execute('SELECT id,email,role,created_at,expires_at FROM team_invitations WHERE organization_id=? AND accepted_at IS NULL '
+                          'AND revoked_at IS NULL AND expires_at>? ORDER BY id DESC',(session['org_id'],now())).fetchall()
+        org=c.execute('SELECT require_2fa FROM organizations WHERE id=?',(session['org_id'],)).fetchone()
+        c.close()
+        return render_template('team.html',members=rows,pending_invites=pending,require_2fa=acsec.org_requires_2fa(org))
 
     @app.route('/team/<int:uid>/entites', methods=['GET', 'POST'])
     @login_required
@@ -426,7 +546,17 @@ def register(app):
                 c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
             else:
                 checked_raw = request.form.getlist('entity_id')
-                checked = {(int(v) if v else None) for v in checked_raw}
+                # Seules les entités existantes sont acceptées : une valeur altérée ou inconnue
+                # provoquait une erreur 500 (int('abc')) ou un accès à une entité inexistante.
+                known = {str(e['id']) for e in list_all_entities(c) if e['id'] is not None}
+                checked = {(int(v) if v else None) for v in checked_raw if not v or v in known}
+                if not checked:
+                    # Aucune ligne = accès à TOUTES les entités : enregistrer une restriction
+                    # vide ouvrirait tout le dossier au lieu de le fermer.
+                    c.close()
+                    flash("Cochez au moins une entité, ou choisissez « Accès à toutes les entités ». "
+                          "Pour retirer tout accès, retirez le membre de l'équipe.")
+                    return redirect(url_for('team_entity_access', uid=uid))
                 c.execute('DELETE FROM user_entity_access WHERE user_id=?', (uid,))
                 for eid in checked:
                     c.execute(
@@ -459,36 +589,33 @@ def register(app):
     @login_required
     @require_area('settings')
     def gdpr_export():
-        """Export RGPD en lecture seule : toutes les données liées à l'utilisateur et à
-        son organisation active, au format JSON. N'altère jamais les données existantes."""
-        org=current_org(); user=current_user()
-        tc=cx()
-        payload={
-            'utilisateur':{'email':user['email'],'nom':user['full_name'],'compte_cree_le':user['created_at']},
-            'organisation':{'nom':org['name'],'plan':org['plan'],'cree_le':org['created_at']},
-            'profil_entreprise':dict(tc.execute('SELECT * FROM company WHERE id=1').fetchone() or {}),
-            'factures':[dict(r) for r in tc.execute('SELECT * FROM invoices').fetchall()],
-            'depenses':[dict(r) for r in tc.execute('SELECT * FROM expenses').fetchall()],
-            'opportunites':[dict(r) for r in tc.execute('SELECT * FROM opportunities').fetchall()],
-            'actions':[dict(r) for r in tc.execute('SELECT * FROM actions').fetchall()],
-            'resultats_verifies':[dict(r) for r in tc.execute('SELECT * FROM outcomes').fetchall()],
-        }
-        tc.close()
-        log_activity('GDPR_EXPORT','Export RGPD téléchargé')
-        json_bytes=json.dumps(payload,ensure_ascii=False,indent=2,default=str).encode('utf-8')
-        return Response(json_bytes,mimetype='application/json',
-            headers={'Content-Disposition':f'attachment; filename="profitos-export-{org["id"]}.json"'})
+        """Export RGPD de l'organisation (propriétaire / administrateur) : archive ZIP
+        contenant TOUTES les tables de l'organisation en CSV (séparateur « ; »), plus
+        ses métadonnées de compte. Lecture seule. Les secrets (jetons, mots de passe,
+        identifiants d'intégration) sont masqués."""
+        from profitos.gdpr_export import build_organization_export
+        org=current_org()
+        data=build_organization_export(org['id'])
+        log_activity('GDPR_EXPORT','Export RGPD de l\'organisation téléchargé')
+        log_security_event('GDPR_EXPORT','SUCCESS',target='organization')
+        return send_file(io.BytesIO(data),mimetype='application/zip',as_attachment=True,
+                         download_name=f"profitos-export-organisation-{org['id']}-{date.today().isoformat()}.zip",
+                         max_age=0)
 
     @app.route('/settings/delete-account',methods=['GET','POST'])
     @login_required
     def delete_account():
-        """Suppression de compte / départ d'organisation — irréversible.
-        - Si l'utilisateur est le DERNIER membre de l'organisation active : toutes les
-          données de l'organisation sont effacées, puis l'organisation elle-même.
+        """Suppression de compte / départ d'organisation.
+        - Si l'utilisateur est le DERNIER membre de l'organisation active : la suppression
+          de l'organisation est PROGRAMMÉE (délai de grâce de 14 jours pendant lequel elle
+          est inaccessible mais restaurable), puis exécutée par
+          profitos.retention.purge_deleted_organizations() (tâche planifiée).
         - Sinon : seule l'adhésion de l'utilisateur à cette organisation est retirée
           (il quitte l'organisation, les données des autres membres restent intactes).
         - Un propriétaire unique ne peut pas partir sans avoir d'abord promu quelqu'un
-          d'autre au rôle Propriétaire (évite une organisation orpheline)."""
+          d'autre au rôle Propriétaire (évite une organisation orpheline).
+        - Le mot de passe actuel est exigé (ré-authentification)."""
+        from profitos.retention import schedule_organization_deletion, GRACE_PERIOD_DAYS
         org=current_org(); user=current_user()
         ac=auth_cx()
         member_count=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
@@ -499,101 +626,65 @@ def register(app):
                 ac.close()
                 flash("Le nom saisi ne correspond pas exactement au nom de l'organisation.")
                 return redirect(request.url)
+            if not acsec.verify_reauth(user):
+                ac.close()
+                flash("Mot de passe incorrect : la suppression n'a pas été effectuée.")
+                return redirect(request.url)
 
-            if session.get('role')=='OWNER' and member_count>1:
+            if current_role()=='OWNER' and member_count>1:
                 other_owners=ac.execute("SELECT COUNT(*) c FROM memberships WHERE organization_id=? AND role='OWNER' AND user_id!=?",(org['id'],user['id'])).fetchone()['c']
                 if other_owners==0:
                     ac.close()
-                    flash("Tu es le seul propriétaire de cette organisation. Promeus d'abord quelqu'un d'autre au rôle Propriétaire (page Team) avant de partir.")
+                    flash("Vous êtes le seul propriétaire de cette organisation. Attribuez d'abord le rôle Propriétaire à un autre membre (page Équipe) avant de partir.")
                     return redirect(url_for('team'))
 
             if member_count==1:
-                # Dernier membre : effacer d'abord les fichiers puis le stockage tenant.
-                # On ne retire l'adhésion / l'organisation qu'après ces suppressions afin
-                # d'éviter une organisation orpheline si l'effacement échoue.
-                try:
-                    import shutil
-                    upload_dir=UP/f"org_{int(org['id'])}"
-                    if upload_dir.exists():
-                        shutil.rmtree(upload_dir)
-                except Exception:
-                    ac.close()
-                    current_app.logger.exception('Tenant uploads deletion failed for org %s',org['id'])
-                    flash("La suppression des fichiers importés a échoué. L'organisation et le compte ont été conservés afin de pouvoir réessayer en sécurité.")
-                    return redirect(url_for('settings'))
+                # Abonnement Stripe : l'annuler AVANT de programmer la suppression, sinon le client
+                # continue d'être prélevé sans plus avoir de compte (et les webhooks ne retrouvent
+                # plus l'organisation). En cas d'échec, rien n'est programmé.
+                sub_id=(org['stripe_subscription_id'] or '').strip()
+                if sub_id and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
+                    if not BILLING_ENABLED:
+                        ac.close()
+                        flash("Votre abonnement est encore actif et ne peut pas être résilié automatiquement pour le moment. Contactez le support avant de supprimer le compte.")
+                        return redirect(url_for('settings'))
+                    try:
+                        get_stripe().Subscription.cancel(sub_id)
+                    except Exception as exc:
+                        if 'No such subscription' not in str(exc) and 'canceled' not in str(exc).lower():
+                            ac.close()
+                            current_app.logger.exception('Stripe cancel failed for org %s',org['id'])
+                            flash("La résiliation de votre abonnement a échoué : rien n'a été supprimé. Réessayez dans quelques minutes ou contactez le support.")
+                            return redirect(url_for('settings'))
+                ac.close()
+                purge_at=schedule_organization_deletion(org['id'],user['id'])
+                log_activity('ORG_DELETION_SCHEDULED',f"Suppression de l'organisation programmée (purge le {purge_at.date().isoformat()})")
+                log_security_event('ORG_DELETION_SCHEDULED','SUCCESS',target='organization')
+                acsec.revoke_current_session()
+                session.clear()
+                flash(f"La suppression de l'organisation est programmée : elle est désormais inaccessible et ses données "
+                      f"seront définitivement effacées le {fr_date(purge_at.date().isoformat())} ({GRACE_PERIOD_DAYS} jours). "
+                      "Pour l'annuler d'ici là, reconnectez-vous.")
+                return redirect(url_for('login'))
 
-                try:
-                    # PostgreSQL : DROP SCHEMA org_<id> CASCADE.
-                    # SQLite : suppression du fichier tenant org_<id>.db.
-                    # Cela inclut financial_settings et toute future table tenant.
-                    dbmod.delete_tenant_storage(org['id'], tenant_db(org['id']))
-                except Exception:
-                    ac.close()
-                    current_app.logger.exception('Tenant storage deletion failed for org %s',org['id'])
-                    flash("La suppression complète des données de l'organisation a échoué. Le compte a été conservé et aucune confirmation de suppression totale n'a été affichée.")
-                    return redirect(url_for('settings'))
-
-                # Nettoyage des données AUTH/partagées liées à l'organisation.
-                auth_deletes=(
-                    ('buyer_signals','organization_id'),
-                    ('sector_dso_signals','organization_id'),
-                    ('public_invoice_tokens','organization_id'),
-                    ('export_tokens','organization_id'),
-                    ('accounting_fec_tokens','organization_id'),
-                    ('supplier_inbox_tokens','organization_id'),
-                    ('supplier_inbox_entity_tokens','organization_id'),
-                    ('outgoing_invoice_tokens','organization_id'),
-                    ('outgoing_quote_tokens','organization_id'),
-                    ('api_audit_log','organization_id'),
-                    ('api_idempotency','organization_id'),
-                    ('api_keys','organization_id'),
-                    ('cabinet_time_entries','organization_id'),
-                    ('cabinet_documents','organization_id'),
-                    ('partner_directory','organization_id'),
-                    ('integration_interest','organization_id'),
-                    ('activity_log','organization_id'),
-                    ('security_events','organization_id'),
-                    ('plan_usage','organization_id'),
-                )
-                try:
-                    # Nettoyage AUTH atomique : ne jamais annoncer une suppression
-                    # complète si une table partagée actuelle n'a pas pu être nettoyée.
-                    for table,column in auth_deletes:
-                        ac.execute(f'DELETE FROM {table} WHERE {column}=?',(org['id'],))
-                    ac.execute('DELETE FROM referrals WHERE referrer_org_id=? OR referred_org_id=?',(org['id'],org['id']))
-                    ac.execute('DELETE FROM memberships WHERE organization_id=?',(org['id'],))
-                    ac.execute('DELETE FROM organizations WHERE id=?',(org['id'],))
-                    ac.commit()
-                except Exception:
-                    ac.rollback(); ac.close()
-                    current_app.logger.exception('Auth organization deletion failed for org %s',org['id'])
-                    flash("Le stockage privé a été supprimé, mais le nettoyage final des métadonnées du compte a échoué. Aucune confirmation de suppression totale n'a été affichée ; contactez le support pour finaliser le nettoyage.")
-                    session.clear()
-                    return redirect(url_for('login'))
-                remaining_members=0
-            else:
-                # L'organisation continue d'exister : seul l'utilisateur la quitte.
-                ac.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(user['id'],org['id']))
-                ac.commit()
-                remaining_members=ac.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(org['id'],)).fetchone()['c']
-
+            # L'organisation continue d'exister : seul l'utilisateur la quitte.
+            ac.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(user['id'],org['id']))
+            ac.commit()
             remaining_orgs=ac.execute('SELECT COUNT(*) c FROM memberships WHERE user_id=?',(user['id'],)).fetchone()['c']
             if remaining_orgs==0:
+                for table in ('push_device_tokens','user_sessions','user_devices'):
+                    ac.execute(f'DELETE FROM {table} WHERE user_id=?',(user['id'],))
                 ac.execute('DELETE FROM users WHERE id=?',(user['id'],)); ac.commit()
             ac.close()
-
-            if remaining_members==0:
-                # Ne pas recréer une trace AUTH rattachée à l'organisation après
-                # son effacement complet. Le journal applicatif Render reste suffisant.
-                current_app.logger.info('GDPR organization deletion completed for org_id=%s',org['id'])
-            else:
-                log_activity('ACCOUNT_LEFT_ORG',f"Utilisateur retiré de l'organisation : {user['email']}")
+            log_activity('ACCOUNT_LEFT_ORG',f"Utilisateur retiré de l'organisation : {user['email']}")
             session.clear()
-            flash('Toutes les données ont été supprimées.' if remaining_members==0 else 'Tu as quitté cette organisation.')
+            flash('Vous avez quitté cette organisation.' + (' Votre compte utilisateur a été supprimé.' if remaining_orgs==0 else ''))
             return redirect(url_for('login'))
 
         ac.close()
-        return render_template('delete_account.html',org=org,is_last_member=(member_count==1))
+        return render_template('delete_account.html',org=org,is_last_member=(member_count==1),
+                               grace_days=GRACE_PERIOD_DAYS,can_export_accounting=can_access('accounting'),
+                               can_export_org=can_access('settings'))
 
     @app.route('/changelog/seen',methods=['POST'])
     @login_required
@@ -616,18 +707,21 @@ def register(app):
         stats=[{'name':r['changed_by'],'total_changes':r['n'],'invoices_recovered':recovered_map.get(r['changed_by'],0)} for r in rows]
         return render_template('team_performance.html',stats=stats)
 
-    def send_invite_email(user, org, role, dry_run=None):
-        token=gen_token()
-        expires=(datetime.now(timezone.utc)+timedelta(days=7)).isoformat()
-        c=auth_cx()
-        c.execute('UPDATE users SET reset_token=?,reset_token_expires=? WHERE id=?',(token_digest(token),expires,user['id']))
-        c.commit(); c.close()
-        base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050')
-        link=f"{base}{url_for('reset_password',token=token)}"
-        html=render_template('email_transactional.html',title='Vous avez été invité(e) sur ProfitOS',
-            intro=f"{org['name']} vous a invité(e) à rejoindre ProfitOS avec le rôle \"{ROLE_LABELS.get(role,role)}\". Cliquez ci-dessous pour définir votre mot de passe et accéder à votre compte.",
-            cta_label='Définir mon mot de passe',cta_url=link,footer="Si vous ne connaissez pas cette organisation, vous pouvez ignorer cet email.")
-        return send_email(user['email'],f"Invitation à rejoindre {org['name']} sur ProfitOS",html,dry_run=dry_run)
+    def send_invite_email(email, org, role, raw_token, existing_user, dry_run=None):
+        """Invitation : lien d'acceptation à usage unique, valable 7 jours. Le compte
+        existant n'est JAMAIS modifié (ni mot de passe, ni sessions) : la personne
+        accepte en se connectant avec cette adresse, ou crée son compte via le lien."""
+        inviter=current_user()
+        link=f"{app_base_url()}{url_for('team_invitation',token=raw_token)}"
+        intro=(f"{inviter['full_name'] or inviter['email']} ({inviter['email']}) vous invite à rejoindre l'organisation "
+               f"« {org['name']} » sur ProfitOS avec le rôle « {ROLE_LABELS.get(role,role)} ». ")
+        intro+=("Connectez-vous avec cette adresse e-mail pour accepter l'invitation." if existing_user
+                else "Cliquez ci-dessous pour créer votre compte et rejoindre l'organisation.")
+        html=render_template('email_transactional.html',title='Invitation à rejoindre une organisation',
+            intro=intro,cta_label="Voir l'invitation",cta_url=link,
+            footer="Ce lien est valable 7 jours. Si vous ne connaissez pas l'expéditeur, ignorez ce message : rien ne sera fait sans votre accord.")
+        # Objet fixe : jamais le nom d'organisation choisi par l'expéditeur (anti-hameçonnage).
+        return send_email(email,"Invitation à rejoindre une organisation sur ProfitOS",html,dry_run=dry_run,kind='invite')
 
     @app.route('/team/invite',methods=['POST'])
     @login_required
@@ -637,45 +731,73 @@ def register(app):
         if current_role()!='OWNER':
             flash("Seul le propriétaire peut inviter des membres."); return redirect(url_for('team'))
         email=request.form.get('email','').strip().lower(); role=request.form.get('role','MEMBER').upper()
-        if role not in ROLES: role='MEMBER'
-        if not email: flash('Email requis.'); return redirect(url_for('team'))
+        if role not in ROLES or role=='OWNER': role='MEMBER'
+        if not email or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email) or len(email)>254:
+            flash('Adresse e-mail invalide.'); return redirect(url_for('team'))
+        quota_error=check_outbound_email_quota('invite')
+        if quota_error:
+            flash(quota_error); return redirect(url_for('team'))
         c=auth_cx()
 
         org=current_org()
-        plan=(org['plan'] if org else 'TRIAL')
+        plan=effective_plan(org) if org else 'TRIAL'
         member_count=c.execute(
             'SELECT COUNT(*) AS n FROM memberships WHERE organization_id=?',
             (session['org_id'],)
         ).fetchone()['n']
+        pending_count=c.execute(
+            'SELECT COUNT(*) AS n FROM team_invitations WHERE organization_id=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?',
+            (session['org_id'],now())
+        ).fetchone()['n']
 
-        if not within_limit(plan,'team_members',member_count,1):
+        if not within_limit(plan,'team_members',member_count+pending_count,1):
             c.close()
             limit=plan_limit(plan,'team_members')
             log_security_event('PLAN_LIMIT','BLOCKED',organization_id=session['org_id'],target='team_members')
             flash(
-                f"Votre formule {plan} autorise au maximum {limit} utilisateur(s) dans l'équipe. "
+                f"Votre formule {plan} autorise au maximum {pluralize(limit, 'utilisateur')} dans l'équipe. "
                 "Passez à une formule supérieure pour inviter davantage de membres."
             )
             return redirect(url_for('team'))
 
         already=c.execute('SELECT 1 FROM memberships JOIN users ON users.id=memberships.user_id WHERE users.email=? AND memberships.organization_id=?',(email,session['org_id'])).fetchone()
         if already: c.close(); flash('Cette personne est déjà membre de cette organisation.'); return redirect(url_for('team'))
-        user=c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
-        if not user:
-            c.execute('INSERT INTO users(email,password_hash,full_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)',
-                (email,generate_password_hash(secrets.token_hex(16)),'',now(),now()))
-            uid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-            user=c.execute('SELECT * FROM users WHERE id=?',(uid,)).fetchone()
-        c.execute("INSERT INTO memberships(user_id,organization_id,role,created_at) VALUES(?,?,?,?)",(user['id'],session['org_id'],role,now())); c.commit(); c.close()
-        org=current_org(); result=send_invite_email(user,org,role)
+        existing_user=c.execute('SELECT id FROM users WHERE email=? AND is_active=1',(email,)).fetchone()
+        raw_token=gen_token()
+        expires=(datetime.now(timezone.utc)+timedelta(days=7)).isoformat()
+        # Une seule invitation active par adresse : la précédente est révoquée.
+        c.execute('UPDATE team_invitations SET revoked_at=? WHERE organization_id=? AND email=? AND accepted_at IS NULL AND revoked_at IS NULL',
+                  (now(),session['org_id'],email))
+        c.execute('INSERT INTO team_invitations(organization_id,email,role,token_hash,invited_by,created_at,expires_at) VALUES(?,?,?,?,?,?,?)',
+                  (session['org_id'],email,role,token_digest(raw_token),session['user_id'],now(),expires))
+        c.commit(); c.close()
+        result=send_invite_email(email,org,role,raw_token,bool(existing_user))
         log_activity('TEAM_INVITE',f'Invitation envoyée à {email} ({ROLE_LABELS.get(role,role)})')
-        log_security_event('TEAM_INVITE','SUCCESS',user_id=session.get('user_id'),target=f'user:{user["id"]}')
+        log_security_event('TEAM_INVITE','SUCCESS',user_id=session.get('user_id'),target=f'invite:{email[:3]}***')
         if result.get('sent'):
-            flash(f"Invitation envoyée à {email}.")
+            flash(f"Invitation envoyée à {email}. La personne rejoindra l'équipe après avoir accepté.")
         elif result.get('dry_run'):
-            flash(f"Membre ajouté. Service email non configuré — email d'invitation non envoyé (mode simulation) à {email}.")
+            flash(f"Invitation créée. Service e-mail non configuré — e-mail non envoyé (mode simulation) à {email}.")
+        elif result.get('blocked'):
+            flash(result.get('error'))
         else:
-            flash(f"Membre ajouté, mais l'email d'invitation n'a pas pu être envoyé à {email}.")
+            flash(f"Invitation créée, mais l'e-mail n'a pas pu être envoyé à {email}. Vous pouvez la révoquer et réessayer.")
+        return redirect(url_for('team'))
+
+    @app.route('/team/invitations/<int:invite_id>/revoquer',methods=['POST'])
+    @login_required
+    @require_area('team')
+    def team_invite_revoke(invite_id):
+        if current_role()!='OWNER':
+            flash("Seul le propriétaire peut révoquer une invitation."); return redirect(url_for('team'))
+        c=auth_cx()
+        r=c.execute('UPDATE team_invitations SET revoked_at=? WHERE id=? AND organization_id=? AND accepted_at IS NULL AND revoked_at IS NULL',
+                    (now(),invite_id,session['org_id']))
+        c.commit(); c.close()
+        if getattr(r,'rowcount',0)!=1:
+            flash("Invitation introuvable ou déjà utilisée."); return redirect(url_for('team'))
+        log_security_event('TEAM_INVITE_REVOKED','SUCCESS',target=f'invite:{invite_id}')
+        flash("Invitation révoquée.")
         return redirect(url_for('team'))
 
     @app.route('/team/<int:uid>/role',methods=['POST'])
@@ -701,10 +823,98 @@ def register(app):
             flash("Seul le propriétaire peut retirer des membres."); return redirect(url_for('team'))
         if uid==session['user_id']:
             flash("Vous ne pouvez pas vous retirer vous-même."); return redirect(url_for('team'))
-        c=auth_cx(); c.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(uid,session['org_id'])); c.commit(); c.close()
+        if not acsec.verify_reauth(current_user()):
+            flash("Mot de passe incorrect : confirmez votre mot de passe pour retirer un membre."); return redirect(url_for('team'))
+        c=auth_cx(); c.execute('DELETE FROM memberships WHERE user_id=? AND organization_id=?',(uid,session['org_id']))
+        if not c.execute('SELECT 1 FROM memberships WHERE user_id=? LIMIT 1',(uid,)).fetchone():
+            # Plus aucune organisation : appareils de notification supprimés, compte
+            # anonymisé après 30 jours (retention.anonymize_orphan_users).
+            c.execute('DELETE FROM push_device_tokens WHERE user_id=?',(uid,))
+            c.execute('UPDATE users SET membership_lost_at=? WHERE id=?',(now(),uid))
+        c.commit(); c.close()
         log_activity('TEAM_REMOVE',f'Membre #{uid} retiré')
         log_security_event('TEAM_REMOVE','SUCCESS',target=f'user:{uid}')
         flash('Membre retiré de l\'organisation.'); return redirect(url_for('team'))
+
+    # Garde global : abonnement actif/essai valide + formule, pour toutes les
+    # routes connectées (liste d'exceptions dans profitos/feature_access.py).
+    from profitos.feature_access import enforce_subscription_access
+    app.before_request(enforce_subscription_access)
+
+    def _billing_owner_contact(payer):
+        if not payer: return None
+        acx=auth_cx()
+        try:
+            return acx.execute(
+                "SELECT u.full_name,u.email FROM memberships m JOIN users u ON u.id=m.user_id "
+                "WHERE m.organization_id=? AND m.role='OWNER' ORDER BY m.id LIMIT 1",
+                (payer['id'],)
+            ).fetchone()
+        finally:
+            acx.close()
+
+    def _open_billing_portal(stripe, org, customer_id=None):
+        customer_id=customer_id or org['stripe_customer_id']
+        if not stripe or not customer_id:
+            flash("Aucun abonnement Stripe associé à cette organisation.")
+            return redirect(url_for('billing'))
+        base=app_base_url().rstrip('/')
+        try:
+            portal=stripe.billing_portal.Session.create(customer=customer_id,return_url=f'{base}{url_for("billing")}')
+        except Exception:
+            current_app.logger.exception('Stripe portal failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
+            log_security_event('BILLING_PORTAL','FAILURE',organization_id=org['id'],target='billing')
+            flash("Impossible d'ouvrir le portail de facturation pour le moment.")
+            return redirect(url_for('billing'))
+        log_security_event('BILLING_PORTAL','SUCCESS',organization_id=org['id'],target='billing')
+        return redirect(portal.url,code=303)
+
+    def _stripe_has_live_subscription(stripe, customer_id):
+        """True si Stripe connaît déjà un abonnement actif, en essai ou impayé pour
+        ce client. Une erreur d'API est propagée (on ne crée jamais de paiement
+        à l'aveugle)."""
+        subs=stripe.Subscription.list(customer=customer_id,status='all',limit=20)
+        for sub in (subs.get('data') if hasattr(subs,'get') else subs) or []:
+            if (sub.get('status') or '') in ('active','trialing','past_due'):
+                return True
+        return False
+
+    def _expire_open_checkout_sessions(stripe, customer_id):
+        try:
+            sessions=stripe.checkout.Session.list(customer=customer_id,status='open',limit=20)
+            for cs in (sessions.get('data') if hasattr(sessions,'get') else sessions) or []:
+                try:
+                    stripe.checkout.Session.expire(cs['id'])
+                except Exception:
+                    current_app.logger.warning('Stripe checkout session expire failed id=%s',cs.get('id'))
+        except Exception:
+            current_app.logger.warning('Stripe open checkout sessions lookup failed customer=%s',customer_id)
+
+    @app.route('/abonnement-inactif')
+    @login_required
+    def subscription_inactive():
+        """Page accessible à tous les rôles (pas de require_area) : évite la boucle
+        /billing (réservé au propriétaire) -> / -> /billing."""
+        org=current_org()
+        has_access=org_has_access(org)
+        reason='formule' if request.args.get('raison')=='formule' else 'inactif'
+        if reason=='inactif' and has_access:
+            return redirect(url_for('home'))
+        payer=billing_org(org) if org else None
+        is_child=bool(payer and org and payer['id']!=org['id'])
+        is_owner=current_role()=='OWNER' and not is_child
+        grace_end=past_due_grace_end(payer)
+        return render_template(
+            'subscription_inactive.html',
+            org=org,
+            payer=payer,
+            is_child=is_child,
+            is_owner=is_owner,
+            owner_contact=_billing_owner_contact(payer),
+            state=subscription_state(org),
+            reason=reason,
+            grace_end=grace_end.strftime('%d/%m/%Y') if grace_end else None,
+        )
 
     @app.route('/billing')
     @login_required
@@ -712,14 +922,17 @@ def register(app):
     def billing():
         org=current_org()
         plans={k:v for k,v in STRIPE_PLANS.items() if v.get('price_id')}
+        payer=billing_org(org)
+        is_child=bool(payer and payer['id']!=org['id'])
 
         cancellation_scheduled=False
         cancellation_date=None
 
+        renewal_date=None
         stripe=get_stripe()
-        sub_id=org['stripe_subscription_id'] if org else None
+        sub_id=payer['stripe_subscription_id'] if payer and not is_child else None
 
-        if stripe and sub_id and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
+        if stripe and sub_id and payer['status'] in ('ACTIVE_PAID','PAST_DUE'):
             try:
                 subscription=stripe.Subscription.retrieve(sub_id)
                 cancellation_scheduled=bool(subscription.get('cancel_at_period_end'))
@@ -733,11 +946,12 @@ def register(app):
                         ).strftime('%d/%m/%Y')
                     except (TypeError,ValueError,OverflowError):
                         cancellation_date=None
+                renewal_date=cancellation_date
 
                 if cancellation_scheduled:
                     if cancellation_date:
                         flash(
-                            f"Annulation programmée le {cancellation_date}. "
+                            f"Annulation programmée le {fr_date(cancellation_date)}. "
                             "Vous conservez l'accès à votre abonnement jusqu'à cette date."
                         )
                     else:
@@ -753,8 +967,8 @@ def register(app):
                     org['id'] if org else None
                 )
 
-        # Utilisation et limites du plan courant.
-        current_plan=(org['plan'] if org else 'TRIAL')
+        # Utilisation et limites du plan courant (plan du parent Multi-sociétés).
+        current_plan=effective_plan(org) if org else 'TRIAL'
         import_usage=quota_state(
             'imports_per_month',
             organization_id=org['id'] if org else None,
@@ -773,16 +987,27 @@ def register(app):
                 (org['id'],)
             ).fetchone()['n'] if org else 0
 
-            organizations_owned=acx.execute(
-                "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
-                (session['user_id'],)
-            ).fetchone()['n']
+            if (plan_limit(current_plan,'organizations') or 0)>1:
+                organizations_owned=acx.execute(
+                    'SELECT COUNT(*) AS n FROM organizations WHERE id=? OR parent_org_id=?',
+                    (payer['id'],payer['id'])
+                ).fetchone()['n']
+            else:
+                organizations_owned=acx.execute(
+                    "SELECT COUNT(*) AS n FROM memberships WHERE user_id=? AND role='OWNER'",
+                    (session['user_id'],)
+                ).fetchone()['n']
         finally:
             acx.close()
 
         quota_usage={
             'imports': import_usage,
             'reports': report_usage,
+            'ai': quota_state(
+                'ai_extractions_per_month',
+                organization_id=payer['id'] if payer else None,
+                plan=current_plan,
+            ),
             'team': {
                 'used': int(team_members),
                 'limit': plan_limit(current_plan,'team_members'),
@@ -805,6 +1030,16 @@ def register(app):
             cancellation_date=cancellation_date,
             plan_limits=PLAN_LIMITS,
             quota_usage=quota_usage,
+            catalog=STRIPE_PLANS,
+            feature_labels=FEATURE_LABELS,
+            payer=payer,
+            is_child=is_child,
+            owner_contact=_billing_owner_contact(payer) if is_child else None,
+            current_plan=current_plan,
+            sub_state=subscription_state(org),
+            renewal_date=renewal_date,
+            grace_end=(past_due_grace_end(payer).strftime('%d/%m/%Y') if past_due_grace_end(payer) else None),
+            overage=plan_overage(org),
         )
 
     @app.route('/billing/checkout',methods=['POST'])
@@ -812,6 +1047,10 @@ def register(app):
     @require_area('billing')
     @rate_limit(6,60)
     def billing_checkout():
+        from profitos.legal import is_prelaunch
+        if is_prelaunch():
+            flash("Le paiement en ligne ouvre au lancement officiel de ProfitOS. Votre essai continue normalement.")
+            return redirect(url_for('billing'))
         # Défense en profondeur : la facturation ne peut être pilotée que par le propriétaire.
         if current_role()!='OWNER':
             log_security_event('BILLING_CHECKOUT','FORBIDDEN',target='billing')
@@ -824,7 +1063,7 @@ def register(app):
         selected=STRIPE_PLANS.get(plan)
 
         if not stripe:
-            flash("La facturation Stripe n'est pas configurée.")
+            flash("Le paiement en ligne sera bientôt disponible. Contactez-nous pour souscrire : votre essai en cours n'est pas interrompu.")
             return redirect(url_for('billing'))
 
         if not selected or not selected.get('price_id'):
@@ -833,6 +1072,13 @@ def register(app):
 
         org=current_org()
         user=current_user()
+
+        # Organisation rattachée à une formule Multi-sociétés : l'abonnement est
+        # porté par l'organisation mère, jamais souscrit une seconde fois ici.
+        payer=billing_org(org)
+        if payer and payer['id']!=org['id']:
+            flash("Cette organisation est incluse dans l'abonnement Multi-sociétés de « "+payer['name']+" ». Gérez l'abonnement depuis cette organisation.")
+            return redirect(url_for('billing'))
 
         # Verrou court anti-double-clic / requêtes répétées depuis le même navigateur.
         lock_key=f"billing_checkout_lock_{org['id']}"
@@ -847,11 +1093,12 @@ def register(app):
                 pass
         session[lock_key]=now_ts
 
-        # Évite de créer plusieurs abonnements en parallèle pour la même organisation.
+        # Évite de créer plusieurs abonnements en parallèle pour la même organisation :
+        # un abonnement existant se modifie dans le portail Stripe (changement de formule).
         if org['stripe_subscription_id'] and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
             session.pop(lock_key,None)
-            flash("Un abonnement Stripe existe déjà. Utilisez le portail pour le modifier ou le gérer.")
-            return redirect(url_for('billing'))
+            flash("Un abonnement Stripe existe déjà : changez de formule depuis le portail de facturation.")
+            return _open_billing_portal(stripe,org)
 
         customer_id=org['stripe_customer_id']
 
@@ -891,7 +1138,31 @@ def register(app):
                 finally:
                     acx.close()
 
-            base=os.environ.get('APP_BASE_URL','https://app.profitos.fr').rstrip('/')
+            # Source de vérité Stripe : un abonnement actif/en essai/impayé existe
+            # déjà pour ce client (ex. second paiement pendant l'essai) -> portail.
+            if customer_id and _stripe_has_live_subscription(stripe,customer_id):
+                session.pop(lock_key,None)
+                log_security_event('BILLING_CHECKOUT','DUPLICATE_PREVENTED',organization_id=org['id'],target=f'plan:{plan}')
+                flash("Un abonnement est déjà en place pour cette organisation : changez de formule depuis le portail de facturation.")
+                return _open_billing_portal(stripe,org,customer_id)
+            # Une seule session de paiement ouverte à la fois : les précédentes
+            # sont expirées pour qu'elles ne puissent plus créer un 2e abonnement.
+            if customer_id:
+                _expire_open_checkout_sessions(stripe,customer_id)
+
+            base=app_base_url().rstrip('/')
+
+            subscription_data={
+                'metadata':{
+                    'organization_id':str(org['id']),
+                    'plan':plan
+                }
+            }
+            # Payer pendant l'essai ne fait pas perdre les jours restants
+            # (Stripe exige une fin d'essai à plus de 48 h).
+            trial_end_dt=parse_dt(org['trial_ends_at']) if trial_is_active(org) else None
+            if trial_end_dt and trial_end_dt>datetime.now(timezone.utc)+timedelta(hours=49):
+                subscription_data['trial_end']=int(trial_end_dt.timestamp())
 
             checkout=stripe.checkout.Session.create(
                 customer=customer_id,
@@ -909,13 +1180,17 @@ def register(app):
                     'organization_id':str(org['id']),
                     'plan':plan
                 },
-                subscription_data={
-                    'metadata':{
-                        'organization_id':str(org['id']),
-                        'plan':plan
-                    }
-                },
-                idempotency_key=f"profitos-checkout-{org['id']}-{plan}-{now_ts//300}",
+                subscription_data=subscription_data,
+                # TVA : prix HT, TVA calculée par Stripe Tax selon l'adresse de facturation.
+                automatic_tax={'enabled':STRIPE_AUTOMATIC_TAX},
+                tax_id_collection={'enabled':True},
+                billing_address_collection='required',
+                customer_update={'address':'auto','name':'auto'},
+                locale='fr',
+                allow_promotion_codes=True,
+                # Clé unique par tentative : les sessions précédentes viennent d'être
+                # expirées ; une clé réutilisée rejouerait une session expirée.
+                idempotency_key=f"profitos-checkout-{org['id']}-{plan}-{secrets.token_hex(8)}",
             )
 
         except Exception:
@@ -944,19 +1219,7 @@ def register(app):
             abort(403)
 
         stripe=get_stripe(); org=current_org()
-        if not stripe or not org['stripe_customer_id']:
-            flash("Aucun abonnement Stripe associé à cette organisation.")
-            return redirect(url_for('billing'))
-        base=os.environ.get('APP_BASE_URL','http://127.0.0.1:5050').rstrip('/')
-        try:
-            portal=stripe.billing_portal.Session.create(customer=org['stripe_customer_id'],return_url=f'{base}{url_for("billing")}')
-        except Exception:
-            current_app.logger.exception('Stripe portal failure request_id=%s org_id=%s',getattr(g,'request_id','-'),org['id'])
-            log_security_event('BILLING_PORTAL','FAILURE',organization_id=org['id'],target='billing')
-            flash("Impossible d'ouvrir le portail de facturation pour le moment.")
-            return redirect(url_for('billing'))
-        log_security_event('BILLING_PORTAL','SUCCESS',organization_id=org['id'],target='billing')
-        return redirect(portal.url,code=303)
+        return _open_billing_portal(stripe,org)
 
     @app.route('/billing/success')
     @login_required
@@ -964,6 +1227,30 @@ def register(app):
         # Ne jamais activer un plan depuis ce retour navigateur : seul le webhook signé fait foi.
         flash("Paiement reçu par Stripe. Votre abonnement sera affiché actif dès confirmation sécurisée.")
         return redirect(url_for('billing'))
+
+    def _fetch_subscription(stripe, sub_id):
+        """Relit l'abonnement depuis l'API Stripe (état courant, pas celui de
+        l'événement). None si indisponible : l'appelant retombe sur l'événement."""
+        if not stripe or not sub_id: return None
+        try:
+            return stripe.Subscription.retrieve(sub_id)
+        except Exception:
+            current_app.logger.warning('Stripe subscription re-fetch failed sub=%s',sub_id)
+            return None
+
+    def _plan_from_subscription(sub, org_row):
+        """Plan déduit du price_id Stripe. Un price_id inconnu n'est jamais
+        remplacé par metadata.plan (potentiellement obsolète) : on journalise et
+        on conserve le plan actuel (retour None)."""
+        items=((sub.get('items') or {}).get('data') or []) if sub else []
+        price_id=((items[0].get('price') or {}).get('id')) if items else None
+        plan=STRIPE_PRICE_TO_PLAN.get(price_id)
+        if not plan and price_id:
+            current_app.logger.warning(
+                'Stripe subscription with unknown price_id=%s org_id=%s: plan unchanged',
+                price_id, org_row['id'] if org_row else None
+            )
+        return plan
 
     @app.route('/billing/webhook',methods=['POST'])
     def billing_webhook():
@@ -1004,19 +1291,49 @@ def register(app):
                 sub_id=obj.get('subscription'); plan=(obj.get('metadata',{}).get('plan') or '').upper()
                 customer_id=obj.get('customer')
 
-                if org_id and sub_id and plan in STRIPE_PLANS:
+                # Prélèvement SEPA : la session peut être « complete » avant que le paiement soit
+                # confirmé. On n'active alors rien ici ; customer.subscription.updated (active)
+                # activera l'abonnement une fois le paiement réellement passé.
+                payment_ok=obj.get('payment_status') in (None,'paid','no_payment_required')
+                if org_id and sub_id and payment_ok:
                     org_row=acx.execute(
-                        'SELECT id,stripe_customer_id FROM organizations WHERE id=?',
+                        'SELECT * FROM organizations WHERE id=?',
                         (org_id,)
                     ).fetchone()
 
                     # N'accepte le Checkout que s'il appartient bien à l'organisation attendue.
                     if org_row and (not org_row['stripe_customer_id'] or org_row['stripe_customer_id']==customer_id):
-                        acx.execute(
-                            "UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",
-                            (plan,sub_id,now(),org_id)
-                        )
-                        reward_referrer_if_any(acx,org_id)
+                        stored_sub=org_row['stripe_subscription_id']
+                        if stored_sub and stored_sub!=sub_id and org_row['status'] in ('ACTIVE_PAID','PAST_DUE'):
+                            # Deuxième abonnement pour une organisation déjà abonnée : on
+                            # ne bascule jamais dessus ; signalé pour remboursement manuel.
+                            current_app.logger.error(
+                                'Stripe duplicate subscription event_id=%s org_id=%s kept=%s duplicate=%s',
+                                event_id, org_id, stored_sub, sub_id
+                            )
+                            log_security_event('BILLING_DUPLICATE_SUBSCRIPTION','FAILURE',organization_id=org_row['id'],target=f'subscription:{sub_id}')
+                        else:
+                            sub=_fetch_subscription(stripe,sub_id)
+                            if sub:
+                                # price_id inconnu : jamais de confiance dans metadata.plan
+                                # (possiblement obsolète) ; on garde la formule actuelle.
+                                plan=_plan_from_subscription(sub,org_row) or (org_row['plan'] if org_row['plan'] in STRIPE_PLANS else None)
+                            else:
+                                # API Stripe indisponible : plan de la session créée par notre serveur.
+                                plan=plan if plan in STRIPE_PLANS else None
+                            if not plan:
+                                # Abonnement rattaché (les événements suivants le reconnaîtront)
+                                # sans activer de formule indéterminée.
+                                acx.execute('UPDATE organizations SET stripe_subscription_id=?,stripe_customer_id=COALESCE(stripe_customer_id,?),updated_at=? WHERE id=?',
+                                            (sub_id,customer_id,now(),org_row['id']))
+                            if plan:
+                                acx.execute(
+                                    "UPDATE organizations SET plan=?,status='ACTIVE_PAID',stripe_subscription_id=?,stripe_customer_id=COALESCE(stripe_customer_id,?),past_due_since=NULL,updated_at=? WHERE id=?",
+                                    (plan,sub_id,customer_id,now(),org_row['id'])
+                                )
+                                sync_child_orgs(acx,org_row['id'])
+                                reward_referrer_if_any(acx,org_row['id'])
+                                apply_pending_referral_credit(acx,org_row['id'])
                     else:
                         current_app.logger.warning(
                             'Stripe checkout customer mismatch event_id=%s org_id=%s',
@@ -1025,37 +1342,55 @@ def register(app):
                         )
 
             elif etype in ('customer.subscription.created','customer.subscription.updated','customer.subscription.deleted'):
-                sub_id=obj.get('id'); status=obj.get('status'); metadata=obj.get('metadata') or {}
-                org_id=metadata.get('organization_id')
-                row=acx.execute('SELECT id FROM organizations WHERE stripe_subscription_id=?',(sub_id,)).fetchone() if sub_id else None
-                if not row and org_id:
-                    row=acx.execute('SELECT id FROM organizations WHERE id=?',(org_id,)).fetchone()
-                if row:
-                    price_id=None
-                    items=((obj.get('items') or {}).get('data') or [])
-                    if items:
-                        price_id=((items[0].get('price') or {}).get('id'))
-                    plan=STRIPE_PRICE_TO_PLAN.get(price_id) or (metadata.get('plan') or '').upper()
-                    if plan not in STRIPE_PLANS: plan=None
+                sub_id=obj.get('id'); metadata=obj.get('metadata') or {}
+                row=acx.execute('SELECT * FROM organizations WHERE stripe_subscription_id=?',(sub_id,)).fetchone() if sub_id else None
+                first_attachment=False
+                if not row and sub_id and etype!='customer.subscription.deleted' and metadata.get('organization_id'):
+                    # Seule exception à la règle « abonnement = celui enregistré » :
+                    # la toute première association, pour le même client Stripe.
+                    cand=acx.execute('SELECT * FROM organizations WHERE id=?',(metadata.get('organization_id'),)).fetchone()
+                    if cand and not cand['stripe_subscription_id'] and (not cand['stripe_customer_id'] or cand['stripe_customer_id']==obj.get('customer')):
+                        row=cand; first_attachment=True
+                if not row:
+                    current_app.logger.info('Stripe subscription event ignored (not the current subscription) event_id=%s sub=%s',event_id,sub_id)
+                else:
+                    # Statut frais depuis l'API (événements livrés dans le désordre).
+                    sub=(_fetch_subscription(stripe,sub_id) if etype!='customer.subscription.deleted' else None) or obj
+                    status=sub.get('status')
                     if etype=='customer.subscription.deleted' or status in ('canceled','unpaid','incomplete_expired'):
-                        acx.execute("UPDATE organizations SET status='CANCELED',updated_at=? WHERE id=?",(now(),row['id']))
+                        if not first_attachment:
+                            acx.execute("UPDATE organizations SET status='CANCELED',updated_at=? WHERE id=?",(now(),row['id']))
                     elif status in ('active','trialing'):
-                        if plan:
-                            acx.execute("UPDATE organizations SET status='ACTIVE_PAID',plan=?,stripe_subscription_id=?,updated_at=? WHERE id=?",(plan,sub_id,now(),row['id']))
-                        else:
-                            acx.execute("UPDATE organizations SET status='ACTIVE_PAID',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),row['id']))
-                    elif status in ('past_due','incomplete'):
-                        acx.execute("UPDATE organizations SET status='PAST_DUE',stripe_subscription_id=?,updated_at=? WHERE id=?",(sub_id,now(),row['id']))
+                        plan=_plan_from_subscription(sub,row) or row['plan']
+                        acx.execute("UPDATE organizations SET status='ACTIVE_PAID',plan=?,stripe_subscription_id=?,stripe_customer_id=COALESCE(stripe_customer_id,?),past_due_since=NULL,updated_at=? WHERE id=?",(plan,sub_id,obj.get('customer'),now(),row['id']))
+                    elif status=='past_due':
+                        # Seul un abonnement actif peut passer en impayé (jamais un abonnement résilié).
+                        acx.execute("UPDATE organizations SET status='PAST_DUE',past_due_since=COALESCE(past_due_since,?),updated_at=? WHERE id=? AND status='ACTIVE_PAID'",(now(),now(),row['id']))
+                    # 'incomplete' : premier paiement en cours -> aucun changement (jamais de rétrogradation).
+                    sync_child_orgs(acx,row['id'])
 
             elif etype=='invoice.payment_failed':
-                customer_id=obj.get('customer')
+                customer_id=obj.get('customer'); inv_sub=obj.get('subscription')
                 if customer_id:
-                    acx.execute("UPDATE organizations SET status='PAST_DUE',updated_at=? WHERE stripe_customer_id=?",(now(),customer_id))
+                    sql="SELECT id FROM organizations WHERE stripe_customer_id=? AND status='ACTIVE_PAID'"
+                    params=[customer_id]
+                    if inv_sub:
+                        sql+=" AND stripe_subscription_id=?"; params.append(inv_sub)
+                    for r in acx.execute(sql,tuple(params)).fetchall():
+                        acx.execute("UPDATE organizations SET status='PAST_DUE',past_due_since=?,updated_at=? WHERE id=?",(now(),now(),r['id']))
+                        sync_child_orgs(acx,r['id'])
 
             elif etype=='invoice.payment_succeeded':
-                customer_id=obj.get('customer')
+                customer_id=obj.get('customer'); inv_sub=obj.get('subscription')
                 if customer_id:
-                    acx.execute("UPDATE organizations SET status='ACTIVE_PAID',updated_at=? WHERE stripe_customer_id=? AND stripe_subscription_id IS NOT NULL",(now(),customer_id))
+                    sql="SELECT id FROM organizations WHERE stripe_customer_id=? AND stripe_subscription_id IS NOT NULL AND status IN ('ACTIVE_PAID','PAST_DUE')"
+                    params=[customer_id]
+                    if inv_sub:
+                        sql+=" AND stripe_subscription_id=?"; params.append(inv_sub)
+                    for r in acx.execute(sql,tuple(params)).fetchall():
+                        acx.execute("UPDATE organizations SET status='ACTIVE_PAID',past_due_since=NULL,updated_at=? WHERE id=?",(now(),r['id']))
+                        sync_child_orgs(acx,r['id'])
+                        apply_pending_referral_credit(acx,r['id'])
 
             if event_id:
                 acx.execute('INSERT INTO stripe_webhook_events(stripe_event_id,event_type,processed_at) VALUES(?,?,?)',(event_id,etype,now()))

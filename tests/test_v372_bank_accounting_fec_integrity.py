@@ -30,8 +30,9 @@ def test_v372_partial_and_grouped_reconciliations_keep_one_accounting_source_per
 def test_v372_bank_fee_entry_is_balanced_627_512_and_entity_scoped():
     b=BANK.split("def banking_transaction_book_fee",1)[1].split("def banking_transaction_ignore",1)[0]
     assert "source_type='bank_fee'" in b
-    assert "expense['code']" in b and "residual,0.0" in b
-    assert "bank_account['code']" in b and "0.0,residual" in b
+    # v421 : écriture via create_entry (période clôturée, numérotation BQ).
+    assert "{'account_code':expense['code'],'debit':residual}" in b
+    assert "{'account_code':bank_account['code'],'credit':residual}" in b
     assert "WHERE entity_id IS ? AND source_type='bank_fee' AND source_id=?" in b
 
 def test_v372_reconciliation_is_atomic_until_commit():

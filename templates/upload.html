@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="purchase-page">
-  <div class="purchase-eyebrow">DATA IMPORT</div>
+  <div class="purchase-eyebrow">IMPORT DE DONNÉES</div>
   <h1 class="purchase-title">{{ title }}</h1>
   <p class="purchase-subtitle">
     {% if kind=='invoices' %}CSV, XLSX ou PDF (texte ou scanné). Sélectionnez plusieurs PDF à la fois.
@@ -20,7 +20,7 @@
           {% for e in active_entities %}<option value="{{ e.id or '' }}" {% if (active_entity and active_entity.id)==e.id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
         </select>
       </label>
-      <p class="purchase-muted" style="font-size:12px;margin:-8px 0 14px;">Cet import remplace les données {{ 'de facturation client (Recover)' if kind=='invoices' else 'de dépenses (Save)' }} déjà présentes pour cette entité précise — jamais celles des autres entités.</p>
+      <p class="purchase-muted" style="font-size:12px;margin:-8px 0 14px;">Cet import remplace les données {{ 'de facturation client' if kind=='invoices' else 'de dépenses' }} déjà présentes pour cette entité précise — jamais celles des autres entités.</p>
       {% endif %}
       <div class="purchase-dropzone">
         <span class="purchase-icon" aria-hidden="true">

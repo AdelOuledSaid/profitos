@@ -20,7 +20,7 @@
           <td>{{ e.entry_date|fr_date }}</td>
           <td>{{ e.full_name or e.email }}</td>
           <td>{{ e.description or '—' }}</td>
-          <td style="text-align:right;">{{ (e.duration_minutes / 60)|round(2) }} h</td>
+          <td style="text-align:right;">{{ (e.duration_minutes / 60)|fr_number(2) }} h</td>
           <td>{{ 'Oui' if e.billable else 'Non' }}</td>
         </tr>
       {% else %}

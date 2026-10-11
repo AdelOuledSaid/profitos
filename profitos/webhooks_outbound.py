@@ -9,14 +9,11 @@ automatique d'écritures comptables (voir profitos/accounting.py).
 """
 import hashlib
 import hmac
-import ipaddress
 import json
 import secrets
-import socket
 from datetime import datetime
-from urllib.parse import urlsplit
 
-import requests
+from profitos.safe_http import UnsafeDestination, safe_request, validate_public_https_url
 
 WEBHOOK_EVENTS = ['invoice.sent', 'invoice.paid', 'purchase.created', 'purchase.paid']
 _DELIVERY_TIMEOUT = 10
@@ -27,39 +24,19 @@ def validate_outbound_webhook_url(url):
     protection contre le SSRF (Server-Side Request Forgery) : HTTPS
     obligatoire, puis résolution DNS et vérification que TOUTES les adresses
     IP résolues sont publiques — ni privées, ni loopback, ni link-local
-    (inclut les métadonnées cloud comme 169.254.169.254), ni réservées.
+    (inclut les métadonnées cloud comme 169.254.169.254), ni CGNAT
+    (100.64.0.0/10), ni réservées, ni IPv6 ULA/link-local, ni IPv4 encapsulée.
     Contrairement à validate_webhook_url (réservée à Slack/Teams via une
     liste blanche de domaines fixe), cette fonction doit accepter n'importe
     quel domaine public choisi par le client — la protection vient donc de
-    l'adresse IP résolue, jamais du nom d'hôte. Retourne (True, None) ou
+    l'adresse IP résolue, jamais du nom d'hôte. L'envoi lui-même se connecte à
+    l'adresse validée (voir profitos/safe_http.py : pas de seconde résolution
+    DNS exploitable par « DNS rebinding »). Retourne (True, None) ou
     (False, raison lisible)."""
     try:
-        p = urlsplit(url)
-    except Exception:
-        return False, "URL invalide."
-    if p.scheme != 'https':
-        return False, "L'URL doit utiliser https."
-    host = (p.hostname or '').strip()
-    if not host:
-        return False, "URL invalide."
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        return False, "Nom d'hôte introuvable."
-    if not infos:
-        return False, "Nom d'hôte introuvable."
-    for info in infos:
-        ip_str = info[4][0]
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            continue
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-            return False, (
-                "Cette adresse pointe vers une ressource interne ou réservée "
-                "(réseau privé, local ou métadonnées cloud) — refusée."
-            )
+        validate_public_https_url(url)
+    except UnsafeDestination as e:
+        return False, str(e)
     return True, None
 
 
@@ -114,28 +91,27 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None, entity_id
         events = (sub['events'] or '').split(',')
         if event_type not in events:
             continue
-        ok, reason = validate_outbound_webhook_url(sub['url'])
         status_code, success, snippet = None, 0, None
-        if not ok:
-            snippet = f"URL refusée au moment de l'envoi : {reason}"
-        else:
-            signature = _sign(sub['secret'], timestamp, body)
-            headers = {
-                'Content-Type': 'application/json',
-                'X-ProfitOS-Signature': f"t={timestamp},v1={signature}",
-                'X-ProfitOS-Event': event_type,
-                'X-ProfitOS-Event-Id': event_id,
-            }
-            try:
-                resp = requests.post(
-                    sub['url'], data=body.encode('utf-8'), headers=headers,
-                    timeout=_DELIVERY_TIMEOUT, allow_redirects=False,
-                )
-                status_code = resp.status_code
-                success = 1 if 200 <= resp.status_code < 300 else 0
-                snippet = resp.text[:300]
-            except requests.RequestException as e:
-                snippet = f"Erreur réseau : {e}"[:300]
+        signature = _sign(sub['secret'], timestamp, body)
+        headers = {
+            'Content-Type': 'application/json',
+            'X-ProfitOS-Signature': f"t={timestamp},v1={signature}",
+            'X-ProfitOS-Event': event_type,
+            'X-ProfitOS-Event-Id': event_id,
+        }
+        try:
+            # Résolution unique + connexion à l'adresse validée (anti DNS rebinding),
+            # sans redirection. Le corps de la réponse n'est ni stocké ni affiché :
+            # seul le code HTTP est conservé dans le journal des livraisons.
+            resp = safe_request('POST', sub['url'], data=body.encode('utf-8'), headers=headers,
+                                timeout=_DELIVERY_TIMEOUT, max_bytes=4096)
+            status_code = resp.status_code
+            success = 1 if 200 <= resp.status_code < 300 else 0
+            snippet = f"HTTP {resp.status_code}"
+        except UnsafeDestination as e:
+            snippet = f"URL refusée au moment de l'envoi : {e}"
+        except ConnectionError:
+            snippet = "Erreur réseau : destination injoignable ou certificat invalide."
         conn.execute(
             """INSERT INTO webhook_deliveries
                (subscription_id,event_type,payload,status_code,success,attempted_at,response_snippet)

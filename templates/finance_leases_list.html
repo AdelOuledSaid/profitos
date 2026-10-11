@@ -13,7 +13,7 @@
   <div class="purchase-stat">
     <div>
       <div class="purchase-stat-label">ENGAGEMENT HORS BILAN — TOTAL À MENTIONNER EN ANNEXE</div>
-      <div class="purchase-stat-value">{{ total_engagement|fr_number(2) }} €</div>
+      <div class="purchase-stat-value">{{ total_engagement|fr_number(2) }}&nbsp;€</div>
     </div>
   </div>
 </div>
@@ -27,8 +27,8 @@
         <tr>
           <td><a class="purchase-detail-link" href="{{ url_for('finance_lease_detail',lease_id=l.id) }}"><strong>{{ l.lessor_name }}</strong></a></td>
           <td>{{ l.asset_description }}</td>
-          <td style="text-align:right;">{{ l.redevance_amount|fr_number(2) }} €</td>
-          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }} €</strong></td>
+          <td style="text-align:right;">{{ l.redevance_amount|fr_number(2) }}&nbsp;€</td>
+          <td style="text-align:right;"><strong>{{ remaining.get(l.id,0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             <span class="purchase-status {{ 'paid' if l.status in ('completed','option_exercised') else '' }}">
               {{ {'active':'Actif','completed':'Terminé','option_exercised':'Option levée'}.get(l.status, l.status) }}

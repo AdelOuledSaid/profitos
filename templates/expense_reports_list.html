@@ -26,7 +26,7 @@
         <tr>
           {% if can_see_all %}<td>{{ r.employee_email }}</td>{% endif %}
           <td><a class="purchase-detail-link" href="{{ url_for('expense_report_detail',report_id=r.id) }}"><strong>{{ r.period_label or ('Note #' ~ r.id) }}</strong></a></td>
-          <td><strong>{{ totals.get(r.id,0)|fr_number(2) }} €</strong></td>
+          <td><strong>{{ totals.get(r.id,0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             <span class="purchase-status {{ 'paid' if r.status in ('approved','reimbursed') else ('overdue' if r.status=='rejected' else '') }}">
               {{ {'draft':'Brouillon','submitted':'En attente','approved':'Validée','rejected':'Rejetée','reimbursed':'Remboursée'}.get(r.status, r.status) }}

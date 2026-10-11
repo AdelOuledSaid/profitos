@@ -7,7 +7,7 @@ def test_v369_balanced_fee_entry():
     # PostgreSQL/psycopg2 requires literal % to be escaped when parameters are bound.
     assert "code LIKE '627%%'" in b and "code LIKE '512%%'" in b
     assert "source_type='bank_fee'" in b
-    assert "'bank_fee',tx_id" in b
+    assert "source_type='bank_fee',source_id=tx_id" in b  # v421 : via create_entry
     assert "residual" in b
 
 def test_v369_fee_route_keeps_small_residual_guards():

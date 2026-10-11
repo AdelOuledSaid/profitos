@@ -7,7 +7,7 @@ capital restant dû, 661000 (Charges d'intérêts) pour la part d'intérêts,
 """
 from datetime import date
 
-from profitos.accounting import create_entry, AccountingError
+from profitos.accounting import create_entry, AccountingError, paris_today
 
 LOAN_ACCOUNT = '164000'
 INTEREST_ACCOUNT = '661000'
@@ -111,7 +111,7 @@ def create_loan(conn, lender_name, principal_amount, annual_rate, start_date, du
     return loan_id
 
 
-def pay_installment(conn, installment_id, entity_id=None, created_by=None):
+def pay_installment(conn, installment_id, entity_id=None, created_by=None, payment_date=None):
     """Enregistre le règlement effectif d'une échéance : débite le capital
     remboursé (164000) et les intérêts (661000), crédite la banque
     (512000). Idempotent — refuse si déjà payée, jamais une double
@@ -131,8 +131,12 @@ def pay_installment(conn, installment_id, entity_id=None, created_by=None):
     total = installment['capital_amount'] + installment['interest_amount']
     lines.append({'account_code': BANK_ACCOUNT, 'credit': total})
 
+    # Écriture datée du jour réel du prélèvement : la date saisie, à défaut l'échéance
+    # (si elle est passée), jamais la date du clic — sinon l'écriture tombait sur la
+    # mauvaise période (voire le mauvais exercice).
+    entry_date = payment_date or min(str(installment['due_date'])[:10], paris_today().isoformat())
     entry_id = create_entry(
-        conn, 'BQ', date.today(),
+        conn, 'BQ', entry_date,
         f"Échéance {installment['installment_number']}/{loan['duration_months']} — {loan['lender_name']}",
         lines, source_type='loan_installment', source_id=installment_id,
         entity_id=entity_id, created_by=created_by, commit=False,

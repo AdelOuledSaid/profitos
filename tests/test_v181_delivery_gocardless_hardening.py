@@ -19,7 +19,8 @@ def test_proforma_is_entity_scoped_and_uses_entity_identity():
     s = source('profitos/routes/invoicing.py')
     block = s[s.index('def invoicing_proforma'):s.index("@app.route('/facturation/livraisons')")]
     assert "outgoing_invoices WHERE id=? AND entity_id IS ?" in block
-    assert 'resolve_entity(c,eid)' in block
+    # v421 : identité complète de l'entité (mentions légales incluses).
+    assert '_seller_identity(c,eid)' in block
 
 
 def test_gocardless_tables_are_entity_scoped():

@@ -35,6 +35,10 @@ def register(app):
                 redevance_amount = float(request.form.get('redevance_amount') or 0)
                 duration_months = int(request.form.get('duration_months') or 0)
                 purchase_option_amount = float(request.form.get('purchase_option_amount') or 0)
+                vat_raw = (request.form.get('vat_rate') or '').strip().replace(',', '.')
+                vat_rate = float(vat_raw) if vat_raw else None
+                if vat_rate is not None and not (0 <= vat_rate <= 20):
+                    raise ValueError
             except ValueError:
                 flash("Les montants et la durée doivent être des nombres valides.")
                 return redirect(url_for('finance_lease_new'))
@@ -49,7 +53,7 @@ def register(app):
                     c, lessor_name, asset_description, asset_value, redevance_amount, periodicity,
                     start_date, duration_months, purchase_option_amount,
                     entity_id=current_entity_id(), notes=(request.form.get('notes') or '').strip(),
-                    created_by=current_user()['email'],
+                    created_by=current_user()['email'], vat_rate=vat_rate,
                 )
             except AccountingError as e:
                 c.close()
@@ -79,8 +83,9 @@ def register(app):
             "SELECT code,label FROM accounting_chart_of_accounts WHERE account_class=2 AND is_active=1 ORDER BY code"
         ).fetchall()
         c.close()
-        return render_template('finance_lease_detail.html', lease=lease, payments=payments,
-                                remaining=remaining, accounts=accounts, today=date.today().isoformat())
+        from profitos.accounting import paris_today
+        return render_template('finance_lease_detail.html', lease=lease, payments=payments, today=paris_today().isoformat(),
+                                remaining=remaining, accounts=accounts)
 
     @app.route('/comptabilite/credit-bail/redevance/<int:payment_id>/payer', methods=['POST'])
     @login_required
@@ -94,8 +99,10 @@ def register(app):
         if not payment:
             c.close(); abort(404)
         try:
-            pay_lease_payment(c, payment_id, entity_id=current_entity_id(), created_by=current_user()['email'])
-        except AccountingError as e:
+            payment_date = _payment_date_from_form(request.form)
+            pay_lease_payment(c, payment_id, entity_id=current_entity_id(), created_by=current_user()['email'],
+                              payment_date=payment_date)
+        except (AccountingError, ValueError) as e:
             c.rollback()
             c.close()
             flash(f"Règlement impossible : {e}")
@@ -144,3 +151,16 @@ def register(app):
         log_activity('FINANCE_LEASE_OPTION_EXERCISED', f"Option d'achat levée pour le crédit-bail #{lease_id}")
         flash("Option d'achat levée — le bien est maintenant une immobilisation à amortir.")
         return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+
+
+def _payment_date_from_form(form):
+    """Date de règlement saisie (jj/mm/aaaa via champ date ISO) : None si vide,
+    ValueError si invalide ou future."""
+    from profitos.accounting import paris_today
+    raw = (form.get('payment_date') or '').strip()
+    if not raw:
+        return None
+    d = date.fromisoformat(raw)
+    if d > paris_today():
+        raise ValueError("La date de règlement ne peut pas être dans le futur.")
+    return d.isoformat()
