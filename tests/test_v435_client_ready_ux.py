@@ -25,6 +25,9 @@ def test_amounts_in_french_format_are_not_zeroed():
     assert parse_amount('1.234,56') == 1234.56
     assert parse_amount('1,234.56') == 1234.56
     assert parse_amount('-12,5') == -12.5
+    # Milliers anglo-saxons (« 1,234 » = mille deux cent trente-quatre) vs décimales françaises.
+    assert parse_amount('1,234') == 1234.0 and parse_amount('12,500,000') == 12500000.0
+    assert parse_amount('99,90') == 99.9 and parse_amount('0,125') == 0.125 and parse_amount('1,5') == 1.5
     assert parse_amount('(45,00)') == -45.0
     assert parse_amount('abc') is None and parse_amount('') is None and parse_amount(float('nan')) is None
     assert money('1 234,56') == 1234.56 and money(None) == 0.0 and money(12) == 12.0

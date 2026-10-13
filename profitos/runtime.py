@@ -2634,7 +2634,12 @@ def parse_amount(v):
     if ',' in t and '.' in t:
         t=t.replace('.','').replace(',','.') if t.rfind(',')>t.rfind('.') else t.replace(',','')
     elif ',' in t:
-        t=t.replace(',','.') if t.count(',')==1 else t.replace(',','')
+        # « 1,234 » / « 12,500,000 » : séparateur de milliers anglo-saxon (export
+        # QuickBooks, Stripe…). Sinon virgule décimale française (« 99,90 », « 0,125 »).
+        if re.fullmatch(r'-?[1-9]\d{0,2}(,\d{3})+',t):
+            t=t.replace(',','')
+        else:
+            t=t.replace(',','.') if t.count(',')==1 else t.replace(',','')
     try:
         f=float(t)
     except ValueError:
