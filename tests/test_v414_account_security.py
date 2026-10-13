@@ -32,6 +32,11 @@ def test_common_password_list_is_shipped():
 # ------------------------------------------------------------------ verrouillage / temps constant
 def test_account_lock_after_ten_failures_even_with_right_password(app, monkeypatch):
     from profitos import account_security as acsec
+    from profitos.runtime import limiter
+    # Le verrou par compte est testé seul : le limiteur par IP (8 essais / 5 min) répondrait
+    # 429 avant la 10e tentative quand le vrai Flask-Limiter est installé (CI GitHub).
+    # RATELIMIT_ENABLED=False dans make_app() arrive après init_app() et ne suffit pas.
+    monkeypatch.setattr(limiter, 'enabled', False, raising=False)
     notices = []
     monkeypatch.setattr(acsec, 'notify_user', lambda user, title, *a, **k: notices.append(title))
     _, email, _, uid = signup(app, 'Verrou SAS')
