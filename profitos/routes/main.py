@@ -527,21 +527,31 @@ def register(app):
             company_size=field('company_size',40)
             primary_need=field('primary_need',120)
             message=request.form.get('message','').strip()[:2000]
-            if not (full_name and company and email and sector and primary_need):
-                flash('Nom, entreprise, e-mail, secteur et besoin principal sont requis.')
-                return redirect(request.url)
+            # SIREN (ou SIRET) obligatoire et contrôlé (clé de Luhn) : écarte les demandes
+            # fantaisistes et permet de vérifier l'entreprise avant de rappeler.
+            siren_raw=re.sub(r'[\s.\-]','',request.form.get('siren',''))[:20]
+            siren=siren_raw[:9] if re.fullmatch(r'\d{9}|\d{14}',siren_raw) else ''
+
+            def form_error(msg):
+                flash(msg)
+                return render_template('demo_request.html',form=request.form),400
+            if not (full_name and company and email and siren_raw and sector and primary_need):
+                return form_error('Nom, entreprise, SIREN, e-mail, secteur et besoin principal sont requis.')
+            from profitos.legal import siren_valid
+            if not siren or not siren_valid(siren):
+                return form_error("SIREN invalide : indiquez les 9 chiffres de votre SIREN (ou les 14 de votre SIRET), "
+                                  "tels qu'ils figurent sur votre extrait Kbis ou sur annuaire-entreprises.data.gouv.fr.")
             if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email):
-                flash("Adresse e-mail invalide.")
-                return redirect(request.url)
+                return form_error("Adresse e-mail invalide.")
             ac=auth_cx()
-            ac.execute('INSERT INTO demo_requests(full_name,company,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                (full_name,company,email,phone,sector,company_size,primary_need,message,'NOUVEAU',now())); ac.commit(); ac.close()
+            ac.execute('INSERT INTO demo_requests(full_name,company,siren,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (full_name,company,siren,email,phone,sector,company_size,primary_need,message,'NOUVEAU',now())); ac.commit(); ac.close()
             admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip()
             reply_email=os.environ.get('DEMO_REPLY_EMAIL','contact@profitos.fr').strip() or 'contact@profitos.fr'
 
             # 1) Notification commerciale complète vers l'administrateur.
             if admin_email:
-                admin_html=render_template('email_demo_admin.html',full_name=full_name,company=company,
+                admin_html=render_template('email_demo_admin.html',full_name=full_name,company=company,siren=siren,
                     email=email,phone=phone,sector=sector,company_size=company_size,
                     primary_need=primary_need,message=message)
                 send_email(admin_email,f'Demande de démo — {company}',admin_html,reply_to=email)
@@ -553,7 +563,7 @@ def register(app):
             if check_recipient_rate('demo_ack',email): send_email(email,'Votre demande de démonstration ProfitOS',confirmation_html,reply_to=reply_email,kind='system')
 
             return render_template('demo_thanks.html',contact_email=reply_email)
-        return render_template('demo_request.html')
+        return render_template('demo_request.html',form={})
 
     @app.route('/admin/demo-requests',methods=['GET'])
     @login_required

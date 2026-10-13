@@ -39,54 +39,57 @@
           {% with messages=get_flashed_messages() %}{% for m in messages %}<div class="demo-flash">{{ m }}</div>{% endfor %}{% endwith %}
 
           <label>Nom complet
-            <input type="text" name="full_name" autocomplete="name" required>
+            <input type="text" name="full_name" autocomplete="name" value="{{ form.full_name or '' }}" required>
           </label>
           <label>Entreprise
-            <input type="text" name="company" autocomplete="organization" required>
+            <input type="text" name="company" autocomplete="organization" value="{{ form.company or '' }}" required>
+          </label>
+          <label>SIREN
+            <input type="text" name="siren" inputmode="numeric" autocomplete="off" maxlength="17" pattern="[0-9 .\-]{9,17}" placeholder="9 chiffres (ou SIRET)" title="9 chiffres du SIREN, ou 14 chiffres du SIRET" value="{{ form.siren or '' }}" required>
           </label>
           <label>E-mail professionnel
-            <input type="email" name="email" autocomplete="email" required>
+            <input type="email" name="email" autocomplete="email" value="{{ form.email or '' }}" required>
           </label>
-          <label>Téléphone <span style="font-weight:500;color:#7793bc">(optionnel)</span>
-            <input type="tel" name="phone" autocomplete="tel">
+          <label><span>Téléphone <span style="font-weight:500;color:#7793bc">(optionnel)</span></span>
+            <input type="tel" name="phone" autocomplete="tel" value="{{ form.phone or '' }}">
           </label>
           <label>Secteur d’activité
             <select name="sector" required>
               <option value="">Choisir…</option>
-              <option>BTP / Construction</option>
-              <option>Transport / Logistique</option>
-              <option>Commerce</option>
-              <option>Services</option>
-              <option>Industrie</option>
-              <option>Restauration / Hôtellerie</option>
-              <option>Santé</option>
-              <option>Autre</option>
+              <option{% if form.sector=='BTP / Construction' %} selected{% endif %}>BTP / Construction</option>
+              <option{% if form.sector=='Transport / Logistique' %} selected{% endif %}>Transport / Logistique</option>
+              <option{% if form.sector=='Commerce' %} selected{% endif %}>Commerce</option>
+              <option{% if form.sector=='Services' %} selected{% endif %}>Services</option>
+              <option{% if form.sector=='Industrie' %} selected{% endif %}>Industrie</option>
+              <option{% if form.sector=='Restauration / Hôtellerie' %} selected{% endif %}>Restauration / Hôtellerie</option>
+              <option{% if form.sector=='Santé' %} selected{% endif %}>Santé</option>
+              <option{% if form.sector=='Autre' %} selected{% endif %}>Autre</option>
             </select>
           </label>
           <label>Taille de l’entreprise
             <select name="company_size">
               <option value="">Choisir…</option>
-              <option>1–5 salariés</option>
-              <option>6–20 salariés</option>
-              <option>21–50 salariés</option>
-              <option>51–200 salariés</option>
-              <option>Plus de 200 salariés</option>
+              <option{% if form.company_size=='1–5 salariés' %} selected{% endif %}>1–5 salariés</option>
+              <option{% if form.company_size=='6–20 salariés' %} selected{% endif %}>6–20 salariés</option>
+              <option{% if form.company_size=='21–50 salariés' %} selected{% endif %}>21–50 salariés</option>
+              <option{% if form.company_size=='51–200 salariés' %} selected{% endif %}>51–200 salariés</option>
+              <option{% if form.company_size=='Plus de 200 salariés' %} selected{% endif %}>Plus de 200 salariés</option>
             </select>
           </label>
           <label class="full">Besoin principal
             <select name="primary_need" required>
               <option value="">Choisir…</option>
-              <option>Améliorer la trésorerie</option>
-              <option>Réduire les impayés</option>
-              <option>Protéger les marges</option>
-              <option>Réduire les dépenses</option>
-              <option>Simuler une décision financière</option>
-              <option>Piloter la croissance</option>
-              <option>Autre</option>
+              <option{% if form.primary_need=='Améliorer la trésorerie' %} selected{% endif %}>Améliorer la trésorerie</option>
+              <option{% if form.primary_need=='Réduire les impayés' %} selected{% endif %}>Réduire les impayés</option>
+              <option{% if form.primary_need=='Protéger les marges' %} selected{% endif %}>Protéger les marges</option>
+              <option{% if form.primary_need=='Réduire les dépenses' %} selected{% endif %}>Réduire les dépenses</option>
+              <option{% if form.primary_need=='Simuler une décision financière' %} selected{% endif %}>Simuler une décision financière</option>
+              <option{% if form.primary_need=='Piloter la croissance' %} selected{% endif %}>Piloter la croissance</option>
+              <option{% if form.primary_need=='Autre' %} selected{% endif %}>Autre</option>
             </select>
           </label>
-          <label class="full">Message ou contexte <span style="font-weight:500;color:#7793bc">(optionnel)</span>
-            <textarea name="message" rows="4" placeholder="Ex. Nous voulons mieux anticiper notre trésorerie et réduire nos retards de paiement."></textarea>
+          <label class="full"><span>Message ou contexte <span style="font-weight:500;color:#7793bc">(optionnel)</span></span>
+            <textarea name="message" rows="4" placeholder="Ex. Nous voulons mieux anticiper notre trésorerie et réduire nos retards de paiement.">{{ form.message or '' }}</textarea>
           </label>
 
           <div style="position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden" aria-hidden="true"><label>Site web<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>

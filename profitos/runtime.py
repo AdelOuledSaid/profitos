@@ -127,7 +127,8 @@ def init_auth_db():
         primary_need TEXT,
         message TEXT,
         status TEXT DEFAULT 'NOUVEAU',
-        created_at TEXT
+        created_at TEXT,
+        siren TEXT
     );
     CREATE TABLE IF NOT EXISTS api_keys(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +260,7 @@ def init_auth_db():
         ('company_size',"ALTER TABLE demo_requests ADD COLUMN company_size TEXT"),
         ('primary_need',"ALTER TABLE demo_requests ADD COLUMN primary_need TEXT"),
         ('status',"ALTER TABLE demo_requests ADD COLUMN status TEXT DEFAULT 'NOUVEAU'"),
+        ('siren',"ALTER TABLE demo_requests ADD COLUMN siren TEXT"),
     ):
         if col not in demo_cols: c.execute(ddl)
 

@@ -142,3 +142,42 @@ def test_preflight_rejects_placeholder_legal_identity():
     assert 'LEGAL_SIREN invalide' in errors and 'LEGAL_ADDRESS incomplète' in errors
     env.update(LEGAL_SIREN='732829320', LEGAL_ADDRESS='15 rue Roger, 75001 Paris')
     assert pf.check_legal(env) == []
+
+
+# ------------------------------------------------------------------ demande de démo
+def _demo(client, **over):
+    from support_v4xx import CSRF
+    data = {'csrf_token': CSRF, 'full_name': 'Camille Test', 'company': 'Test SARL', 'siren': '732 829 320',
+            'email': 'camille@example.com', 'sector': 'Commerce', 'primary_need': 'Réduire les impayés'}
+    data.update(over)
+    with client.session_transaction() as s:
+        s['csrf_token'] = CSRF
+    return client.post('/demo', data=data)
+
+
+def test_demo_request_requires_valid_siren_and_keeps_input(app):
+    client = app.test_client()
+    r = _demo(client, siren='123456789', company='Fausse SARL')
+    html = r.get_data(as_text=True)
+    assert r.status_code == 400 and 'SIREN invalide' in html
+    assert 'value="Fausse SARL"' in html and 'value="123456789"' in html
+    assert "form.sector=='Commerce'" not in html and '<option selected>Commerce</option>' in html
+    assert _demo(client, siren='', company='Sans Siren').status_code == 400
+    assert auth("SELECT 1 FROM demo_requests WHERE company IN ('Fausse SARL','Sans Siren')", (), 'one') is None
+
+
+def test_demo_request_accepts_siren_or_siret_and_stores_siren(app):
+    client = app.test_client()
+    assert _demo(client, company='Bon Siren SARL').status_code == 200
+    assert _demo(client, company='Bon Siret SARL', siren='732 829 320 00074').status_code == 200
+    rows = auth("SELECT company,siren FROM demo_requests WHERE company IN ('Bon Siren SARL','Bon Siret SARL')", (), 'all')
+    assert {r['siren'] for r in rows} == {'732829320'} and len(rows) == 2
+    admin = (ROOT / 'templates/demo_requests_admin.html').read_text(encoding='utf-8')
+    assert 'annuaire-entreprises.data.gouv.fr/entreprise/{{ d.siren }}' in admin
+
+
+def test_landing_menu_is_readable():
+    css = (ROOT / 'static/landing.css').read_text(encoding='utf-8')
+    assert '.landing-nav-links a{color:#d3def0;text-decoration:none;font-size:16px;font-weight:600' in css
+    # Sur téléphone, « Connexion » reste visible dans l'en-tête.
+    assert '.landing-nav-links a[href$="/login"]{display:inline' in css
