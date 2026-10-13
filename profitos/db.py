@@ -138,7 +138,9 @@ def _translate_statement(sql):
     # Les colonnes REAL de SQLite sont des flottants 64 bits ; « REAL » en PostgreSQL est
     # un float4 (≈ 7 chiffres) qui arrondit les montants (1 234 567,89 -> 1 234 567,9).
     if re.match(r'^(CREATE\s+TABLE|ALTER\s+TABLE)\b', stripped, re.I):
-        stripped = re.sub(r'\bREAL\b', 'DOUBLE PRECISION', stripped, flags=re.I)
+        # Même traduction que executescript() : un CREATE TABLE passé par execute()
+        # (ex. job_runs) échouait en production sur « AUTOINCREMENT ».
+        stripped = _translate_ddl(stripped)
 
     if stripped.upper().startswith('INSERT OR IGNORE INTO'):
         # "INSERT OR IGNORE INTO t(...) VALUES(...)" -> "INSERT INTO t(...) VALUES(...) ON CONFLICT DO NOTHING"
