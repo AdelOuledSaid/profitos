@@ -24,7 +24,9 @@ def test_legal_pages_use_configured_identity(monkeypatch):
         monkeypatch.setenv(k, v)
     c = _client()
     html = c.get('/mentions-legales').get_data(as_text=True)
-    for value in ('Exemple Logiciels SAS', '732829320', 'Camille Martin', 'contact@exemple.fr', 'RCS de Paris', 'Render Services'):
+    # La forme juridique déjà présente dans la raison sociale n'est pas répétée (« SAS, SAS »).
+    assert 'Exemple Logiciels, SAS' in html and 'SAS, SAS' not in html
+    for value in ('732829320', 'Camille Martin', 'contact@exemple.fr', 'RCS de Paris', 'Render Services'):
         assert value in html
     assert 'à compléter' not in html and 'doivent correspondre' not in html
     privacy = c.get('/politique-confidentialite').get_data(as_text=True)

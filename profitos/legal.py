@@ -5,6 +5,7 @@ une seule fois sur Render, sans modifier le code. En production, le preflight re
 déployer tant que les mentions obligatoires (LCEN art. 6 III) ne sont pas fournies.
 """
 import os
+import re
 
 # Champ -> (variable d'environnement, libellé, obligatoire)
 FIELDS = {
@@ -77,6 +78,11 @@ def legal_identity():
         data[key] = (os.environ.get(env) or DEFAULTS.get(key, '')).strip()
     if not data['privacy_email']:
         data['privacy_email'] = data['email']
+    # « ProfitOS SAS » + forme « SAS » s'affichait « ProfitOS SAS, SAS ».
+    form = data['legal_form']
+    if form and data['company_name'].upper().endswith(' ' + form.upper()):
+        data['company_name'] = data['company_name'][:-len(form)].rstrip(' ,')
+    data['siren'] = re.sub(r'\s', '', data['siren']) if siren_valid(data['siren']) else data['siren']
     data['prelaunch'] = is_prelaunch()
     data['missing'] = missing_legal_fields()
     return data
@@ -88,3 +94,34 @@ def missing_legal_fields(env=None):
     prelaunch = is_prelaunch(env)
     return [var for key, (var, label, required) in FIELDS.items()
             if (key in PRELAUNCH_REQUIRED if prelaunch else required) and not (env.get(var) or '').strip()]
+
+
+def siren_valid(value):
+    """SIREN réel : 9 chiffres et clé de Luhn (exception La Poste, 356 000 000 et ses
+    établissements : somme des chiffres multiple de 5). Rejette les numéros factices
+    comme 123456789 ou 000000000."""
+    digits = re.sub(r'\s', '', value or '')
+    if not re.fullmatch(r'\d{9}', digits) or len(set(digits)) == 1:
+        return False
+    if digits == '356000000':
+        return True
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch) * (2 if i % 2 else 1)
+        total += n - 9 if n > 9 else n
+    return total % 10 == 0
+
+
+def legal_identity_errors(env=None):
+    """Valeurs LEGAL_* renseignées mais manifestement fausses (bloquant au déploiement)."""
+    env = os.environ if env is None else env
+    errors = []
+    siren = (env.get('LEGAL_SIREN') or '').strip()
+    if siren and not siren_valid(siren):
+        errors.append('LEGAL_SIREN invalide : un SIREN comporte 9 chiffres avec une clé de contrôle '
+                      '(vérifiez-le sur annuaire-entreprises.data.gouv.fr).')
+    address = (env.get('LEGAL_ADDRESS') or '').strip()
+    if address and siren and not re.search(r'\b\d{5}\b', address):
+        errors.append('LEGAL_ADDRESS incomplète : indiquez le code postal et la ville du siège '
+                      '(ex. 15 rue Exemple, 75001 Paris).')
+    return errors

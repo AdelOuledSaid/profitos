@@ -81,9 +81,16 @@ def register(app):
         if request.method=='GET' and request.args.get('ref'):
             session['pending_ref_code']=request.args.get('ref','').strip()
         if request.method=='POST':
-            name=request.form.get('full_name','').strip(); email=request.form.get('email','').strip().lower(); pw=request.form.get('password',''); company=request.form.get('company_name','').strip()
+            # Prénom et nom saisis séparément (le prénom sert à l'accueil « Bonjour Adel ») ;
+            # « full_name » reste accepté pour les intégrations existantes.
+            first_name=' '.join(request.form.get('first_name','').split())[:60]
+            last_name=' '.join(request.form.get('last_name','').split())[:60]
+            name=request.form.get('full_name','').strip() or ' '.join(p for p in (first_name,last_name) if p)
+            email=request.form.get('email','').strip().lower(); pw=request.form.get('password',''); company=request.form.get('company_name','').strip()
             # En cas d'erreur, la saisie (hors mot de passe) est conservée.
-            session['signup_form']={'full_name':name[:120],'email':email[:254],'company_name':company[:200]}
+            session['signup_form']={'full_name':name[:120],'first_name':first_name,'last_name':last_name,'email':email[:254],'company_name':company[:200]}
+            if ('first_name' in request.form or 'last_name' in request.form) and not request.form.get('full_name') and not (first_name and last_name):
+                flash('Indiquez votre prénom et votre nom.'); return redirect(request.url)
             if not name or not email or not pw or not company: flash('Tous les champs sont obligatoires.'); return redirect(request.url)
             if request.form.get('accept_terms')!='1':
                 flash("Veuillez accepter les conditions générales d'utilisation et de vente pour créer votre compte."); return redirect(request.url)
@@ -576,6 +583,15 @@ def register(app):
         c.close()
         return render_template('team_entity_access.html', member=member, entities=entities,
                                 restricted=restricted, allowed_ids=allowed_ids)
+
+    @app.route('/settings/menu',methods=['POST'])
+    @login_required
+    def toggle_ui_mode():
+        """Bascule menu simplifié / menu complet (préférence par utilisateur)."""
+        current=current_user()['ui_mode'] or 'simple'
+        new_mode='expert' if current!='expert' else 'simple'
+        c=auth_cx(); c.execute('UPDATE users SET ui_mode=? WHERE id=?',(new_mode,session['user_id'])); c.commit(); c.close()
+        return redirect(request.referrer or url_for('home'))
 
     @app.route('/settings/theme',methods=['POST'])
     @login_required

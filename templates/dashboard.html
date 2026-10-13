@@ -77,7 +77,7 @@
     <span class="db-kpi-note">Dépenses à revoir</span>
   </a>
   {% endif %}
-  {% if grow is not none %}
+  {% if grow is not none and (auth_user.ui_mode or 'simple')=='expert' %}
   <a class="db-kpi k-grow" href="{{ url_for('grow') }}">
     <span class="db-kpi-label">Marchés publics</span>
     <span class="db-kpi-value"><span data-count-to="{{ grow }}">{{ grow }}</span></span>

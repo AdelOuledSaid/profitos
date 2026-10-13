@@ -50,7 +50,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 def init_auth_db():
     c=auth_cx(); c.executescript('''
     CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,slug TEXT UNIQUE,plan TEXT DEFAULT 'TRIAL',status TEXT DEFAULT 'ACTIVE',trial_ends_at TEXT,stripe_customer_id TEXT,stripe_subscription_id TEXT,created_at TEXT,updated_at TEXT);
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,theme_preference TEXT DEFAULT 'dark',last_seen_changelog TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,full_name TEXT,is_active INTEGER DEFAULT 1,email_verified INTEGER DEFAULT 0,verification_token TEXT,verification_sent_at TEXT,reset_token TEXT,reset_token_expires TEXT,auth_version INTEGER DEFAULT 0,theme_preference TEXT DEFAULT 'dark',last_seen_changelog TEXT,ui_mode TEXT DEFAULT 'simple',created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS memberships(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,role TEXT DEFAULT 'OWNER',created_at TEXT,UNIQUE(user_id,organization_id));
     CREATE TABLE IF NOT EXISTS push_device_tokens(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,6 +249,8 @@ def init_auth_db():
         ('auth_version',"ALTER TABLE users ADD COLUMN auth_version INTEGER DEFAULT 0"),
         ('theme_preference',"ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'dark'"),
         ('last_seen_changelog',"ALTER TABLE users ADD COLUMN last_seen_changelog TEXT"),
+        # Menu simplifié par défaut : les modules experts restent accessibles via « Afficher toutes les fonctionnalités ».
+        ('ui_mode',"ALTER TABLE users ADD COLUMN ui_mode TEXT DEFAULT 'simple'"),
     ):
         if col not in cols: c.execute(ddl)
     demo_cols=[r['name'] for r in c.execute('PRAGMA table_info(demo_requests)').fetchall()]
@@ -2573,11 +2575,18 @@ def norm(x):
     s=unicodedata.normalize('NFKD',str(x or '')).encode('ascii','ignore').decode('ascii')
     return re.sub(r'\s+',' ',s.lower()).strip()
 
+_FR_DATE_RE=re.compile(r'^\s*\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}(\s.*)?$')
+
 def parse_date(v):
     if v is None or (isinstance(v,float) and pd.isna(v)): return None
     if isinstance(v,datetime): return v.date()
     if isinstance(v,date): return v
-    try: return pd.to_datetime(v).date()
+    try:
+        # Format français jour/mois/année (« 05/03/2026 » = 5 mars) : sans dayfirst,
+        # pandas le lisait comme le 3 mai.
+        if isinstance(v,str) and _FR_DATE_RE.match(v):
+            return pd.to_datetime(v.strip(),dayfirst=True).date()
+        return pd.to_datetime(v).date()
     except: return None
 
 def parse_dt(v):
@@ -2613,9 +2622,31 @@ def jlist(v):
         except:pass
     return [x.strip() for x in re.split(r'[,;|]',s) if x.strip()]
 
+def parse_amount(v):
+    """Montant numérique ou None. Accepte les saisies à la française (« 1 234,56 € »,
+    « 1.234,56 », « (45,00) ») que float() refusait."""
+    if v is None or isinstance(v,bool): return None
+    if isinstance(v,(int,float)):
+        return None if (isinstance(v,float) and math.isnan(v)) else float(v)
+    t=re.sub(r'[\s\u00a0\u202f€$£]|EUR','',str(v).strip(),flags=re.I)
+    if not t: return None
+    if t.startswith('(') and t.endswith(')'): t='-'+t[1:-1]
+    if ',' in t and '.' in t:
+        t=t.replace('.','').replace(',','.') if t.rfind(',')>t.rfind('.') else t.replace(',','')
+    elif ',' in t:
+        t=t.replace(',','.') if t.count(',')==1 else t.replace(',','')
+    try:
+        f=float(t)
+    except ValueError:
+        return None
+    return None if math.isnan(f) else f
+
 def money(v):
     try:return float(v or 0)
-    except:return 0.0
+    except (TypeError,ValueError):
+        pass
+    a=parse_amount(v)
+    return 0.0 if a is None else a
 
 def profile():
     c=cx(); r=c.execute('SELECT * FROM company WHERE id=1').fetchone(); c.close(); return r

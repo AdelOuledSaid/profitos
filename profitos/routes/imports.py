@@ -3,6 +3,7 @@ from profitos.accounting import paris_today as _paris_today
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
 import base64
+import io
 from pypdf.errors import PyPdfError
 from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
 
@@ -457,6 +458,27 @@ def _extract_invoice_pdf(path):
     }
 
 
+def read_csv_any(path):
+    """Lit un CSV quel que soit le logiciel d'origine : séparateur « ; » (Excel en
+    français), « , » ou tabulation, encodage UTF-8 ou Windows-1252, virgule décimale.
+    pd.read_csv() seul refusait les exports Excel français (« Colonnes manquantes »)."""
+    raw=Path(path).read_bytes()
+    for enc in ('utf-8-sig','cp1252'):
+        try:
+            text=raw.decode(enc); break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("Encodage du fichier CSV non reconnu (enregistrez-le en UTF-8).")
+    first=next((ln for ln in text.splitlines() if ln.strip()),'')
+    sep=max((';',',','\t','|'),key=first.count)
+    if not first.count(sep):
+        sep=','
+    # Avec « ; », la virgule est le séparateur décimal (convention française) ; les
+    # montants avec espaces (« 1 234,56 ») restent du texte et sont convertis par money().
+    return pd.read_csv(io.StringIO(text),sep=sep,decimal=',' if sep==';' else '.')
+
+
 def _load_invoice_uploads(files):
     """Retourne un DataFrame uniforme pour CSV/XLSX ou un lot de PDF texte."""
     files=[f for f in files if f and f.filename]
@@ -494,12 +516,45 @@ def _load_invoice_uploads(files):
         if ext in ('.xlsx','.xls'):
             return pd.read_excel(path)
         if ext=='.csv':
-            return pd.read_csv(path)
+            return read_csv_any(path)
         raise ValueError('Format de facture non pris en charge.')
     finally:
         if path: cleanup_upload(path)
 
+# Modèles d'import téléchargeables : en-têtes reconnus par les imports ci-dessous,
+# format Excel français (« ; », virgule décimale, dates jj/mm/aaaa). Lignes d'exemple
+# fictives, à remplacer par les données réelles.
+IMPORT_TEMPLATES={
+    'invoices':('modele-import-factures-clients.csv',
+                ['Numéro','Client','Montant TTC','Montant payé','Date facture','Échéance','Email client','Téléphone'],
+                [['FA-2026-001','Client Exemple SARL','1 200,00','0','15/09/2026','15/10/2026','compta@example.com',''],
+                 ['FA-2026-002','Autre Client SAS','540,50','200,00','01/10/2026','31/10/2026','','']]),
+    'expenses':('modele-import-depenses.csv',
+                ['Fournisseur','Description','Montant','Date','Catégorie'],
+                [['Fournisseur Exemple','Abonnement logiciel','29,00','05/10/2026','Logiciels'],
+                 ['Loueur Exemple','Loyer octobre','850,00','01/10/2026','Loyer']]),
+    'bank-statement':('modele-import-releve-bancaire.csv',
+                      ['Date','Libellé','Montant','Solde'],
+                      [['02/10/2026','VIR CLIENT EXEMPLE SARL FA-2026-001','1 200,00','5 430,00'],
+                       ['03/10/2026','PRLV LOGICIEL','-29,00','5 401,00']]),
+}
+
+
+def import_template_csv(kind):
+    filename,headers,rows=IMPORT_TEMPLATES[kind]
+    lines=[';'.join(headers)]+[';'.join(r) for r in rows]
+    return filename,('\r\n'.join(lines)+'\r\n').encode('utf-8-sig')
+
+
 def register(app):
+    @app.route('/import/modele/<kind>.csv')
+    @login_required
+    def import_template(kind):
+        if kind not in IMPORT_TEMPLATES: abort(404)
+        filename,data=import_template_csv(kind)
+        return Response(data,mimetype='text/csv; charset=utf-8',
+                        headers={'Content-Disposition':f'attachment; filename="{filename}"'})
+
     @app.route('/upload/bank-statement',methods=['GET','POST'])
     @login_required
     @requires_active_plan
@@ -520,7 +575,7 @@ def register(app):
                 if ext in ('.xlsx','.xls'):
                     df=pd.read_excel(path)
                 elif ext=='.csv':
-                    df=pd.read_csv(path)
+                    df=read_csv_any(path)
                 elif ext=='.pdf':
                     df=_extract_bank_statement_pdf(path)
                 else:
@@ -544,8 +599,8 @@ def register(app):
 
             proposals=[]
             for _,row in df.iterrows():
-                try: bank_amount=float(row[m['amount']])
-                except Exception: continue
+                bank_amount=parse_amount(row[m['amount']])
+                if bank_amount is None: continue
                 if bank_amount<=0: continue  # on ne traite que les lignes créditrices (encaissements)
                 bank_desc=str(row[m['desc']]) if 'desc' in m else ''
                 bank_date=str(row[m['date']])[:10]
@@ -680,8 +735,8 @@ def register(app):
                     ac_clean.execute('DELETE FROM public_invoice_tokens WHERE token=?',(tok['token'],))
             ac_clean.commit(); ac_clean.close()
             for _,r in df.iterrows():
-                try:amount=float(r[m['amount']])
-                except:continue
+                amount=parse_amount(r[m['amount']])
+                if amount is None: continue
                 paid=money(r[m['paid']]) if 'paid' in m else 0
                 issue=parse_date(r[m['issue']]) if 'issue' in m else None
                 status=str(r[m['status']]) if 'status' in m else ('paid' if paid>=amount else 'unpaid')
@@ -871,7 +926,7 @@ def register(app):
                 if ext in ('.xlsx','.xls'):
                     df=pd.read_excel(path)
                 elif ext=='.csv':
-                    df=pd.read_csv(path)
+                    df=read_csv_any(path)
                 elif ext=='.pdf':
                     df=pd.DataFrame([_extract_expense_pdf(path)])
                 else:
@@ -904,8 +959,8 @@ def register(app):
             # de réinsérer un doublon strict lors d'un nouvel import. Le doublon
             # est aussi vérifié dans le périmètre de CETTE entité uniquement.
             for _,r in df.iterrows():
-                try:a=float(r[m['amount']])
-                except:continue
+                a=parse_amount(r[m['amount']])
+                if a is None: continue
                 d=parse_date(r[m['date']]); v=str(r[m['vendor']]).strip(); desc=str(r[m['desc']]) if 'desc' in m else ''; cat=str(r[m['cat']]) if 'cat' in m else ''
                 d_iso=d.isoformat() if d else None
                 exists=c.execute(

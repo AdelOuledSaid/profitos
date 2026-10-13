@@ -11,6 +11,17 @@
 </form>
 {% endif %}
 
+{% set _parts = (user.full_name or '').split(' ', 1) %}
+<section class="purchase-panel" style="margin-bottom:18px;">
+  <h2 style="color:#fff;">Mon nom</h2>
+  <form method="post" action="{{ url_for('account_name_change') }}" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Prénom<input name="first_name" autocomplete="given-name" maxlength="60" value="{{ _parts[0] }}" required></label>
+    <label>Nom<input name="last_name" autocomplete="family-name" maxlength="60" value="{{ _parts[1] if _parts|length > 1 else '' }}" required></label>
+    <div class="wide"><button class="purchase-primary-btn primary">Enregistrer</button></div>
+  </form>
+</section>
+
 <div class="twocol">
   <section class="purchase-panel">
     <h2 style="color:#fff;">Changer mon mot de passe</h2>

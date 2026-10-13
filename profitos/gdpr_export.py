@@ -109,7 +109,7 @@ def build_organization_export(org_id):
     return out.getvalue()
 
 
-_PROFILE_COLUMNS = ['id', 'email', 'full_name', 'is_active', 'email_verified', 'theme_preference',
+_PROFILE_COLUMNS = ['id', 'email', 'full_name', 'is_active', 'email_verified', 'theme_preference', 'ui_mode',
                     'created_at', 'updated_at', 'password_changed_at', 'totp_enabled']
 
 

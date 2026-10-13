@@ -115,11 +115,12 @@ def check_stripe(env=None):
 def check_legal(env=None):
     """Mentions légales obligatoires (LCEN art. 6 III) : identité de l'éditeur."""
     env = os.environ if env is None else env
-    from profitos.legal import missing_legal_fields
+    from profitos.legal import legal_identity_errors, missing_legal_fields
     missing = missing_legal_fields(env)
-    if not missing:
-        return []
-    return ['Mentions légales incomplètes : définissez ' + ', '.join(missing) + ' (voir DEPLOIEMENT_PRODUCTION.md).']
+    errors = legal_identity_errors(env)
+    if missing:
+        errors.insert(0, 'Mentions légales incomplètes : définissez ' + ', '.join(missing) + ' (voir DEPLOIEMENT_PRODUCTION.md).')
+    return errors
 
 
 def check_secrets(env=None):

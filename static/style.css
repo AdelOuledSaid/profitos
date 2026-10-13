@@ -122,3 +122,6 @@ nav a.active{background:#10241a;color:#3ddc84;box-shadow:inset 3px 0 0 #3ddc84}
 .sidebar-quick-logout{margin:-6px 0 16px}
 .sidebar-quick-logout .logout-link{font-size:12px;padding:0}
 .auth-terms{align-items:flex-start!important;gap:8px;font-size:13px;line-height:1.45}.auth-terms input{margin-top:3px;flex:0 0 auto}
+/* Menu simplifié / complet */
+.navmode{margin:14px 0 4px}.navmode-btn{width:100%;background:none;border:1px dashed #2a2a2a;color:#9a9a9a;border-radius:9px;padding:9px 12px;font:inherit;font-size:12px;font-weight:700;text-align:left;cursor:pointer}.navmode-btn:hover{border-color:#3ddc84;color:#3ddc84;box-shadow:none;transform:none}
+.auth-name-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:420px){.auth-name-row{grid-template-columns:1fr}}

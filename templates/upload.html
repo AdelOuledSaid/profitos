@@ -39,6 +39,9 @@
     {% else %}
     <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : fournisseur, montant, date.</p>
     {% endif %}
+    {% if kind in ('invoices','expenses','bank-statement') %}
+    <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Vos données sont dans Excel ou un autre logiciel ? <a class="link" href="{{ url_for('import_template', kind=kind) }}">Télécharger le modèle CSV</a>, remplissez-le (ou collez-y votre export) et importez-le ici. Séparateur « ; » ou « , », montants « 1 234,56 » et dates « jj/mm/aaaa » acceptés.</p>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

@@ -123,6 +123,22 @@ def register(app):
                                recovery_left=recovery_left, sessions=sessions,
                                org_requires_2fa=acsec.org_requires_2fa(org), is_owner=current_role() == 'OWNER')
 
+    @app.route('/compte/nom', methods=['POST'])
+    @login_required
+    def account_name_change():
+        """Prénom et nom affichés dans l'application (accueil, équipe, e-mails d'invitation)."""
+        first = ' '.join(request.form.get('first_name', '').split())[:60]
+        last = ' '.join(request.form.get('last_name', '').split())[:60]
+        if not first or not last:
+            flash('Indiquez votre prénom et votre nom.')
+            return redirect(url_for('account_security'))
+        c = auth_cx()
+        c.execute('UPDATE users SET full_name=?,updated_at=? WHERE id=?', (f'{first} {last}', now(), session['user_id']))
+        c.commit(); c.close()
+        log_activity('ACCOUNT_NAME_CHANGED', 'Nom du compte modifié')
+        flash('Votre nom a été mis à jour.')
+        return redirect(url_for('account_security'))
+
     @app.route('/compte/mot-de-passe', methods=['POST'])
     @login_required
     @rate_limit(10, 900)
