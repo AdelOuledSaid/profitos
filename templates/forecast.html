@@ -7,7 +7,7 @@
 <p class="purchase-subtitle">Encaissements attendus moins décaissements prévus, avec les mêmes données que <a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">Trésorerie &amp; scénarios</a> (scénario probable). Estimation indicative, pas une garantie de trésorerie.</p>
 
 <div class="purchase-stats" style="margin:20px 0;">
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Encaissements attendus</div><div class="purchase-stat-value">{{ gross_expected|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">{{ pluralize(invoice_count, 'facture client', 'factures clients') }} (émises et importées)</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Encaissements attendus</div><div class="purchase-stat-value">{{ gross_expected|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">{{ pluralize(invoice_count, 'facture client', 'factures clients') }} (émises et importées){% if other_inflows %} + {{ pluralize(other_inflows, 'encaissement prévu', 'encaissements prévus') }}{% endif %}</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Factures fournisseurs à payer</div><div class="purchase-stat-value">{{ supplier_payables_total|fr_signed }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">déduites à leur échéance</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Solde de départ</div><div class="purchase-stat-value">{% if ci.cash_balance is not none %}{{ ci.cash_balance|fr_number }}&nbsp;€{% else %}—{% endif %}</div><div class="purchase-muted" style="font-size:12px;">{% if ci.cash_as_of %}déclaré le {{ ci.cash_as_of|fr_date }}{% else %}<a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">à renseigner</a>{% endif %}</div></div></div>
 </div>
@@ -23,7 +23,7 @@
   <h2>Détail par période</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Période</th><th style="text-align:right;">Encaissements</th><th style="text-align:right;">Fournisseurs</th><th style="text-align:right;">Autres sorties datées</th><th style="text-align:right;">Dépenses courantes</th><th style="text-align:right;">Flux net</th></tr></thead>
+      <thead><tr><th>Période</th><th style="text-align:right;">Encaissements</th><th style="text-align:right;">Fournisseurs</th><th style="text-align:right;">Autres sorties datées<br><small>emprunts, TVA, flux prévus…</small></th><th style="text-align:right;">Dépenses courantes</th><th style="text-align:right;">Flux net</th></tr></thead>
       <tbody>
       {% for k in labels %}
         <tr>
@@ -55,7 +55,7 @@
 </section>
 
 <p class="purchase-muted" style="margin-top:20px;font-size:12px;">
-Méthode : les factures clients restant dues (émises dans ProfitOS ou importées) sont comptées à 100 % à leur date d'échéance (une facture déjà échue est attendue sous 7 à 45 jours selon son retard). Les factures fournisseurs non réglées sont déduites à leur échéance, les autres dépenses datées à leur date, et la dépense courante moyenne des 90 derniers jours est répartie sur chaque période. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
+Méthode : les factures clients restant dues (émises dans ProfitOS ou importées) sont comptées à 100 % à leur date d'échéance, décalée selon l'habitude de paiement du client quand elle est connue (une facture déjà échue est attendue sous 7 à 45 jours selon son retard). Les abonnements à venir et les encaissements prévus sont ajoutés à leur date. Les factures fournisseurs non réglées sont déduites à leur échéance ; les échéances d'emprunt et de crédit-bail, la TVA estimée, les flux prévus et les autres dépenses datées à leur date ; la dépense courante moyenne des 90 derniers jours est répartie sur chaque période. Cette prévision est un outil d'aide à la décision, pas un engagement financier.
 </p>
 </div>
 {% endblock %}

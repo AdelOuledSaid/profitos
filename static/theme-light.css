@@ -210,3 +210,20 @@
 [data-theme="light"] .cash-chart-wrap{background:#ffffff;border-color:#dde5f2}
 [data-theme="light"] .chart-axis{stroke:#b8c4d8}
 [data-theme="light"] .chart-days{color:#4f5f7d}
+/* Trésorerie pro (v442) */
+[data-theme="light"] .cash-jump a{border-color:#c7d4ea;color:#33425e}
+[data-theme="light"] .cash-jump a:hover{border-color:#0f7a4d;color:#0f7a4d}
+[data-theme="light"] .cash-jump .cash-jump-export{border-color:#bfe3cf;color:#0f7a4d;background:#eaf6f0}
+[data-theme="light"] .chart-threshold{stroke:#b26b00}
+[data-theme="light"] .chart-threshold-label{fill:#8a5a00}
+[data-theme="light"] .cash-cascade-row{border-bottom-color:#e4eaf4}
+[data-theme="light"] .cash-cascade-bar{background:#eef2f8}
+[data-theme="light"] .cash-cascade-bar i{background:#2f6fd6}
+[data-theme="light"] .cash-cascade-row.is-in .cash-cascade-bar i{background:#178a4c}
+[data-theme="light"] .cash-cascade-row.is-out .cash-cascade-bar i{background:#d33a4a}
+[data-theme="light"] td.is-in,[data-theme="light"] .is-in{color:#0f7a4d}
+[data-theme="light"] td.is-out,[data-theme="light"] .is-out{color:#b3261e}
+[data-theme="light"] .cash-suggestions{border-color:#bfe3cf;background:#f6fbf8}
+[data-theme="light"] .cash-suggestion{border-bottom-color:#e4eaf4}
+[data-theme="light"] .cash-flow-form,[data-theme="light"] .cash-settings-form{border-top-color:#e4eaf4}
+[data-theme="light"] .cash-flow-form label,[data-theme="light"] .cash-settings-form label{color:#33425e}

@@ -2166,6 +2166,29 @@ def _migrate_tenant_schema(org_id=None):
         paid_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_lease_payments_lease ON finance_lease_payments(lease_id);
+    CREATE TABLE IF NOT EXISTS treasury_planned_flows(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        label TEXT NOT NULL,
+        label_key TEXT,
+        category TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        amount REAL NOT NULL,
+        start_date TEXT NOT NULL,
+        frequency TEXT NOT NULL DEFAULT 'monthly',
+        end_date TEXT,
+        source TEXT DEFAULT 'manual',
+        active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        created_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS treasury_settings(
+        entity_key INTEGER PRIMARY KEY,
+        safety_threshold REAL DEFAULT 0,
+        include_observed_burn INTEGER DEFAULT 1,
+        dismissed_suggestions TEXT,
+        updated_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS reviews(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,

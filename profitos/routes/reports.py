@@ -40,19 +40,27 @@ def register(app):
         ci=build_cash_intelligence()
         today=date.today()
         labels=('0-30j','31-60j','61-90j')
-        def bucket(day):
-            return '0-30j' if day<=30 else ('31-60j' if day<=60 else '61-90j')
-        inflows={k:0.0 for k in labels}
-        for r in ci['receivables_in_horizon']:
-            try: d=datetime.strptime(r['expected_date'],'%Y-%m-%d').date()
-            except Exception: continue
-            inflows[bucket(max(1,(d-today).days))]+=r['expected_amount']
-        supplier_out={k:0.0 for k in labels}; expense_out={k:0.0 for k in labels}
-        for o in ci['scheduled_outflows']:
-            target=supplier_out if o.get('source')=='purchase_invoice' else expense_out
-            target[bucket(max(1,int(o.get('day') or 0)))]+=o['amount']
-        burn={k:round(ci['daily_burn']*30,2) for k in labels}
-        net={k:round(inflows[k]-supplier_out[k]-expense_out[k]-burn[k],2) for k in labels}
+        bounds={'0-30j':(1,30),'31-60j':(31,60),'61-90j':(61,90)}
+        inflows={k:0.0 for k in labels}; supplier_out={k:0.0 for k in labels}
+        expense_out={k:0.0 for k in labels}; burn={k:0.0 for k in labels}; net={k:0.0 for k in labels}
+        # Mêmes flux et même courbe que Trésorerie & scénarios (scénario probable) : avec un
+        # solde de départ, le flux net de chaque période est exactement l'écart de la courbe.
+        from profitos.routes.cash_intelligence import _curve_events
+        events=_curve_events(ci['receivables'],ci['scheduled_outflows'],ci.get('inflows'),'probable',None,today)
+        probable=next((cv for cv in ci['curves'] if cv['mode']=='probable'),None)
+        for k,(a,b) in bounds.items():
+            for day,amount,cat in events:
+                if a<=day<=b:
+                    if amount>0: inflows[k]+=amount
+                    elif cat=='suppliers': supplier_out[k]-=amount
+                    else: expense_out[k]-=amount
+            if probable:
+                net[k]=round(probable['values'][b]-probable['values'][a-1],2)
+                burn[k]=round(inflows[k]-supplier_out[k]-expense_out[k]-net[k],2)
+            else:
+                burn[k]=round(ci['daily_burn']*(b-a+1),2)
+                net[k]=round(inflows[k]-supplier_out[k]-expense_out[k]-burn[k],2)
+            inflows[k]=round(inflows[k],2); supplier_out[k]=round(supplier_out[k],2); expense_out[k]=round(expense_out[k],2)
         cumulative=[]; running=0.0
         for k in labels:
             running+=net[k]; cumulative.append((k,round(running,2)))
@@ -66,7 +74,7 @@ def register(app):
         return render_template('forecast.html',ci=ci,labels=labels,inflows=inflows,supplier_out=supplier_out,
             expense_out=expense_out,burn=burn,net=net,cumulative=cumulative,total_90j=round(running,2),chart=chart,
             grow_total=grow_total,save_count=len(saves),save_one_off=save_one_off,save_annual=save_annual,
-            invoice_count=len(ci['receivables_in_horizon']),
+            invoice_count=len(ci['receivables_in_horizon']),other_inflows=len(ci.get('inflows') or []),
             gross_expected=round(sum(inflows.values()),2),
             planned_outflows=round(sum(supplier_out.values())+sum(expense_out.values()),2),
             supplier_payables_total=round(sum(supplier_out.values()),2))

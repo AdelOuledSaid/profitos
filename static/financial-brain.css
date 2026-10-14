@@ -236,3 +236,36 @@
 .purchase-stats.cash-kpis{grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0}
 @media(max-width:1050px){.purchase-stats.cash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.purchase-stats.cash-kpis{grid-template-columns:1fr}}
+/* Trésorerie pro : navigation, cascade, plan mensuel, flux prévus */
+.cash-jump{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 18px}
+.cash-jump a{padding:7px 13px;border-radius:999px;border:1px solid #294064;color:#bdd0ef;text-decoration:none;font-size:13px;font-weight:700}
+.cash-jump a:hover{border-color:#3ddc84;color:#3ddc84}
+.cash-jump .cash-jump-export{margin-left:auto;border-color:#2d6b59;color:#3ddc84}
+.cash-bank-suggest{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.cash-bank-suggest form{margin:0}
+.chart-threshold{stroke:#ffc861;stroke-width:1.5;stroke-dasharray:3 4;vector-effect:non-scaling-stroke}
+.chart-threshold-label{fill:#ffc861}
+.cash-cascade{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.cash-cascade-row{display:grid;grid-template-columns:minmax(180px,1.1fr) 2fr 130px;gap:14px;align-items:center;padding:7px 0;border-bottom:1px solid #1e1e1e}
+.cash-cascade-row span{font-size:14px}
+.cash-cascade-row strong{text-align:right;white-space:nowrap}
+.cash-cascade-bar{height:12px;border-radius:999px;background:#141c2b;overflow:hidden}
+.cash-cascade-bar i{display:block;height:100%;border-radius:999px;background:#79a9ff;min-width:2px}
+.cash-cascade-row.is-in .cash-cascade-bar i{background:#3ddc84}
+.cash-cascade-row.is-out .cash-cascade-bar i{background:#ff6e78}
+.cash-cascade-row.is-total span,.cash-cascade-row.is-total strong{font-weight:900}
+.cash-plan-table th small{display:block;font-weight:600;font-size:11px;opacity:.8;text-transform:none;letter-spacing:0}
+.cash-plan-table td:not(:first-child),.cash-plan-table th:not(:first-child){text-align:right;white-space:nowrap}
+.cash-plan-table tr.is-total td{font-weight:900}
+td.is-in,.is-in{color:#3ddc84}
+td.is-out,.is-out{color:#ff8a93}
+.cash-suggestions{margin-top:16px;padding:16px;border:1px dashed #2d6b59;border-radius:14px}
+.cash-suggestions h3{margin:0 0 4px}
+.cash-suggestion{display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #1e1e1e}
+.cash-suggestion:last-child{border-bottom:0}
+.cash-suggestion small{display:block;margin-top:3px}
+.cash-suggestion form{margin:0}
+.cash-flow-form,.cash-settings-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end;margin-top:18px;padding-top:16px;border-top:1px solid #1e1e1e}
+.cash-flow-form label,.cash-settings-form label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#aab6c8}
+.cash-settings-form .decision-check{flex-direction:row}
+@media(max-width:900px){.cash-flow-form,.cash-settings-form{grid-template-columns:1fr}.cash-suggestion{grid-template-columns:1fr}.cash-cascade-row{grid-template-columns:1fr 90px}.cash-cascade-bar{display:none}.cash-jump .cash-jump-export{margin-left:0}}
