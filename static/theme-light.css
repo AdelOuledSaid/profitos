@@ -119,3 +119,94 @@
 [data-theme="light"] .flash.flash-error,[data-theme="light"] .purchase-error{background:#fdecee;border-color:#f3b4bc;color:#8c1d18}
 [data-theme="light"] .navmode-btn{border-color:#c9d4e6;color:#5a6a85}
 [data-theme="light"] nav a.nav-locked{color:#7a879c}[data-theme="light"] nav a.nav-locked small{color:#1f8f55;border-color:#9fd9b8}
+
+/* v441 — Thème clair : lisibilité générale (audit de contraste sur toutes les pages).
+   Boutons principaux verts (comme les boutons « purchase ») au lieu du bleu nuit
+   presque noir ; boutons secondaires blancs bordés ; textes gris et couleurs néon du
+   thème sombre assombris pour atteindre un contraste lisible sur fond clair. */
+[data-theme="light"] .button,[data-theme="light"] button{background:#0f7a4d;color:#ffffff}
+[data-theme="light"] .button:hover,[data-theme="light"] button:hover{box-shadow:0 0 0 3px rgba(15,122,77,.18)}
+[data-theme="light"] .button.secondary,[data-theme="light"] button.secondary,
+[data-theme="light"] .btn-secondary,[data-theme="light"] button.btn-secondary{background:#ffffff;color:#1a2436;border:1px solid #c7d4ea}
+[data-theme="light"] .btn-secondary:hover,[data-theme="light"] button.secondary:hover{border-color:#0f7a4d;box-shadow:none}
+[data-theme="light"] .navmode-btn{background:none;color:#4f5f7d;border:1px dashed #c9d4e6}
+[data-theme="light"] .navmode-btn:hover{color:#0f7a4d;border-color:#0f7a4d}
+[data-theme="light"] button.purchase-detail-link,[data-theme="light"] button.purchase-link{background:none;box-shadow:none}
+[data-theme="light"] input::placeholder,[data-theme="light"] textarea::placeholder{color:#7b8bab;opacity:1}
+[data-theme="light"] input:focus,[data-theme="light"] select:focus,[data-theme="light"] textarea:focus{border-color:#0f7a4d;outline:2px solid rgba(15,122,77,.18)}
+[data-theme="light"] input:disabled,[data-theme="light"] select:disabled{background:#eef2f8;color:#5b6c8f}
+
+/* Textes */
+[data-theme="light"] .brand span{color:#0f8a52}
+[data-theme="light"] .sidebar summary{color:#0f7a4d}
+[data-theme="light"] main label,[data-theme="light"] .sidebar label{color:#33425e}
+[data-theme="light"] .eyebrow{color:#4f5f7d}
+[data-theme="light"] .eyebrow.green,[data-theme="light"] .green,[data-theme="light"] .grow,[data-theme="light"] .match{color:#0f7a4d}
+[data-theme="light"] .red,[data-theme="light"] .recover{color:#b3261e}
+[data-theme="light"] .amber,[data-theme="light"] .save{color:#8a5a00}
+[data-theme="light"] .muted,[data-theme="light"] small,[data-theme="light"] .hint{color:#4f5f7d}
+[data-theme="light"] .purchase-muted,[data-theme="light"] .purchase-empty{color:#5b6c8f}
+[data-theme="light"] code{color:#1a2436}
+[data-theme="light"] pre,[data-theme="light"] .actioncard pre{background:#f4f6fb;border:1px solid #dde5f2;color:#1a2436}
+[data-theme="light"] main [style*="color:#ffc149"]{color:#8a5a00 !important}
+[data-theme="light"] .db a[style*="b26b00"],[data-theme="light"] .db-pulse-link{color:#8a5200}
+[data-theme="light"] .chip.good{color:#0f7a4d}[data-theme="light"] .chip.warn{color:#8a5a00}
+
+/* Onglets segmentés (balances, périodes) */
+[data-theme="light"] .seg-tabs{background:#ffffff;border-color:#c7d4ea}
+[data-theme="light"] .seg-tabs a{color:#33425e}
+[data-theme="light"] .seg-tabs a.is-active{background:#0f7a4d;color:#ffffff}
+
+/* Formules & facturation (billing-v178.css) */
+[data-theme="light"] .billing-hero h1,[data-theme="light"] .billing-plan h2,[data-theme="light"] .billing-section h2,
+[data-theme="light"] .quota-card h3,[data-theme="light"] .pricing-cta h2,[data-theme="light"] .billing-price{color:#1a2436}
+[data-theme="light"] .billing-lead,[data-theme="light"] .billing-section-lead,[data-theme="light"] .billing-faq p,
+[data-theme="light"] .pricing-hero p,[data-theme="light"] .pricing-cta p,[data-theme="light"] .billing-plan-code,
+[data-theme="light"] .billing-price small,[data-theme="light"] .billing-feature-title,
+[data-theme="light"] .billing-note,[data-theme="light"] .billing-tax-note{color:#4f5f7d}
+[data-theme="light"] .billing-for{color:#33425e}
+[data-theme="light"] .billing-feature{color:#1a2436}
+[data-theme="light"] .billing-feature.off,[data-theme="light"] .billing-feature.off .tick,[data-theme="light"] .billing-no{color:#66768f}
+[data-theme="light"] .billing-feature .tick,[data-theme="light"] .billing-yes,[data-theme="light"] .billing-pill strong{color:#0f7a4d}
+[data-theme="light"] .billing-pill{background:#ffffff;border-color:#c7d4ea;color:#33425e}
+[data-theme="light"] .billing-plan,[data-theme="light"] .quota-card,[data-theme="light"] .billing-faq details,
+[data-theme="light"] .pricing-cta,[data-theme="light"] .billing-matrix{background:#ffffff;border-color:#dde5f2;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+[data-theme="light"] .billing-plan.is-pro{border-color:#0f7a4d;box-shadow:0 0 0 1px rgba(15,122,77,.15),0 12px 32px rgba(20,30,60,.08)}
+[data-theme="light"] .billing-badge{background:#0f7a4d;color:#ffffff}
+[data-theme="light"] .billing-plan.is-current{border-color:#2563eb}
+[data-theme="light"] .billing-plan.is-current .billing-badge{background:#2563eb;color:#ffffff}
+[data-theme="light"] .billing-matrix th{background:#f4f6fb;color:#33425e}
+[data-theme="light"] .billing-matrix td{color:#1a2436}
+[data-theme="light"] .billing-matrix th,[data-theme="light"] .billing-matrix td{border-color:#e4eaf4}
+[data-theme="light"] .billing-faq summary{color:#1a2436}
+[data-theme="light"] .quota-bar{background:#e4eaf4}
+[data-theme="light"] .billing-notice{background:#fff6e0;border-color:#f0d08a;color:#5a3d00}
+[data-theme="light"] .billing-period{background:#ffffff;border-color:#c7d4ea}
+[data-theme="light"] .billing-period a{color:#33425e}
+[data-theme="light"] .billing-period a small{color:#0f7a4d}
+[data-theme="light"] .billing-period a.is-active{background:#0f7a4d;color:#ffffff}
+[data-theme="light"] .billing-period a.is-active small{color:#ffffff}
+
+/* Simulateur de décision, trésorerie, formulaires de lots */
+[data-theme="light"] .decision-form label,[data-theme="light"] .lot-form label,
+[data-theme="light"] .cash-balance-form label,[data-theme="light"] .consortium-member label{color:#33425e}
+[data-theme="light"] .decision-constraint-group{background:#f3faf6;border-color:#bfe3cf}
+[data-theme="light"] .decision-check{background:#ffffff;border-color:#c7d4ea;color:#1a2436}
+[data-theme="light"] .lot-hint{color:#5b6c8f}
+[data-theme="light"] .scenario-summary-card{border-color:#dde5f2;background:#ffffff}
+[data-theme="light"] .scenario-summary-card span,[data-theme="light"] .scenario-summary-card b{color:#4a5a78}
+[data-theme="light"] .cash-legend .prudent,[data-theme="light"] .scenario-summary-card.prudent small{color:#9a5b00}
+[data-theme="light"] .cash-legend .probable,[data-theme="light"] .scenario-summary-card.probable small{color:#2257c9}
+[data-theme="light"] .cash-legend .optimiste,[data-theme="light"] .scenario-summary-card.optimiste small{color:#0f7a4d}
+[data-theme="light"] .cash-line.prudent{stroke:#c97a00}
+[data-theme="light"] .cash-line.probable{stroke:#2f6fd6}
+[data-theme="light"] .cash-line.optimiste{stroke:#178a4c}
+[data-theme="light"] .security-table th{color:#33425e}[data-theme="light"] .security-table code{color:#1a2436}
+[data-theme="light"] .security-table th,[data-theme="light"] .security-table td{border-bottom-color:#e4eaf4}
+[data-theme="light"] [style*="color:#3ddc84"]{color:#0f7a4d !important}
+[data-theme="light"] [style*="color:#a0a0a0"]{color:#4f5f7d !important}
+[data-theme="light"] .cash-legend .legend{background:#ffffff;border-color:#dde5f2}
+[data-theme="light"] body .db{--db-green:#11804a;--db-amber:#9a5b00}
+[data-theme="light"] .cash-chart-wrap{background:#ffffff;border-color:#dde5f2}
+[data-theme="light"] .chart-axis{stroke:#b8c4d8}
+[data-theme="light"] .chart-days{color:#4f5f7d}

@@ -79,11 +79,11 @@
     <div class="eyebrow">UTILISATION CE MOIS-CI</div>
     <h2>Votre consommation {{ plan_name }}</h2>
     <p class="billing-section-lead">Suivez les limites réellement appliquées côté serveur à votre organisation.</p>
-    {% set imports_pct = ((quota_usage.imports.used * 100) / quota_usage.imports.limit) if quota_usage.imports.limit else 100 %}
-    {% set reports_pct = ((quota_usage.reports.used * 100) / quota_usage.reports.limit) if quota_usage.reports.limit else 100 %}
-    {% set team_pct = ((quota_usage.team.used * 100) / quota_usage.team.limit) if quota_usage.team.limit else 100 %}
-    {% set organizations_pct = ((quota_usage.organizations.used * 100) / quota_usage.organizations.limit) if quota_usage.organizations.limit else 100 %}
-    {% set ai_pct = ((quota_usage.ai.used * 100) / quota_usage.ai.limit) if quota_usage.ai and quota_usage.ai.limit else 100 %}
+    {% set imports_pct = ((quota_usage.imports.used * 100) / quota_usage.imports.limit) if quota_usage.imports.limit else (0 if quota_usage.imports.limit is none else 100) %}
+    {% set reports_pct = ((quota_usage.reports.used * 100) / quota_usage.reports.limit) if quota_usage.reports.limit else (0 if quota_usage.reports.limit is none else 100) %}
+    {% set team_pct = ((quota_usage.team.used * 100) / quota_usage.team.limit) if quota_usage.team.limit else (0 if quota_usage.team.limit is none else 100) %}
+    {% set organizations_pct = ((quota_usage.organizations.used * 100) / quota_usage.organizations.limit) if quota_usage.organizations.limit else (0 if quota_usage.organizations.limit is none else 100) %}
+    {% set ai_pct = ((quota_usage.ai.used * 100) / quota_usage.ai.limit) if quota_usage.ai and quota_usage.ai.limit else (0 if quota_usage.ai and quota_usage.ai.limit is none else 100) %}
     <div class="quota-grid">
       <div class="quota-card">
         <div class="billing-plan-code">IMPORTS</div>
