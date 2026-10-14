@@ -25,6 +25,12 @@ def register(app):
             return render_template('landing.html')
         return _home_dashboard()
 
+    @app.route('/aide')
+    def help_center():
+        """Guide utilisateur public (généré depuis docs/guide-utilisateur.md par
+        scripts/build_help.py)."""
+        return render_template('help.html')
+
     @app.route('/mentions-legales')
     def legal_notice():
         return _legal('mentions')
@@ -598,7 +604,8 @@ def register(app):
     @app.route('/pricing')
     def pricing():
         """Page tarifs publique — aucune authentification requise."""
-        return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS,annual_ok=annual_billing_available())
+        period='year' if (request.args.get('periode') or '').lower()=='annuel' else 'month'
+        return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS,annual_ok=annual_billing_available(),period=period)
 
     @app.route('/fonctionnalites')
     def features_overview():

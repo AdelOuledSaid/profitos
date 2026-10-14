@@ -1,0 +1,837 @@
+{# Fichier généré par scripts/build_help.py depuis docs/guide-utilisateur.md — ne pas modifier à la main. #}
+<h2 id="presentation">1. Présentation</h2>
+<p>ProfitOS est un logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets. Il réunit facturation, facture électronique, achats, banque, trésorerie et comptabilité dans un seul outil, en français et conforme aux règles fiscales françaises.</p>
+<p>Ce guide explique, module par module, comment utiliser ProfitOS au quotidien. Les menus cités sont ceux de la barre latérale à gauche de l'écran.</p>
+<p><strong>Les grands modules</strong></p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Module</th>
+<th>À quoi il sert</th>
+<th>Formule minimale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Facturation</td>
+<td>Devis, factures, acomptes, avoirs, abonnements, relances clients</td>
+<td>Starter</td>
+</tr>
+<tr>
+<td>Facture électronique</td>
+<td>Factures Factur-X, envoi par plateforme agréée, suivi des statuts</td>
+<td>Starter</td>
+</tr>
+<tr>
+<td>Achats et dépenses</td>
+<td>Factures fournisseurs, notes de frais, budgets</td>
+<td>Starter</td>
+</tr>
+<tr>
+<td>Banque</td>
+<td>Connexion ou import des relevés, rapprochement, catégorisation</td>
+<td>Pro</td>
+</tr>
+<tr>
+<td>Comptabilité</td>
+<td>Écritures, grand livre, balance, TVA, clôture, FEC, liasse 2033</td>
+<td>Pro</td>
+</tr>
+<tr>
+<td>Trésorerie et scénarios</td>
+<td>Prévision à 90 jours, plan mensuel, simulateur de décision</td>
+<td>Business</td>
+</tr>
+<tr>
+<td>Multi-sociétés</td>
+<td>Plusieurs entités, consolidation, portefeuille cabinet</td>
+<td>Multi-sociétés</td>
+</tr>
+</tbody>
+</table></div>
+<p>Un module non inclus dans votre formule reste visible dans le menu avec un cadenas et le nom de la formule qui l'inclut.</p>
+<h2 id="premiers-pas">2. Premiers pas</h2>
+<p>En cinq minutes, votre compte est créé et votre société paramétrée pour émettre des factures conformes.</p>
+<h3 id="creer-son-compte">Créer son compte</h3>
+<ol>
+<li>Sur la page d'inscription, saisissez votre prénom, votre nom, votre adresse e-mail, le nom de votre société et un mot de passe.</li>
+<li>Acceptez les conditions générales, puis validez.</li>
+<li>Ouvrez l'e-mail de confirmation et cliquez sur le lien. Tant que l'adresse n'est pas vérifiée, un bandeau jaune le rappelle en haut de chaque page.</li>
+</ol>
+<p>Le mot de passe doit être long et peu courant : les mots de passe trop simples, répétitifs ou contenant votre e-mail sont refusés.</p>
+<h3 id="renseigner-le-profil-entreprise">Renseigner le profil entreprise</h3>
+<p>Menu <strong>Entreprise &amp; compte → Profil entreprise</strong>. Ces informations apparaissent sur vos factures et sont obligatoires pour qu'elles soient légales.</p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Information</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dénomination, forme juridique, capital social</td>
+<td>Mentions légales des factures</td>
+</tr>
+<tr>
+<td>SIRET et ville du greffe (RCS)</td>
+<td>Identification de l'entreprise ; le SIRET est contrôlé (clé de validité)</td>
+</tr>
+<tr>
+<td>Numéro de TVA intracommunautaire</td>
+<td>Obligatoire sauf en franchise en base</td>
+</tr>
+<tr>
+<td>Régime de TVA</td>
+<td>Normal, ou franchise en base (art. 293 B du CGI) : ProfitOS ajoute alors la mention légale</td>
+</tr>
+<tr>
+<td>TVA sur les débits</td>
+<td>À cocher si vous avez opté pour les débits (prestations de services)</td>
+</tr>
+<tr>
+<td>Adresse, code postal, ville</td>
+<td>Adresse du siège</td>
+</tr>
+<tr>
+<td>Conditions de paiement, pénalités de retard, escompte</td>
+<td>Mentions obligatoires de bas de facture</td>
+</tr>
+<tr>
+<td>IBAN et BIC</td>
+<td>Affichés sur la facture pour être payé par virement</td>
+</tr>
+</tbody>
+</table></div>
+<p>Tant qu'une mention obligatoire manque, ProfitOS vous le signale avant l'émission d'une facture.</p>
+<h3 id="se-reperer-dans-l-interface">Se repérer dans l'interface</h3>
+<ul>
+<li><strong>Menu simplifié ou complet</strong> : par défaut, le menu ne montre que l'essentiel. Le bouton <strong>Afficher toutes les fonctionnalités</strong>, en bas du menu, ouvre le menu complet ; <strong>Revenir au menu simplifié</strong> le referme.</li>
+<li><strong>Thème clair ou sombre</strong> : bouton <strong>Thème clair</strong> / <strong>Thème sombre</strong> dans l'encadré de votre compte, en bas du menu.</li>
+<li><strong>Nouveautés</strong> : le bouton en haut à droite liste les dernières améliorations.</li>
+<li><strong>Sur téléphone</strong> : le menu s'ouvre avec le bouton en haut de l'écran.</li>
+<li><strong>Premiers pas</strong> : le tableau de bord affiche une liste de démarrage (profil complété, premières factures et dépenses importées, première action, collègue invité) qui se coche au fur et à mesure.</li>
+</ul>
+<h2 id="formules-et-abonnement">3. Formules et abonnement</h2>
+<p>Quatre formules de 9 à 199 € HT par mois, sans engagement en mensuel, avec 2 mois offerts en paiement annuel. Menu <strong>Entreprise &amp; compte → Abonnement</strong>.</p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th></th>
+<th>Starter</th>
+<th>Pro</th>
+<th>Business</th>
+<th>Multi-sociétés</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prix mensuel (HT)</td>
+<td>9 €</td>
+<td>29 €</td>
+<td>59 €</td>
+<td>199 €</td>
+</tr>
+<tr>
+<td>Prix annuel (HT)</td>
+<td>90 €</td>
+<td>290 €</td>
+<td>590 €</td>
+<td>1 990 €</td>
+</tr>
+<tr>
+<td>Utilisateurs</td>
+<td>2</td>
+<td>5</td>
+<td>20</td>
+<td>100</td>
+</tr>
+<tr>
+<td>Organisations</td>
+<td>1</td>
+<td>1</td>
+<td>1</td>
+<td>25</td>
+</tr>
+<tr>
+<td>Imports par mois</td>
+<td>20</td>
+<td>200</td>
+<td>Illimités</td>
+<td>Illimités</td>
+</tr>
+<tr>
+<td>Rapports par mois</td>
+<td>10</td>
+<td>100</td>
+<td>Illimités</td>
+<td>Illimités</td>
+</tr>
+<tr>
+<td>Lectures automatiques de documents par mois</td>
+<td>30</td>
+<td>200</td>
+<td>1 000</td>
+<td>3 000</td>
+</tr>
+<tr>
+<td>Facturation, achats, relances, imports</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+</tr>
+<tr>
+<td>Comptabilité, TVA, FEC, immobilisations, emprunts</td>
+<td>—</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+</tr>
+<tr>
+<td>Banque et rapprochement</td>
+<td>—</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+</tr>
+<tr>
+<td>API, webhooks, connecteurs e-commerce</td>
+<td>—</td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui</td>
+</tr>
+<tr>
+<td>Trésorerie et scénarios, simulateur, diagnostic</td>
+<td>—</td>
+<td>—</td>
+<td>Oui</td>
+<td>Oui</td>
+</tr>
+<tr>
+<td>Multi-sociétés, consolidation, portefeuille cabinet</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>Oui</td>
+</tr>
+</tbody>
+</table></div>
+<p>Les prix sont hors taxes ; la TVA à 20 % s'ajoute sur la facture d'abonnement.</p>
+<h3 id="essai-gratuit">Essai gratuit</h3>
+<p>L'essai dure 14 jours avec toutes les fonctions de la formule Pro, sans carte bancaire. À son terme, l'accès est suspendu jusqu'à la souscription d'une formule. Vos données sont conservées et vos exports (FEC, factures, export RGPD) restent disponibles.</p>
+<h3 id="changer-de-formule">Changer de formule</h3>
+<ul>
+<li><strong>Formule supérieure</strong> : active immédiatement ; la différence est facturée au prorata des jours restants.</li>
+<li><strong>Formule inférieure</strong> : appliquée immédiatement ; le montant déjà payé pour le reste du mois est déduit de votre prochaine facture. ProfitOS vérifie d'abord que vos données tiennent dans la nouvelle formule (nombre d'utilisateurs, d'organisations).</li>
+<li><strong>Paiement annuel</strong> : vous pouvez monter de formule en cours d'année ; le passage à une formule inférieure ou au mensuel se fait à l'échéance annuelle.</li>
+</ul>
+<p>Quand vous cliquez sur une fonction non incluse, ProfitOS vous amène directement à la formule qui la contient.</p>
+<h3 id="paiement-factures-et-resiliation">Paiement, factures et résiliation</h3>
+<p>Le paiement est traité par Stripe ; ProfitOS ne conserve aucune donnée de carte. Le bouton <strong>Gérer mon abonnement</strong> ouvre l'espace sécurisé Stripe : moyen de paiement, factures, résiliation. Après une résiliation, l'accès continue jusqu'à la fin de la période payée. En cas d'échec de paiement, un délai de grâce de 7 jours s'applique avant suspension.</p>
+<h2 id="tableau-de-bord">4. Tableau de bord</h2>
+<p>Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, combien on me doit, que dois-je faire aujourd'hui. Menu <strong>Tableau de bord</strong>.</p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Bloc</th>
+<th>Ce qu'il montre</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Message du jour</td>
+<td>Les factures clients en retard aujourd'hui, ou l'absence de retard</td>
+</tr>
+<tr>
+<td>Premiers pas</td>
+<td>La liste de démarrage, tant qu'elle n'est pas terminée</td>
+</tr>
+<tr>
+<td>Trésorerie</td>
+<td>Solde déclaré et sa date, état (stable, vigilance, alerte), mini-courbe sur 90 jours, solde prévu à 30 et 90 jours, point bas</td>
+</tr>
+<tr>
+<td>À encaisser</td>
+<td>Total des factures clients échues non payées (émises et importées)</td>
+</tr>
+<tr>
+<td>Économies potentielles</td>
+<td>Dépenses à revoir repérées par ProfitOS</td>
+</tr>
+<tr>
+<td>Gains vérifiés</td>
+<td>Résultats confirmés des actions menées (relance payée, économie réalisée)</td>
+</tr>
+<tr>
+<td>À traiter en priorité</td>
+<td>Les actions les plus utiles du moment, avec un lien vers le Centre d'actions</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
+<h2 id="facturation-clients">5. Facturation clients</h2>
+<p>Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu <strong>Ventes &amp; clients → Facturation</strong>.</p>
+<figure class="help-figure">{% include "help_invoice_cycle.html" %}<figcaption>Cycle d'une facture : 6 étapes, une correction par avoir</figcaption></figure>
+<p>Tout se joue à l'émission : avant, la facture se modifie librement ; après, elle est figée et seule un avoir la corrige.</p>
+<h3 id="clients">Clients</h3>
+<p><strong>Facturation → Clients → Nouveau client</strong> : nom, adresse, e-mail, SIREN, numéro de TVA, pays, client public ou privé. Une fiche client remplie une fois préremplit tous les devis et factures suivants. Le SIREN est obligatoire pour un client professionnel français en facture électronique.</p>
+<h3 id="devis">Devis</h3>
+<ol>
+<li><strong>Devis → Nouveau devis</strong> : client, lignes (description, quantité, prix unitaire HT, taux de TVA), date de validité.</li>
+<li><strong>Envoyer</strong> : le client reçoit un lien pour consulter le devis, le télécharger en PDF, l'<strong>accepter</strong> ou le <strong>refuser</strong> en ligne. Vous pouvez aussi marquer vous-même un devis accepté ou refusé.</li>
+<li>Un devis accepté devient en un clic une <strong>facture d'acompte</strong> (pourcentage au choix), une <strong>facture</strong> complète, ou une <strong>facture finale</strong> qui déduit automatiquement les acomptes déjà facturés.</li>
+</ol>
+<h3 id="factures">Factures</h3>
+<ol>
+<li><strong>Nouvelle facture</strong> : client, lignes, date d'émission, échéance, nature de l'opération (biens, services ou mixte), date de livraison ou de prestation.</li>
+<li>La facture reste un <strong>brouillon</strong> modifiable, sans numéro, tant qu'elle n'est pas émise.</li>
+<li><strong>Envoyer</strong> (ou <strong>Marquer émise</strong>) : ProfitOS attribue le numéro légal, séquentiel et sans trou sur l'année (par exemple FA-2026-014), fige la facture et passe l'écriture de vente en comptabilité.</li>
+<li>Le client reçoit un lien pour consulter et télécharger sa facture ; le PDF est au format Factur-X (voir section 6).</li>
+</ol>
+<p>Une facture émise ne peut plus être modifiée ni supprimée : c'est la loi. Pour la corriger ou l'annuler, émettez un <strong>avoir</strong> depuis la facture (total ou partiel). Une <strong>facture proforma</strong> peut être générée à tout moment ; elle n'a pas de valeur comptable.</p>
+<h3 id="bons-de-livraison">Bons de livraison</h3>
+<p><strong>Facturation → Livraisons</strong> : créez un bon de livraison, marquez-le livré, puis <strong>Facturer</strong> pour générer la facture correspondante.</p>
+<h3 id="factures-recurrentes">Factures récurrentes</h3>
+<p><strong>Facturation → Récurrentes</strong> pour les abonnements et contrats : client, lignes, fréquence (semaine, mois, trimestre, année), délai de paiement, première date et date de fin facultative. ProfitOS prépare chaque facture en brouillon à la date prévue ; vous la vérifiez puis l'envoyez. Un modèle peut être mis en pause à tout moment. Les prochaines échéances sont reprises dans la prévision de trésorerie.</p>
+<h3 id="paiements">Paiements</h3>
+<p>Sur une facture, <strong>Règlement</strong> enregistre un paiement total ou partiel (date, montant, moyen) ; <strong>Marquer payée</strong> solde la facture. Chaque règlement passe son écriture en banque. Avec le module Banque, ProfitOS propose de rapprocher chaque virement reçu de la facture correspondante (voir section 8).</p>
+<h3 id="relances-clients-et-echeancier">Relances clients et échéancier</h3>
+<ul>
+<li><strong>Relances clients</strong> liste les factures en retard, classées par un score de risque (montant, retard, historique) pour savoir qui relancer en premier. Les retenues de garantie y sont suivies jusqu'à leur date de libération.</li>
+<li><strong>Relancer</strong> sur une facture prépare l'e-mail de relance ; rien n'est envoyé sans votre validation.</li>
+<li><strong>Échéancier</strong> affiche sur un calendrier les échéances clients et fournisseurs.</li>
+<li><strong>Facturation → Créances</strong> donne l'état de toutes les sommes dues par client.</li>
+</ul>
+<h2 id="facture-electronique">6. Facture électronique</h2>
+<p>ProfitOS produit des factures électroniques au format Factur-X et les transmet par une plateforme agréée, comme l'exige la réforme française. Toutes les entreprises doivent pouvoir recevoir des factures électroniques à partir du 1er septembre 2026 ; l'émission devient obligatoire en septembre 2026 pour les grandes entreprises et ETI, en septembre 2027 pour les PME et micro-entreprises.</p>
+<h3 id="le-format-factur-x">Le format Factur-X</h3>
+<p>Chaque facture émise est un PDF lisible par une personne, qui contient aussi les données structurées de la facture (fichier XML, profil EN 16931). ProfitOS contrôle ces données avec les règles européennes et françaises avant l'envoi : SIREN du vendeur et de l'acheteur, mentions de paiement, cadre de facturation, taux de TVA, acomptes. Le bouton <strong>Factur-X</strong> d'une facture télécharge le fichier.</p>
+<h3 id="les-nouvelles-mentions-obligatoires">Les nouvelles mentions obligatoires</h3>
+<ul>
+<li>SIREN du client professionnel.</li>
+<li>Adresse de livraison quand elle diffère de l'adresse de facturation.</li>
+<li>Nature de l'opération : livraison de biens, prestation de services, ou les deux.</li>
+<li>Option pour le paiement de la TVA d'après les débits, le cas échéant.</li>
+</ul>
+<p>ProfitOS demande ces informations au bon moment et bloque l'envoi s'il en manque une.</p>
+<h3 id="envoyer-une-facture-par-la-plateforme">Envoyer une facture par la plateforme</h3>
+<ol>
+<li>Émettez la facture (section 5).</li>
+<li>Sur la facture, cliquez <strong>Envoyer par la plateforme</strong> : la facture part vers la plateforme de votre client.</li>
+<li>Le statut se met à jour seul ; <strong>Synchroniser</strong> force la mise à jour.</li>
+</ol>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Statut</th>
+<th>Signification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Déposée</td>
+<td>Reçue par la plateforme, en cours de contrôle</td>
+</tr>
+<tr>
+<td>Émise / Reçue</td>
+<td>Transmise à la plateforme du client</td>
+</tr>
+<tr>
+<td>Mise à disposition</td>
+<td>Disponible pour le client</td>
+</tr>
+<tr>
+<td>Prise en charge / Approuvée</td>
+<td>Le client l'a acceptée</td>
+</tr>
+<tr>
+<td>Refusée</td>
+<td>Le client la rejette ; elle sort de la prévision de trésorerie</td>
+</tr>
+<tr>
+<td>En litige / Suspendue</td>
+<td>À régulariser avec le client ; exclue de la prévision</td>
+</tr>
+<tr>
+<td>Rejetée</td>
+<td>Refusée par la plateforme (données invalides) : corrigez puis renvoyez par un avoir et une nouvelle facture</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le statut « Encaissée » n'est pas encore transmis automatiquement à la plateforme.</p>
+<h3 id="factures-fournisseurs-recues">Factures fournisseurs reçues</h3>
+<p>Les factures de vos fournisseurs arrivent dans <strong>Facturation → Achats</strong> via la plateforme (bouton <strong>Synchroniser</strong>). Pour chacune, vous pouvez l'approuver, la refuser ou la mettre en litige ; votre réponse est renvoyée au fournisseur.</p>
+<h3 id="e-reporting">E-reporting</h3>
+<p>Les ventes à des particuliers et les opérations internationales ne passent pas par une facture électronique mais doivent être déclarées (e-reporting). <strong>Facturation → E-reporting → Transmettre</strong> prépare et envoie la déclaration de la période ; une preuve de dépôt est conservée.</p>
+<h3 id="diagnostic">Diagnostic</h3>
+<p><strong>Facturation → Diagnostic facture électronique</strong> vérifie votre paramétrage : profil entreprise complet, SIREN, connexion à la plateforme, clients sans SIREN.</p>
+<h2 id="achats-et-depenses">7. Achats et dépenses</h2>
+<p>Toutes les factures fournisseurs passent par un circuit simple : saisie ou lecture automatique, validation, paiement, comptabilisation. Menu <strong>Facturation → Achats</strong>.</p>
+<h3 id="enregistrer-une-facture-fournisseur">Enregistrer une facture fournisseur</h3>
+<p>Trois façons de faire entrer une facture :</p>
+<ul>
+<li><strong>Importer un PDF</strong> : déposez le PDF (même scanné) ; ProfitOS lit le fournisseur, le numéro, les dates, les montants HT, TVA et TTC, et propose une catégorie. Vous vérifiez avant d'enregistrer.</li>
+<li><strong>Boîte mail fournisseurs</strong> : une adresse e-mail propre à votre compte ; transférez-y les factures reçues, elles arrivent dans vos achats.</li>
+<li><strong>Nouvelle facture</strong> : saisie manuelle.</li>
+</ul>
+<p>Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.</p>
+<h3 id="valider-et-payer">Valider et payer</h3>
+<ol>
+<li><strong>Valider</strong> confirme la facture et passe l'écriture d'achat (charge, TVA déductible, fournisseur). <strong>Rejeter</strong> l'écarte avec un motif.</li>
+<li><strong>Payer</strong> enregistre un paiement total ou partiel. Le justificatif (PDF) reste attaché à la facture.</li>
+<li><strong>Virements</strong> prépare un lot de virements SEPA pour les factures à payer, à importer dans votre banque.</li>
+</ol>
+<h3 id="suivre-ses-fournisseurs">Suivre ses fournisseurs</h3>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fournisseurs</td>
+<td>Fiche par fournisseur, historique des factures</td>
+</tr>
+<tr>
+<td>Commandes</td>
+<td>Bons de commande fournisseurs, puis réception de la marchandise</td>
+</tr>
+<tr>
+<td>Dettes fournisseurs</td>
+<td>Ce qui reste à payer, par fournisseur et par échéance</td>
+</tr>
+<tr>
+<td>Prévisions de paiements</td>
+<td>Les décaissements fournisseurs à venir</td>
+</tr>
+<tr>
+<td>Récurrents</td>
+<td>Les achats qui reviennent (loyer, abonnements)</td>
+</tr>
+<tr>
+<td>Budgets et pilotage</td>
+<td>Un budget par catégorie, comparé aux dépenses réelles</td>
+</tr>
+<tr>
+<td>Export</td>
+<td>Liste des achats en Excel ou CSV</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="notes-de-frais">Notes de frais</h3>
+<p>Menu <strong>Notes de frais</strong>. Un collaborateur crée une note, ajoute ses lignes (ticket, montant, catégorie ; frais kilométriques calculés avec le barème fiscal) puis la <strong>soumet</strong>. Un responsable la <strong>valide</strong> ou la <strong>rejette</strong>, puis la marque <strong>remboursée</strong>. Chaque étape passe ses écritures.</p>
+<h3 id="importer-des-depenses">Importer des dépenses</h3>
+<p><strong>Données &amp; connexions → Importer des dépenses</strong> accepte un fichier Excel, CSV ou des PDF (section 12). Les dépenses servent à repérer les économies possibles et à calculer la dépense courante de la prévision de trésorerie.</p>
+<h2 id="banque">8. Banque</h2>
+<p>Vos opérations bancaires arrivent dans ProfitOS, soit par connexion à la banque, soit par import de relevés, puis se rapprochent de vos factures en quelques clics. Menu <strong>Données &amp; connexions → Banques connectées</strong> (formule Pro et plus).</p>
+<h3 id="faire-entrer-ses-operations">Faire entrer ses opérations</h3>
+<ul>
+<li><strong>Connecter ma banque</strong> : connexion sécurisée en lecture seule à votre banque ; <strong>Synchroniser</strong> récupère les soldes et toutes les opérations passées. Les opérations encore « à venir » (carte à débit différé, virement en cours) sont importées une fois définitives. Le consentement bancaire est à renouveler périodiquement : ProfitOS l'indique quand c'est le cas.</li>
+<li><strong>Importer un relevé</strong> (CSV, Excel ou PDF) : choisissez le nom du compte (par exemple « Qonto »), déposez le fichier. Les relevés avec une colonne Montant signée ou deux colonnes Débit et Crédit sont acceptés. Réimporter un relevé déjà importé, ou un relevé qui chevauche le précédent, n'ajoute aucun doublon. Si le relevé contient une colonne Solde, le dernier solde est enregistré.</li>
+</ul>
+<h3 id="rapprocher-les-operations">Rapprocher les opérations</h3>
+<p>Pour chaque encaissement, ProfitOS propose la ou les factures clients correspondantes (montant restant dû, numéro de facture, nom du client), avec un niveau de confiance ; pour chaque sortie, les factures fournisseurs.</p>
+<ol>
+<li>Vérifiez la proposition et cliquez <strong>Rapprocher</strong>. Vous pouvez saisir un montant partiel, au format français (« 1 234,56 »).</li>
+<li>Le paiement est enregistré sur la facture, son écriture passée en banque, et le statut de la facture mis à jour (payée ou partiellement payée).</li>
+<li>Un virement peut régler plusieurs factures, et une facture recevoir plusieurs virements.</li>
+</ol>
+<p>Aucun rapprochement n'est fait sans votre validation.</p>
+<h3 id="categoriser-les-autres-operations">Catégoriser les autres opérations</h3>
+<p>Une opération sans facture (abonnement, frais, impôt) se comptabilise directement depuis la liste des transactions : choisissez une catégorie, un compte comptable et un taux de TVA, puis <strong>Valider</strong>. ProfitOS sépare le HT et la TVA (TVA déductible sur immobilisations pour un compte de classe 2) et retient votre choix : la fois suivante, la même opération est préremplie et se valide en un clic.</p>
+<ul>
+<li><strong>Règles de catégorisation</strong> : « tout libellé contenant URSSAF → Charges sociales », appliqué aux opérations existantes et futures.</li>
+<li><strong>Frais bancaires</strong> : un petit écart restant après un rapprochement (5 € maximum) se comptabilise en frais bancaires d'un clic.</li>
+<li><strong>Ignorer</strong> : pour un virement interne entre vos comptes, par exemple.</li>
+</ul>
+<h3 id="un-compte-comptable-par-compte-bancaire">Un compte comptable par compte bancaire</h3>
+<p>Dans le tableau des comptes bancaires, la colonne <strong>Compte comptable</strong> associe chaque banque à son compte 512 (par exemple 512100 pour Qonto, 512200 pour le Crédit Agricole). Toutes les écritures de ce compte bancaire utilisent alors ce compte. Créez d'abord le compte dans le plan comptable s'il n'existe pas.</p>
+<h3 id="etat-de-rapprochement-bancaire">État de rapprochement bancaire</h3>
+<p><strong>Banques → État de rapprochement</strong> compare, pour un compte et une date, le solde de la banque au solde du compte 512 :</p>
+<ol>
+<li>Solde du relevé (le dernier solde connu, ou celui que vous saisissez).</li>
+<li>Solde comptable du compte 512.</li>
+<li>Plus les opérations bancaires pas encore comptabilisées.</li>
+<li>Écart restant, expliqué par les écritures 512 sans opération bancaire (chèque émis pas encore débité, règlement saisi à la main).</li>
+</ol>
+<p>Quand l'écart correspond au solde de la banque avant le premier mouvement importé, ProfitOS indique qu'il manque le solde d'ouverture en comptabilité. La page s'imprime pour votre dossier de clôture.</p>
+<h3 id="utiliser-le-solde-bancaire">Utiliser le solde bancaire</h3>
+<p><strong>Utiliser ces soldes dans le pilotage</strong> reprend le total de vos comptes comme solde de départ de la trésorerie. Cette action n'est jamais faite automatiquement.</p>
+<h2 id="tresorerie-scenarios">9. Trésorerie &amp; scénarios</h2>
+<p>ProfitOS prévoit votre solde jour par jour sur 90 jours, à partir de tout ce qu'il sait déjà, et vous prévient avant une tension. Menu <strong>Trésorerie → Trésorerie &amp; scénarios</strong> (formule Business et plus).</p>
+<h3 id="donner-le-solde-de-depart">1. Donner le solde de départ</h3>
+<p>Saisissez votre trésorerie disponible (format « 12 345,67 » accepté) et cliquez <strong>Mettre à jour</strong>. Si vos comptes bancaires sont connectés ou vos relevés importés, un bandeau propose de reprendre leur solde en un clic. Au-delà de 7 jours, le solde est signalé comme ancien : toute la prévision part de ce montant.</p>
+<h3 id="ce-que-la-prevision-prend-en-compte">2. Ce que la prévision prend en compte</h3>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Comment elle est datée</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Factures clients restant dues (émises et importées)</td>
+<td>À l'échéance, décalée selon l'habitude de paiement du client ; une facture déjà en retard est attendue sous 7 à 45 jours selon son retard</td>
+</tr>
+<tr>
+<td>Factures récurrentes à venir</td>
+<td>Date d'émission prévue + délai de paiement du modèle</td>
+</tr>
+<tr>
+<td>Factures fournisseurs à payer</td>
+<td>À leur échéance ; déjà échues : dès demain</td>
+</tr>
+<tr>
+<td>Échéances d'emprunts et de crédit-bail</td>
+<td>À leur date</td>
+</tr>
+<tr>
+<td>TVA à payer</td>
+<td>Estimée d'après la comptabilité, payée le 15 du mois suivant</td>
+</tr>
+<tr>
+<td>Flux prévus que vous saisissez</td>
+<td>À leurs dates (une fois ou répétés)</td>
+</tr>
+<tr>
+<td>Dépense courante observée</td>
+<td>Moyenne des 90 derniers jours de dépenses, répartie chaque jour</td>
+</tr>
+</tbody>
+</table></div>
+<p>Les factures refusées, en litige ou suspendues sont exclues et listées à part. Les flux attendus après 90 jours ne sont pas comptés.</p>
+<p><strong>Habitude de paiement</strong> : quand un client a au moins deux factures entièrement réglées, ProfitOS calcule son retard moyen (par exemple « paie en moyenne 12 jours après l'échéance ») et date ses prochains paiements en conséquence.</p>
+<h3 id="lire-les-trois-scenarios">3. Lire les trois scénarios</h3>
+<ul>
+<li><strong>Probable</strong> : chaque encaissement à sa date attendue, compté à 100 %. C'est la référence des montants à 30, 60 et 90 jours.</li>
+<li><strong>Prudent</strong> : encaissements 15 jours plus tard et seulement 55 % du restant dû compté.</li>
+<li><strong>Optimiste</strong> : encaissements 10 jours plus tôt.</li>
+</ul>
+<p>Les décaissements sont les mêmes dans les trois scénarios. Chaque scénario affiche son point bas et son solde à 90 jours.</p>
+<h3 id="seuil-de-securite-alertes-et-autonomie">4. Seuil de sécurité, alertes et autonomie</h3>
+<ul>
+<li><strong>Seuil de sécurité</strong> (réglage en bas de la page) : le montant sous lequel vous ne voulez pas descendre. Il s'affiche en pointillé sur le graphique.</li>
+<li><strong>Alerte</strong> : tension si le scénario probable devient négatif ; vigilance s'il passe sous le seuil, si la marge à 30 jours est faible, ou si le scénario prudent crée une tension. La date prévue est toujours indiquée.</li>
+<li><strong>Autonomie de trésorerie</strong> : au rythme net prévu, le nombre de mois avant d'épuiser la trésorerie, ou « En hausse » si elle progresse.</li>
+</ul>
+<h3 id="comprendre-d-ou-vient-le-resultat">5. Comprendre d'où vient le résultat</h3>
+<p><strong>Du solde actuel à J+90</strong> décompose les 90 prochains jours : solde de départ, chaque catégorie d'encaissements et de décaissements, solde d'arrivée. Le <strong>plan de trésorerie mensuel</strong> donne la même chose mois par mois (solde d'ouverture, flux par catégorie, solde de clôture, point bas du mois), exportable en Excel ou CSV. En dessous, le <strong>réalisé bancaire</strong> des 3 derniers mois sert de point de comparaison.</p>
+<h3 id="ajouter-les-flux-que-les-factures-ne-disent-pas">6. Ajouter les flux que les factures ne disent pas</h3>
+<p>Section <strong>Flux prévus</strong> : libellé, catégorie (salaires et charges sociales, loyer, impôts, abonnements, remboursement de financement, vente signée, subvention, apport…), montant, fréquence (une fois, semaine, mois, trimestre, année), première échéance et fin facultative.</p>
+<p>Si vos relevés couvrent au moins 3 mois, ProfitOS repère les opérations qui reviennent chaque mois avec un montant stable (loyer, URSSAF, salaires…) et les propose : <strong>Ajouter</strong> les intègre à la prévision, <strong>Masquer</strong> les écarte. Les virements d'un client déjà facturé ne sont jamais proposés, puisque ses factures sont déjà comptées.</p>
+<p><strong>Éviter le double comptage</strong> : si vos dépenses importées contiennent déjà les salaires ou le loyer que vous saisissez en flux prévus, décochez « Compter la dépense courante observée » dans les réglages.</p>
+<h3 id="tester-l-encaissement-de-votre-plus-grosse-facture">7. Tester l'encaissement de votre plus grosse facture</h3>
+<p><strong>Simulation d'encaissement</strong> : choisissez quand votre plus gros client paiera (aujourd'hui, sous 7, 30 ou 60 jours, ou pas avant 90 jours) et voyez l'effet sur le point bas et le solde à 90 jours, sans modifier la facture.</p>
+<h3 id="flux-projetes-90-jours">Flux projetés 90 jours</h3>
+<p>Menu <strong>Trésorerie → Flux projetés 90 jours</strong> : les mêmes données par tranches de 30 jours (encaissements, fournisseurs, autres sorties, dépenses courantes, flux net). Les montants sont identiques à ceux de Trésorerie &amp; scénarios.</p>
+<p>La prévision est une aide à la décision, pas une garantie : elle n'invente aucune dépense que vous n'avez pas enregistrée.</p>
+<h2 id="aide-a-la-decision">10. Aide à la décision</h2>
+<p>Trois pages s'appuient sur la prévision de trésorerie pour vous aider à décider. Elles sont visibles dans le menu complet (formule Business et plus).</p>
+<h3 id="simulateur-de-decision">Simulateur de décision</h3>
+<p>Menu <strong>Trésorerie → Simulateur de décision</strong>. Il répond à la question : « puis-je me le permettre, et comment ? »</p>
+<ol>
+<li>Choisissez le type de décision : investissement ou machine, embauche, dépense exceptionnelle, nouveau marché.</li>
+<li>Renseignez le décaissement initial et son jour, le coût mensuel supplémentaire, l'encaissement attendu et son jour, la réserve minimale à préserver, le financement maximum accepté et la date limite de décision.</li>
+<li>Dans <strong>Contraintes réelles</strong>, cochez les leviers que vous acceptez : report négociable (et de combien de jours), paiement fractionnable (en combien d'échéances), financement externe.</li>
+<li><strong>Simuler la décision</strong>.</li>
+</ol>
+<p>Le résultat donne d'abord le verdict de la décision telle que saisie (soutenable, vigilance ou risqué, avec le besoin de financement pour éviter le négatif), puis un <strong>plan optimisé</strong> qui n'utilise que les leviers cochés, les trois alternatives les plus proches et l'impact sur le point bas et le solde à 90 jours. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
+<h3 id="diagnostic-financier">Diagnostic financier</h3>
+<p>Menu <strong>Trésorerie → Diagnostic financier</strong>. Un score de maîtrise financière sur 100, la décision qui protège le plus votre argent en ce moment, la liste des décisions classées par impact, et une réponse à « peut-on financièrement prendre ce marché ? » pour vos opportunités. La page dit aussi ce que ProfitOS ne sait pas encore, pour que vous complétiez les données manquantes.</p>
+<h3 id="gisements-de-cash">Gisements de cash</h3>
+<p>Menu <strong>Trésorerie → Gisements de cash</strong>. Le montant que vous pourriez récupérer (factures clients en retard à relancer, économies repérées sur vos dépenses, marchés publics ouverts) et vos décisions prioritaires. Chaque piste se transforme en action dans le <strong>Centre d'actions</strong> ; une fois menée, son résultat réel s'enregistre dans <strong>Gains vérifiés</strong>. Les économies potentielles ne sont jamais ajoutées à la trésorerie prévue.</p>
+<h2 id="comptabilite">11. Comptabilité</h2>
+<p>La comptabilité se tient en grande partie toute seule : chaque facture, paiement et opération bancaire validée passe son écriture en partie double. Vous contrôlez, complétez et clôturez. Menu <strong>Comptabilité</strong> (formule Pro et plus).</p>
+<h3 id="ce-qui-est-comptabilise-automatiquement">Ce qui est comptabilisé automatiquement</h3>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Événement</th>
+<th>Journal</th>
+<th>Écriture</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Facture client émise</td>
+<td>VE (ventes)</td>
+<td>411 Client / 706 ou 707 Ventes / 44571 TVA collectée</td>
+</tr>
+<tr>
+<td>Avoir client</td>
+<td>VE</td>
+<td>Écriture inverse de la facture</td>
+</tr>
+<tr>
+<td>Règlement client</td>
+<td>BQ (banque)</td>
+<td>512 Banque / 411 Client, lettré avec la facture</td>
+</tr>
+<tr>
+<td>Facture fournisseur validée</td>
+<td>AC (achats)</td>
+<td>Charge 6xx / 44566 TVA déductible / 401 Fournisseur</td>
+</tr>
+<tr>
+<td>Paiement fournisseur</td>
+<td>BQ</td>
+<td>401 Fournisseur / 512 Banque</td>
+</tr>
+<tr>
+<td>Opération bancaire catégorisée</td>
+<td>BQ</td>
+<td>Compte choisi / TVA / 512</td>
+</tr>
+<tr>
+<td>Note de frais, paie importée, emprunt, crédit-bail, amortissement</td>
+<td>OD ou journal dédié</td>
+<td>Selon l'opération</td>
+</tr>
+</tbody>
+</table></div>
+<p>La TVA sur encaissements (prestations de services) est gérée : elle devient exigible au paiement, au prorata de chaque règlement.</p>
+<h3 id="consulter">Consulter</h3>
+<ul>
+<li><strong>Journaux</strong> : les écritures par journal, numérotées en continu par journal et par année.</li>
+<li><strong>Grand livre</strong> : toutes les lignes par compte, filtrables par période, compte ou tiers ; export Excel ou CSV.</li>
+<li><strong>Balance</strong> : générale, clients ou fournisseurs, avec soldes d'ouverture, mouvements et soldes ; ProfitOS confirme qu'elle est équilibrée.</li>
+<li><strong>Lettrage</strong> : rapproche les factures et leurs règlements sur un compte de tiers.</li>
+<li><strong>Plan comptable</strong> : le plan comptable général français est préinstallé ; vous pouvez ajouter des comptes (par exemple un 512100 pour une seconde banque) ou en désactiver.</li>
+</ul>
+<h3 id="saisir-et-corriger">Saisir et corriger</h3>
+<ul>
+<li><strong>Nouvelle écriture</strong> : journal, date, libellé, référence de pièce et lignes au débit et au crédit ; l'écriture n'est enregistrée que si elle est équilibrée.</li>
+<li><strong>Pièces jointes</strong> : attachez le justificatif (PDF, image, tableur) à une écriture.</li>
+<li><strong>Contrepasser</strong> : une écriture enregistrée ne se modifie pas ; on passe une écriture inverse datée, puis la bonne. C'est l'exigence d'inaltérabilité de la comptabilité.</li>
+<li><strong>Analytique</strong> : étiquetez les lignes par projet, chantier ou activité pour suivre la rentabilité de chacun.</li>
+</ul>
+<h3 id="tva">TVA</h3>
+<ul>
+<li><strong>TVA</strong> : récapitulatif de la TVA collectée par taux et de la TVA déductible sur une période.</li>
+<li><strong>Déclaration CA3</strong> : les cases du formulaire 3310-CA3 préremplies à partir des écritures (base HT et TVA par taux, TVA déductible sur immobilisations et sur autres biens et services, crédit antérieur, TVA nette due ou crédit à reporter). Vous reportez les montants sur impots.gouv.fr ou les transmettez à votre expert-comptable ; ProfitOS ne télédéclare pas.</li>
+<li><strong>Liquider</strong> passe l'écriture de liquidation de la période (TVA à décaisser ou crédit à reporter), une seule fois par période.</li>
+</ul>
+<h3 id="immobilisations-emprunts-credit-bail-paie">Immobilisations, emprunts, crédit-bail, paie</h3>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Ce qu'elle fait</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Immobilisations</td>
+<td>Registre des biens ; amortissement linéaire ou dégressif, dotations calculées et passées en écriture ; cession</td>
+</tr>
+<tr>
+<td>Emprunts</td>
+<td>Tableau d'amortissement calculé (capital, intérêts) ; chaque échéance payée passe son écriture ; échéances reprises dans la trésorerie</td>
+</tr>
+<tr>
+<td>Crédit-bail</td>
+<td>Contrat, loyers à payer, levée d'option d'achat</td>
+</tr>
+<tr>
+<td>Paie</td>
+<td>Import du journal de paie de votre logiciel de paie, contrôle puis validation en écriture</td>
+</tr>
+<tr>
+<td>Cut-off</td>
+<td>Charges à payer, produits à recevoir, charges constatées d'avance ; extourne à l'ouverture de l'exercice suivant</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="cloturer-l-exercice">Clôturer l'exercice</h3>
+<ol>
+<li><strong>Exercices</strong> : déclarez vos exercices comptables (dates de début et de fin, y compris un premier exercice de plus ou moins de 12 mois).</li>
+<li><strong>Révision</strong> : une liste de contrôles de fin d'exercice à cocher, avec un diagnostic automatique ; vous pouvez y inviter votre expert-comptable.</li>
+<li><strong>Clôture</strong> : verrouille la période (plus aucune écriture possible avant la date de clôture) et génère les à-nouveaux de l'exercice suivant, le résultat étant reporté en 120 (bénéfice) ou 129 (perte).</li>
+<li><strong>Plaquette</strong> : bilan et compte de résultat de l'exercice en PDF.</li>
+<li><strong>Liasse 2033</strong> : les tableaux 2033-A (bilan simplifié) et 2033-B (compte de résultat simplifié) préremplis depuis la balance, pour le régime réel simplifié.</li>
+</ol>
+<h3 id="export-fec">Export FEC</h3>
+<p><strong>Export FEC</strong> génère le fichier des écritures comptables au format exigé par l'administration fiscale (article A47 A-1 du LPF) pour une période. Vous pouvez le télécharger ou l'envoyer directement à votre expert-comptable par un lien sécurisé à durée limitée.</p>
+<h2 id="importer-ses-donnees">12. Importer ses données</h2>
+<p>Vous pouvez démarrer avec l'historique de votre ancien outil : factures, dépenses, relevés et comptabilité s'importent depuis un fichier. Menu <strong>Données &amp; connexions</strong>.</p>
+<h3 id="formats-acceptes">Formats acceptés</h3>
+<ul>
+<li>Fichiers <strong>Excel</strong> (.xlsx, .xls), <strong>CSV</strong> et, pour les factures, dépenses et relevés, <strong>PDF</strong> (même scannés).</li>
+<li>CSV au format Excel français : séparateur « ; » ou « , », montants « 1 234,56 », dates « jj/mm/aaaa », accents en UTF-8 ou Windows.</li>
+<li>Les noms de colonnes courants en français et en anglais sont reconnus (« Montant TTC », « amount », « Échéance »…).</li>
+<li>Sur chaque page d'import, <strong>Télécharger le modèle CSV</strong> donne un fichier prêt à remplir avec les bonnes colonnes.</li>
+</ul>
+<h3 id="que-peut-on-importer">Que peut-on importer ?</h3>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Import</th>
+<th>Colonnes minimales</th>
+<th>Remarques</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Factures clients</td>
+<td>Numéro, client, montant TTC, échéance</td>
+<td>Plusieurs PDF à la fois possibles ; l'import remplace les factures importées précédemment pour la même entité</td>
+</tr>
+<tr>
+<td>Dépenses</td>
+<td>Fournisseur, montant, date</td>
+<td>Catégorie attribuée automatiquement si absente</td>
+</tr>
+<tr>
+<td>Relevé bancaire</td>
+<td>Date, montant (ou Débit et Crédit)</td>
+<td>Voir section 8 ; sans doublon à la réimportation</td>
+</tr>
+<tr>
+<td>Comptabilité (FEC)</td>
+<td>Fichier FEC complet</td>
+<td>Voir ci-dessous</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le nombre d'imports par mois dépend de la formule (20 en Starter, 200 en Pro, illimité au-delà).</p>
+<h3 id="reprendre-une-comptabilite-existante">Reprendre une comptabilité existante</h3>
+<p><strong>Comptabilité → Reprise</strong> importe le FEC exporté de votre ancien logiciel comptable, au choix :</p>
+<ul>
+<li><strong>toutes les écritures</strong>, pour retrouver l'historique complet (grand livre, balance) ;</li>
+<li><strong>les soldes seulement</strong>, pour démarrer avec les à-nouveaux de l'exercice.</li>
+</ul>
+<p>Les comptes absents du plan comptable sont créés, et l'import est refusé s'il est déséquilibré ou s'il touche une période clôturée. Tout ou rien : la moindre erreur annule l'import, et un même fichier ne peut être importé qu'une fois.</p>
+<h2 id="equipe-multi-societes-et-securite">13. Équipe, multi-sociétés et sécurité</h2>
+<p>Chaque collaborateur a son propre compte et un rôle qui limite ce qu'il voit et fait ; votre compte est protégé par mot de passe, double authentification et contrôle des appareils.</p>
+<h3 id="inviter-son-equipe">Inviter son équipe</h3>
+<p>Menu <strong>Entreprise &amp; compte → Équipe</strong> : saisissez l'e-mail du collaborateur et choisissez son rôle. Le nombre d'utilisateurs dépend de la formule (section 3).</p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Rôle</th>
+<th>Peut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Propriétaire</td>
+<td>Tout, y compris l'abonnement et la suppression du compte</td>
+</tr>
+<tr>
+<td>Administrateur</td>
+<td>Tout sauf l'abonnement</td>
+</tr>
+<tr>
+<td>Comptable</td>
+<td>Facturation, comptabilité, banque, trésorerie, imports, relances, espace cabinet</td>
+</tr>
+<tr>
+<td>Commercial</td>
+<td>Marchés publics et actions</td>
+</tr>
+<tr>
+<td>Membre</td>
+<td>Les modules métier, sans les paramètres, l'équipe ni l'abonnement</td>
+</tr>
+<tr>
+<td>Lecture seule</td>
+<td>Consulter les modules, sans rien modifier</td>
+</tr>
+</tbody>
+</table></div>
+<p>Retirer un membre, créer une clé d'API ou supprimer le compte demande de ressaisir votre mot de passe.</p>
+<h3 id="travailler-avec-son-expert-comptable">Travailler avec son expert-comptable</h3>
+<p>Depuis la <strong>Révision</strong> des comptes, invitez votre expert-comptable : il accède au dossier, échange avec vous par demandes et commentaires, et reçoit le FEC par lien sécurisé.</p>
+<h3 id="plusieurs-societes">Plusieurs sociétés</h3>
+<ul>
+<li><strong>Plusieurs entités</strong> dans une même organisation (filiales, établissements) : le sélecteur en haut du menu change l'entité active ; factures, banque, trésorerie et comptabilité sont séparées par entité, et un compte bancaire se rattache à une entité.</li>
+<li><strong>Plusieurs organisations</strong> (formule Multi-sociétés, jusqu'à 25) : <strong>+ Nouvelle organisation</strong> en bas du menu ; elles sont couvertes par l'abonnement de l'organisation principale.</li>
+<li><strong>Consolidation et portefeuille cabinet</strong> : vue d'ensemble des sociétés suivies.</li>
+</ul>
+<h3 id="securiser-son-compte">Sécuriser son compte</h3>
+<p>Menu <strong>Entreprise &amp; compte → Sécurité du compte</strong>.</p>
+<ul>
+<li><strong>Double authentification (2FA)</strong> : activez-la avec une application d'authentification (Google Authenticator, Microsoft Authenticator…). Conservez les 10 codes de secours affichés une seule fois ; chacun ne sert qu'une fois. Le propriétaire peut rendre la 2FA obligatoire pour tous les membres.</li>
+<li><strong>Sessions</strong> : la liste de vos appareils connectés ; déconnectez-en un à distance. Une connexion depuis un nouvel appareil vous est signalée par e-mail.</li>
+<li><strong>Mot de passe et e-mail</strong> : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.</li>
+<li><strong>Protection automatique</strong> : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.</li>
+</ul>
+<h2 id="donnees-personnelles-et-export-rgpd">14. Données personnelles et export RGPD</h2>
+<p>Vos données vous appartiennent : vous pouvez les télécharger à tout moment et supprimer votre compte vous-même.</p>
+<ul>
+<li><strong>Mes données</strong> (Sécurité du compte) : télécharge une archive ZIP de vos données personnelles d'utilisateur.</li>
+<li><strong>Export RGPD de l'organisation</strong> (Paramètres, réservé au propriétaire et aux administrateurs) : une archive ZIP de toutes les données de l'organisation, une table par fichier CSV lisible dans Excel. Les secrets (mots de passe, jetons) n'y figurent jamais.</li>
+<li><strong>Exports métier</strong> : factures en PDF et Factur-X, FEC, grand livre, balance, plan de trésorerie, achats en Excel ou CSV.</li>
+<li><strong>Supprimer le compte</strong> (Paramètres) : saisissez le nom exact de l'organisation et votre mot de passe. Si vous êtes le dernier membre, la suppression de l'organisation est programmée avec un délai de grâce de 14 jours, pendant lequel elle est inaccessible mais restaurable sur demande ; elle est ensuite définitive. Sinon, vous quittez simplement l'organisation. Un propriétaire unique doit d'abord nommer un autre propriétaire.</li>
+</ul>
+<p>Les identifiants de connexion à des services tiers (stockage, boutique en ligne) et les secrets de double authentification sont chiffrés, et les données sont sauvegardées chaque jour.</p>
+<p>Avant de supprimer votre compte, pensez à télécharger vos factures et votre FEC : la loi impose de conserver les pièces comptables 10 ans.</p>
+<h2 id="questions-frequentes-et-depannage">15. Questions fréquentes et dépannage</h2>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Problème</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Je ne peux pas émettre ma facture</td>
+<td>Une mention obligatoire manque : complétez le profil entreprise (SIRET, TVA, adresse, conditions de paiement) ou la fiche client (SIREN, adresse). Le message indique le champ.</td>
+</tr>
+<tr>
+<td>J'ai fait une erreur sur une facture émise</td>
+<td>Une facture émise ne se modifie pas : émettez un avoir depuis la facture, puis une nouvelle facture correcte.</td>
+</tr>
+<tr>
+<td>Un module affiche un cadenas</td>
+<td>Il n'est pas inclus dans votre formule ; cliquez dessus pour voir la formule qui l'inclut et en changer.</td>
+</tr>
+<tr>
+<td>« Connexion bancaire indisponible »</td>
+<td>La connexion automatique n'est pas activée pour votre compte : importez vos relevés (CSV, Excel, PDF), ils fonctionnent de la même façon.</td>
+</tr>
+<tr>
+<td>Mon import est refusé (« colonnes manquantes »)</td>
+<td>Téléchargez le modèle CSV de la page d'import et reprenez ses en-têtes de colonnes.</td>
+</tr>
+<tr>
+<td>Le relevé importé n'ajoute rien</td>
+<td>Ses opérations étaient déjà importées : ProfitOS écarte les doublons.</td>
+</tr>
+<tr>
+<td>La prévision de trésorerie me semble trop optimiste</td>
+<td>Ajoutez les salaires, le loyer et les impôts en flux prévus, ou validez ceux repérés sur vos relevés ; vérifiez que le solde de départ est récent.</td>
+</tr>
+<tr>
+<td>Une charge semble comptée deux fois dans la prévision</td>
+<td>Décochez « Compter la dépense courante observée » si vos charges récurrentes sont saisies en flux prévus.</td>
+</tr>
+<tr>
+<td>L'état de rapprochement montre un écart</td>
+<td>Traitez les opérations bancaires non comptabilisées, puis vérifiez les écritures 512 sans mouvement bancaire et le solde d'ouverture.</td>
+</tr>
+<tr>
+<td>Je ne peux plus saisir d'écriture à une date</td>
+<td>La période est clôturée ; passez l'écriture sur la période ouverte.</td>
+</tr>
+<tr>
+<td>Je ne reçois pas l'e-mail de confirmation</td>
+<td>Vérifiez les indésirables, puis cliquez « Renvoyer l'e-mail de vérification » dans le bandeau jaune.</td>
+</tr>
+<tr>
+<td>Mon compte est verrouillé</td>
+<td>Trop de mots de passe erronés : patientez quelques minutes ou réinitialisez votre mot de passe depuis la page de connexion.</td>
+</tr>
+<tr>
+<td>J'ai perdu mon téléphone (2FA)</td>
+<td>Connectez-vous avec un de vos codes de secours, puis réactivez la double authentification sur le nouveau téléphone.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Pour toute autre question, écrivez au support à <a href="mailto:{{ support_email() }}">{{ support_email() }}</a>.</p>

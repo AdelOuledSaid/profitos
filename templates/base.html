@@ -102,6 +102,8 @@
       </form>
     </details>
 
+    <a class="help-link" href="{{ url_for('help_center') }}" style="display:block;margin:0 0 10px;font-size:13px;font-weight:700;">📘 Guide utilisateur</a>
+
     <form method="post" action="{{ url_for('toggle_theme') }}" style="margin:0 0 10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="secondary" style="width:100%;font-size:13px;padding:9px 10px;">{{ '☀ Thème clair' if (auth_user.theme_preference or 'dark')=='dark' else '🌙 Thème sombre' }}</button>

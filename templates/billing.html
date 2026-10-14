@@ -132,12 +132,10 @@
     <h2>{% if has_subscription %}Changez de formule en un clic.{% else %}Un même cœur financier. Plus de capacité et d'automatisation à chaque niveau.{% endif %}</h2>
     <p class="billing-section-lead">Starter couvre la gestion essentielle. Pro ajoute comptabilité, banque et API. Business ajoute l’analyse financière avancée. Multi-sociétés couvre jusqu'à 25 organisations sous un seul abonnement. Prix hors taxes, TVA 20 % en sus.{% if has_subscription %} Formule supérieure : active immédiatement, la différence est facturée au prorata. Formule inférieure : le trop-payé est déduit de votre prochaine facture.{% endif %}</p>
 
-    {% if annual_ok %}
     <nav class="billing-period" aria-label="Périodicité de paiement">
       <a href="{{ url_for('billing', periode='mensuel') }}#formules" class="{{ 'is-active' if period=='month' else '' }}"{% if period=='month' %} aria-current="true"{% endif %}>Mensuel <small>sans engagement</small></a>
       <a href="{{ url_for('billing', periode='annuel') }}#formules" class="{{ 'is-active' if period=='year' else '' }}"{% if period=='year' %} aria-current="true"{% endif %}>Annuel <small>2 mois offerts</small></a>
     </nav>
-    {% endif %}
 
 <div class="billing-plan-grid four-up">
       {% for code,p in catalog.items() %}
@@ -222,6 +220,8 @@
             <button type="submit" {% if not recommended %}class="secondary"{% endif %}>Choisir {{ p.name }}{{ ' (annuel)' if period=='year' else '' }}</button>
           </form>
           {% endif %}
+        {% elif billing_enabled and period=='year' %}
+        <p class="billing-note">Paiement annuel en ligne bientôt disponible : <a class="link" href="mailto:{{ support_email() }}">contactez-nous</a>, ou <a class="link" href="{{ url_for('billing', periode='mensuel', formule=code) }}#formules">choisissez le paiement mensuel</a>.</p>
         {% else %}
         <p class="billing-note">Souscription en ligne bientôt disponible : <a class="link" href="mailto:{{ support_email() }}">contactez-nous</a>.</p>
         {% endif %}
@@ -255,7 +255,7 @@
       <details><summary>Quelle formule choisir pour commencer ?</summary><p>Starter convient pour la facturation, les achats et le pilotage du cash avec une petite équipe. Pro devient pertinent dès que vous avez besoin de la comptabilité, de la banque ou de l'API. Business ajoute l’analyse financière avancée, et Multi-sociétés le pilotage de plusieurs structures.</p></details>
       <details><summary>Que se passe-t-il à la fin de l'essai ?</summary><p>L'essai donne accès à toutes les fonctions Pro pendant 14 jours. À son terme, l'accès est suspendu jusqu'à la souscription d'une formule ; vos données sont conservées et vos exports (FEC, factures, export RGPD) restent disponibles.</p></details>
       <details><summary>Puis-je changer de formule ?</summary><p>Oui, à tout moment depuis cette page. Une formule supérieure est active immédiatement et la différence est facturée au prorata. Une formule inférieure s'applique aussi immédiatement, et le montant déjà payé pour le reste du mois est déduit de votre prochaine facture. Moyen de paiement, factures et résiliation se gèrent depuis « Gérer mon abonnement ».</p></details>
-      <details><summary>Y a-t-il un engagement ?</summary><p>Non en paiement mensuel : vous résiliez quand vous voulez, l'accès continue jusqu'à la fin du mois payé.{% if annual_ok %} Le paiement annuel, réglé d'avance, vous offre 2 mois sur 12 en échange d'un engagement d'un an ; vous pouvez monter de formule en cours d'année, et passer à une formule inférieure ou au mensuel à l'échéance.{% endif %}</p></details>
+      <details><summary>Y a-t-il un engagement ?</summary><p>Non en paiement mensuel : vous résiliez quand vous voulez, l'accès continue jusqu'à la fin du mois payé. Le paiement annuel, réglé d'avance, vous offre 2 mois sur 12 en échange d'un engagement d'un an ; vous pouvez monter de formule en cours d'année, et passer à une formule inférieure ou au mensuel à l'échéance.</p></details>
       <details><summary>Quelle formule permet plusieurs organisations ?</summary><p>Multi-sociétés couvre jusqu’à 25 organisations : celles que vous créez depuis l'organisation abonnée y sont rattachées automatiquement, sans essai ni abonnement séparé.</p></details>
     </div>
   </section>

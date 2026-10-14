@@ -42,13 +42,16 @@ def test_new_prices_and_annual_is_ten_months():
     assert [plans[k]["price_year_eur"] for k in runtime.PLAN_ORDER] == [90, 290, 590, 1990]
 
 
-def test_annual_option_hidden_until_yearly_prices_configured(billing_env, monkeypatch):
+def test_annual_option_always_shown_and_bought_once_yearly_prices_configured(billing_env, monkeypatch):
     oid = make_org(trial_days=10, customer="cus_1")
     owner = make_user(oid)
     client = billing_env.app.test_client()
     login(client, owner, oid)
     html = client.get("/billing").get_data(as_text=True)
-    assert "2 mois offerts" not in html
+    assert "Annuel <small>2 mois offerts</small>" in html  # le choix est toujours proposé
+    html = client.get("/billing?periode=annuel").get_data(as_text=True)
+    assert "290&nbsp;€ <small>HT / an</small>" in html
+    assert 'name="interval" value="year"' not in html and "Paiement annuel en ligne bientôt disponible" in html
     monkeypatch.setitem(runtime.STRIPE_PLANS["PRO"], "price_id_year", "price_pro_year")
     html = client.get("/billing?periode=annuel").get_data(as_text=True)
     assert "2 mois offerts" in html and "290&nbsp;€ <small>HT / an</small>" in html

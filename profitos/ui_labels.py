@@ -169,7 +169,7 @@ PAGE_TITLES = {
     'invoicing_edit': 'Modifier la facture', 'invoicing_electronic_diagnostic': 'Facturation électronique',
     'invoicing_list': 'Factures', 'invoicing_new': 'Nouvelle facture', 'invoicing_quote_detail': 'Devis',
     'invoicing_quote_new': 'Nouveau devis', 'invoicing_quotes': 'Devis', 'invoicing_receivables': 'Créances clients',
-    'legal_notice': 'Mentions légales', 'privacy_policy': 'Politique de confidentialité', 'terms_of_use': "Conditions générales d'utilisation",
+    'help_center': 'Guide utilisateur', 'legal_notice': 'Mentions légales', 'privacy_policy': 'Politique de confidentialité', 'terms_of_use': "Conditions générales d'utilisation",
     'terms_of_sale': 'Conditions générales de vente', 'loan_detail': 'Emprunt', 'loan_new': 'Nouvel emprunt', 'loans_list': 'Emprunts',
     'margin_watch': 'Suivi des marges', 'mileage_rate_settings': 'Barème kilométrique', 'money_hunter': 'Gisements de cash',
     'outbound_webhooks': 'Webhooks', 'partners': 'Partenaires', 'payroll_imports_list': 'Paie', 'plaquette': 'Comptes annuels',

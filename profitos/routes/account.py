@@ -1040,7 +1040,9 @@ def register(app):
                               and payer['status'] in ('ACTIVE_PAID','PAST_DUE'))
         annual_ok=annual_billing_available()
         requested=(request.args.get('periode') or '').lower()
-        period='year' if annual_ok and (requested=='annuel' or (not requested and current_interval=='year')) else 'month'
+        # L'offre annuelle est toujours présentée ; sans prix annuel Stripe configuré, sa
+        # souscription en ligne est indiquée comme bientôt disponible (voir billing.html).
+        period='year' if (requested=='annuel' or (not requested and current_interval=='year')) else 'month'
         highlight=(request.args.get('formule') or '').upper()
         if highlight not in STRIPE_PLANS:
             highlight='PRO'

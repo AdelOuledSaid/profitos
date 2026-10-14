@@ -140,7 +140,7 @@ SUBSCRIPTION_EXEMPT_ENDPOINTS = {
     "subscription_inactive", "org_switch", "toggle_theme", "changelog_seen",
     "gdpr_export", "delete_account",
     "pricing", "features_overview", "request_demo", "public_profit_audit",
-    "terms_of_use", "terms_of_sale", "legal_notice", "privacy_policy",
+    "terms_of_use", "terms_of_sale", "legal_notice", "privacy_policy", "help_center",
     "healthz", "readyz", "ops_health", "service_worker",
     "public_invoice_view", "public_invoice_pdf", "public_invoice_status",
     "public_quote_view", "public_quote_accept", "public_quote_pdf", "public_quote_refuse",
