@@ -146,6 +146,150 @@ DEFAULT_JOURNALS = [
     ('AN', 'À-nouveaux', 'AN'),
 ]
 
+# --- Plan comptable étendu (PCG) --------------------------------------------
+# Comptes usuels supplémentaires pour une comptabilité complète (provisions,
+# immobilisations détaillées, stocks, TVA détaillée, charges et produits financiers et
+# exceptionnels, dotations et reprises…). Ajoutés sans jamais écraser un compte existant.
+PCG_EXTENDED_ACCOUNTS = [
+    ('101300', 'Capital souscrit, appelé, versé', 1, False),
+    ('104100', "Primes d'émission", 1, False),
+    ('105000', 'Écarts de réévaluation', 1, False),
+    ('106100', 'Réserve légale', 1, False),
+    ('106300', 'Réserves statutaires ou contractuelles', 1, False),
+    ('108000', "Compte de l'exploitant", 1, False),
+    ('131000', "Subventions d'équipement", 1, False),
+    ('139000', "Subventions d'investissement inscrites au compte de résultat", 1, False),
+    ('145000', 'Amortissements dérogatoires', 1, False),
+    ('151100', 'Provisions pour litiges', 1, False),
+    ('151800', 'Autres provisions pour risques', 1, False),
+    ('153000', 'Provisions pour pensions et obligations similaires', 1, False),
+    ('158000', 'Autres provisions pour charges', 1, False),
+    ('165000', 'Dépôts et cautionnements reçus', 1, False),
+    ('168800', 'Intérêts courus sur emprunts', 1, False),
+    ('201100', 'Frais de constitution', 2, False),
+    ('205000', 'Concessions, brevets, licences, logiciels', 2, False),
+    ('206000', 'Droit au bail', 2, False),
+    ('207000', 'Fonds commercial', 2, False),
+    ('211000', 'Terrains', 2, False),
+    ('213100', 'Constructions — bâtiments', 2, False),
+    ('213500', 'Installations générales, agencements des constructions', 2, False),
+    ('215400', 'Matériel industriel', 2, False),
+    ('215500', 'Outillage industriel', 2, False),
+    ('218100', 'Installations générales, agencements, aménagements divers', 2, False),
+    ('218200', 'Matériel de transport', 2, False),
+    ('218400', 'Mobilier', 2, False),
+    ('231000', 'Immobilisations corporelles en cours', 2, False),
+    ('261000', 'Titres de participation', 2, False),
+    ('271000', 'Titres immobilisés', 2, False),
+    ('275000', 'Dépôts et cautionnements versés', 2, False),
+    ('280500', 'Amortissements des concessions, brevets, logiciels', 2, False),
+    ('281350', 'Amortissements des installations et agencements des constructions', 2, False),
+    ('281540', 'Amortissements du matériel industriel', 2, False),
+    ('281810', 'Amortissements des installations et agencements divers', 2, False),
+    ('281820', 'Amortissements du matériel de transport', 2, False),
+    ('281840', 'Amortissements du mobilier', 2, False),
+    ('290700', 'Dépréciations du fonds commercial', 2, False),
+    ('296100', 'Dépréciations des titres de participation', 2, False),
+    ('310000', 'Matières premières', 3, False),
+    ('355000', 'Produits finis', 3, False),
+    ('370000', 'Stocks de marchandises', 3, False),
+    ('391000', 'Dépréciations des matières premières', 3, False),
+    ('397000', 'Dépréciations des stocks de marchandises', 3, False),
+    ('404000', "Fournisseurs d'immobilisations", 4, True),
+    ('409100', 'Fournisseurs — avances et acomptes versés', 4, False),
+    ('409800', 'Fournisseurs — rabais, remises, ristournes à obtenir', 4, False),
+    ('413000', 'Clients — effets à recevoir', 4, False),
+    ('416000', 'Clients douteux ou litigieux', 4, True),
+    ('419800', 'Clients — rabais, remises, ristournes à accorder', 4, False),
+    ('444000', 'État — impôts sur les bénéfices', 4, False),
+    ('445200', 'TVA due intracommunautaire', 4, False),
+    ('445620', 'TVA déductible sur immobilisations', 4, False),
+    ('445670', 'Crédit de TVA à reporter', 4, False),
+    ('445800', 'TVA à régulariser ou en attente', 4, False),
+    ('445860', 'TVA sur factures non parvenues', 4, False),
+    ('445870', 'TVA sur factures à établir', 4, False),
+    ('448600', 'État — charges à payer', 4, False),
+    ('457000', 'Associés — dividendes à payer', 4, False),
+    ('462000', "Créances sur cessions d'immobilisations", 4, False),
+    ('471000', "Compte d'attente", 4, False),
+    ('487000', "Produits constatés d'avance", 4, False),
+    ('491000', 'Dépréciations des comptes clients', 4, False),
+    ('503000', 'Valeurs mobilières de placement — actions', 5, False),
+    ('508000', 'Autres valeurs mobilières de placement', 5, False),
+    ('511200', 'Chèques à encaisser', 5, False),
+    ('517000', 'Autres organismes financiers', 5, False),
+    ('518600', 'Intérêts courus à payer', 5, False),
+    ('519000', 'Concours bancaires courants', 5, False),
+    ('580000', 'Virements internes', 5, False),
+    ('590000', 'Dépréciations des valeurs mobilières de placement', 5, False),
+    ('601000', 'Achats stockés — matières premières', 6, False),
+    ('602200', 'Fournitures consommables', 6, False),
+    ('603100', 'Variation des stocks de matières premières', 6, False),
+    ('603700', 'Variation des stocks de marchandises', 6, False),
+    ('604000', "Achats d'études et prestations de services", 6, False),
+    ('606300', "Fournitures d'entretien et de petit équipement", 6, False),
+    ('607000', 'Achats de marchandises', 6, False),
+    ('609000', 'Rabais, remises et ristournes obtenus sur achats', 6, False),
+    ('613200', 'Locations immobilières', 6, False),
+    ('613500', 'Locations mobilières', 6, False),
+    ('614000', 'Charges locatives et de copropriété', 6, False),
+    ('615500', 'Entretien et réparations sur biens mobiliers', 6, False),
+    ('618500', 'Frais de colloques, séminaires, conférences', 6, False),
+    ('621100', 'Personnel intérimaire', 6, False),
+    ('622700', "Frais d'actes et de contentieux", 6, False),
+    ('623100', 'Annonces et insertions', 6, False),
+    ('623400', 'Cadeaux à la clientèle', 6, False),
+    ('624100', 'Transports sur achats', 6, False),
+    ('624200', 'Transports sur ventes', 6, False),
+    ('635110', 'Contribution économique territoriale (CFE, CVAE)', 6, False),
+    ('635120', 'Taxes foncières', 6, False),
+    ('635400', "Droits d'enregistrement et de timbre", 6, False),
+    ('637800', 'Taxes diverses', 6, False),
+    ('644000', "Rémunération du travail de l'exploitant", 6, False),
+    ('646000', "Cotisations sociales personnelles de l'exploitant", 6, False),
+    ('648000', 'Autres charges de personnel', 6, False),
+    ('651000', 'Redevances pour concessions, brevets, licences', 6, False),
+    ('654000', 'Pertes sur créances irrécouvrables', 6, False),
+    ('658000', 'Charges diverses de gestion courante', 6, False),
+    ('661600', 'Intérêts bancaires et sur opérations de financement', 6, False),
+    ('665000', 'Escomptes accordés', 6, False),
+    ('666000', 'Pertes de change', 6, False),
+    ('668000', 'Autres charges financières', 6, False),
+    ('671200', 'Pénalités, amendes fiscales et pénales', 6, False),
+    ('675000', "Valeurs comptables des éléments d'actif cédés", 6, False),
+    ('678000', 'Autres charges exceptionnelles', 6, False),
+    ('681100', 'Dotations aux amortissements des immobilisations', 6, False),
+    ('681500', "Dotations aux provisions d'exploitation", 6, False),
+    ('681700', 'Dotations aux dépréciations des actifs circulants', 6, False),
+    ('686000', 'Dotations aux amortissements, dépréciations et provisions — charges financières', 6, False),
+    ('687000', 'Dotations aux amortissements, dépréciations et provisions — charges exceptionnelles', 6, False),
+    ('691000', 'Participation des salariés aux résultats', 6, False),
+    ('695000', 'Impôts sur les bénéfices', 6, False),
+    ('701000', 'Ventes de produits finis', 7, False),
+    ('704000', 'Travaux', 7, False),
+    ('708500', 'Ports et frais accessoires facturés', 7, False),
+    ('709000', 'Rabais, remises et ristournes accordés', 7, False),
+    ('713000', 'Variation des stocks (en-cours de production, produits)', 7, False),
+    ('721000', 'Production immobilisée — immobilisations incorporelles', 7, False),
+    ('722000', 'Production immobilisée — immobilisations corporelles', 7, False),
+    ('740000', "Subventions d'exploitation", 7, False),
+    ('751000', 'Redevances pour concessions, brevets, licences', 7, False),
+    ('761000', 'Produits de participations', 7, False),
+    ('764000', 'Revenus des valeurs mobilières de placement', 7, False),
+    ('765000', 'Escomptes obtenus', 7, False),
+    ('766000', 'Gains de change', 7, False),
+    ('768000', 'Autres produits financiers', 7, False),
+    ('771000', 'Produits exceptionnels sur opérations de gestion', 7, False),
+    ('775000', "Produits des cessions d'éléments d'actif", 7, False),
+    ('777000', "Quote-part des subventions d'investissement virée au résultat", 7, False),
+    ('778000', 'Autres produits exceptionnels', 7, False),
+    ('781100', 'Reprises sur amortissements des immobilisations', 7, False),
+    ('781500', "Reprises sur provisions d'exploitation", 7, False),
+    ('781700', 'Reprises sur dépréciations des actifs circulants', 7, False),
+    ('786000', 'Reprises sur dépréciations et provisions — produits financiers', 7, False),
+    ('787000', 'Reprises sur dépréciations et provisions — produits exceptionnels', 7, False),
+]
+
 # --- Correspondance catégories de dépenses -> compte de charge par défaut --
 # Deux systèmes de catégories coexistent dans ProfitOS et sont tous deux
 # couverts ici : les catégories textuelles de l'import en masse
@@ -590,7 +734,7 @@ def generate_sale_payment_entry(conn, invoice, payment_date=None):
     return entry_id
 
 
-def generate_sale_partial_payment_entry(conn, invoice, payment, commit=True):
+def generate_sale_partial_payment_entry(conn, invoice, payment, commit=True, bank_account='512000'):
     """Comptabilise un règlement client individuel. Chaque règlement possède
     sa propre clé source, ce qui autorise plusieurs paiements sur une facture
     tout en restant idempotent. Le lettrage complet est laissé au moteur de
@@ -603,7 +747,7 @@ def generate_sale_partial_payment_entry(conn, invoice, payment, commit=True):
     if _entry_already_exists(conn, source_type, payment['id'], entity_id):
         return None
     lines = [
-            {'account_code': '512000', 'debit': amount},
+            {'account_code': bank_account or '512000', 'debit': amount},
             {'account_code': '411000', 'credit': amount, 'auxiliary_name': invoice['client_name']},
     ]
     # TVA sur encaissements : la part de TVA en attente (445740) correspondant à ce
@@ -730,8 +874,10 @@ def generate_purchase_payment_entry(conn, purchase, payment_date=None):
     return entry_id
 
 
-def generate_purchase_partial_payment_entry(conn, purchase, payment):
-    """Comptabilise un règlement fournisseur individuel, entity-scoped et idempotent."""
+def generate_purchase_partial_payment_entry(conn, purchase, payment, commit=True, bank_account='512000'):
+    """Comptabilise un règlement fournisseur individuel, entity-scoped et idempotent.
+    commit=False laisse l'appelant valider la transaction (rapprochement bancaire : le
+    paiement, l'écriture et l'affectation doivent être enregistrés ensemble ou pas du tout)."""
     entity_id = purchase['entity_id'] if 'entity_id' in purchase.keys() else None
     amount = round(float(payment['amount'] or 0), 2)
     if amount <= 0:
@@ -743,8 +889,9 @@ def generate_purchase_partial_payment_entry(conn, purchase, payment):
         f"Règlement facture {purchase['invoice_number']} — {purchase['supplier_name']}",
         [
             {'account_code':'401000','debit':amount,'auxiliary_name':purchase['supplier_name']},
-            {'account_code':'512000','credit':amount},
-        ], source_type=source_type, source_id=payment['id'], entity_id=entity_id)
+            {'account_code':bank_account or '512000','credit':amount},
+        ], source_type=source_type, source_id=payment['id'], entity_id=entity_id, commit=commit,
+        piece_ref=_row_get(payment, 'reference') or purchase['invoice_number'])
 
 
 def seed_accounting_defaults(conn):
@@ -753,7 +900,7 @@ def seed_accounting_defaults(conn):
     duplique jamais, n'écrase jamais une valeur déjà personnalisée par
     l'utilisateur (INSERT OR IGNORE)."""
     now = datetime.utcnow().isoformat()
-    for code, label, klass, collective in DEFAULT_CHART_OF_ACCOUNTS:
+    for code, label, klass, collective in DEFAULT_CHART_OF_ACCOUNTS + PCG_EXTENDED_ACCOUNTS:
         conn.execute(
             'INSERT OR IGNORE INTO accounting_chart_of_accounts'
             '(code,label,account_class,is_collective,is_active,is_default,created_at)'
@@ -1189,6 +1336,53 @@ def fec_filename(siret, date_to):
 # et le 31 décembre de cette année, sur 365 — convention simple ; certains
 # cabinets utilisent une base 360 jours, à ajuster si besoin).
 
+DEGRESSIVE_MIN_YEARS = 3
+
+
+def degressive_coefficient(useful_life_years):
+    """Coefficient fiscal de l'amortissement dégressif (CGI art. 39 A) : 1,25 pour 3 ou
+    4 ans, 1,75 pour 5 ou 6 ans, 2,25 au-delà. None si la durée est inférieure à 3 ans."""
+    n = float(useful_life_years or 0)
+    if n < DEGRESSIVE_MIN_YEARS:
+        return None
+    return 1.25 if n <= 4 else (1.75 if n <= 6 else 2.25)
+
+
+def degressive_schedule(purchase_amount, useful_life_years, purchase_date):
+    """Plan d'amortissement dégressif par année civile : {année: dotation}.
+
+    - taux = coefficient / durée ; première annuité au prorata des mois à compter du
+      premier jour du mois d'acquisition ;
+    - chaque année, la dotation est le maximum entre l'annuité dégressive (VNC × taux) et
+      l'annuité linéaire sur la durée restante (VNC / années restantes) : bascule en
+      linéaire dès qu'elle devient plus favorable ;
+    - la dernière annuité solde la valeur nette (pas d'annuité supplémentaire)."""
+    n = int(round(float(useful_life_years)))
+    coef = degressive_coefficient(n)
+    if coef is None:
+        raise ValueError("L'amortissement dégressif exige une durée d'au moins 3 ans.")
+    from decimal import Decimal, ROUND_HALF_UP
+    cent = Decimal('0.01')
+    start = date.fromisoformat(str(purchase_date)[:10])
+    rate = Decimal(str(coef)) / Decimal(n)   # calcul décimal exact (0,35 et non 0,3499…)
+    vnc = Decimal(str(purchase_amount))
+    plan = {}
+    for k in range(n):
+        year = start.year + k
+        remaining_years = Decimal(n - k)
+        if k == n - 1:
+            dot = vnc
+        elif k == 0:
+            months = Decimal(12 - start.month + 1)
+            dot = max(vnc * rate, vnc / remaining_years) * months / Decimal(12)
+        else:
+            dot = max(vnc * rate, vnc / remaining_years)
+        dot = min(dot, vnc).quantize(cent, rounding=ROUND_HALF_UP)
+        plan[year] = float(dot)
+        vnc = (vnc - dot).quantize(cent, rounding=ROUND_HALF_UP)
+    return plan
+
+
 def compute_depreciation_for_year(conn, asset, calendar_year):
     """Calcule la dotation aux amortissements pour une année civile donnée.
     Ne se fie jamais uniquement à la formule théorique : plafonne toujours
@@ -1201,7 +1395,11 @@ def compute_depreciation_for_year(conn, asset, calendar_year):
     if calendar_year < purchase_date_obj.year:
         return 0.0
     annual_rate = asset['purchase_amount'] / asset['useful_life_years']
-    if calendar_year == purchase_date_obj.year:
+    method = (asset['method'] if 'method' in asset.keys() else None) or 'linear'
+    if method == 'degressive' and degressive_coefficient(asset['useful_life_years']):
+        theoretical = degressive_schedule(asset['purchase_amount'], asset['useful_life_years'],
+                                          asset['purchase_date']).get(calendar_year, 0.0)
+    elif calendar_year == purchase_date_obj.year:
         days_remaining = (date(calendar_year, 12, 31) - purchase_date_obj).days + 1
         theoretical = annual_rate * days_remaining / 365
     else:
@@ -1629,6 +1827,7 @@ def ca3_collected_by_rate(conn, date_from, date_to, entity_id=None):
                    COALESCE(SUM(CASE WHEN l.credit>0 THEN COALESCE(l.vat_base,0) ELSE -COALESCE(l.vat_base,0) END),0) AS base
             FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
             WHERE l.account_code=? AND e.entry_date BETWEEN ? AND ? AND {ef}
+              AND COALESCE(e.source_type,'')<>'vat_liquidation'
             GROUP BY l.vat_rate""",
         (VAT_COLLECTED_ACCOUNT, str(date_from), str(date_to), *ep)).fetchall()
     out = []

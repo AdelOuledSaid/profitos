@@ -182,6 +182,7 @@ def create_app(config_object=None):
     _jobs.register(app)  # tâches planifiées : déclenchement interne + désinscription rapport hebdo
 
     from .routes import account, dce, main, actions, reports, imports, api, money_hunter, financial_brain, cash_intelligence, decision_simulator, invoicing, bank_sync, accounting, expenses, cloud_storage, entities, analytics, swan_baas, loans, finance_leases, reviews, cabinet, gocardless_baas, ecommerce, push_notifications, payroll
+    from .routes import ledger as ledger_routes
     account.register(app)
     from .routes import security as security_routes
     security_routes.register(app)
@@ -198,6 +199,7 @@ def create_app(config_object=None):
     invoicing.register(app)
     bank_sync.register(app)
     accounting.register(app)
+    ledger_routes.register(app)
     expenses.register(app)
     cloud_storage.register(app)
     entities.register(app)

@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">IMMOBILISATION</div>
     <h1 class="purchase-title">{{ asset.label }}</h1>
-    <p class="purchase-subtitle">Acquise le {{ asset.purchase_date|fr_date }} · {{ asset.purchase_amount|fr_number(2) }}&nbsp;€ · amortie sur {{ pluralize(asset.useful_life_years, 'an') }}</p>
+    <p class="purchase-subtitle">Acquise le {{ asset.purchase_date|fr_date }} · {{ asset.purchase_amount|fr_number(2) }}&nbsp;€ · amortie sur {{ pluralize(asset.useful_life_years, 'an') }} · {{ 'dégressif (coefficient ' ~ (coefficient|string|replace('.', ',')) ~ ')' if asset.method=='degressive' else 'linéaire' }}</p>
   </div>
   <a class="purchase-nav-btn" href="{{ url_for('fixed_assets_list') }}">← Immobilisations</a>
 </div>
@@ -56,5 +56,15 @@
     </table>
   </div>
 </section>
+{% if schedule %}
+<section class="purchase-panel" style="margin-top:20px;">
+  <h2 style="color:#fff;margin-top:0;">Plan d'amortissement dégressif</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Année</th><th class="num">Dotation</th><th class="num">Valeur nette en fin d'année</th></tr></thead>
+    <tbody>{% for r in schedule %}<tr><td>{{ r.year }}</td><td class="num">{{ r.amount|fr_number(2) }}&nbsp;€</td><td class="num">{{ r.vnc|fr_number(2) }}&nbsp;€</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Première annuité au prorata des mois à partir du mois d'acquisition ; passage au linéaire dès que l'annuité linéaire sur la durée restante devient supérieure.</p>
+</section>
+{% endif %}
 </div>
 {% endblock %}

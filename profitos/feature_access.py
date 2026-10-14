@@ -7,10 +7,24 @@ from profitos.runtime import (
     log_security_event, org_has_access, trial_is_active,
     billing_org,
 )
-from profitos.plan_limits import feature_enabled
+from profitos.plan_limits import FEATURE_LABELS, feature_enabled, minimum_plan_for
 
 
 PAID_PLANS = {"STARTER", "PRO", "BUSINESS", "MULTI"}
+
+
+def upgrade_message(feature_name, needed_plan):
+    """Message clair : quelle fonction, dans quelle formule, à quel prix."""
+    from profitos.runtime import STRIPE_PLANS
+    label = FEATURE_LABELS.get(feature_name, "Cette fonctionnalité")
+    p = STRIPE_PLANS.get(needed_plan or "")
+    if not p:
+        return "Cette fonctionnalité n’est pas incluse dans votre formule actuelle."
+    owner_hint = (" Passez à cette formule en un clic depuis la page Abonnement."
+                  if current_role() == "OWNER" else
+                  " Le propriétaire du compte peut changer de formule depuis la page Abonnement.")
+    return (f"🔒 {label} : inclus à partir de la formule {p['name']} "
+            f"({p['price_eur']} € HT / mois).{owner_hint}")
 
 
 def is_paid_plan(plan):
@@ -98,12 +112,12 @@ def requires_feature(feature_name):
                     organization_id=org["id"] if org else None,
                     target=feature_name,
                 )
-                flash(
-                    "Cette fonctionnalité n’est pas incluse dans votre formule actuelle. "
-                    "Vous pouvez changer de formule depuis la page Abonnement."
-                )
+                needed = minimum_plan_for(feature_name)
+                flash(upgrade_message(feature_name, needed))
                 if current_role() == "OWNER":
-                    return redirect(url_for("billing"))
+                    # La page Abonnement met en avant la formule nécessaire, avec un
+                    # bouton de changement immédiat.
+                    return redirect(url_for("billing", formule=needed) + "#formules" if needed else url_for("billing"))
                 return redirect(_deny_target())
 
             return fn(*args, **kwargs)
@@ -121,7 +135,8 @@ def requires_feature(feature_name):
 SUBSCRIPTION_EXEMPT_ENDPOINTS = {
     "static", "login", "logout", "signup", "verify_email", "verify_resend",
     "forgot_password", "reset_password",
-    "billing", "billing_checkout", "billing_portal", "billing_success", "billing_webhook",
+    "billing", "billing_checkout", "billing_portal", "billing_success", "billing_webhook", "billing_change_plan",
+    "toggle_ui_mode", "account_name_change",
     "subscription_inactive", "org_switch", "toggle_theme", "changelog_seen",
     "gdpr_export", "delete_account",
     "pricing", "features_overview", "request_demo", "public_profit_audit",
@@ -169,6 +184,7 @@ MODULE_FEATURES = {
     "profitos.routes.analytics": "accounting_core",
     "profitos.routes.reviews": "accounting_core",
     "profitos.routes.payroll": "accounting_core",
+    "profitos.routes.ledger": "accounting_core",
     "profitos.routes.bank_sync": "banking",
     "profitos.routes.swan_baas": "banking",
     "profitos.routes.entities": "multi_entity",
@@ -285,9 +301,9 @@ def enforce_subscription_access():
     if feature and not feature_enabled(effective_plan(org), feature):
         log_security_event("PLAN_FEATURE_BLOCKED", "BLOCKED",
                            organization_id=org["id"], target=feature)
-        flash(
-            "Cette fonctionnalité n’est pas incluse dans votre formule actuelle. "
-            "Vous pouvez changer de formule depuis la page Facturation."
-        )
+        needed = minimum_plan_for(feature)
+        flash(upgrade_message(feature, needed))
+        if current_role() == "OWNER" and needed:
+            return redirect(url_for("billing", formule=needed) + "#formules")
         return redirect(_deny_target())
     return None

@@ -14,7 +14,7 @@ def _limits():
 
 def test_pass43_prices_and_multi_stripe_plan():
     t = (ROOT / "profitos" / "runtime.py").read_text(encoding="utf-8")
-    for code, price in [("STARTER", 9), ("PRO", 19), ("BUSINESS", 49), ("MULTI", 199)]:
+    for code, price in [("STARTER", 9), ("PRO", 29), ("BUSINESS", 59), ("MULTI", 199)]:
         assert f"'{code}':" in t
         assert f"'price_eur':{price}" in t
     assert "STRIPE_PRICE_MULTI_ID" in t
@@ -50,10 +50,10 @@ def test_pass43_backend_routes_are_gated():
 def test_pass43_public_pricing_shows_four_offers():
     t = (ROOT / "templates/pricing.html").read_text(encoding="utf-8")
     # V4 : prix affichés HT et formule renommée en français.
-    assert "Starter<br>9 € HT" in t
-    assert "Pro<br>19 € HT" in t
-    assert "Business<br>49 € HT" in t
-    assert "Multi-sociétés<br>199 € HT" in t
+    # Prix du comparatif lus dans STRIPE_PLANS (plus de montants codés en dur).
+    assert "{{ plans[key].name }}<br>{{ plans[key].price_eur }} € HT" in t
+    from profitos.runtime import STRIPE_PLANS
+    assert [STRIPE_PLANS[k]['price_eur'] for k in ('STARTER','PRO','BUSINESS','MULTI')] == [9, 29, 59, 199]
     assert "Multi-Entity" not in t
 
 

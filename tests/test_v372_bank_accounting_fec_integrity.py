@@ -22,8 +22,8 @@ def test_v372_supplier_reconciliation_creates_individual_balanced_bank_entry():
     assert "_entry_already_exists(conn, source_type, payment['id'], entity_id)" in b
 
 def test_v372_partial_and_grouped_reconciliations_keep_one_accounting_source_per_payment():
-    assert "generate_sale_partial_payment_entry(c,inv,payment)" in BANK
-    assert "generate_purchase_partial_payment_entry(c,p,payment)" in BANK
+    assert "generate_sale_partial_payment_entry(c,inv,payment" in BANK
+    assert "generate_purchase_partial_payment_entry(c,p,payment" in BANK
     assert "bank_invoice_allocations" in BANK
     assert "bank_purchase_allocations" in BANK
 
@@ -32,7 +32,7 @@ def test_v372_bank_fee_entry_is_balanced_627_512_and_entity_scoped():
     assert "source_type='bank_fee'" in b
     # v421 : écriture via create_entry (période clôturée, numérotation BQ).
     assert "{'account_code':expense['code'],'debit':residual}" in b
-    assert "{'account_code':bank_account['code'],'credit':residual}" in b
+    assert "{'account_code':bank_code,'credit':residual}" in b
     assert "WHERE entity_id IS ? AND source_type='bank_fee' AND source_id=?" in b
 
 def test_v372_reconciliation_is_atomic_until_commit():

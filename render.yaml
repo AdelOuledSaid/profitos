@@ -128,6 +128,15 @@ services:
         sync: false
       - key: STRIPE_PRICE_MULTI_ID
         sync: false
+      # Tarifs annuels (2 mois offerts) : facultatifs, l'option annuelle n'apparaît que s'ils sont définis.
+      - key: STRIPE_PRICE_STARTER_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_PRO_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_BUSINESS_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_MULTI_YEARLY_ID
+        sync: false
       - key: STRIPE_AUTOMATIC_TAX
         value: 1
       - key: PROFITOS_PAST_DUE_GRACE_DAYS

@@ -5,7 +5,7 @@ BANK=(ROOT/"profitos/routes/bank_sync.py").read_text(encoding="utf-8")
 def test_v369_balanced_fee_entry():
     b=BANK.split("def banking_transaction_book_fee",1)[1].split('@app.post("/banking/transaction/<int:tx_id>/ignore")',1)[0]
     # PostgreSQL/psycopg2 requires literal % to be escaped when parameters are bound.
-    assert "code LIKE '627%%'" in b and "code LIKE '512%%'" in b
+    assert "code LIKE '627%%'" in b and "_bank_ledger_code(c,tx,eid)" in b
     assert "source_type='bank_fee'" in b
     assert "source_type='bank_fee',source_id=tx_id" in b  # v421 : via create_entry
     assert "residual" in b

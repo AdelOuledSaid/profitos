@@ -513,8 +513,13 @@ def register(app):
         locked_count = c.execute(
             'SELECT COUNT(*) n FROM accounting_entries WHERE entity_id IS ? AND is_locked=1', (entity_id,)
         ).fetchone()['n']
+        from profitos.ledger import fiscal_year_for, list_fiscal_years
+        current_fy = fiscal_year_for(c, paris_today(), entity_id)
+        previous_fy = fiscal_year_for(c, current_fy['start'] - timedelta(days=1), entity_id)
+        fiscal_years = list_fiscal_years(c, entity_id)
         c.close()
-        return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error)
+        return render_template('accounting_closure.html', closure=closure, locked_count=locked_count, error=error,
+                               current_fy=current_fy, previous_fy=previous_fy, fiscal_years=fiscal_years)
 
     @app.route('/comptabilite/cloture/a-nouveaux', methods=['POST'])
     @login_required
@@ -557,6 +562,7 @@ def register(app):
             depreciation_account = (request.form.get('depreciation_account') or '').strip()
             expense_account = (request.form.get('expense_account') or '681000').strip()
             purchase_date_str = request.form.get('purchase_date') or ''
+            method = 'degressive' if request.form.get('method') == 'degressive' else 'linear'
             try:
                 purchase_amount = float(request.form.get('purchase_amount') or 0)
                 useful_life_years = float(request.form.get('useful_life_years') or 0)
@@ -568,6 +574,8 @@ def register(app):
                 error = "Le montant d'achat doit être positif."
             elif useful_life_years <= 0:
                 error = "La durée d'amortissement doit être positive."
+            elif method == 'degressive' and (useful_life_years < 3 or useful_life_years != int(useful_life_years)):
+                error = "L'amortissement dégressif exige une durée d'au moins 3 ans, en années entières."
             else:
                 for code, field_name in ((asset_account, 'immobilisation'), (depreciation_account, 'amortissement'),
                                           (expense_account, 'charge')):
@@ -579,10 +587,10 @@ def register(app):
                 c.execute(
                     """INSERT INTO fixed_assets
                        (label,asset_account,depreciation_account,expense_account,purchase_date,
-                        purchase_amount,useful_life_years,status,created_at,entity_id)
-                       VALUES(?,?,?,?,?,?,?,'active',?,?)""",
+                        purchase_amount,useful_life_years,status,created_at,entity_id,method)
+                       VALUES(?,?,?,?,?,?,?,'active',?,?,?)""",
                     (label, asset_account, depreciation_account, expense_account, purchase_date_str,
-                     purchase_amount, useful_life_years, now(), eid),
+                     purchase_amount, useful_life_years, now(), eid, method),
                 )
                 c.commit()
                 new_id = c.execute('SELECT last_insert_rowid()').fetchone()[0]
@@ -629,8 +637,17 @@ def register(app):
             (asset_id, str(current_year)),
         ).fetchone() is not None
         c.close()
+        from profitos.accounting import degressive_schedule, degressive_coefficient
+        schedule = None
+        if (asset['method'] or 'linear') == 'degressive' and degressive_coefficient(asset['useful_life_years']):
+            plan = degressive_schedule(asset['purchase_amount'], asset['useful_life_years'], asset['purchase_date'])
+            vnc, schedule = float(asset['purchase_amount']), []
+            for year, dot in plan.items():
+                vnc = round(vnc - dot, 2)
+                schedule.append({'year': year, 'amount': dot, 'vnc': vnc})
         return render_template('fixed_asset_detail.html', asset=asset, runs=runs, posted_total=posted_total,
-                                current_year=current_year, preview=preview, already_run_this_year=already_run_this_year)
+                                current_year=current_year, preview=preview, already_run_this_year=already_run_this_year,
+                                schedule=schedule, coefficient=degressive_coefficient(asset['useful_life_years']))
 
     @app.route('/comptabilite/immobilisations/<int:asset_id>/amortir', methods=['POST'])
     @login_required
@@ -689,17 +706,20 @@ def register(app):
         collected = c.execute(
             f"""SELECT COALESCE(SUM(l.credit-l.debit),0) t FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+               WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}
+                 AND COALESCE(e.source_type,'')<>'vat_liquidation'""",
             (date_from, date_to) + ep).fetchone()['t']
         deductible = c.execute(
             f"""SELECT COALESCE(SUM(l.debit-l.credit),0) t FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
-               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+               WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}
+                 AND COALESCE(e.source_type,'')<>'vat_liquidation'""",
             (date_from, date_to) + ep).fetchone()['t']
         meta = c.execute(
             f"""SELECT COUNT(DISTINCT e.id) entry_count, COALESCE(MAX(e.id),0) max_entry_id
                 FROM accounting_entries e JOIN accounting_entry_lines l ON l.entry_id=e.id
-                WHERE l.account_code IN ('445710','445660') AND e.entry_date BETWEEN ? AND ? AND {ef}""",
+                WHERE l.account_code IN ('445710','445660') AND e.entry_date BETWEEN ? AND ? AND {ef}
+                  AND COALESCE(e.source_type,'')<>'vat_liquidation'""",
             (date_from, date_to) + ep).fetchone()
         return float(collected or 0), float(deductible or 0), int(meta['entry_count'] or 0), int(meta['max_entry_id'] or 0)
 
@@ -831,11 +851,13 @@ def register(app):
             f"""SELECT e.entry_date,e.label,l.credit,l.debit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
                WHERE l.account_code='445710' AND e.entry_date BETWEEN ? AND ? AND {ef}
+                 AND COALESCE(e.source_type,'')<>'vat_liquidation'
                ORDER BY e.entry_date DESC""", (date_from, date_to) + ep).fetchall()
         purchase_lines = c.execute(
             f"""SELECT e.entry_date,e.label,l.debit,l.credit FROM accounting_entry_lines l
                JOIN accounting_entries e ON e.id=l.entry_id
                WHERE l.account_code='445660' AND e.entry_date BETWEEN ? AND ? AND {ef}
+                 AND COALESCE(e.source_type,'')<>'vat_liquidation'
                ORDER BY e.entry_date DESC""", (date_from, date_to) + ep).fetchall()
         stale=False
         if declaration and declaration['status'] in ('locked','filed'):
@@ -991,6 +1013,8 @@ def register(app):
                 headers={'Content-Disposition': f'attachment; filename="comptes-annuels-{as_of_date}.pdf"'},
             )
 
+        from profitos.ledger import fiscal_year_for
+        fy = fiscal_year_for(c, paris_today(), current_entity_id())
         c.close()
         return render_template('plaquette.html', today=paris_today().isoformat(),
-                                year_start=f"{paris_today().year}-01-01")
+                                year_start=fy['start'].isoformat())

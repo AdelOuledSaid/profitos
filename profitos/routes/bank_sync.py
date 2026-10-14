@@ -15,6 +15,8 @@ from profitos.accounting import generate_purchase_payment_entry, generate_purcha
 
 
 POWENS_TIMEOUT = 20
+POWENS_PAGE_SIZE = 1000
+POWENS_MAX_PAGES = 50  # garde-fou : 50 000 opérations par synchronisation
 BANK_DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + ((dbmod.psycopg2.IntegrityError,) if dbmod.USE_POSTGRES else ())
 
 
@@ -342,16 +344,30 @@ def _sync_powens(c, row):
              1 if disabled else 0, now, row['entity_id']),
         )
 
-    txs = _json(requests.get(
-        _api_url("/users/me/transactions"),
-        headers=_headers(token),
-        params={"limit": 1000},
-        timeout=POWENS_TIMEOUT,
-    )).get("transactions", [])
+    # Pagination : Powens renvoie au plus `limit` transactions par appel. Sans offset,
+    # tout ce qui dépassait la première page (1 000 opérations) n'était jamais importé.
+    txs = []
+    offset = 0
+    for _page in range(POWENS_MAX_PAGES):
+        page = _json(requests.get(
+            _api_url("/users/me/transactions"),
+            headers=_headers(token),
+            params={"limit": POWENS_PAGE_SIZE, "offset": offset},
+            timeout=POWENS_TIMEOUT,
+        )).get("transactions", []) or []
+        txs.extend(page)
+        if len(page) < POWENS_PAGE_SIZE:
+            break
+        offset += POWENS_PAGE_SIZE
 
+    imported = 0
     for t in txs:
         tid = str(t.get("id") or "")
         if not tid:
+            continue
+        # Opération à venir (« coming » : carte à débit différé, virement en cours) : son
+        # montant et sa date peuvent encore changer, elle sera importée une fois passée.
+        if t.get("coming") is True:
             continue
         amount = t.get("value", t.get("amount"))
         try:
@@ -368,7 +384,7 @@ def _sync_powens(c, row):
         # Same protection for provider transactions: a remote transaction
         # cannot migrate between entity-owned bank accounts during an upsert.
         existing_tx = c.execute(
-            """SELECT a.entity_id
+            """SELECT bt.id, a.entity_id
                  FROM bank_transactions bt
                  JOIN bank_accounts a
                    ON a.provider=bt.provider
@@ -378,6 +394,12 @@ def _sync_powens(c, row):
         ).fetchone()
         if existing_tx and existing_tx["entity_id"] != entity_id:
             raise RuntimeError("Transaction bancaire déjà rattachée à une autre entité ProfitOS.")
+        if t.get("deleted"):
+            # Opération supprimée par la banque (doublon, annulation) : retirée si rien n'y
+            # est rattaché, sinon marquée « deleted » pour rester visible et corrigeable.
+            if existing_tx:
+                _retire_bank_transaction(c, existing_tx["id"], entity_id)
+            continue
         auto_category = apply_categorization_rule(c, label, entity_id)
         c.execute(
             """INSERT INTO bank_transactions(provider,provider_transaction_id,provider_account_id,transaction_date,label,amount,raw_status,last_synced_at,category)
@@ -387,18 +409,54 @@ def _sync_powens(c, row):
                  label=excluded.label,amount=excluded.amount,raw_status=excluded.raw_status,
                  last_synced_at=excluded.last_synced_at,
                  category=COALESCE(NULLIF(bank_transactions.category,''),excluded.category)""",
-            ("powens", tid, account_id, tx_date, label, amount,
-             str(t.get("state") or t.get("coming") or ""), now, auto_category),
+            ("powens", tid, account_id, tx_date, label, amount, "booked", now, auto_category),
         )
+        imported += 1
 
     c.execute(
         "UPDATE bank_connections SET status='CONNECTED',last_synced_at=?,updated_at=? WHERE id=? AND entity_id IS ?",
         (now, now, row["id"], entity_id),
     )
     c.commit()
-    return len(accounts), len(txs)
+    return len(accounts), imported
 
 
+
+
+def _bank_ledger_code(c, tx, entity_id):
+    """Compte de banque (512…) d'un mouvement : celui choisi pour son compte bancaire
+    (bank_accounts.accounting_code, ex. 512100 pour un second compte), sinon le premier
+    compte 512 actif du plan comptable. Chaque compte bancaire peut ainsi avoir son
+    propre 512, condition d'un état de rapprochement juste par compte."""
+    row = c.execute("SELECT accounting_code FROM bank_accounts WHERE provider=? AND provider_account_id=?",
+                    (tx['provider'], tx['provider_account_id'])).fetchone()
+    code = ((row['accounting_code'] if row else None) or '').strip()
+    if code and c.execute("""SELECT 1 FROM accounting_chart_of_accounts WHERE code=?
+                             AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1 LIMIT 1""",
+                          (code, entity_id)).fetchone():
+        return code
+    fallback = c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%%'
+                            AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
+                            ORDER BY code LIMIT 1""", (entity_id,)).fetchone()
+    return fallback['code'] if fallback else None
+
+
+def _bank_tx_is_used(c, tx_id, entity_id):
+    """Vrai si un rapprochement ou une écriture comptable s'appuie sur ce mouvement."""
+    for sql in ("SELECT 1 FROM bank_invoice_allocations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",
+                "SELECT 1 FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",
+                "SELECT 1 FROM accounting_entries WHERE entity_id IS ? AND source_type IN ('bank_fee','bank_categorization') AND source_id=? LIMIT 1"):
+        if c.execute(sql, (entity_id, tx_id)).fetchone():
+            return True
+    return False
+
+
+def _retire_bank_transaction(c, tx_id, entity_id):
+    if _bank_tx_is_used(c, tx_id, entity_id):
+        c.execute("UPDATE bank_transactions SET raw_status='deleted' WHERE id=?", (tx_id,))
+    else:
+        c.execute("DELETE FROM bank_transaction_workflow WHERE entity_id IS ? AND bank_transaction_id=?", (entity_id, tx_id))
+        c.execute("DELETE FROM bank_transactions WHERE id=?", (tx_id,))
 
 
 def _mark_powens_sync_error(c, row):
@@ -629,6 +687,59 @@ def register(app):
         flash(f"Compte rattaché à {identity['name']}.")
         return redirect(url_for("banking"))
 
+    @app.route("/banking/comptes/<int:account_id>/compte-comptable", methods=["POST"])
+    @login_required
+    @requires_paid_plan
+    @requires_feature('banking')
+    def bank_account_set_ledger(account_id):
+        """Compte de trésorerie (512…) utilisé pour les écritures de ce compte bancaire."""
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
+        c = cx()
+        try:
+            account = c.execute("SELECT id,name FROM bank_accounts WHERE id=? AND entity_id IS ?", (account_id, eid)).fetchone()
+            if not account:
+                abort(404)
+            code = (request.form.get("accounting_code") or "").strip()
+            if code and (not code.startswith("51") or not c.execute(
+                    """SELECT 1 FROM accounting_chart_of_accounts WHERE code=? AND (entity_id IS ? OR entity_id IS NULL)
+                       AND COALESCE(is_active,1)=1 LIMIT 1""", (code, eid)).fetchone()):
+                flash("Choisissez un compte de banque (51…) existant dans le plan comptable.")
+                return redirect(url_for("banking"))
+            c.execute("UPDATE bank_accounts SET accounting_code=? WHERE id=? AND entity_id IS ?", (code or None, account_id, eid))
+            c.commit()
+            log_activity('BANK_ACCOUNT_LEDGER_SET', f"Compte bancaire #{account_id} → compte comptable {code or 'par défaut'}")
+            flash(f"Les écritures de « {account['name']} » utiliseront le compte {code or 'banque par défaut'}.")
+        finally:
+            c.close()
+        return redirect(url_for("banking"))
+
+    @app.route("/banking/etat-rapprochement")
+    @login_required
+    @requires_paid_plan
+    @requires_feature('banking')
+    def banking_reconciliation_statement():
+        from profitos.entities import current_entity_id
+        from profitos import bank_reconciliation as br
+        eid = current_entity_id()
+        c = cx()
+        try:
+            codes = br.ledger_accounts(c, eid)
+            default = br.default_ledger_code(c, eid)
+            code = (request.args.get("compte") or default).strip()
+            if code not in {r['code'] for r in codes}:
+                code = default
+            as_of = parse_date(request.args.get("date")) or date.today()
+            raw_balance = (request.args.get("solde") or "").strip()
+            statement_balance = parse_amount(raw_balance) if raw_balance else None
+            if raw_balance and statement_balance is None:
+                flash("Solde du relevé illisible : saisissez un montant (ex. 12 345,67).")
+            report = br.reconciliation_statement(c, eid, code, as_of.isoformat(), statement_balance)
+        finally:
+            c.close()
+        return render_template("banking_reconciliation_statement.html", report=report, codes=codes,
+                               raw_balance=raw_balance)
+
     def _ensure_bank_workflow_table(c):
         # Created by the official runtime schema (v370).
         # Legacy schema reference kept for regression compatibility only:
@@ -705,17 +816,22 @@ def register(app):
         try:
             connection = _connection_row(c, eid)
             accounts = c.execute(
-                f"SELECT * FROM bank_accounts WHERE provider IN ('powens','swan') AND {ef} ORDER BY disabled,balance DESC",
+                f"SELECT * FROM bank_accounts WHERE provider IN ('powens','swan','import') AND {ef} ORDER BY disabled,balance DESC",
                 ep,
             ).fetchall()
+            # « import » : relevés CSV / Excel / PDF importés (banque non connectée).
             transactions = c.execute(
-                f"""SELECT t.* FROM bank_transactions t
+                f"""SELECT t.*,a.name AS account_name FROM bank_transactions t
                     JOIN bank_accounts a ON a.provider_account_id=t.provider_account_id AND a.provider=t.provider
-                    WHERE t.provider IN ('powens','swan') AND a.{ef}
+                    WHERE t.provider IN ('powens','swan','import') AND a.{ef}
                       AND (t.provider!='swan' OR COALESCE(t.raw_status,'')='Booked')
-                    ORDER BY t.transaction_date DESC,t.id DESC LIMIT 50""",
+                      AND COALESCE(t.raw_status,'')<>'deleted'
+                    ORDER BY t.transaction_date DESC,t.id DESC LIMIT 100""",
                 ep,
             ).fetchall()
+            from profitos import bank_reconciliation as br
+            ledger_codes = br.ledger_accounts(c, eid)
+            default_ledger = br.default_ledger_code(c, eid)
             transaction_states = _bank_transaction_states(c, transactions, eid)
             reconciliation_candidates = [
                 t for t in transactions
@@ -793,6 +909,8 @@ def register(app):
             swan_configured=__import__('profitos.swan_baas', fromlist=['is_configured']).is_configured(),
             swan_environment=__import__('profitos.swan_baas', fromlist=['current_environment']).current_environment(),
             categories=categories,
+            ledger_codes=ledger_codes,
+            default_ledger=default_ledger,
         )
 
     @app.post("/banking/swan/sync")
@@ -1048,8 +1166,11 @@ def register(app):
             balance=_invoice_bank_balance(c,inv)
             if tx_amount <= 0 or available <= .005 or balance <= .005:
                 flash("Aucun montant restant à rapprocher."); return redirect(url_for('banking'))
-            requested=(request.form.get('matched_amount') or '').replace(',','.').strip()
-            amount=round(float(requested),2) if requested else min(available,balance)
+            requested=(request.form.get('matched_amount') or '').strip()
+            parsed=parse_amount(requested) if requested else None
+            if requested and parsed is None:
+                flash("Montant de rapprochement invalide."); return redirect(url_for('banking'))
+            amount=round(parsed,2) if requested else min(available,balance)
             if amount <= 0 or amount > available+.001 or amount > balance+.001:
                 flash("Montant de rapprochement invalide."); return redirect(url_for('banking'))
             idem=f"bank:{eid}:{transaction_id}:{invoice_id}:{amount:.2f}"
@@ -1058,7 +1179,9 @@ def register(app):
                              VALUES(?,?,?,?,?,?,?,?)""",(eid,invoice_id,amount,t['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',t['label'] or 'Rapprochement bancaire',idem,matched_at))
             payment_id=cur.lastrowid
             payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,eid)).fetchone()
-            generate_sale_partial_payment_entry(c,inv,payment)
+            bank_code=_bank_ledger_code(c,t,eid)
+            if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
+            generate_sale_partial_payment_entry(c,inv,payment,commit=False,bank_account=bank_code)
             c.execute("""INSERT INTO bank_invoice_allocations(entity_id,bank_transaction_id,invoice_id,payment_id,matched_amount,match_method,matched_at,idempotency_key)
                          VALUES(?,?,?,?,?,'manual',?,?)""",(eid,transaction_id,invoice_id,payment_id,amount,matched_at,idem))
             new_balance=round(balance-amount,2)
@@ -1112,7 +1235,7 @@ def register(app):
         c = cx()
         try:
             rows = c.execute(
-                f"SELECT balance FROM bank_accounts WHERE provider IN ('powens','swan') AND disabled=0 AND balance IS NOT NULL AND {ef}",
+                f"SELECT balance FROM bank_accounts WHERE provider IN ('powens','swan','import') AND disabled=0 AND balance IS NOT NULL AND {ef}",
                 ep,
             ).fetchall()
             if not rows:
@@ -1149,13 +1272,18 @@ def register(app):
         balance=max(0.0,round(float(p['total'] or 0)-float(paid),2))
         allocated=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
         available=max(0.0,round(abs(float(tx['amount'] or 0))-float(allocated),2))
-        amount=round(float(requested),2) if requested else min(balance,available)
+        parsed=parse_amount(requested) if requested else None
+        if requested and parsed is None:
+            c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
+        amount=round(parsed,2) if requested else min(balance,available)
         if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
         key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
             c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
-            generate_purchase_partial_payment_entry(c,p,payment)
+            bank_code=_bank_ledger_code(c,tx,eid)
+            if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
+            generate_purchase_partial_payment_entry(c,p,payment,commit=False,bank_account=bank_code)
             c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
             new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
             c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
@@ -1200,10 +1328,8 @@ def register(app):
         expense=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '627%%'
                              AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
                              ORDER BY code LIMIT 1""",(eid,)).fetchone()
-        bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%%'
-                                  AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1
-                                  ORDER BY code LIMIT 1""",(eid,)).fetchone()
-        if not expense or not bank_account:
+        bank_code=_bank_ledger_code(c,tx,eid)
+        if not expense or not bank_code:
             c.close(); flash("Comptes 627 (services bancaires) ou 512 (banque) absents du plan comptable.")
             return redirect(url_for('banking'))
         entry_date=tx['transaction_date'] or date.today().isoformat()
@@ -1215,7 +1341,7 @@ def register(app):
             from profitos.accounting import create_entry
             create_entry(c,'BQ',entry_date,label,
                          [{'account_code':expense['code'],'debit':residual},
-                          {'account_code':bank_account['code'],'credit':residual}],
+                          {'account_code':bank_code,'credit':residual}],
                          source_type='bank_fee',source_id=tx_id,entity_id=eid,
                          created_by=session.get('user_email') or session.get('email') or 'system',
                          commit=False,piece_ref=piece)
@@ -1226,7 +1352,7 @@ def register(app):
         except (AccountingError, ValueError) as e:
             c.rollback(); c.close(); flash(f"Comptabilisation des frais annulée : {e}")
             return redirect(url_for('banking'))
-        c.close(); flash(f"Frais bancaire de {fr_number(residual,2)} € comptabilisé (627 / 512).")
+        c.close(); flash(f"Frais bancaire de {fr_number(residual,2)} € comptabilisé ({expense['code']} / {bank_code}).")
         return redirect(url_for('banking'))
 
 
@@ -1391,9 +1517,8 @@ def register(app):
         try:
             c.execute('UPDATE bank_transactions SET category=? WHERE id=?',(category,tx_id))
             if account_code:
-                bank_account=c.execute("""SELECT code FROM accounting_chart_of_accounts WHERE code LIKE '512%%'
-                    AND (entity_id IS ? OR entity_id IS NULL) AND COALESCE(is_active,1)=1 ORDER BY code LIMIT 1""",(eid,)).fetchone()
-                if not bank_account: raise ValueError('Compte banque 512 absent du plan comptable.')
+                bank_code=_bank_ledger_code(c,tx,eid)
+                if not bank_code: raise ValueError('Compte banque 512 absent du plan comptable.')
                 amount=round(abs(float(tx['amount'] or 0)),2)
                 if amount <= .005: raise ValueError('Montant bancaire nul ou invalide.')
                 entry_date=tx['transaction_date'] or date.today().isoformat()
@@ -1405,7 +1530,7 @@ def register(app):
                 c.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_accounting_entries_bank_categorization
                     ON accounting_entries(entity_id,source_id)
                     WHERE source_type='bank_categorization'""")
-                lines=_bank_categorization_lines(account_code,bank_account['code'],amount,vat_rate,float(tx['amount'] or 0)<0,label)
+                lines=_bank_categorization_lines(account_code,bank_code,amount,vat_rate,float(tx['amount'] or 0)<0,label)
                 from profitos.accounting import create_entry
                 create_entry(c,'BQ',entry_date,label,lines,source_type='bank_categorization',source_id=tx_id,
                              entity_id=eid,created_by=session.get('user_email') or session.get('email') or 'system',
@@ -1436,7 +1561,8 @@ def _bank_categorization_lines(account_code, bank_code, amount, vat_rate, is_deb
     """Lignes de l'écriture de catégorisation bancaire (montant TTC du mouvement).
 
     Avec un taux de TVA sur un compte de charge (6) ou d'immobilisation (2), la TVA
-    déductible est isolée en 445660 ; sur un compte de produit (7), la TVA collectée
+    déductible est isolée en 445660 (445620 pour une immobilisation) ; sur un compte de
+    produit (7), la TVA collectée
     en 445710. Le HT est calculé depuis le TTC (TTC / (1 + taux)), la TVA = TTC − HT."""
     from profitos.invoice_amounts import money
     lines=[]
@@ -1446,7 +1572,10 @@ def _bank_categorization_lines(account_code, bank_code, amount, vat_rate, is_deb
     if is_debit:
         if split and str(account_code)[:1] in ('2','6'):
             lines.append({'account_code':account_code,'debit':ht,'label':label})
-            lines.append({'account_code':'445660','debit':vat,'label':label,'vat_rate':vat_rate,'vat_base':ht})
+            # TVA sur immobilisations (2) : 445620, reportée ligne 19 de la CA3 ; sur
+            # autres biens et services (6) : 445660, ligne 20.
+            vat_account='445620' if str(account_code)[:1]=='2' else '445660'
+            lines.append({'account_code':vat_account,'debit':vat,'label':label,'vat_rate':vat_rate,'vat_base':ht})
         else:
             lines.append({'account_code':account_code,'debit':amount,'label':label})
         lines.append({'account_code':bank_code,'credit':amount,'label':label})

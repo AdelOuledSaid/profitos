@@ -63,7 +63,7 @@ def test_paying_referrer_gets_stripe_balance_credit(billing_env):
     before = org_row(referrer)["trial_ends_at"]
     _reward(billing_env.app, referred)
     (call,) = billing_env.stripe.called("Customer.create_balance_transaction")
-    assert call[1] == "cus_ref" and call[2]["amount"] == -1900 and call[2]["currency"] == "eur"
+    assert call[1] == "cus_ref" and call[2]["amount"] == -2900 and call[2]["currency"] == "eur"
     assert org_row(referrer)["trial_ends_at"] == before
 
 

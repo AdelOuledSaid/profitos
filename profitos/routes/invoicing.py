@@ -412,6 +412,14 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
 
     root = ET.Element(f'{{{ns["rsm"]}}}CrossIndustryInvoice')
     ctx = ET.SubElement(root, f'{{{ns["rsm"]}}}ExchangedDocumentContext')
+    # BT-23 — cadre de facturation (règle française BR-FR-08, obligatoire) : B/S/M selon
+    # la nature de l'opération, suivi de 1 (facture « classique ») ou 4 (facture définitive
+    # entièrement couverte par les acomptes versés, BR-FR-CO-09).
+    nature_letter = {'biens': 'B', 'services': 'S', 'mixte': 'M'}.get(
+        (_g(inv, 'operation_nature', 'services') or 'services'), 'S')
+    fully_prepaid = type_code == '380' and float(prepaid or 0) > 0 and round(grand_total - float(prepaid or 0), 2) <= 0
+    _cii_el(_cii_el(ctx, 'BusinessProcessSpecifiedDocumentContextParameter'), 'ID',
+            nature_letter + ('4' if fully_prepaid else '1'))
     guideline = _cii_el(ctx, 'GuidelineSpecifiedDocumentContextParameter')
     _cii_el(guideline, 'ID', 'urn:cen.eu:en16931:2017')
 
@@ -485,19 +493,26 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
     # --- Livraison -------------------------------------------------------------------------
     delivery_hdr = _cii_el(txn, 'ApplicableHeaderTradeDelivery')
     delivery_address = _g(inv, 'delivery_address')
+    intra_supply = any(_vat_category(inv, company, b['rate']) == 'K' for b in breakdown)
     if delivery_address:
         ship_to = _cii_el(delivery_hdr, 'ShipToTradeParty')
         _cii_address(ship_to, delivery_address, buyer_country)
-    if _g(inv, 'service_date'):
+    elif intra_supply:
+        # BR-IC-12 : livraison intracommunautaire -> pays de livraison (BT-80) obligatoire.
+        ship_to = _cii_el(delivery_hdr, 'ShipToTradeParty')
+        _cii_el(_cii_el(ship_to, 'PostalTradeAddress'), 'CountryID', buyer_country)
+    delivery_date = _g(inv, 'service_date') or (_g(inv, 'issue_date') if intra_supply else None)
+    if delivery_date:
+        # BR-IC-11 : date de livraison (BT-72) obligatoire pour une livraison intracommunautaire.
         event = _cii_el(delivery_hdr, 'ActualDeliverySupplyChainEvent')
-        _cii_datetime(event, 'OccurrenceDateTime', _g(inv, 'service_date'))
+        _cii_datetime(event, 'OccurrenceDateTime', delivery_date)
 
     # --- Règlement -------------------------------------------------------------------------
     settlement_hdr = _cii_el(txn, 'ApplicableHeaderTradeSettlement')
     _cii_el(settlement_hdr, 'InvoiceCurrencyCode', 'EUR')
     iban = re.sub(r'\s', '', str(_g(company, 'iban', '') or ''))
     due_amount = round(grand_total - float(prepaid or 0), 2)
-    if iban and type_code == '380' and due_amount > 0:
+    if iban and type_code in ('380', '386') and due_amount > 0:
         means = _cii_el(settlement_hdr, 'SpecifiedTradeSettlementPaymentMeans')
         _cii_el(means, 'TypeCode', '58')  # virement SEPA
         _cii_el(_cii_el(means, 'PayeePartyCreditorFinancialAccount'), 'IBANID', iban)
@@ -4818,7 +4833,9 @@ def _render_facturx(doc, xml_bytes, title, description):
         return None
     from fpdf.enums import DocumentCompliance
     attachment = {'bytes': xml_bytes, 'basename': 'factur-x.xml', 'mime_type': 'text/xml',
-                  'desc': description, 'associated_file_relationship': 'Alternative', 'compress': True}
+                  'desc': description, 'associated_file_relationship': 'Alternative', 'compress': True,
+                  # /Params /ModDate du fichier embarqué, attendu par la spécification Factur-X.
+                  'modification_date': datetime.now(timezone.utc)}
     return _pdf.render_document(doc, compliance=DocumentCompliance.PDFA_3B, attachments=[attachment],
                                 xmp=facturx_xmp(title), title=title)
 
@@ -4831,7 +4848,9 @@ def render_facturx_pdf(inv, company_row):
     ATTENTION : la conformité PDF/A-3 finale n'a pas été validée contre un outil
     officiel (veraPDF, FNFE-MPE) dans cet environnement."""
     items = json.loads(inv['line_items'] or '[]')
-    xml_bytes = generate_facturx_xml(inv, items, company_row)
+    # Facture d'acompte : type 386 (prepayment invoice), et non 380.
+    type_code = '386' if (_g(inv, 'invoice_kind', 'standard') or 'standard') == 'deposit' else '380'
+    xml_bytes = generate_facturx_xml(inv, items, company_row, type_code=type_code)
     doc = build_invoice_document(inv, company_row)
     return _render_facturx(doc, xml_bytes, doc['title'], 'Factur-X invoice data (EN16931)')
 

@@ -19,7 +19,7 @@
 <div class="purchase-stat"><div><div class="purchase-stat-label">ÉCRITURES TVA</div><div class="purchase-stat-value">{{ entry_count }}</div></div></div>
 </div>
 <section class="purchase-panel" style="margin-bottom:20px;">
-<div class="purchase-panel-head"><h2>TVA collectée par taux (CA3)</h2></div>
+<div class="purchase-panel-head"><h2>TVA collectée par taux (CA3)</h2><a class="purchase-nav-btn" href="{{ url_for('accounting_ca3', date_from=date_from, date_to=date_to) }}">Déclaration CA3 case par case →</a></div>
 {% if ca3_rates %}
 <div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>Ligne CA3</th><th>Taux</th><th style="text-align:right">Base HT</th><th style="text-align:right">TVA due</th></tr></thead><tbody>
 {% for r in ca3_rates %}<tr><td>{{ r.line }}</td><td>{{ r.label }}</td><td style="text-align:right">{{ r.base|fr_number(2) }}&nbsp;€</td><td style="text-align:right">{{ r.vat|fr_number(2) }}&nbsp;€</td></tr>{% endfor %}

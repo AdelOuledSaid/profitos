@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">LIASSE FISCALE — RÉGIME SIMPLIFIÉ</div>
+    <h1 class="purchase-title">Tableaux 2033-A et 2033-B</h1>
+    <p class="purchase-subtitle">Exercice {{ fy.label }}{% if choice=='courant' %} — situation provisoire{% endif %}. Pré-remplis à partir de la balance : à relire et compléter avant la déclaration.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_liasse_2033', exercice=choice, format='xlsx') }}">Exporter Excel</a>
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_trial_balance', du=fy.start.isoformat(), au=fy.end.isoformat()) }}">Balance</a>
+  </div>
+</div>
+
+<nav class="seg-tabs" aria-label="Exercice" style="margin-bottom:14px;">
+  <a href="{{ url_for('accounting_liasse_2033', exercice='precedent') }}" class="{{ 'is-active' if choice!='courant' else '' }}">Exercice clos ({{ previous.end|fr_date }})</a>
+  <a href="{{ url_for('accounting_liasse_2033', exercice='courant') }}" class="{{ 'is-active' if choice=='courant' else '' }}">Exercice en cours</a>
+</nav>
+
+{% if not l.balanced %}<div class="flash" role="alert">⚠ Le total de l'actif ({{ l.total_actif|fr_number(0) }} €) diffère du total du passif ({{ l.total_passif|fr_number(0) }} €){% if l.unassigned %} : comptes non rattachés à une case : {{ l.unassigned|join(', ') }}{% endif %}. Vérifiez la balance.</div>
+{% else %}<div class="flash" role="status">✓ Bilan équilibré : total actif = total passif = {{ l.total_actif|fr_number(0) }} €.</div>{% endif %}
+
+<div class="twocol">
+<section class="purchase-panel">
+  <h2 style="color:#fff;margin-top:0;">2033-A — Actif</h2>
+  <table class="purchase-table ca3-table">
+    <thead><tr><th>Case</th><th>Poste</th><th class="num">Brut</th><th class="num">Amort.</th><th class="num">Net</th></tr></thead>
+    <tbody>
+    {% for a in l.actif %}<tr><td class="ca3-box">{{ a.box_brut }}{% if a.box_amort %}<br><small>{{ a.box_amort }}</small>{% endif %}</td><td>{{ a.label }}</td><td class="num">{{ a.brut|fr_number(0) }}</td><td class="num">{% if a.box_amort %}{{ a.amort|fr_number(0) }}{% endif %}</td><td class="num">{{ a.net|fr_number(0) }}</td></tr>{% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">110</td><td colspan="3">Total actif</td><td class="num">{{ l.total_actif|fr_number(0) }}</td></tr>
+    </tbody>
+  </table>
+</section>
+<section class="purchase-panel">
+  <h2 style="color:#fff;margin-top:0;">2033-A — Passif</h2>
+  <table class="purchase-table ca3-table">
+    <thead><tr><th>Case</th><th>Poste</th><th class="num">Montant</th></tr></thead>
+    <tbody>
+    {% for p in l.passif %}
+      <tr{% if p.box=='136' %} class="ca3-total"{% endif %}><td class="ca3-box">{{ p.box }}</td><td>{{ p.label }}</td><td class="num">{{ p.amount|fr_number(0) }}</td></tr>
+      {% if p.box=='140' %}<tr class="ca3-total"><td class="ca3-box">142</td><td>Total capitaux propres</td><td class="num">{{ l.capitaux_propres|fr_number(0) }}</td></tr>{% endif %}
+    {% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">180</td><td>Total passif</td><td class="num">{{ l.total_passif|fr_number(0) }}</td></tr>
+    </tbody>
+  </table>
+</section>
+</div>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2 style="color:#fff;margin-top:0;">2033-B — Compte de résultat</h2>
+  <table class="purchase-table ca3-table"><tbody>
+    {% for x in l.produits %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">232</td><td>Total des produits d'exploitation</td><td class="num">{{ l.total_produits|fr_number(0) }}</td></tr>
+    {% for x in l.charges %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">264</td><td>Total des charges d'exploitation</td><td class="num">{{ l.total_charges|fr_number(0) }}</td></tr>
+    <tr class="ca3-total"><td class="ca3-box">270</td><td>Résultat d'exploitation</td><td class="num">{{ l.resultat_exploitation|fr_number(0) }}</td></tr>
+    {% for x in l.financier_exceptionnel %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">310</td><td>Bénéfice ou perte</td><td class="num">{{ l.resultat|fr_number(0) }}</td></tr>
+  </tbody></table>
+  {% if l.unclassified %}<p class="purchase-muted" style="font-size:12px;">Comptes de gestion rattachés par défaut aux autres produits / autres charges : {{ l.unclassified|join(', ') }}.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <p class="purchase-muted" style="margin:0;">Aide au remplissage : les montants sont arrondis à l'euro et répartis selon la correspondance usuelle entre le plan comptable et les cases de la notice 2033. Restent à compléter selon votre situation : tableaux 2033-C à 2033-G (immobilisations, amortissements, provisions, plus-values, déficits, détermination du résultat fiscal), crédit-bail, effectif… La liasse doit être télétransmise (EDI-TDFC) par votre expert-comptable ou un partenaire EDI ; ProfitOS ne la transmet pas.</p>
+</section>
+</div>
+{% endblock %}

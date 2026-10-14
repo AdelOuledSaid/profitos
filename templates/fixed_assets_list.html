@@ -20,6 +20,7 @@
     <label>Date d'achat<input type="date" name="purchase_date" required></label>
     <label>Montant d'achat HT (€)<input type="number" name="purchase_amount" step="0.01" min="0" required></label>
     <label>Durée d'amortissement (années)<input type="number" name="useful_life_years" step="0.5" min="0.5" value="3" required></label>
+    <label>Mode d'amortissement<select name="method"><option value="linear">Linéaire</option><option value="degressive">Dégressif fiscal (biens neufs, 3 ans et plus)</option></select></label>
     <label>Compte d'immobilisation<select name="asset_account">{% for a in immobilisation_accounts %}<option value="{{ a.code }}">{{ a.code }} — {{ a.label }}</option>{% endfor %}</select></label>
     <label>Compte d'amortissement<input name="depreciation_account" value="281830" placeholder="ex: 281830"></label>
     <label>Compte de charge (dotation)<input name="expense_account" value="681000"></label>

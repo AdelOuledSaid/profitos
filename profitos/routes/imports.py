@@ -584,26 +584,43 @@ def register(app):
                 flash(f'Import refusé : {e}'); return redirect(request.url)
             finally:
                 if path: cleanup_upload(path)
-            aliases={'date':['date','date operation',"date d'opération",'date valeur'],
-                     'desc':['description','libelle','libellé','intitule','intitulé','détail','detail'],
-                     'amount':['amount','montant','credit','crédit'],
+            aliases={'date':['date','date operation',"date d'opération","date de l'operation",'date comptable','date valeur'],
+                     'desc':['description','libelle','libellé','libelle operation','libellé opération','intitule','intitulé','détail','detail','nature'],
+                     'amount':['amount','montant','montant eur','montant (eur)','montant en euros','valeur'],
+                     'debit':['debit','débit','montant debit','montant débit','débit eur','debit eur','sortie','sorties'],
+                     'credit':['credit','crédit','montant credit','montant crédit','crédit eur','credit eur','entrée','entrées','entree','entrees'],
                      'balance':['balance','solde','solde bancaire','running balance','account balance']}
             m=map_cols(df,aliases)
-            missing=[k for k in ('date','amount') if k not in m]
-            if missing:
+            if 'date' not in m or not ({'amount','debit','credit'} & set(m)):
+                missing=[k for k in ('date',) if k not in m]+([] if ({'amount','debit','credit'} & set(m)) else ['montant (ou colonnes Débit / Crédit)'])
                 flash('Colonnes manquantes dans le relevé : '+', '.join(missing)); return redirect(request.url)
 
+            def row_amount(row):
+                """Montant signé : colonne Montant, sinon Crédit − Débit (relevés à deux
+                colonnes, débit noté positif ou négatif selon la banque)."""
+                if 'amount' in m:
+                    return parse_amount(row[m['amount']])
+                credit=parse_amount(row[m['credit']]) if 'credit' in m else None
+                debit=parse_amount(row[m['debit']]) if 'debit' in m else None
+                if credit is None and debit is None:
+                    return None
+                return round(abs(credit or 0)-abs(debit or 0),2)
+
+            from profitos.entities import current_entity_id
+            eid=current_entity_id()
             c=cx()
-            unpaid=c.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid'").fetchall()
+            unpaid=c.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND entity_id IS ?",(eid,)).fetchall()
             c.close()
 
-            proposals=[]
+            proposals=[]; bank_lines=[]
             for _,row in df.iterrows():
-                bank_amount=parse_amount(row[m['amount']])
+                bank_amount=row_amount(row)
                 if bank_amount is None: continue
-                if bank_amount<=0: continue  # on ne traite que les lignes créditrices (encaissements)
-                bank_desc=str(row[m['desc']]) if 'desc' in m else ''
-                bank_date=str(row[m['date']])[:10]
+                bank_desc=str(row[m['desc']]) if 'desc' in m and not pd.isna(row[m['desc']]) else ''
+                d=parse_date(row[m['date']])
+                bank_lines.append((d.isoformat() if d else None,bank_desc,bank_amount))
+                bank_date=d.isoformat() if d else str(row[m['date']])[:10]
+                if bank_amount<=0: continue  # rapprochement « factures importées » : encaissements seulement
                 candidates=[inv for inv in unpaid if abs(inv['outstanding']-bank_amount)<0.01]
                 match=None
                 if len(candidates)==1:
@@ -624,28 +641,52 @@ def register(app):
             if 'balance' in m:
                 balance_rows=[]
                 for _,row in df.iterrows():
-                    try:
-                        raw_balance=str(row[m['balance']]).strip().replace(' ','').replace('\u202f','').replace(',','.')
-                        bal=float(raw_balance)
-                    except Exception:
-                        continue
+                    bal=parse_amount(row[m['balance']])
                     d=parse_date(row[m['date']])
-                    if d:
+                    if bal is not None and d:
                         balance_rows.append((d,bal))
                 if balance_rows:
-                    imported_balance_date,imported_balance=max(balance_rows,key=lambda x:x[0])
+                    # Dernier solde de la date la plus récente (ordre du fichier conservé
+                    # pour plusieurs opérations le même jour).
+                    last_day=max(d for d,_ in balance_rows)
+                    imported_balance_date=last_day
+                    imported_balance=[b for d,b in balance_rows if d==last_day][-1 if balance_rows[0][0]<=balance_rows[-1][0] else 0]
                     c=cx()
-                    from profitos.entities import set_cash_balance, current_entity_id
-                    set_cash_balance(c,current_entity_id(),imported_balance,imported_balance_date.isoformat(),now())
+                    from profitos.entities import set_cash_balance
+                    set_cash_balance(c,eid,imported_balance,imported_balance_date.isoformat(),now())
                     c.close()
                     log_activity('CASH_BALANCE_IMPORT','Solde bancaire mis à jour depuis un relevé importé')
+
+            # Les opérations du relevé rejoignent le module Banque (compte « relevé
+            # importé ») : rapprochement factures clients / fournisseurs, catégorisation
+            # comptable et état de rapprochement, sans connexion bancaire.
+            from profitos.bank_import import store_statement_lines
+            from profitos.routes.bank_sync import apply_categorization_rule
+            c=cx()
+            try:
+                _acct,added,already=store_statement_lines(
+                    c,eid,request.form.get('bank_account_name') or 'Compte importé',bank_lines,
+                    imported_balance,imported_balance_date.isoformat() if imported_balance_date else None,
+                    categorize=apply_categorization_rule)
+            finally:
+                c.close()
+            log_activity('BANK_STATEMENT_IMPORT',f'{added} opération(s) bancaire(s) importée(s), {already} déjà présente(s)')
+            flash(f"{pluralize(added, 'opération ajoutée', 'opérations ajoutées')} au module Banque"
+                  + (f" ({pluralize(already, 'déjà importée', 'déjà importées')}, ignorée{'s' if already>1 else ''})" if already else '')
+                  + " : rapprochez-les de vos factures depuis la page Banques.")
 
             matched_count=sum(1 for p in proposals if p['match'])
             if imported_balance is not None:
                 flash(f'Solde bancaire détecté dans le relevé : {fr_number(imported_balance,2)} € au {imported_balance_date.isoformat()}.')
             return render_template('bank_reconciliation.html',proposals=proposals,matched_count=matched_count,total_rows=len(proposals))
 
-        return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement')
+        from profitos.entities import current_entity_id
+        c=cx()
+        try:
+            import_accounts=c.execute("SELECT name FROM bank_accounts WHERE provider='import' AND entity_id IS ? ORDER BY last_synced_at DESC",(current_entity_id(),)).fetchall()
+        finally:
+            c.close()
+        return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement',import_accounts=import_accounts)
 
     @app.route('/reconcile/confirm',methods=['POST'])
     @login_required

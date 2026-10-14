@@ -118,3 +118,4 @@
 [data-theme="light"] .purchase-danger-btn{color:#b3261e!important;background:#fdecee;border-color:#f3b4bc}
 [data-theme="light"] .flash.flash-error,[data-theme="light"] .purchase-error{background:#fdecee;border-color:#f3b4bc;color:#8c1d18}
 [data-theme="light"] .navmode-btn{border-color:#c9d4e6;color:#5a6a85}
+[data-theme="light"] nav a.nav-locked{color:#7a879c}[data-theme="light"] nav a.nav-locked small{color:#1f8f55;border-color:#9fd9b8}

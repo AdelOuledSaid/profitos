@@ -945,6 +945,7 @@ def register(app):
         cancellation_date=None
 
         renewal_date=None
+        current_interval=None
         stripe=get_stripe()
         sub_id=payer['stripe_subscription_id'] if payer and not is_child else None
 
@@ -952,6 +953,7 @@ def register(app):
             try:
                 subscription=stripe.Subscription.retrieve(sub_id)
                 cancellation_scheduled=bool(subscription.get('cancel_at_period_end'))
+                current_interval=_subscription_interval(subscription)
 
                 period_end=subscription.get('current_period_end')
                 if period_end:
@@ -1034,8 +1036,23 @@ def register(app):
             },
         }
 
+        has_subscription=bool(not is_child and payer and payer['stripe_subscription_id']
+                              and payer['status'] in ('ACTIVE_PAID','PAST_DUE'))
+        annual_ok=annual_billing_available()
+        requested=(request.args.get('periode') or '').lower()
+        period='year' if annual_ok and (requested=='annuel' or (not requested and current_interval=='year')) else 'month'
+        highlight=(request.args.get('formule') or '').upper()
+        if highlight not in STRIPE_PLANS:
+            highlight='PRO'
         return render_template(
             'billing.html',
+            has_subscription=has_subscription,
+            current_interval=current_interval or 'month',
+            period=period,
+            annual_ok=annual_ok,
+            highlight=highlight,
+            plan_order=PLAN_ORDER,
+            plan_price_id=plan_price_id,
             org=org,
             billing_enabled=BILLING_ENABLED,
             trial_days=trial_days_left(org),
@@ -1077,13 +1094,17 @@ def register(app):
         # Le plan doit toujours venir du formulaire et correspondre à un plan serveur connu.
         plan=(request.form.get('plan') or '').strip().upper()
         selected=STRIPE_PLANS.get(plan)
+        # Périodicité : mensuel sans engagement (défaut) ou annuel payé d'avance.
+        interval='year' if request.form.get('interval')=='year' else 'month'
+        price_id=plan_price_id(plan,interval)
 
         if not stripe:
             flash("Le paiement en ligne sera bientôt disponible. Contactez-nous pour souscrire : votre essai en cours n'est pas interrompu.")
             return redirect(url_for('billing'))
 
-        if not selected or not selected.get('price_id'):
-            flash("Ce plan n'est pas disponible ou son tarif Stripe n'est pas configuré.")
+        if not selected or not price_id:
+            flash("Ce plan n'est pas disponible ou son tarif Stripe n'est pas configuré"
+                  +(" en paiement annuel." if interval=='year' else "."))
             return redirect(url_for('billing'))
 
         org=current_org()
@@ -1113,8 +1134,8 @@ def register(app):
         # un abonnement existant se modifie dans le portail Stripe (changement de formule).
         if org['stripe_subscription_id'] and org['status'] in ('ACTIVE_PAID','PAST_DUE'):
             session.pop(lock_key,None)
-            flash("Un abonnement Stripe existe déjà : changez de formule depuis le portail de facturation.")
-            return _open_billing_portal(stripe,org)
+            flash("Vous avez déjà un abonnement : utilisez « Passer à cette formule » pour en changer.")
+            return redirect(url_for('billing'))
 
         customer_id=org['stripe_customer_id']
 
@@ -1171,7 +1192,8 @@ def register(app):
             subscription_data={
                 'metadata':{
                     'organization_id':str(org['id']),
-                    'plan':plan
+                    'plan':plan,
+                    'interval':interval
                 }
             }
             # Payer pendant l'essai ne fait pas perdre les jours restants
@@ -1185,7 +1207,7 @@ def register(app):
                 mode='subscription',
                 line_items=[
                     {
-                        'price':selected['price_id'],
+                        'price':price_id,
                         'quantity':1
                     }
                 ],
@@ -1206,7 +1228,7 @@ def register(app):
                 allow_promotion_codes=True,
                 # Clé unique par tentative : les sessions précédentes viennent d'être
                 # expirées ; une clé réutilisée rejouerait une session expirée.
-                idempotency_key=f"profitos-checkout-{org['id']}-{plan}-{secrets.token_hex(8)}",
+                idempotency_key=f"profitos-checkout-{org['id']}-{plan}-{interval}-{secrets.token_hex(8)}",
             )
 
         except Exception:
@@ -1224,6 +1246,124 @@ def register(app):
         session.pop(lock_key,None)
         log_security_event('BILLING_CHECKOUT','SUCCESS',organization_id=org['id'],target=f'plan:{plan}')
         return redirect(checkout.url,code=303)
+
+    def _subscription_interval(subscription):
+        """'month' ou 'year' d'après le price_id du premier élément de l'abonnement."""
+        items=((subscription.get('items') or {}).get('data') or []) if subscription else []
+        price=(items[0].get('price') or {}) if items else {}
+        return STRIPE_PRICE_INTERVAL.get(price.get('id')) or ((price.get('recurring') or {}).get('interval')) or 'month'
+
+    def _downgrade_blockers(payer, target_plan):
+        """Raisons qui empêchent de descendre vers target_plan (rien n'est jamais supprimé
+        automatiquement : le client retire d'abord les accès en trop)."""
+        reasons=[]
+        acx=auth_cx()
+        try:
+            members=acx.execute('SELECT COUNT(*) AS n FROM memberships WHERE organization_id=?',(payer['id'],)).fetchone()['n']
+            children=acx.execute('SELECT COUNT(*) AS n FROM organizations WHERE parent_org_id=?',(payer['id'],)).fetchone()['n']
+        finally:
+            acx.close()
+        limit=plan_limit(target_plan,'team_members')
+        if limit is not None and members>limit:
+            reasons.append(f"votre équipe compte {members} utilisateurs pour {limit} inclus dans {STRIPE_PLANS[target_plan]['name']} : "
+                           f"retirez {members-limit} accès depuis la page Équipe")
+        org_limit=plan_limit(target_plan,'organizations') or 1
+        if children and children+1>org_limit:
+            reasons.append(f"{children} organisation(s) sont rattachées à cet abonnement Multi-sociétés : "
+                           "détachez-les ou supprimez-les avant de quitter cette formule")
+        return reasons
+
+    @app.route('/billing/changer-formule',methods=['POST'])
+    @login_required
+    @require_area('billing')
+    @rate_limit(6,60)
+    def billing_change_plan():
+        """Montée ou descente de formule, et passage mensuel -> annuel, sans quitter ProfitOS.
+        Montée : immédiate, différence au prorata facturée tout de suite (refusée si le
+        paiement échoue). Descente (abonnement mensuel) : immédiate, le trop-payé est déduit
+        de la prochaine facture. Un abonnement annuel ne descend qu'à son échéance (CGV)."""
+        if current_role()!='OWNER':
+            log_security_event('BILLING_CHANGE_PLAN','FORBIDDEN',target='billing')
+            abort(403)
+        stripe=get_stripe(); org=current_org(); payer=billing_org(org)
+        target=(request.form.get('plan') or '').strip().upper()
+        interval='year' if request.form.get('interval')=='year' else 'month'
+        new_price=plan_price_id(target,interval)
+        back=url_for('billing',periode='annuel' if interval=='year' else None)
+        if not stripe or not new_price or target not in PLAN_ORDER:
+            flash("Cette formule n'est pas disponible pour le moment.")
+            return redirect(back)
+        if not payer or payer['id']!=org['id']:
+            flash("L'abonnement est géré depuis l'organisation principale Multi-sociétés.")
+            return redirect(back)
+        if not (payer['stripe_subscription_id'] and payer['status'] in ('ACTIVE_PAID','PAST_DUE')):
+            # Pas encore d'abonnement : souscription classique.
+            return redirect(back)
+        try:
+            sub=stripe.Subscription.retrieve(payer['stripe_subscription_id'])
+            items=((sub.get('items') or {}).get('data') or [])
+            if not items:
+                raise ValueError('subscription without items')
+            item=items[0]
+            current_price=(item.get('price') or {}).get('id')
+            current_plan=STRIPE_PRICE_TO_PLAN.get(current_price) or payer['plan']
+            current_interval=_subscription_interval(sub)
+        except Exception:
+            current_app.logger.exception('Stripe change plan lookup failure org_id=%s',org['id'])
+            flash("Impossible de lire votre abonnement pour le moment. Réessayez dans quelques minutes.")
+            return redirect(back)
+        if current_price==new_price:
+            flash("C'est déjà votre formule actuelle.")
+            return redirect(back)
+        cur_rank=PLAN_ORDER.index(current_plan) if current_plan in PLAN_ORDER else 0
+        new_rank=PLAN_ORDER.index(target)
+        if current_interval=='year' and (interval=='month' or new_rank<cur_rank):
+            end=sub.get('current_period_end')
+            end_txt=datetime.fromtimestamp(int(end),tz=timezone.utc).strftime('%d/%m/%Y') if end else "l'échéance annuelle"
+            flash(f"Votre abonnement annuel court jusqu'au {end_txt} : le passage à une formule inférieure ou au paiement "
+                  f"mensuel prendra effet à cette date. Écrivez-nous à {current_app.jinja_env.globals['support_email']()} pour le programmer.")
+            return redirect(back)
+        upgrade=new_rank>cur_rank or (new_rank==cur_rank and interval=='year')
+        if not upgrade:
+            blockers=_downgrade_blockers(payer,target)
+            if blockers:
+                flash("Changement impossible pour l'instant : "+" ; ".join(blockers)+".")
+                return redirect(back)
+        try:
+            params={'items':[{'id':item['id'],'price':new_price}],
+                    'idempotency_key':f"profitos-change-{org['id']}-{target}-{interval}-{secrets.token_hex(6)}"}
+            if upgrade:
+                params.update(proration_behavior='always_invoice',payment_behavior='pending_if_incomplete')
+            else:
+                params.update(proration_behavior='create_prorations')
+            updated=stripe.Subscription.modify(payer['stripe_subscription_id'],**params)
+        except Exception:
+            current_app.logger.exception('Stripe change plan failure org_id=%s target=%s',org['id'],target)
+            log_security_event('BILLING_CHANGE_PLAN','FAILURE',organization_id=org['id'],target=f'plan:{target}:{interval}')
+            flash("Le changement de formule n'a pas pu être effectué. Aucun montant n'a été prélevé ; réessayez plus tard.")
+            return redirect(back)
+        if updated.get('pending_update'):
+            log_security_event('BILLING_CHANGE_PLAN','PAYMENT_PENDING',organization_id=org['id'],target=f'plan:{target}:{interval}')
+            flash("Le paiement de la différence n'a pas abouti : votre formule n'a pas changé. "
+                  "Mettez à jour votre moyen de paiement via « Gérer mon abonnement », puis réessayez.")
+            return redirect(back)
+        # Réponse authentifiée de l'API Stripe (serveur à serveur) : la formule est appliquée
+        # tout de suite ; le webhook customer.subscription.updated la confirmera.
+        acx=auth_cx()
+        try:
+            acx.execute('UPDATE organizations SET plan=?,updated_at=? WHERE id=?',(target,now(),payer['id']))
+            sync_child_orgs(acx,payer['id'])
+            acx.commit()
+        finally:
+            acx.close()
+        log_security_event('BILLING_CHANGE_PLAN','SUCCESS',organization_id=org['id'],target=f'plan:{target}:{interval}')
+        name=STRIPE_PLANS[target]['name']
+        if upgrade:
+            flash(f"Bienvenue dans la formule {name}{' (annuelle)' if interval=='year' else ''} : les nouvelles fonctions sont actives. "
+                  "La différence au prorata a été facturée.")
+        else:
+            flash(f"Vous êtes passé à la formule {name}. Le montant déjà payé pour le reste du mois sera déduit de votre prochaine facture.")
+        return redirect(url_for('billing'))
 
     @app.route('/billing/portal',methods=['POST'])
     @login_required

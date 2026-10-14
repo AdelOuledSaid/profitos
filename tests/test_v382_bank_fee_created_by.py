@@ -8,4 +8,4 @@ def test_v382_bank_fee_does_not_call_undefined_current_user_email():
 def test_v382_keeps_postgres_percent_fix():
     route=B.split("def banking_transaction_book_fee",1)[1]
     assert "LIKE '627%%'" in route
-    assert "LIKE '512%%'" in route
+    assert "_bank_ledger_code(c,tx,eid)" in route

@@ -20,14 +20,14 @@ def test_partial_payment_accounting_uses_payment_as_source_and_entity():
     assert "source_type = 'outgoing_invoice_payment_v2'" in ACCOUNTING
     assert "source_id=payment['id']" in ACCOUNTING
     assert 'entity_id=entity_id' in ACCOUNTING
-    assert "{'account_code': '512000', 'debit': amount}" in ACCOUNTING
+    assert "{'account_code': bank_account or '512000', 'debit': amount}" in ACCOUNTING
     assert "{'account_code': '411000', 'credit': amount" in ACCOUNTING
 
 def test_payment_route_computes_balance_and_partial_status_atomically():
     assert "@app.route('/facturation/<int:invoice_id>/reglement',methods=['POST'])" in ROUTES
     assert "balance=_invoice_balance(c,inv)" in ROUTES
     assert "amount > balance + 0.001" in ROUTES
-    assert "generate_sale_partial_payment_entry(c,inv,payment)" in ROUTES
+    assert "generate_sale_partial_payment_entry(c,inv,payment" in ROUTES
     assert "new_status='paid' if _invoice_balance(c,inv) <= 0.005" in ROUTES
     assert "else 'partially_paid'" in ROUTES
     assert 'except AccountingError as e:' in ROUTES

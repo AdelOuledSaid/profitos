@@ -26,12 +26,17 @@
 
 ## Formules et tarifs (HT)
 
-| Formule | Variable d'environnement | Prix HT / mois |
-|---|---|---|
-| Starter | `STRIPE_PRICE_STARTER_ID` | 9 € |
-| Pro | `STRIPE_PRICE_PRO_ID` (ou l'ancien `STRIPE_PRICE_ID`) | 19 € |
-| Business | `STRIPE_PRICE_BUSINESS_ID` | 49 € |
-| Multi-sociétés (25 organisations) | `STRIPE_PRICE_MULTI_ID` | 199 € |
+| Formule | Mensuel (sans engagement) | Prix HT / mois | Annuel (2 mois offerts, facultatif) | Prix HT / an |
+|---|---|---|---|---|
+| Starter | `STRIPE_PRICE_STARTER_ID` | 9 € | `STRIPE_PRICE_STARTER_YEARLY_ID` | 90 € |
+| Pro | `STRIPE_PRICE_PRO_ID` (ou l'ancien `STRIPE_PRICE_ID`) | 29 € | `STRIPE_PRICE_PRO_YEARLY_ID` | 290 € |
+| Business | `STRIPE_PRICE_BUSINESS_ID` | 59 € | `STRIPE_PRICE_BUSINESS_YEARLY_ID` | 590 € |
+| Multi-sociétés (25 organisations) | `STRIPE_PRICE_MULTI_ID` | 199 € | `STRIPE_PRICE_MULTI_YEARLY_ID` | 1 990 € |
+
+L'option « Annuel » n'apparaît sur les pages Tarifs et Abonnement que si au moins
+un tarif annuel est configuré. Les CGV prévoient un rappel avant chaque
+renouvellement annuel : activez dans Stripe **Paramètres → Facturation →
+Abonnements et e-mails → « Envoyer un rappel avant le renouvellement »**.
 
 Les prix Stripe doivent être créés **hors taxes** (« Tax behavior : exclusive »).
 TVA 20 % en sus, calculée par Stripe Tax (`automatic_tax`), avec collecte de
@@ -48,8 +53,14 @@ temporairement (sinon Checkout refuse la session).
 - Anti double abonnement : si Stripe connaît déjà un abonnement actif / en essai /
   impayé pour le client, l'utilisateur est envoyé vers le portail ; les sessions
   Checkout encore ouvertes sont expirées avant d'en créer une nouvelle.
+- Changement de formule depuis la page Abonnement (`/billing/changer-formule`,
+  `Subscription.modify`) : formule supérieure immédiate, différence facturée au
+  prorata (`always_invoice` + `pending_if_incomplete` : rien ne change si le
+  paiement échoue) ; formule inférieure en mensuel immédiate avec avoir au prorata
+  (`create_prorations`), refusée tant que l'équipe ou les organisations dépassent
+  la nouvelle limite ; en annuel, descente et passage au mensuel à l'échéance.
 - Bouton « Gérer mon abonnement » → Stripe Billing Portal (moyen de paiement,
-  changement de formule, factures, résiliation).
+  factures, résiliation).
 - Webhook `/billing/webhook` (signé) : seul l'abonnement enregistré
   (`organizations.stripe_subscription_id`) peut modifier le statut, sauf la toute
   première association. L'abonnement est relu via l'API Stripe pour éviter les
@@ -66,10 +77,13 @@ temporairement (sinon Checkout refuse la session).
 
 1. Créez un compte Stripe et restez en **mode Test**.
 2. Créez un produit par formule (Starter, Pro, Business, Multi-sociétés) avec un
-   prix récurrent mensuel HT (9 €, 19 €, 49 €, 199 €). Notez chaque `price_…`.
+   prix récurrent mensuel HT (9 €, 29 €, 59 €, 199 €) et, si vous proposez
+   l'annuel, un second prix récurrent annuel (90 €, 290 €, 590 €, 1 990 €).
+   Notez chaque `price_…`.
 3. Activez **Stripe Tax** (Paramètres → Taxes) et l'enregistrement TVA France.
 4. Configurez le **Billing Portal** (Paramètres → Facturation → Portail client) :
-   autorisez le changement de formule entre les quatre prix.
+   moyen de paiement, factures et résiliation (le changement de formule se fait
+   dans ProfitOS).
 5. Récupérez les clés API (`sk_test_…`, `pk_test_…`).
 6. Webhook : Développeurs → Webhooks → endpoint `https://votre-domaine/billing/webhook`
    avec les événements `checkout.session.completed`,
@@ -87,6 +101,11 @@ temporairement (sinon Checkout refuse la session).
    STRIPE_PRICE_PRO_ID=price_xxxx
    STRIPE_PRICE_BUSINESS_ID=price_xxxx
    STRIPE_PRICE_MULTI_ID=price_xxxx
+   # facultatif : tarifs annuels
+   STRIPE_PRICE_STARTER_YEARLY_ID=price_xxxx
+   STRIPE_PRICE_PRO_YEARLY_ID=price_xxxx
+   STRIPE_PRICE_BUSINESS_YEARLY_ID=price_xxxx
+   STRIPE_PRICE_MULTI_YEARLY_ID=price_xxxx
    STRIPE_AUTOMATIC_TAX=1
    ```
 8. Testez avec la carte `4242 4242 4242 4242` et vérifiez que `/billing` affiche la

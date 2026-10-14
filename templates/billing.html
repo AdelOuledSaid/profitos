@@ -125,22 +125,37 @@
   </section>
   {% endif %}
 
-  {% if not is_child and (org.status not in ('ACTIVE_PAID','PAST_DUE') or not org.stripe_customer_id) %}
-  <section class="billing-section">
+  {% if not is_child %}
+  {% set cur_rank = plan_order.index(current_plan) if current_plan in plan_order else -1 %}
+  <section class="billing-section" id="formules">
     <div class="eyebrow green">4 FORMULES</div>
-    <h2>Un même cœur financier. Plus de capacité et d'automatisation à chaque niveau.</h2>
-    <p class="billing-section-lead">Starter couvre la gestion essentielle. Pro ajoute comptabilité, banque et API. Business ajoute l’analyse financière avancée. Multi-sociétés couvre jusqu'à 25 organisations sous un seul abonnement. Prix hors taxes, TVA 20 % en sus.</p>
+    <h2>{% if has_subscription %}Changez de formule en un clic.{% else %}Un même cœur financier. Plus de capacité et d'automatisation à chaque niveau.{% endif %}</h2>
+    <p class="billing-section-lead">Starter couvre la gestion essentielle. Pro ajoute comptabilité, banque et API. Business ajoute l’analyse financière avancée. Multi-sociétés couvre jusqu'à 25 organisations sous un seul abonnement. Prix hors taxes, TVA 20 % en sus.{% if has_subscription %} Formule supérieure : active immédiatement, la différence est facturée au prorata. Formule inférieure : le trop-payé est déduit de votre prochaine facture.{% endif %}</p>
 
-    <div class="billing-plan-grid four-up">
+    {% if annual_ok %}
+    <nav class="billing-period" aria-label="Périodicité de paiement">
+      <a href="{{ url_for('billing', periode='mensuel') }}#formules" class="{{ 'is-active' if period=='month' else '' }}"{% if period=='month' %} aria-current="true"{% endif %}>Mensuel <small>sans engagement</small></a>
+      <a href="{{ url_for('billing', periode='annuel') }}#formules" class="{{ 'is-active' if period=='year' else '' }}"{% if period=='year' %} aria-current="true"{% endif %}>Annuel <small>2 mois offerts</small></a>
+    </nav>
+    {% endif %}
+
+<div class="billing-plan-grid four-up">
       {% for code,p in catalog.items() %}
-      {% set recommended = code=='PRO' %}
-      <article class="billing-plan {% if recommended %}is-pro{% endif %}">
-        {% if recommended %}<div class="billing-badge">RECOMMANDÉ</div>{% endif %}
+      {% set recommended = code==highlight %}
+      {% set is_current = has_subscription and code==current_plan and period==current_interval %}
+      <article class="billing-plan {% if recommended %}is-pro{% endif %}{% if is_current %} is-current{% endif %}">
+        {% if is_current %}<div class="billing-badge">VOTRE FORMULE</div>
+        {% elif recommended %}<div class="billing-badge">{{ 'RECOMMANDÉ' if code=='PRO' and not request.args.get('formule') else 'NÉCESSAIRE POUR CETTE FONCTION' }}</div>{% endif %}
         <div class="billing-plan-head">
           <div class="billing-plan-code">{{ code }}</div>
           <h2>{{ p.name }}</h2>
+          {% if period=='year' %}
+          <div class="billing-price">{{ p.price_year_eur|fr_number }}&nbsp;€ <small>HT / an</small></div>
+          <p class="billing-tax-note">Soit {{ (p.price_year_eur / 12)|fr_number(2) }}&nbsp;€ HT / mois — 2 mois offerts. Payé d'avance, engagement 12 mois. TVA 20 % en sus.</p>
+          {% else %}
           <div class="billing-price">{{ p.price_eur }}&nbsp;€ <small>HT / mois</small></div>
-          <p class="billing-tax-note">TVA 20 % en sus, soit {{ (p.price_eur * 1.2)|fr_number(2) }}&nbsp;€ TTC / mois</p>
+          <p class="billing-tax-note">Sans engagement. TVA 20 % en sus, soit {{ (p.price_eur * 1.2)|fr_number(2) }}&nbsp;€ TTC / mois</p>
+          {% endif %}
           {% if code=='STARTER' %}<p class="billing-for">Pour indépendants et petites équipes qui veulent piloter cash, impayés, dépenses et décisions au quotidien.</p>
           {% elif code=='PRO' %}<p class="billing-for">Pour les TPE et PME qui veulent la comptabilité, la banque et l'automatisation.</p>
           {% elif code=='BUSINESS' %}<p class="billing-for">Pour les PME qui veulent l’analyse financière et le pilotage avancé.</p>{% else %}<p class="billing-for">Pour groupes, holdings, cabinets et structures multi-sociétés.</p>{% endif %}
@@ -188,12 +203,25 @@
 
         {% if code=='PRO' %}<div class="billing-note">Tout Starter, avec comptabilité, banque, API et davantage de capacité.</div>{% elif code=='BUSINESS' %}<div class="billing-note">Tout Pro, avec l'analyse financière avancée et des volumes illimités.</div>{% elif code=='MULTI' %}<div class="billing-note">Tout Business, pour 25 organisations rattachées à un seul abonnement.</div>{% endif %}
 
-        {% if billing_enabled and code in plans %}
-        <form method="post" action="{{ url_for('billing_checkout') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="plan" value="{{ code }}">
-          <button type="submit" {% if not recommended %}class="secondary"{% endif %}>Choisir {{ p.name }}</button>
-        </form>
+        {% if billing_enabled and plan_price_id(code, period) %}
+          {% if is_current %}
+          <button type="button" class="secondary" disabled>Formule actuelle</button>
+          {% elif has_subscription %}
+          {% set up = plan_order.index(code) > cur_rank or (plan_order.index(code) == cur_rank and period=='year') %}
+          <form method="post" action="{{ url_for('billing_change_plan') }}" data-confirm="{{ ('Passer à la formule ' ~ p.name ~ ' maintenant ? La différence au prorata sera facturée tout de suite sur votre moyen de paiement.') if up else ('Passer à la formule ' ~ p.name ~ ' ? Les fonctions non incluses ne seront plus accessibles ; le trop-payé sera déduit de votre prochaine facture.') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="plan" value="{{ code }}">
+            <input type="hidden" name="interval" value="{{ period }}">
+            <button type="submit" {% if not (recommended or up) %}class="secondary"{% endif %}>{{ 'Passer à ' ~ p.name if up else 'Descendre à ' ~ p.name }}</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('billing_checkout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="plan" value="{{ code }}">
+            <input type="hidden" name="interval" value="{{ period }}">
+            <button type="submit" {% if not recommended %}class="secondary"{% endif %}>Choisir {{ p.name }}{{ ' (annuel)' if period=='year' else '' }}</button>
+          </form>
+          {% endif %}
         {% else %}
         <p class="billing-note">Souscription en ligne bientôt disponible : <a class="link" href="mailto:{{ support_email() }}">contactez-nous</a>.</p>
         {% endif %}
@@ -205,7 +233,7 @@
 
   <section class="billing-section">
     <div class="eyebrow">COMPARAISON</div><h2>Comparez les formules en un coup d'œil</h2>
-    <div class="billing-matrix"><table><thead><tr><th>Fonction</th><th>Starter 9 € HT</th><th>Pro 19 € HT</th><th>Business 49 € HT</th><th>Multi-sociétés 199 € HT</th></tr></thead><tbody>
+    <div class="billing-matrix"><table><thead><tr><th>Fonction</th>{% for key in plan_order %}<th>{{ catalog[key].name }} {{ catalog[key].price_eur }} € HT</th>{% endfor %}</tr></thead><tbody>
       <tr><td>Facturation, achats, gestion</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
       {% for feature,label in feature_labels.items() %}
       <tr><td>{{ label }}</td>{% for key in ('STARTER','PRO','BUSINESS','MULTI') %}{% if plan_limits[key][feature] %}<td class="billing-yes">✓</td>{% else %}<td class="billing-no">—</td>{% endif %}{% endfor %}</tr>
@@ -216,7 +244,7 @@
 
   <section class="billing-trust">
     <div class="panel"><div class="eyebrow green">SÉCURITÉ</div><h3>Paiement sécurisé par Stripe</h3><p class="muted">ProfitOS ne stocke pas vos données de carte bancaire. Le statut de l'abonnement est confirmé par webhook signé Stripe.</p></div>
-    <div class="panel"><div class="eyebrow green">FLEXIBILITÉ</div><h3>Gérez votre abonnement</h3><p class="muted">Moyen de paiement, changement de formule et factures restent accessibles depuis le portail client Stripe.</p></div>
+    <div class="panel"><div class="eyebrow green">FLEXIBILITÉ</div><h3>Sans engagement en mensuel</h3><p class="muted">Changez de formule à tout moment depuis cette page. Moyen de paiement, factures et résiliation : depuis « Gérer mon abonnement ».</p></div>
     <div class="panel"><div class="eyebrow green">ÉVOLUTIF</div><h3>Changez de niveau avec votre usage</h3><p class="muted">Les quotas sont centralisés et contrôlés côté serveur pour rester cohérents avec votre formule.</p></div>
   </section>
 
@@ -226,15 +254,16 @@
     <div class="billing-faq">
       <details><summary>Quelle formule choisir pour commencer ?</summary><p>Starter convient pour la facturation, les achats et le pilotage du cash avec une petite équipe. Pro devient pertinent dès que vous avez besoin de la comptabilité, de la banque ou de l'API. Business ajoute l’analyse financière avancée, et Multi-sociétés le pilotage de plusieurs structures.</p></details>
       <details><summary>Que se passe-t-il à la fin de l'essai ?</summary><p>L'essai donne accès à toutes les fonctions Pro pendant 14 jours. À son terme, l'accès est suspendu jusqu'à la souscription d'une formule ; vos données sont conservées et vos exports (FEC, factures, export RGPD) restent disponibles.</p></details>
-      <details><summary>Puis-je gérer mon abonnement moi-même ?</summary><p>Oui. Une fois un abonnement Stripe associé à l'organisation, le portail client permet de gérer le moyen de paiement, de changer de formule et de télécharger vos factures.</p></details>
+      <details><summary>Puis-je changer de formule ?</summary><p>Oui, à tout moment depuis cette page. Une formule supérieure est active immédiatement et la différence est facturée au prorata. Une formule inférieure s'applique aussi immédiatement, et le montant déjà payé pour le reste du mois est déduit de votre prochaine facture. Moyen de paiement, factures et résiliation se gèrent depuis « Gérer mon abonnement ».</p></details>
+      <details><summary>Y a-t-il un engagement ?</summary><p>Non en paiement mensuel : vous résiliez quand vous voulez, l'accès continue jusqu'à la fin du mois payé.{% if annual_ok %} Le paiement annuel, réglé d'avance, vous offre 2 mois sur 12 en échange d'un engagement d'un an ; vous pouvez monter de formule en cours d'année, et passer à une formule inférieure ou au mensuel à l'échéance.{% endif %}</p></details>
       <details><summary>Quelle formule permet plusieurs organisations ?</summary><p>Multi-sociétés couvre jusqu’à 25 organisations : celles que vous créez depuis l'organisation abonnée y sont rattachées automatiquement, sans essai ni abonnement séparé.</p></details>
     </div>
   </section>
 
   {% if billing_enabled and not is_child and org.status in ('ACTIVE_PAID','PAST_DUE') and org.stripe_customer_id %}
   <section class="panel" style="margin-top:28px;text-align:center;">
-    <strong>Votre abonnement est déjà géré par Stripe.</strong>
-    <p class="muted">Utilisez le portail pour modifier votre moyen de paiement ou changer de formule.</p>
+    <strong>Moyen de paiement, factures, résiliation</strong>
+    <p class="muted">Ces éléments se gèrent dans le portail sécurisé Stripe. Pour changer de formule, utilisez les boutons ci-dessus.</p>
     <form method="post" action="{{ url_for('billing_portal') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit">Gérer mon abonnement</button>

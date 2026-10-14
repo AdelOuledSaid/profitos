@@ -598,7 +598,7 @@ def register(app):
     @app.route('/pricing')
     def pricing():
         """Page tarifs publique — aucune authentification requise."""
-        return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS)
+        return render_template('pricing.html',plans=STRIPE_PLANS,plan_limits=PLAN_LIMITS,annual_ok=annual_billing_available())
 
     @app.route('/fonctionnalites')
     def features_overview():

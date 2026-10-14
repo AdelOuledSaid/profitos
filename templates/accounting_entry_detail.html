@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ÉCRITURE {{ e.journal_code }}</div>
+    <h1 class="purchase-title">{{ e.piece_number }}</h1>
+    <p class="purchase-subtitle">{{ e.entry_date|fr_date }} · {{ e.label }}{% if e.piece_ref and e.piece_ref != e.piece_number %} · pièce {{ e.piece_ref }}{% endif %}{% if e.is_locked %} · <strong>période clôturée</strong>{% endif %}</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_journal_detail', code=e.journal_code) }}">← Journal {{ e.journal_code }}</a>
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_entry_new') }}">+ Nouvelle écriture</a>
+  </div>
+</div>
+
+{% if reversed_of %}<div class="flash" role="status">Cette écriture contrepasse <a class="link" href="{{ url_for('accounting_entry_detail', entry_id=reversed_of.id) }}">{{ reversed_of.piece_number }}</a>.</div>{% endif %}
+{% if reversal %}<div class="flash" role="status">Écriture contrepassée le {{ reversal.entry_date|fr_date }} par <a class="link" href="{{ url_for('accounting_entry_detail', entry_id=reversal.id) }}">{{ reversal.piece_number }}</a>.</div>{% endif %}
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Compte</th><th>Tiers</th><th>Libellé</th><th style="text-align:right;">Débit</th><th style="text-align:right;">Crédit</th><th>Lettrage</th></tr></thead>
+      <tbody>
+      {% set td = namespace(d=0, c=0) %}
+      {% for l in lines %}
+        {% set td.d = td.d + (l.debit or 0) %}{% set td.c = td.c + (l.credit or 0) %}
+        <tr>
+          <td><a class="link" href="{{ url_for('accounting_general_ledger', compte_de=l.account_code, compte_a=l.account_code, du=e.entry_date, au=e.entry_date) }}"><code>{{ l.account_code }}</code></a> {{ labels.get(l.account_code, '') }}</td>
+          <td>{{ l.auxiliary_name or '' }}</td>
+          <td>{{ l.label or '' }}</td>
+          <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }}&nbsp;€{% endif %}</td>
+          <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }}&nbsp;€{% endif %}</td>
+          <td>{{ l.lettrage_code or '' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right;"><strong>Totaux</strong></td><td style="text-align:right;"><strong>{{ td.d|fr_number(2) }}&nbsp;€</strong></td><td style="text-align:right;"><strong>{{ td.c|fr_number(2) }}&nbsp;€</strong></td><td></td></tr></tfoot>
+    </table>
+  </div>
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Saisie par {{ e.created_by or 'ProfitOS (automatique)' }} le {{ e.created_at|fr_date(True) }}{% if e.source_type and e.source_type != 'reversal' %} · origine : {{ e.source_type|label }} #{{ e.source_id }}{% endif %}.</p>
+</section>
+
+<div class="twocol">
+  <section class="purchase-panel">
+    <h2 style="color:#fff;margin-top:0;">Pièces justificatives</h2>
+    {% if attachments %}
+    <ul>{% for a in attachments %}<li><a class="link" href="{{ url_for('accounting_entry_attachment', entry_id=e.id, attachment_id=a.id) }}">{{ a.filename }}</a> <span class="purchase-muted">· {{ a.uploaded_at|fr_date }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="purchase-muted">Aucune pièce jointe.</p>{% endif %}
+    <form method="post" action="{{ url_for('accounting_entry_attach', entry_id=e.id) }}" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="piece" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx,.txt" required>
+      <button type="submit" class="purchase-primary-btn secondary">Joindre</button>
+    </form>
+  </section>
+  <section class="purchase-panel">
+    <h2 style="color:#fff;margin-top:0;">Corriger cette écriture</h2>
+    {% if e.source_type == 'reversal' %}
+      <p class="purchase-muted">Une contrepassation ne se contrepasse pas : saisissez une nouvelle écriture si nécessaire.</p>
+    {% elif reversal %}
+      <p class="purchase-muted">Déjà contrepassée.</p>
+    {% else %}
+      <p class="purchase-muted">Une écriture comptable ne se supprime pas : on la contrepasse (mêmes lignes, débit et crédit inversés), puis on saisit l'écriture correcte.</p>
+      <form method="post" action="{{ url_for('accounting_entry_reverse', entry_id=e.id) }}" class="stack" data-confirm="Contrepasser cette écriture ? Une écriture inverse sera enregistrée à la date choisie.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Date de la contrepassation<input type="date" name="reversal_date" value="{{ today }}" required></label>
+        <button type="submit" class="purchase-primary-btn secondary">Contrepasser</button>
+      </form>
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

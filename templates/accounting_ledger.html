@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Grand livre</h1>
+    <p class="purchase-subtitle">Exercice {{ fy.label }}. Mouvements du {{ du|fr_date }} au {{ au|fr_date }}, avec le report des périodes précédentes et le solde progressif de chaque compte.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_trial_balance', du=du, au=au) }}">Balance</a>
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_general_ledger', du=du, au=au, compte_de=compte_de, compte_a=compte_a, tiers=tiers, format='xlsx') }}">Exporter Excel</a>
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_general_ledger', du=du, au=au, compte_de=compte_de, compte_a=compte_a, tiers=tiers, format='csv') }}">CSV</a>
+  </div>
+</div>
+
+<form method="get" class="purchase-panel ledger-filters">
+  <label>Du<input type="date" name="du" value="{{ du }}"></label>
+  <label>Au<input type="date" name="au" value="{{ au }}"></label>
+  <label>Du compte<input name="compte_de" value="{{ compte_de }}" placeholder="ex. 401"></label>
+  <label>Au compte<input name="compte_a" value="{{ compte_a }}" placeholder="ex. 411"></label>
+  <label>Tiers<input name="tiers" value="{{ tiers }}" placeholder="nom exact"></label>
+  <button type="submit" class="purchase-primary-btn secondary">Afficher</button>
+</form>
+
+{% for a in gl.accounts %}
+<section class="purchase-panel" style="margin-top:14px;">
+  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <h2 style="color:#fff;margin:0;font-size:18px;"><code>{{ a.code }}</code> {{ a.label }}</h2>
+    <span class="purchase-muted">Solde : <strong style="color:#fff;">{{ (a.balance if a.balance >= 0 else -a.balance)|fr_number(2) }}&nbsp;€ {{ 'débiteur' if a.balance > 0 else ('créditeur' if a.balance < 0 else '') }}</strong></span>
+  </div>
+  <div class="purchase-table-wrap" style="margin-top:8px;">
+    <table class="purchase-table ledger-table">
+      <thead><tr><th>Date</th><th>Jnl</th><th>Pièce</th><th>Libellé</th><th>Tiers</th><th style="text-align:right;">Débit</th><th style="text-align:right;">Crédit</th><th style="text-align:right;">Solde</th><th>Let.</th></tr></thead>
+      <tbody>
+        {% if a.report %}<tr class="ledger-report"><td></td><td></td><td></td><td><em>Report au {{ du|fr_date }}</em></td><td></td><td style="text-align:right;">{% if a.report > 0 %}{{ a.report|fr_number(2) }}{% endif %}</td><td style="text-align:right;">{% if a.report < 0 %}{{ (-a.report)|fr_number(2) }}{% endif %}</td><td style="text-align:right;">{{ a.report|fr_number(2) }}</td><td></td></tr>{% endif %}
+        {% for l in a.lines %}
+        <tr>
+          <td>{{ l.entry_date|fr_date }}</td>
+          <td>{{ l.journal_code }}</td>
+          <td><a class="link" href="{{ url_for('accounting_entry_detail', entry_id=l.entry_id) }}">{{ l.piece_number }}</a></td>
+          <td>{{ l.label or l.entry_label }}</td>
+          <td>{{ l.auxiliary_name or '' }}</td>
+          <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }}{% endif %}</td>
+          <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }}{% endif %}</td>
+          <td style="text-align:right;">{{ l.running|fr_number(2) }}</td>
+          <td>{{ l.lettrage_code or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right;"><strong>Total des mouvements</strong></td><td style="text-align:right;"><strong>{{ a.total_debit|fr_number(2) }}</strong></td><td style="text-align:right;"><strong>{{ a.total_credit|fr_number(2) }}</strong></td><td style="text-align:right;"><strong>{{ a.balance|fr_number(2) }}</strong></td><td></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="purchase-panel" style="margin-top:14px;"><p class="purchase-empty">Aucun mouvement sur cette période{% if compte_de or compte_a or tiers %} pour ces critères{% endif %}.</p></section>
+{% endfor %}
+{% if gl.accounts %}
+<p class="purchase-muted" style="margin-top:10px;">Total général des mouvements : débit {{ gl.total_debit|fr_number(2) }}&nbsp;€ · crédit {{ gl.total_credit|fr_number(2) }}&nbsp;€. Montants en euros ; solde positif = débiteur.</p>
+{% endif %}
+</div>
+{% endblock %}

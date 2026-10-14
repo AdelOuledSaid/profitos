@@ -23,6 +23,10 @@ document.addEventListener('change', function (event) {
 });
 
 document.addEventListener('click', function (event) {
+  if (event.target && event.target.closest && event.target.closest('[data-print]')) {
+    window.print();
+    return;
+  }
   var toggle = event.target.closest('[data-notif-toggle]');
   if (toggle) {
     var d = document.getElementById('notif-dropdown');
@@ -378,3 +382,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }, true);
 })();
+
+// Saisie d'écriture : totaux débit / crédit et écart en direct.
+document.addEventListener('input', function (event) {
+  var form = event.target.closest && event.target.closest('[data-entry-form]');
+  if (!form) return;
+  var parse = function (v) {
+    var t = String(v || '').replace(/[\s  €]/g, '');
+    if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    else t = t.replace(',', '.');
+    var n = parseFloat(t);
+    return isNaN(n) ? 0 : n;
+  };
+  var sum = { debit: 0, credit: 0 };
+  form.querySelectorAll('input[data-side]').forEach(function (i) { sum[i.getAttribute('data-side')] += parse(i.value); });
+  var fmt = function (n) { return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; };
+  ['debit', 'credit'].forEach(function (k) { var el = form.querySelector('[data-total="' + k + '"]'); if (el) el.textContent = fmt(sum[k]); });
+  var gap = form.querySelector('[data-entry-gap]');
+  if (gap) {
+    var diff = Math.round((sum.debit - sum.credit) * 100) / 100;
+    gap.textContent = diff === 0 ? (sum.debit ? '✓ équilibrée' : '') : 'écart ' + fmt(Math.abs(diff));
+    gap.className = 'entry-gap ' + (diff === 0 ? 'ok' : 'ko');
+  }
+});

@@ -8,7 +8,7 @@ def test_feature_decorator_exists():
     assert 'def requires_feature(feature_name):' in t
     assert 'feature_enabled(plan, feature_name)' in t
     assert 'PLAN_FEATURE_BLOCKED' in t
-    assert 'return redirect(url_for("billing"))' in t
+    assert 'redirect(url_for("billing"' in t and 'minimum_plan_for' in t
 
 
 def test_grow_refresh_is_protected():

@@ -92,3 +92,14 @@ def within_limit(plan, key, current_count, additional=1):
 
 def feature_enabled(plan, feature):
     return bool(plan_limits(plan).get(feature,False))
+
+
+PLAN_ORDER = ("STARTER", "PRO", "BUSINESS", "MULTI")
+
+
+def minimum_plan_for(feature):
+    """Première formule (dans l'ordre de prix) qui inclut la fonctionnalité, ou None."""
+    for plan in PLAN_ORDER:
+        if PLAN_LIMITS[plan].get(feature):
+            return plan
+    return None

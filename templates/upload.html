@@ -22,6 +22,13 @@
       </label>
       <p class="purchase-muted" style="font-size:12px;margin:-8px 0 14px;">Cet import remplace les données {{ 'de facturation client' if kind=='invoices' else 'de dépenses' }} déjà présentes pour cette entité précise — jamais celles des autres entités.</p>
       {% endif %}
+      {% if kind=='bank-statement' %}
+      <label style="display:block;margin-bottom:14px;">Compte bancaire du relevé
+        <input name="bank_account_name" list="import-accounts" value="{{ (import_accounts[0].name if import_accounts else 'Compte importé') }}" maxlength="80" required>
+        <datalist id="import-accounts">{% for a in import_accounts or [] %}<option value="{{ a.name }}">{% endfor %}</datalist>
+      </label>
+      <p class="purchase-muted" style="font-size:12px;margin:-8px 0 14px;">Les opérations rejoignent ce compte dans la page Banques. Un nom différent par banque (ex. « Qonto », « Crédit Agricole ») sépare les comptes. Réimporter un relevé déjà importé n'ajoute pas de doublon.</p>
+      {% endif %}
       <div class="purchase-dropzone">
         <span class="purchase-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M12 16V4M12 4l-4 4M12 4l4 4"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
@@ -33,7 +40,7 @@
     {% if kind=='invoices' %}
     <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : numéro de facture, client, montant, échéance. Pour les PDF, ProfitOS extrait automatiquement ces champs, y compris sur les documents scannés.</p>
     {% elif kind=='bank-statement' %}
-    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : date, montant. Le libellé aide à désambiguïser en cas de montants identiques. Pour un PDF, ProfitOS extrait les lignes contenant une date et un montant.</p>
+    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : date et montant (une colonne Montant signée, ou deux colonnes Débit / Crédit). Le libellé aide à désambiguïser en cas de montants identiques. Pour un PDF, ProfitOS extrait les lignes contenant une date et un montant.</p>
     {% elif kind=='expenses' %}
     <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Factures fournisseurs, URSSAF, TVA, impôts/taxes, paie et autres dépenses, y compris les documents scannés. ProfitOS extrait le fournisseur ou l'organisme, le montant, la date/échéance et attribue automatiquement une catégorie.</p>
     {% else %}

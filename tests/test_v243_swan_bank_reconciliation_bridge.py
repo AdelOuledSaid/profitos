@@ -10,7 +10,7 @@ def test_swan_sync_is_sandbox_only_and_csrf_protected():
     assert 'name="csrf_token"' in T
 
 def test_swan_booked_transactions_feed_existing_reconciliation_engine():
-    assert "provider IN ('powens','swan')" in R
+    assert "provider IN ('powens','swan'" in R
     assert "(t.get('status') or '') != 'Booked'" in R
     assert "INSERT INTO bank_transactions(provider,provider_transaction_id" in R
     assert "apply_categorization_rule(c,label,eid)" in R

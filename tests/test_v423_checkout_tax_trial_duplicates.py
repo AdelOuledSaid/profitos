@@ -75,13 +75,16 @@ def test_open_checkout_sessions_are_expired_before_new_one(billing_env):
     assert billing_env.stripe.called("checkout.Session.create")
 
 
-def test_paying_org_checkout_goes_to_portal(billing_env):
+def test_paying_org_checkout_goes_back_to_plan_change(billing_env):
+    # Déjà abonné : jamais de second abonnement ; le changement se fait par
+    # « Passer à cette formule » sur la page Abonnement.
     oid = make_org(plan="PRO", status="ACTIVE_PAID", trial_days=None, customer="cus_1", subscription="sub_1")
     owner = make_user(oid)
     client = billing_env.app.test_client()
     login(client, owner, oid)
     r = _checkout(client, "BUSINESS")
-    assert r.status_code == 303 and "billing.stripe.com" in r.headers["Location"]
+    assert r.status_code == 302 and r.headers["Location"].endswith("/billing")
+    assert not billing_env.stripe.called("checkout.Session.create")
 
 
 def test_stripe_list_failure_blocks_checkout(billing_env):
@@ -120,4 +123,4 @@ def test_prices_are_displayed_excluding_vat(billing_env):
     assert "€ / mois" not in html and "€ <small>/ mois</small>" not in html
     public = client.get("/pricing").get_data(as_text=True)
     assert "€ <small>HT / mois</small>" in public and "TVA 20 % en sus" in public
-    assert "22,80&nbsp;€ TTC" in public  # 19 € HT x 1,2 au format français
+    assert "34,80&nbsp;€ TTC" in public  # 29 € HT x 1,2 au format français

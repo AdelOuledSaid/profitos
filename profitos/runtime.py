@@ -696,13 +696,37 @@ WEINVOICE_INVOICE_WEBHOOK_SECRET=os.environ.get('WEINVOICE_INVOICE_WEBHOOK_SECRE
 ANTHROPIC_API_KEY=os.environ.get('ANTHROPIC_API_KEY')
 ANTHROPIC_MODEL=os.environ.get('ANTHROPIC_MODEL','claude-sonnet-5')
 WEINVOICE_BASE_URL='https://api-sandbox.weinvoice.fr' if WEINVOICE_ENV!='production' else 'https://api.weinvoice.fr'
+# Tarifs HT. Mensuel sans engagement ; annuel payé d'avance = 10 mois (2 mois offerts),
+# disponible dès que le tarif annuel Stripe correspondant est configuré.
+ANNUAL_MONTHS_BILLED=10
 STRIPE_PLANS={
-    'STARTER': {'name':'Starter','price_eur':9,'price_id':STRIPE_PRICE_STARTER_ID},
-    'PRO': {'name':'Pro','price_eur':19,'price_id':STRIPE_PRICE_PRO_ID},
-    'BUSINESS': {'name':'Business','price_eur':49,'price_id':STRIPE_PRICE_BUSINESS_ID},
-    'MULTI': {'name':'Multi-sociétés','price_eur':199,'price_id':STRIPE_PRICE_MULTI_ID},
+    'STARTER': {'name':'Starter','price_eur':9,'price_id':STRIPE_PRICE_STARTER_ID,
+                'price_id_year':os.environ.get('STRIPE_PRICE_STARTER_YEARLY_ID','')},
+    'PRO': {'name':'Pro','price_eur':29,'price_id':STRIPE_PRICE_PRO_ID,
+            'price_id_year':os.environ.get('STRIPE_PRICE_PRO_YEARLY_ID','')},
+    'BUSINESS': {'name':'Business','price_eur':59,'price_id':STRIPE_PRICE_BUSINESS_ID,
+                 'price_id_year':os.environ.get('STRIPE_PRICE_BUSINESS_YEARLY_ID','')},
+    'MULTI': {'name':'Multi-sociétés','price_eur':199,'price_id':STRIPE_PRICE_MULTI_ID,
+              'price_id_year':os.environ.get('STRIPE_PRICE_MULTI_YEARLY_ID','')},
 }
+for _p in STRIPE_PLANS.values():
+    _p['price_year_eur']=_p['price_eur']*ANNUAL_MONTHS_BILLED
+PLAN_ORDER=('STARTER','PRO','BUSINESS','MULTI')
 STRIPE_PRICE_TO_PLAN={v['price_id']:k for k,v in STRIPE_PLANS.items() if v.get('price_id')}
+STRIPE_PRICE_TO_PLAN.update({v['price_id_year']:k for k,v in STRIPE_PLANS.items() if v.get('price_id_year')})
+STRIPE_PRICE_INTERVAL={v['price_id']:'month' for v in STRIPE_PLANS.values() if v.get('price_id')}
+STRIPE_PRICE_INTERVAL.update({v['price_id_year']:'year' for v in STRIPE_PLANS.values() if v.get('price_id_year')})
+
+
+def plan_price_id(plan, interval='month'):
+    """price_id Stripe d'une formule pour une périodicité ('month' ou 'year'), ou None."""
+    p=STRIPE_PLANS.get((plan or '').upper())
+    if not p: return None
+    return (p.get('price_id_year') if interval=='year' else p.get('price_id')) or None
+
+
+def annual_billing_available():
+    return any(v.get('price_id_year') for v in STRIPE_PLANS.values())
 # Un abonnement ne doit jamais être activé sans webhook signé : c'est Stripe,
 # et non la page de succès du navigateur, qui fait foi.
 BILLING_ENABLED=bool(STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET and STRIPE_PRICE_TO_PLAN)
@@ -897,6 +921,7 @@ MODULE_AREAS={
     'profitos.routes.accounting':'accounting','profitos.routes.loans':'accounting',
     'profitos.routes.finance_leases':'accounting','profitos.routes.analytics':'accounting',
     'profitos.routes.reviews':'accounting','profitos.routes.payroll':'accounting',
+    'profitos.routes.ledger':'accounting',
     'profitos.routes.bank_sync':'banking','profitos.routes.swan_baas':'banking',
     'profitos.routes.gocardless_baas':'banking',
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
@@ -1833,6 +1858,35 @@ def _migrate_tenant_schema(org_id=None):
         closed_at TEXT,
         closed_by TEXT
     );
+    CREATE TABLE IF NOT EXISTS accounting_fiscal_years(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(entity_key,start_date)
+    );
+    CREATE TABLE IF NOT EXISTS accounting_entry_attachments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        uploaded_by TEXT,
+        uploaded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_entry_attachments_entry ON accounting_entry_attachments(entry_id);
+    CREATE TABLE IF NOT EXISTS accounting_import_batches(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_key INTEGER NOT NULL DEFAULT 0,
+        file_sha256 TEXT NOT NULL,
+        filename TEXT,
+        mode TEXT,
+        entries_count INTEGER,
+        lines_count INTEGER,
+        imported_by TEXT,
+        imported_at TEXT NOT NULL,
+        UNIQUE(entity_key,file_sha256)
+    );
     CREATE TABLE IF NOT EXISTS vat_declarations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -2521,6 +2575,8 @@ def _migrate_tenant_schema(org_id=None):
         + [('invoicing_clients', 'country', 'TEXT'), ('invoicing_clients', 'is_public', 'TEXT'),
            ('accounting_entries', 'piece_ref', 'TEXT'), ('accounting_entry_lines', 'lettrage_date', 'TEXT'),
            ('accounting_entry_lines', 'vat_rate', 'REAL'), ('accounting_entry_lines', 'vat_base', 'REAL')]
+        # Banque : compte 512 propre à chaque compte bancaire, date du solde de relevé importé.
+        + [('bank_accounts', 'accounting_code', 'TEXT'), ('bank_accounts', 'statement_balance_date', 'TEXT')]
     )
     for table, col, decl in _v4_columns:
         try:
@@ -3994,6 +4050,11 @@ def init_runtime(app):
     """Attach shared request hooks and Jinja globals to a Flask app instance."""
     app.jinja_env.globals['can_access'] = can_access
     app.jinja_env.globals['plan_feature_enabled'] = plan_feature_enabled
+    def _min_plan_for(feature):
+        from .plan_limits import minimum_plan_for
+        code=minimum_plan_for(feature)
+        return {'code':code,'name':STRIPE_PLANS[code]['name']} if code in STRIPE_PLANS else None
+    app.jinja_env.globals['min_plan_for'] = _min_plan_for
     app.jinja_env.globals['ROLE_LABELS'] = ROLE_LABELS
     app.jinja_env.globals['ROLES'] = ROLES
     app.jinja_env.globals['csrf_token'] = csrf_token

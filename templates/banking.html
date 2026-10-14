@@ -4,12 +4,16 @@
 <div class="purchase-eyebrow">BANQUES CONNECTÉES</div>
 <h1 class="purchase-title">Banques</h1>
 <p class="purchase-subtitle">Connectez vos comptes pour synchroniser automatiquement soldes et transactions avec ProfitOS.</p>
-<a class="purchase-nav-btn" href="{{ url_for('banking_rules') }}" style="display:inline-block;margin-bottom:16px;">Règles de catégorisation →</a>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+  <a class="purchase-nav-btn" href="{{ url_for('banking_reconciliation_statement') }}">État de rapprochement →</a>
+  <a class="purchase-nav-btn" href="{{ url_for('upload_bank_statement') }}">Importer un relevé (CSV, Excel, PDF) →</a>
+  <a class="purchase-nav-btn" href="{{ url_for('banking_rules') }}">Règles de catégorisation →</a>
+</div>
 
 {% if not powens_configured %}
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="color:#fff;">Connexion bancaire indisponible</h2>
-  <p class="purchase-muted">La connexion bancaire automatique n'est pas encore activée pour votre compte. Contactez le support si vous souhaitez y accéder.</p>
+  <p class="purchase-muted">La connexion bancaire automatique n'est pas encore activée pour votre compte. En attendant, <a class="link" href="{{ url_for('upload_bank_statement') }}">importez vos relevés</a> : leurs opérations apparaissent ici et se rapprochent de la même façon.</p>
 </section>
 {% endif %}
 
@@ -43,18 +47,27 @@
 
 {% if accounts %}
 <section class="purchase-panel" style="margin-top:20px;">
-  <h2 style="color:#fff;">Comptes synchronisés</h2>
+  <h2 style="color:#fff;">Comptes bancaires</h2>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
-      <thead><tr><th>Compte</th><th>Source</th><th>Type</th><th>Devise</th><th>Solde</th><th>État</th>{% if active_entities and active_entities|length > 1 %}<th>Entité</th>{% endif %}</tr></thead>
+      <thead><tr><th>Compte</th><th>Source</th><th>Type</th><th>Devise</th><th>Solde</th><th>Compte comptable</th><th>État</th>{% if active_entities and active_entities|length > 1 %}<th>Entité</th>{% endif %}</tr></thead>
       <tbody>
       {% for a in accounts %}
         <tr>
           <td><strong>{{ a.name }}</strong>{% if a.iban %}<br><span class="purchase-muted">{{ a.iban }}</span>{% endif %}</td>
-          <td>{{ a.provider|upper }}</td>
+          <td>{{ 'Relevé importé' if a.provider == 'import' else a.provider|upper }}</td>
           <td>{{ a.account_type or '—' }}</td>
           <td>{{ a.currency or 'EUR' }}</td>
-          <td><strong>{{ (a.balance or 0)|fr_number(2) }}&nbsp;€</strong></td>
+          <td>{% if a.balance is not none %}<strong>{{ a.balance|fr_number(2) }}&nbsp;€</strong>{% if a.statement_balance_date %}<br><span class="purchase-muted" style="font-size:12px;">au {{ a.statement_balance_date|fr_date }}</span>{% endif %}{% else %}<span class="purchase-muted">—</span>{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('bank_account_set_ledger',account_id=a.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="accounting_code" data-auto-submit style="font-size:12px;padding:4px 6px;" aria-label="Compte comptable de {{ a.name }}">
+                <option value="" {% if not a.accounting_code %}selected{% endif %}>{{ default_ledger }} (par défaut)</option>
+                {% for l in ledger_codes %}{% if l.code != default_ledger %}<option value="{{ l.code }}" {% if a.accounting_code==l.code %}selected{% endif %}>{{ l.code }} — {{ l.label }}</option>{% endif %}{% endfor %}
+              </select>
+            </form>
+          </td>
           <td><span class="purchase-status {{ '' if a.disabled else 'paid' }}">{{ 'Désactivé' if a.disabled else 'Actif' }}</span></td>
           {% if active_entities and active_entities|length > 1 %}
           <td>
@@ -277,7 +290,7 @@
       {% for t in transactions %}
         <tr>
           <td>{{ t.transaction_date|fr_date or '—' }}</td>
-          <td>{{ t.label or '—' }}</td>
+          <td>{{ t.label or '—' }}{% if accounts|length > 1 and t.account_name %}<br><span class="purchase-muted" style="font-size:12px;">{{ t.account_name }}</span>{% endif %}</td>
           <td><strong>{{ (t.amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
           <td>
             {% set wf = transaction_states.get(t.id, {'state':'pending','remaining':0}) %}

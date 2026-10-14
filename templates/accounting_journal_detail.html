@@ -7,13 +7,13 @@
     <h1 class="purchase-title">{{ journal.label }}</h1>
     <p class="purchase-subtitle">{{ pluralize(entries|length, 'écriture') }}.</p>
   </div>
-  <a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">← Journaux</a>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('accounting_entry_new') }}">+ Saisir une écriture</a><a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">← Journaux</a></div>
 </div>
 
 {% for e in entries %}
 <section class="purchase-panel" style="margin-bottom:16px;">
   <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-    <div><strong style="color:#fff;">{{ e.piece_number }}</strong> · {{ e.entry_date|fr_date }} · {{ e.label }}</div>
+    <div><a class="link" href="{{ url_for('accounting_entry_detail', entry_id=e.id) }}"><strong>{{ e.piece_number }}</strong></a> · {{ e.entry_date|fr_date }} · {{ e.label }}</div>
     {% if e.source_type %}<span class="purchase-muted" style="font-size:12px;">{{ e.source_type|label }} #{{ e.source_id }}</span>{% endif %}
   </div>
   <div class="purchase-table-wrap" style="margin-top:10px;">

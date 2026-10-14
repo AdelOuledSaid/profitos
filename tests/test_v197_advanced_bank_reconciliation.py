@@ -22,7 +22,7 @@ def test_matching_uses_remaining_bank_amount_and_invoice_balance():
 def test_bank_allocation_creates_real_customer_payment_atomically():
     block=BANK.split('def banking_reconcile',1)[1].split('@app.post("/banking/sync")',1)[0]
     assert 'INSERT INTO outgoing_invoice_payments' in block
-    assert 'generate_sale_partial_payment_entry(c,inv,payment)' in block
+    assert 'generate_sale_partial_payment_entry(c,inv,payment' in block
     assert 'INSERT INTO bank_invoice_allocations' in block
     assert "status='paid' if new_balance <= .005 else 'partially_paid'" in block
     assert 'c.rollback()' in block
