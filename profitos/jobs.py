@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from profitos.accounting import paris_today
 
 PARIS = ZoneInfo('Europe/Paris')
 JOB_MAX_ATTEMPTS = 3
@@ -516,7 +517,7 @@ def boamp_refresh(org, ctx):
 def refresh_dso_snapshot(c, entity_id, today=None):
     """Recalcule l'ancienneté des impayés et enregistre l'instantané DSO du jour."""
     from profitos.runtime import invoice_score, parse_date, now
-    today = today or date.today()
+    today = today or paris_today()
     rows = c.execute("SELECT id,amount,paid_amount,due_date,retention_release_date,kind,status FROM invoices "
                      "WHERE LOWER(COALESCE(status,''))!='paid' AND entity_id IS ?", (entity_id,)).fetchall()
     overdue = []

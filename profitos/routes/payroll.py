@@ -2,6 +2,7 @@ from profitos.runtime import *
 from profitos.accounting import AccountingError, create_entry
 import csv, hashlib, io, json, re
 from datetime import date, datetime
+from profitos.accounting import paris_today
 
 
 def _norm(s):
@@ -114,7 +115,7 @@ def register(app):
         if request.method=='POST':
             provider=_norm(request.form.get('provider')).upper()
             period=_norm(request.form.get('period_label'))
-            entry_date=_norm(request.form.get('entry_date')) or date.today().isoformat()
+            entry_date=_norm(request.form.get('entry_date')) or paris_today().isoformat()
             f=request.files.get('file')
             if provider not in ('SILAE','PAYFIT') or not period or not f or not f.filename:
                 error='Prestataire, période et fichier CSV/XLSX sont obligatoires.'
@@ -147,7 +148,7 @@ def register(app):
                         c.close(); return redirect(url_for('payroll_imports_list'))
                     except Exception as exc: error=str(exc)
         rows=c.execute('SELECT * FROM payroll_imports WHERE entity_id IS ? ORDER BY id DESC',(eid,)).fetchall(); c.close()
-        return render_template('payroll_imports.html',rows=rows,error=error,today=date.today().isoformat())
+        return render_template('payroll_imports.html',rows=rows,error=error,today=paris_today().isoformat())
 
     @app.route('/comptabilite/paie/<int:import_id>/valider', methods=['POST'])
     @login_required

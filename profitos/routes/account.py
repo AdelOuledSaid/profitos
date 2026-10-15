@@ -3,6 +3,7 @@ from profitos.runtime import _token_user
 from profitos import account_security as acsec
 from profitos.plan_limits import PLAN_LIMITS, FEATURE_LABELS, plan_limit, within_limit, feature_enabled
 from profitos.plan_usage import quota_state
+from profitos.accounting import paris_today
 
 
 
@@ -421,7 +422,8 @@ def register(app):
     @require_area('settings')
     def settings():
         if request.method=='POST':
-            currency=request.form.get('currency','EUR'); locale=request.form.get('locale','fr-FR'); notif=1 if request.form.get('notifications_enabled')=='on' else 0
+            currency='EUR'; locale='fr-FR'  # ProfitOS fonctionne en euros et en français
+            notif=1 if request.form.get('notifications_enabled')=='on' else 0
             slack_url=request.form.get('slack_webhook_url','').strip() or None; teams_url=request.form.get('teams_webhook_url','').strip() or None
             if slack_url and not validate_webhook_url(slack_url): flash('Webhook Slack invalide ou non autorisé.'); return redirect(request.url)
             if teams_url and not validate_webhook_url(teams_url): flash('Webhook Teams invalide ou non autorisé.'); return redirect(request.url)
@@ -615,7 +617,7 @@ def register(app):
         log_activity('GDPR_EXPORT','Export RGPD de l\'organisation téléchargé')
         log_security_event('GDPR_EXPORT','SUCCESS',target='organization')
         return send_file(io.BytesIO(data),mimetype='application/zip',as_attachment=True,
-                         download_name=f"profitos-export-organisation-{org['id']}-{date.today().isoformat()}.zip",
+                         download_name=f"profitos-export-organisation-{org['id']}-{paris_today().isoformat()}.zip",
                          max_age=0)
 
     @app.route('/settings/delete-account',methods=['GET','POST'])

@@ -11,6 +11,7 @@ from collections import OrderedDict
 from datetime import date, datetime, timedelta
 
 from profitos.accounting import AccountingError, create_entry, last_opening_date
+from profitos.accounting import paris_today
 
 MAX_FISCAL_YEAR_DAYS = 731  # premier exercice : 24 mois au plus
 
@@ -63,7 +64,7 @@ def fiscal_year_for(conn, on_date=None, entity_id=None):
     """Exercice contenant on_date : celui déclaré, sinon déduit des exercices déclarés
     (même jour/mois de début), sinon l'année civile. Retourne
     {'start','end','declared','label'}."""
-    day = _d(on_date) if on_date else date.today()
+    day = _d(on_date) if on_date else paris_today()
     years = list_fiscal_years(conn, entity_id)
     for fy in years:
         if _d(fy['start_date']) <= day <= _d(fy['end_date']):

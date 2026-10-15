@@ -405,3 +405,25 @@ document.addEventListener('input', function (event) {
     gap.className = 'entry-gap ' + (diff === 0 ? 'ok' : 'ko');
   }
 });
+
+
+// Rôle « Lecture seule » : les actions d'écriture sont désactivées dans l'interface
+// (le serveur les refuse de toute façon), au lieu d'afficher des boutons qui échouent.
+document.addEventListener('DOMContentLoaded', function () {
+  if (!document.body || document.body.getAttribute('data-readonly') !== '1') return;
+  if (location.pathname.indexOf('/compte') === 0) return;  // son propre compte reste modifiable
+  var main = document.getElementById('contenu');
+  if (!main) return;
+  var msg = 'Lecture seule : modification non autorisée pour votre rôle';
+  main.querySelectorAll('form').forEach(function (f) {
+    if ((f.getAttribute('method') || 'get').toLowerCase() !== 'post' || f.hasAttribute('data-readonly-ok')) return;
+    f.querySelectorAll('button, input[type="submit"]').forEach(function (b) {
+      b.disabled = true; b.title = msg; b.classList.add('is-readonly');
+    });
+    f.addEventListener('submit', function (e) { e.preventDefault(); });
+  });
+  main.querySelectorAll('a[href*="/nouvelle"], a[href*="/nouveau"], a[href*="/modifier"]').forEach(function (a) {
+    a.setAttribute('aria-disabled', 'true'); a.title = msg; a.classList.add('is-readonly');
+    a.addEventListener('click', function (e) { e.preventDefault(); });
+  });
+});

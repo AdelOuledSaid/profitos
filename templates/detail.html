@@ -145,5 +145,5 @@
 {% endif %}
 {% endif %}
 
-{% if actions %}<section class="purchase-panel"><h2>Actions liées</h2>{% for a in actions %}<div class="simpleline"><span>{{ a.title }}</span><span class="status">{{ a.status }}</span></div>{% endfor %}</section>{% endif %}
+{% if actions %}<section class="purchase-panel"><h2>Actions liées</h2>{% for a in actions %}<div class="simpleline"><span>{{ a.title }}</span><span class="status">{{ a.status|fr_label }}</span></div>{% endfor %}</section>{% endif %}
 {% if history %}<section class="purchase-panel"><h2>Historique</h2>{% for h in history %}<div class="simpleline"><div><strong>{{ h.old_status or '—' }} → {{ h.new_status }}</strong><small>{% if h.note %}{{ h.note }} · {% endif %}par {{ h.changed_by }}</small></div><div>{{ h.created_at[:16].replace('T',' ') if h.created_at else '' }}</div></div>{% endfor %}</section>{% endif %}</div>{% endblock %}

@@ -227,3 +227,24 @@
 [data-theme="light"] .cash-suggestion{border-bottom-color:#e4eaf4}
 [data-theme="light"] .cash-flow-form,[data-theme="light"] .cash-settings-form{border-top-color:#e4eaf4}
 [data-theme="light"] .cash-flow-form label,[data-theme="light"] .cash-settings-form label{color:#33425e}
+/* Simulateur de décision (v444) */
+[data-theme="light"] .decision-gap small,[data-theme="light"] .decision-kpis small,[data-theme="light"] .decision-kpis span,
+[data-theme="light"] .optimizer-kpis span,[data-theme="light"] .decision-before-after small,[data-theme="light"] .decision-before-after span{color:#4f5f7d}
+[data-theme="light"] .decision-kpis strong,[data-theme="light"] .optimizer-kpis strong,[data-theme="light"] .decision-before-after strong,
+[data-theme="light"] .planner-plan-card>strong,[data-theme="light"] .cfo-answer strong{color:#1a2436}
+[data-theme="light"] .decision-kpis strong.is-in,[data-theme="light"] .optimizer-kpis strong.is-in{color:#0f7a4d}
+[data-theme="light"] .decision-kpis strong.is-out,[data-theme="light"] .optimizer-kpis strong.is-out{color:#b3261e}
+[data-theme="light"] .optimizer-kpis>div,[data-theme="light"] .decision-before-after>div:not(.decision-before-after-arrow),
+[data-theme="light"] .planner-plan-card{background:#ffffff;border-color:#dde5f2}
+[data-theme="light"] .planner-plan-card.recommended{background:#f3faf6;border-color:#9fdcc0}
+[data-theme="light"] .planner-plan-card span{color:#2257c9}
+[data-theme="light"] .planner-plan-card p{color:#4f5f7d}
+[data-theme="light"] .planner-debt-free{background:#f6fbf8;border-color:#bfe3cf;color:#1a2436}
+[data-theme="light"] .cfo-answer{background:#f3faf6;border-color:#9fdcc0}
+[data-theme="light"] .decision-optimized-status{color:#0f7a4d;background:#eaf6f0;border-color:#9fdcc0}
+[data-theme="light"] .decision-before-after>div:last-child strong{color:#0f7a4d}
+[data-theme="light"] .decision-before-after-arrow{color:#7b8bab}
+[data-theme="light"] .optimizer-details summary{color:#1d5fd1}
+[data-theme="light"] .decision-verdict.warning{border-left-color:#c97a00}
+[data-theme="light"] .decision-verdict.good{border-left-color:#178a4c}
+[data-theme="light"] .decision-verdict.danger{border-left-color:#d33a4a}

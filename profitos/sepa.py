@@ -19,6 +19,7 @@ import re
 import uuid
 import xml.sax.saxutils as saxutils
 from datetime import date, datetime
+from profitos.accounting import paris_today
 
 
 def validate_iban(iban):
@@ -80,7 +81,7 @@ def generate_sepa_xml(company, payments):
 
     msg_id = f"PROFITOS-{uuid.uuid4().hex[:16].upper()}"
     created = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    exec_date = date.today().isoformat()
+    exec_date = paris_today().isoformat()
     n = len(payments)
     company_name_esc = _xml_escape(company.get('name', ''))
 

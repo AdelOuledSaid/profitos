@@ -361,11 +361,22 @@ Trois pages s'appuient sur la prévision de trésorerie pour vous aider à déci
 Menu **Trésorerie → Simulateur de décision**. Il répond à la question : « puis-je me le permettre, et comment ? »
 
 1. Choisissez le type de décision : investissement ou machine, embauche, dépense exceptionnelle, nouveau marché.
-2. Renseignez le décaissement initial et son jour, le coût mensuel supplémentaire, l'encaissement attendu et son jour, la réserve minimale à préserver, le financement maximum accepté et la date limite de décision.
+2. Renseignez le décaissement initial HT et son jour, le taux de TVA (payée avec le décaissement, récupérée le 15 du mois suivant), le coût mensuel supplémentaire (pour une embauche : salaire brut × 1,45 environ), la recette mensuelle que la décision rapporte, l'encaissement ponctuel attendu et son jour, la réserve minimale à préserver, le financement maximum accepté et la date limite de décision. Les montants acceptent le format « 12 500,50 ».
 3. Dans **Contraintes réelles**, cochez les leviers que vous acceptez : report négociable (et de combien de jours), paiement fractionnable (en combien d'échéances), financement externe.
-4. **Simuler la décision**.
+4. Dans **Rentabilité et financement**, choisissez l'horizon de rentabilité (36 mois par défaut), le taux et la durée du prêt envisagé.
+5. **Simuler la décision**.
 
-Le résultat donne d'abord le verdict de la décision telle que saisie (soutenable, vigilance ou risqué, avec le besoin de financement pour éviter le négatif), puis un **plan optimisé** qui n'utilise que les leviers cochés, les trois alternatives les plus proches et l'impact sur le point bas et le solde à 90 jours. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.
+Le résultat se lit en cinq blocs :
+
+| Bloc | Ce qu'il dit |
+| --- | --- |
+| Scénario initial | Verdict de la décision telle que saisie (soutenable, vigilance ou risqué) et besoin de financement pour éviter le négatif |
+| Impact sur votre trésorerie | Graphique sur 90 jours : sans la décision, avec la décision, avec le plan optimisé, et votre réserve |
+| Test de résistance | Le point bas si vos clients paient en retard (scénario prudent) |
+| Rentabilité | Gain net mensuel, délai de retour sur investissement, résultat cumulé sur l'horizon choisi, rendement, et coût du prêt recommandé (mensualité, intérêts) |
+| Plan optimisé | La meilleure date, le fractionnement et le financement, en n'utilisant que les leviers cochés, avec les trois alternatives les plus proches |
+
+Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire ; le prêt, avec votre banque.
 
 ### Diagnostic financier
 

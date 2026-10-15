@@ -12,6 +12,7 @@ from profitos.feature_access import requires_paid_plan, requires_feature
 from profitos import db as dbmod
 from profitos.runtime import *
 from profitos.accounting import generate_purchase_payment_entry, generate_purchase_partial_payment_entry, generate_sale_payment_entry, generate_sale_partial_payment_entry, AccountingError, DEFAULT_CATEGORY_MAPPING
+from profitos.accounting import paris_today
 
 
 POWENS_TIMEOUT = 20
@@ -729,7 +730,7 @@ def register(app):
             code = (request.args.get("compte") or default).strip()
             if code not in {r['code'] for r in codes}:
                 code = default
-            as_of = parse_date(request.args.get("date")) or date.today()
+            as_of = parse_date(request.args.get("date")) or paris_today()
             raw_balance = (request.args.get("solde") or "").strip()
             statement_balance = parse_amount(raw_balance) if raw_balance else None
             if raw_balance and statement_balance is None:
@@ -1260,7 +1261,10 @@ def register(app):
     @requires_feature('banking')
     @require_area('invoicing')
     def confirm_purchase_reconciliation():
-        tx_id=int(request.form.get('bank_transaction_id') or 0); purchase_id=int(request.form.get('purchase_invoice_id') or 0)
+        try:
+            tx_id=int(request.form.get('bank_transaction_id') or 0); purchase_id=int(request.form.get('purchase_invoice_id') or 0)
+        except ValueError:
+            abort(404)
         requested=request.form.get('matched_amount','').strip(); c=cx()
         from profitos.entities import current_entity_id
         eid=current_entity_id()
@@ -1279,7 +1283,7 @@ def register(app):
         if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
         key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
-            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or date.today().isoformat(),'bank',tx['label'],key,now()))
+            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or paris_today().isoformat(),'bank',tx['label'],key,now()))
             payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
             bank_code=_bank_ledger_code(c,tx,eid)
             if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
@@ -1332,7 +1336,7 @@ def register(app):
         if not expense or not bank_code:
             c.close(); flash("Comptes 627 (services bancaires) ou 512 (banque) absents du plan comptable.")
             return redirect(url_for('banking'))
-        entry_date=tx['transaction_date'] or date.today().isoformat()
+        entry_date=tx['transaction_date'] or paris_today().isoformat()
         label=f"Frais bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKFEE-{tx_id}"
         try:
             # create_entry : contrôle de période clôturée, numérotation BQ continue,
@@ -1521,7 +1525,7 @@ def register(app):
                 if not bank_code: raise ValueError('Compte banque 512 absent du plan comptable.')
                 amount=round(abs(float(tx['amount'] or 0)),2)
                 if amount <= .005: raise ValueError('Montant bancaire nul ou invalide.')
-                entry_date=tx['transaction_date'] or date.today().isoformat()
+                entry_date=tx['transaction_date'] or paris_today().isoformat()
                 label=f"Catégorisation bancaire — {tx['label'] or 'mouvement bancaire'}"; piece=f"BANKCAT-{tx_id}"
 
                 # v392: DB-level idempotency guard. The partial unique index makes

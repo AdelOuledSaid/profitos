@@ -65,7 +65,7 @@
 <div class="db-kpis">
   {% if recover is not none %}
   <a class="db-kpi k-recover" href="{{ url_for('recover') }}">
-    <span class="db-kpi-label">À encaisser</span>
+    <span class="db-kpi-label">En retard de paiement</span>
     <span class="db-kpi-value"><span data-count-to="{{ recover|round|int }}">{{ recover|fr_number }}</span>&nbsp;€</span>
     <span class="db-kpi-note">Factures clients échues (émises et importées)</span>
   </a>
@@ -111,7 +111,7 @@
       </li>
     {% else %}
       <li class="db-prio-empty">Rien d'urgent. Importez vos factures et vos dépenses pour que ProfitOS repère les priorités.
-        <a class="purchase-primary-btn secondary" href="{{ url_for('upload_invoices') }}">Importer des factures</a></li>
+        {% if can_access('uploads') %}<a class="purchase-primary-btn secondary" href="{{ url_for('upload_invoices') }}">Importer des factures</a>{% endif %}</li>
     {% endfor %}
     </ul>
   </section>

@@ -1517,7 +1517,7 @@ def register(app):
             c.commit(); client=c.execute('SELECT * FROM invoicing_clients WHERE id=? AND entity_id IS ?',(client_id,eid)).fetchone()
             flash("Fiche client mise à jour.")
         invoices=c.execute("SELECT * FROM outgoing_invoices WHERE lower(client_name)=lower(?) AND entity_id IS ? ORDER BY id DESC",(client['name'],eid)).fetchall()
-        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE lower(client_name)=lower(?) ORDER BY id DESC",(client['name'],)).fetchall()
+        credits=c.execute("SELECT * FROM outgoing_credit_notes WHERE lower(client_name)=lower(?) AND entity_id IS ? ORDER BY id DESC",(client['name'],eid)).fetchall()
         c.close()
         return render_template('invoicing_client_detail.html',client=client,invoices=invoices,credits=credits)
 
@@ -1543,7 +1543,7 @@ def register(app):
         c=cx()
         from profitos.entities import current_entity, current_entity_id
         company_row=current_entity(c)
-        clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
+        clients=c.execute("SELECT * FROM invoicing_clients WHERE entity_id IS ? ORDER BY lower(name)",(current_entity_id(),)).fetchall()
         if request.method=='POST':
             client_name=request.form.get('client_name','').strip()
             if not client_name:
@@ -1990,7 +1990,7 @@ def register(app):
             for key,_ in PURCHASE_CATEGORIES:
                 raw=request.form.get(f'budget_{key}','').strip()
                 try:
-                    amount=max(0.0,float(raw)) if raw else 0.0
+                    amount=max(0.0,form_float(raw)) if raw else 0.0
                 except ValueError:
                     amount=0.0
                 c.execute("""INSERT INTO purchase_budgets(category,entity_key,entity_id,monthly_amount,updated_at)
@@ -2136,6 +2136,8 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def purchase_import_pdf():
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
         uploaded=request.files.get('document')
         used_ai=False
         try:
@@ -2167,7 +2169,7 @@ def register(app):
 
         c=cx()
         suppliers=c.execute("SELECT * FROM suppliers WHERE entity_id IS ? ORDER BY name ASC",(eid,)).fetchall()
-        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
+        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') AND entity_id IS ? ORDER BY order_date DESC",(eid,)).fetchall()
         from profitos.entities import list_all_entities
         entities=list_all_entities(c)
         c.close()
@@ -2421,7 +2423,7 @@ def register(app):
                           'subtotal':amounts.parse_number(request.form.get('subtotal'),0.0) or 0.0,
                           'vat_amount':amounts.parse_number(request.form.get('vat_amount'),0.0) or 0.0}
                 detected['total']=round(detected['subtotal']+detected['vat_amount'],2)
-                open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
+                open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') AND entity_id IS ? ORDER BY order_date DESC",(eid,)).fetchall()
                 entities=list_all_entities(c)
                 c.close(); flash(message)
                 return render_template('purchase_new.html',suppliers=suppliers,categories=PURCHASE_CATEGORIES,open_orders=open_orders,
@@ -2491,7 +2493,7 @@ def register(app):
             c.close()
             flash("Facture fournisseur enregistrée.")
             return redirect(url_for('purchase_list'))
-        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') ORDER BY order_date DESC").fetchall()
+        open_orders=c.execute("SELECT id,order_number,supplier_name FROM purchase_orders WHERE status IN ('sent','partially_received','received') AND entity_id IS ? ORDER BY order_date DESC",(eid,)).fetchall()
         from profitos.entities import list_all_entities
         entities=list_all_entities(c)
         c.close()
@@ -2527,14 +2529,16 @@ def register(app):
         d7 = today + timedelta(days=7)
         d30 = today + timedelta(days=30)
         c = cx()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         rows = c.execute("""
                 SELECT id, supplier_id, supplier_name, invoice_number,
                        issue_date, due_date, total, status, created_at
                 FROM purchase_invoices
-                WHERE COALESCE(status, 'unpaid') != 'paid'
+                WHERE COALESCE(status, 'unpaid') != 'paid' AND entity_id IS ?
                 ORDER BY CASE WHEN due_date IS NULL OR due_date='' THEN 1 ELSE 0 END,
                          due_date ASC, id DESC
-            """).fetchall()
+            """,(eid,)).fetchall()
         c.close()
 
         invoices = []
@@ -2581,15 +2585,17 @@ def register(app):
         d30 = today + timedelta(days=30)
 
         c = cx()
+        from profitos.entities import current_entity_id
+        eid = current_entity_id()
         rows = c.execute("""
             SELECT id, supplier_id, supplier_name, invoice_number,
                    issue_date, due_date, total, status, created_at
             FROM purchase_invoices
-            WHERE COALESCE(status, 'unpaid') != 'paid'
+            WHERE COALESCE(status, 'unpaid') != 'paid' AND entity_id IS ?
             ORDER BY
               CASE WHEN due_date IS NULL OR due_date='' THEN 1 ELSE 0 END,
               due_date ASC, id DESC
-        """).fetchall()
+        """,(eid,)).fetchall()
         c.close()
 
         overdue = []
@@ -2719,8 +2725,8 @@ def register(app):
             try:
                 issue_date=_purchase_form_date(request.form.get('issue_date'), "Date de facture")
                 due_date=_purchase_form_date(request.form.get('due_date'), "Date d'échéance")
-                subtotal=float(request.form.get('subtotal') or 0)
-                vat=float(request.form.get('vat_amount') or 0)
+                subtotal=form_float(request.form.get('subtotal'))
+                vat=form_float(request.form.get('vat_amount'))
             except ValueError as exc:
                 c.close()
                 flash(str(exc) if "date" in str(exc).lower() else "Montants invalides.")
@@ -3149,7 +3155,7 @@ def register(app):
             key = f"received_{l['id']}"
             if key in request.form:
                 try:
-                    received = float(request.form.get(key) or 0)
+                    received = form_float(request.form.get(key))
                 except ValueError:
                     received = l['quantity_received']
                 received = max(0.0, min(received, l['quantity']))
@@ -3285,7 +3291,7 @@ def register(app):
             if status in ('draft','paid','cancelled'): totals[status]+=r['total'] or 0
         totals['overdue']=recv['overdue_due']
         totals['sent']=round(recv['total_due']-recv['overdue_due'],2)
-        totals['imported_due']=recv['imported_due']
+        totals['imported_due']=recv['imported_not_due']; totals['imported_overdue']=recv['imported_overdue']
         return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses,ereporting_rows=ereporting_rows)
 
     @app.route('/facturation/nouvelle',methods=['GET','POST'])

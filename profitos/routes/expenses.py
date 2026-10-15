@@ -211,7 +211,7 @@ def register(app):
         if category == 'kilometrique':
             fiscal_power = request.form.get('vehicle_fiscal_power', '5')
             try:
-                km = float(request.form.get('km_driven') or 0)
+                km = form_float(request.form.get('km_driven'))
                 amount = compute_mileage_allowance(c, fiscal_power, km)
             except (ValueError, MileageRateNotConfigured) as e:
                 c.close()
@@ -455,11 +455,11 @@ def register(app):
                     rate_key = f'rate_{fp}_{bracket}'
                     fixed_key = f'fixed_{fp}_{bracket}'
                     try:
-                        rate = float(request.form.get(rate_key) or 0)
+                        rate = form_float(request.form.get(rate_key))
                     except ValueError:
                         rate = 0
                     try:
-                        fixed = float(request.form.get(fixed_key) or 0)
+                        fixed = form_float(request.form.get(fixed_key))
                     except ValueError:
                         fixed = 0
                     c.execute(

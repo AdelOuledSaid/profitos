@@ -15,6 +15,7 @@ from profitos.weinvoice import (
     get_entity_settings as weinvoice_entity_settings,
 )
 import io
+from profitos.accounting import paris_today
 
 
 
@@ -113,14 +114,15 @@ def register(app):
             {'label':'Un collègue invité','done':team_count>1,'url':url_for('team')},
         ]
         onboarding_done=sum(1 for s in onboarding_steps if s['done'])
-        show_onboarding=onboarding_done<len(onboarding_steps)
+        # Liste de démarrage = configuration du compte : réservée aux rôles qui peuvent la mener à bien.
+        show_onboarding=onboarding_done<len(onboarding_steps) and can_access('settings') and can_access('team')
 
         # Pouls de trésorerie : même moteur que Trésorerie & scénarios (scénario probable).
         # Affiché seulement si le plan inclut la fonctionnalité ; une erreur ici ne doit
         # jamais empêcher l'affichage du tableau de bord.
         cash_pulse=None
         org=current_org()
-        if org and feature_enabled(org['plan'],'advanced_ai') and current_plan_is_paid():
+        if org and feature_enabled(org['plan'],'advanced_ai') and current_plan_is_paid() and can_access('pilotage'):
             try:
                 from profitos.routes.cash_intelligence import build_cash_intelligence
                 ci=build_cash_intelligence()
@@ -135,7 +137,7 @@ def register(app):
                 cash_pulse=None
 
         # En-tête : date en toutes lettres et phrase du jour, à partir des vraies données.
-        today_d=date.today()
+        today_d=paris_today()
         jours=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
         mois=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
         today_label=f"{jours[today_d.weekday()]} {today_d.day} {mois[today_d.month-1]} {today_d.year}"
@@ -342,10 +344,10 @@ def register(app):
                     flash('Date et valeur requises pour un relevé.')
             elif form=='contract':
                 name=request.form.get('project_name','').strip(); customer=request.form.get('customer','').strip()
-                try: amount=float(request.form.get('amount','0'))
+                try: amount=form_float(request.form.get('amount','0'))
                 except ValueError: amount=0
                 signed=request.form.get('signed_date','').strip()
-                try: mat_share=float(request.form.get('materials_share_pct','30'))
+                try: mat_share=form_float(request.form.get('materials_share_pct','30'))
                 except ValueError: mat_share=30
                 if name and amount and signed:
                     c.execute('INSERT INTO fixed_price_contracts(project_name,customer,amount,signed_date,materials_share_pct,status,created_at) VALUES(?,?,?,?,?,?,?)',
@@ -499,7 +501,7 @@ def register(app):
         result=None
         if request.method=='POST':
             try:
-                revenue=float(request.form.get('revenue','0').replace(' ','').replace(',','.'))
+                revenue=form_float(request.form.get('revenue','0'))
                 overdue_invoices=int(request.form.get('overdue_invoices','0'))
             except ValueError:
                 revenue=0; overdue_invoices=0
@@ -718,7 +720,7 @@ def register(app):
                 events.append({'date':r['deadline'],'type':'GROW','label':f"{r['title']} — {r['buyer'] or ''}",'value':0,'detail_kind':'GROW','item_id':r['id']})
         c.close()
         events.sort(key=lambda e:e['date'] or '')
-        today_iso=date.today().isoformat()
+        today_iso=paris_today().isoformat()
         past=[e for e in events if e['date']<today_iso]
         upcoming=[e for e in events if e['date']>=today_iso]
         return render_template('calendar.html',upcoming=upcoming,past_count=len(past))
@@ -772,7 +774,7 @@ def register(app):
         c=cx(); tags=c.execute('SELECT * FROM customer_tags').fetchall(); c.close()
         tags_map={t['customer_name_norm']:t['tag'] for t in tags}
         for r in rows: r['customer_tag']=tags_map.get(norm(r['customer']))
-        return render_template('recover.html',rows=rows,total=total,filt=filt,today=date.today().isoformat(),
+        return render_template('recover.html',rows=rows,total=total,filt=filt,today=paris_today().isoformat(),
             q=q,min_amount=min_amount,max_amount=max_amount,date_from=date_from,date_to=date_to)
 
     @app.route('/recover/export')
@@ -903,7 +905,7 @@ def register(app):
             if not r:abort(404)
             if r['kind']=='RETENTION':
                 release=r['retention_release_date']
-                if release and release<=date.today().isoformat():
+                if release and release<=paris_today().isoformat():
                     reasons=[f"Retenue contractuelle libérable depuis le {fr_date(release)}",'contactez le client pour en demander la levée']
                 elif release:
                     reasons=[f"Retenue contractuelle libérable le {fr_date(release)}",'pas encore actionnable — visible pour anticipation']
@@ -912,12 +914,12 @@ def register(app):
                 o=dict(r); o.update(kind='RECOVER',title=f"Retenue contractuelle — Facture #{r['invoice_number']}",value=r['outstanding'],reasons=reasons,warnings=['la retenue contractuelle suit un régime différent d\'une facture standard'])
                 # Simulateur de caution : remplacer la retenue en numéraire par une caution
                 # bancaire libère la trésorerie immédiatement, contre un coût annuel en %.
-                try: bond_rate=float(request.args.get('bond_rate','1.0'))
+                try: bond_rate=form_float(request.args.get('bond_rate','1.0'))
                 except ValueError: bond_rate=1.0
                 bond_rate=max(0.1,min(bond_rate,10.0))
                 days_to_release=None
                 if release:
-                    try: days_to_release=max(0,(datetime.strptime(release,'%Y-%m-%d').date()-date.today()).days)
+                    try: days_to_release=max(0,(datetime.strptime(release,'%Y-%m-%d').date()-paris_today()).days)
                     except ValueError: pass
                 bond_cost=None
                 if days_to_release is not None:

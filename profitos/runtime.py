@@ -21,6 +21,7 @@ from docx import Document
 from . import db as dbmod
 from . import storage as _storage
 from .plan_limits import feature_enabled as plan_feature_enabled
+from profitos.accounting import paris_today
 
 BASE=Path(__file__).resolve().parent.parent
 AUTH_DB=BASE/'profitos_auth.db'; TENANTS=BASE/'tenant_data'; TENANTS.mkdir(exist_ok=True); UP=_storage.UPLOAD_ROOT  # disque persistant en production (PROFITOS_UPLOAD_DIR)
@@ -912,7 +913,7 @@ AREA_ACCESS={
 }
 # Seules écritures permises au rôle LECTURE : son propre compte et sa session.
 LECTURE_ALLOWED_POST={'logout','toggle_theme','changelog_seen','org_switch','entity_switch','verify_resend',
-                      'account_password_change','account_email_change','two_factor_setup','two_factor_disable',
+                      'account_name_change','account_password_change','account_email_change','two_factor_setup','two_factor_disable',
                       'two_factor_recovery_codes','login_two_factor','team_invitation','delete_account'}
 
 # Contrôle des rôles par module entier : toute route d'un module sensible exige la zone
@@ -2727,6 +2728,18 @@ def parse_amount(v):
         return None
     return None if math.isnan(f) else f
 
+def form_float(value, default=0.0):
+    """float() d'une saisie de formulaire, au format français accepté (« 1 234,56 »,
+    « 12,5 % », « 1 500 € »). Valeur vide : défaut. Illisible : ValueError, comme float()."""
+    if value is None or (isinstance(value,str) and value.strip()==''):
+        return float(default)
+    if isinstance(value,(int,float)):
+        return float(value)
+    v=parse_amount(str(value).replace('%',''))
+    if v is None:
+        raise ValueError(f"Nombre illisible : {value!r}")
+    return v
+
 def money(v):
     try:return float(v or 0)
     except (TypeError,ValueError):
@@ -2909,7 +2922,7 @@ def sync_grow(rows=None):
             c.execute("""INSERT INTO opportunities(type,title,value,score,details,source,source_url,buyer,departments,deadline,reasons,warnings,raw_json,status,created_at)
                          VALUES('GROW',?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?)""",values+(now(),))
         n+=1
-    today_iso=date.today().isoformat()
+    today_iso=paris_today().isoformat()
     stale_before=(datetime.now(timezone.utc)-timedelta(days=30)).isoformat()
     for key,row in existing.items():
         if key in seen or (row['status'] or 'OPEN')!='OPEN':
@@ -3443,7 +3456,7 @@ def sync_sector_dso(org_id, avg_days_overdue):
                  VALUES(?,?,?,?)
                  ON CONFLICT(organization_id,snapshot_date) DO UPDATE SET
                    avg_days_overdue=excluded.avg_days_overdue,updated_at=excluded.updated_at''',
-        (org_id,date.today().isoformat(),avg_days_overdue,now()))
+        (org_id,paris_today().isoformat(),avg_days_overdue,now()))
     c.commit(); c.close()
 
 def sector_dso_benchmark(exclude_org_id):
@@ -3600,6 +3613,9 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-15','title':"Guide utilisateur intégré (menu Aide) et abonnement annuel : 2 mois offerts"},
+    {'date':'2026-10-14','title':'Trésorerie : plan mensuel, flux prévus, TVA et emprunts intégrés ; simulateur de décision enrichi'},
+    {'date':'2026-10-14','title':'Comptabilité complète : saisie, grand livre, balances, CA3 case par case, tableaux 2033'},
     {'date':'2026-08-22','title':'Segmentation clients, performance équipe, export comptable automatisé'},
     {'date':'2026-08-22','title':'Score de risque acheteur croisé, benchmark sectoriel DSO, calendrier unifié'},
     {'date':'2026-08-22','title':'Programme de parrainage, portail client public, rapprochement bancaire'},
@@ -3854,7 +3870,7 @@ def live_notifications():
         c=cx(); notifs=[]
         for r in c.execute("SELECT invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 LIMIT 5").fetchall():
             notifs.append({'icon':'🔴','text':f"Facture #{r['invoice_number']} — {r['customer']} — {fr_number(r['outstanding'])} €",'url':url_for('recover')})
-        soon=(date.today()+timedelta(days=7)).isoformat(); today_iso=date.today().isoformat()
+        soon=(paris_today()+timedelta(days=7)).isoformat(); today_iso=paris_today().isoformat()
         for r in c.execute("SELECT invoice_number,customer,retention_release_date FROM invoices WHERE kind='RETENTION' AND LOWER(COALESCE(status,''))!='paid' AND retention_release_date BETWEEN ? AND ? LIMIT 5",(today_iso,soon)).fetchall():
             notifs.append({'icon':'🟡','text':f"Retenue libérable bientôt — {r['customer']} (#{r['invoice_number']})",'url':url_for('recover',filter='retention')})
         if can_access('grow'):
@@ -4050,6 +4066,28 @@ INVOICE_STATUS_LABELS = {
 }
 
 
+# Libellés français des codes techniques affichés à l'écran (statuts, fréquences,
+# types). Un code inconnu est affiché tel quel.
+FR_LABELS = {
+    'open': 'Ouvert', 'OPEN': 'Ouvert', 'resolved': 'Résolu', 'closed': 'Clôturé', 'active': 'Actif', 'ACTIVE': 'Actif',
+    'paused': 'En pause', 'completed': 'Terminé', 'pending': 'En attente', 'PENDING': 'En attente', 'APPROVED': 'Validée',
+    'approved': 'Validé', 'REJECTED': 'Refusée', 'rejected': 'Rejeté', 'SENT': 'Envoyée', 'sent': 'Envoyé', 'DONE': 'Terminée',
+    'draft': 'Brouillon', 'prepared': 'Préparée', 'locked': 'Verrouillée', 'filed': 'Déposée', 'validated': 'Validé',
+    'submitted': 'Soumis', 'revoked': 'Révoqué', 'expired': 'Expiré', 'accepted': 'Accepté', 'refused': 'Refusé',
+    'in_progress': 'En cours', 'error': 'Erreur', 'cancelled': 'Annulé', 'CANCELLED': 'Annulé', 'posted': 'Comptabilisé',
+    'CONNECTED': 'Connectée', 'connected': 'Connectée', 'SYNC_ERROR': 'Erreur de synchronisation', 'PENDING_CONSENT': 'Consentement en attente',
+    'DISCONNECTED': 'Déconnectée', 'reimbursed': 'Remboursée', 'paid': 'Payée', 'unpaid': 'À payer',
+    'weekly': 'Hebdomadaire', 'monthly': 'Mensuelle', 'quarterly': 'Trimestrielle', 'yearly': 'Annuelle', 'annual': 'Annuelle',
+    'VENTES': 'Ventes', 'ACHATS': 'Achats', 'BANQUE': 'Banque', 'CAISSE': 'Caisse', 'OD': 'Opérations diverses', 'AN': 'À-nouveaux',
+    'LIASSE': 'Liasse fiscale', 'IS': 'Impôt sur les sociétés', 'CVAE': 'CVAE', 'DAS2': 'DAS2 (honoraires versés)', 'CA3': 'TVA mensuelle ou trimestrielle (CA3)', 'CA12': 'TVA annuelle (CA12)',
+    'silae': 'Silae', 'payfit': 'PayFit', 'generic': 'Autre logiciel',
+}
+
+
+def fr_label(value):
+    return FR_LABELS.get(str(value if value is not None else ''), value if value is not None else '')
+
+
 def invoice_status_label(status):
     """Libellé français d'un statut de facture (jamais la valeur brute « cancelled »)."""
     return INVOICE_STATUS_LABELS.get(str(status or ''), str(status or ''))
@@ -4107,6 +4145,7 @@ def init_runtime(app):
     app.jinja_env.filters['fr_rate_plain'] = lambda v: _amounts.fr_rate(v)[:-2] if v not in (None, '') else ''
     app.jinja_env.filters['invoice_label'] = invoice_label
     app.jinja_env.filters['invoice_status_label'] = invoice_status_label
+    app.jinja_env.filters['fr_label'] = fr_label
     from profitos.sepa import format_iban
     app.jinja_env.filters['format_iban'] = format_iban
     app.before_request(csrf_protect)

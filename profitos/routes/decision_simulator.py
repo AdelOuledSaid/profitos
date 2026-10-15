@@ -1,13 +1,15 @@
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan, requires_feature
 from .cash_intelligence import build_cash_intelligence
+from profitos.accounting import paris_today
 
 
 def _num(value, default=0.0):
-    try:
-        return max(0.0, float(str(value or '').replace(' ', '').replace(',', '.')))
-    except (TypeError, ValueError):
+    """Montant positif saisi à la française (« 12 500,50 », « 12 500 € ») ou défaut."""
+    if value is None or str(value).strip()=='':
         return default
+    parsed=parse_amount(value)
+    return default if parsed is None else max(0.0, parsed)
 
 
 def _day(value, default=0):
@@ -36,6 +38,19 @@ def _request_flag(name, default=False):
     return _flag(values[-1], default)
 
 
+def _vat(value, default=20.0):
+    allowed={0.0,2.1,5.5,10.0,20.0}
+    v=_num(value,None) if value not in (None,'') else None
+    return v if v in allowed else default
+
+
+def _bounded_int(value, default, lo, hi):
+    try:
+        return max(lo, min(hi, int(str(value).strip())))
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
 def _installment_count(value, default=1):
     try:
         return max(1, min(4, int(value)))
@@ -54,8 +69,41 @@ def _inflow_is_available(day, inflow_day):
     return int(day) > int(inflow_day)
 
 
+def _vat_recovery_day(pay_day, today=None):
+    """Jour (depuis aujourd'hui) où la TVA d'un paiement à J+pay_day est récupérée :
+    elle vient en déduction de la déclaration du mois du paiement, payée le 15 du
+    mois suivant (déclaration mensuelle). None au-delà de l'horizon de 90 jours."""
+    from datetime import date as _date, timedelta as _td
+    today=today or paris_today()
+    paid=today+_td(days=int(pay_day))
+    nxt=_date(paid.year+(paid.month==12), paid.month%12+1, 15)
+    offset=(nxt-today).days
+    return offset if offset<=90 else None
+
+
+def _extra_impact(day, kind, payments, decision_day, vat_rate=0.0, monthly_revenue=0.0, today=None):
+    """Effets ajoutés au moteur historique : TVA du décaissement (payée avec lui, récupérée
+    le 15 du mois suivant) et recette mensuelle (à partir d'un mois après la décision,
+    le temps de facturer et d'être payé)."""
+    impact=0.0
+    rate=0.0 if kind=='hire' else max(0.0,float(vat_rate or 0.0))
+    if rate:
+        for pay in payments:
+            vat=round(pay['amount']*rate/100.0,2)
+            if day>=pay['day']:
+                impact-=vat
+            back=_vat_recovery_day(pay['day'],today)
+            if back is not None and day>=back:
+                impact+=vat
+    if monthly_revenue:
+        start=decision_day+30
+        if day>start:
+            impact+=monthly_revenue*((day-start)/30.0)
+    return impact
+
+
 def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
-                       expected_inflow=0.0, inflow_day=60):
+                       expected_inflow=0.0, inflow_day=60, vat_rate=0.0, monthly_revenue=0.0, today=None):
     baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
     if not baseline:
         return None
@@ -73,6 +121,7 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
             impact-=monthly_cost*((day-decision_day)/30.0)
         if expected_inflow and _inflow_is_available(day, inflow_day):
             impact+=expected_inflow
+        impact+=_extra_impact(day,kind,[{'day':decision_day,'amount':amount}],decision_day,vat_rate,monthly_revenue,today)
         adjusted.append(round(base+impact,2))
     minimum=min(adjusted); min_day=adjusted.index(minimum); end_90=adjusted[-1]
     baseline_min=baseline['minimum']
@@ -94,7 +143,10 @@ def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
         'minimum':round(minimum,2),'min_day':min_day,'end_90':round(end_90,2),
         'baseline_min':round(baseline_min,2),'baseline_end_90':round(baseline['end_90'],2),
         'deterioration':deterioration,'financing_gap':financing_gap,'level':level,
-        'tone':tone,'recommendation':recommendation,
+        'tone':tone,'recommendation':recommendation,'vat_rate':0.0 if kind=='hire' else vat_rate,
+        'vat_amount':0.0 if kind=='hire' else round(amount*float(vat_rate or 0)/100.0,2),
+        'vat_back_day':None if kind=='hire' or not vat_rate else _vat_recovery_day(decision_day,today),
+        'monthly_revenue':monthly_revenue,
     }
 
 
@@ -122,7 +174,7 @@ def _build_payment_schedule(amount, decision_day, installments):
 
 
 def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
-                       expected_inflow=0.0, inflow_day=60, installments=1):
+                       expected_inflow=0.0, inflow_day=60, installments=1, vat_rate=0.0, monthly_revenue=0.0, today=None):
     baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
     if not baseline:
         return None
@@ -153,6 +205,7 @@ def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
             impact-=monthly_cost*((day-decision_day)/30.0)
         if expected_inflow and _inflow_is_available(day, inflow_day):
             impact+=expected_inflow
+        impact+=_extra_impact(day,kind,payment_schedule,decision_day,vat_rate,monthly_revenue,today)
         adjusted.append(round(base+impact,2))
 
     return {
@@ -227,7 +280,7 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
                        expected_inflow=0.0, inflow_day=60, reserve=5000.0,
                        max_financing=None, deadline=90, allow_delay=True,
                        max_delay=90, allow_installments=True, max_installments=4,
-                       allow_financing=True):
+                       allow_financing=True, vat_rate=0.0, monthly_revenue=0.0):
     """Optimize only inside explicitly allowed business constraints.
 
     The public route passes the user's actual negotiation constraints. Defaults
@@ -262,7 +315,8 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
     candidates=[]
     for day in delays:
         for installments in installment_options:
-            result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments)
+            result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments,
+                                      vat_rate=vat_rate,monthly_revenue=monthly_revenue)
             if not result:
                 continue
             financing=round(max(0.0,reserve-result['minimum']),2)
@@ -378,7 +432,7 @@ def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
 def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0, monthly_cost=0.0,
                                   expected_inflow=0.0, inflow_day=60, allow_delay=True,
                                   max_delay=90, allow_installments=True, max_installments=4,
-                                  allow_financing=True):
+                                  allow_financing=True, vat_rate=0.0, monthly_revenue=0.0):
     """Return only resolution strategies revalidated by the real optimizer.
 
     Every displayed strategy is replayed through ``_optimize_decision`` and is
@@ -395,7 +449,8 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
         result=_optimize_decision(
             cash, kind, max(0.0,target_amount), decision_day, monthly_cost,
             expected_inflow, inflow_day, reserve, max(0.0,target_cap), deadline,
-            allow_delay, max_delay, allow_installments, max_installments, allow_financing)
+            allow_delay, max_delay, allow_installments, max_installments, allow_financing,
+            vat_rate=vat_rate, monthly_revenue=monthly_revenue)
         if not result or not result.get('constraints_met'):
             return None
         best=result['best']
@@ -468,6 +523,72 @@ def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0,
                 'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {fr_number(target_cap)} €, décision environ {fr_number(target_amount)} €. La réserve cible de {fr_number(reserve)} € est respectée après financement."})
     return resolutions[:3]
 
+def loan_payment(principal, annual_rate, months):
+    """Mensualité constante d'un prêt amortissable (taux annuel en %)."""
+    principal=float(principal or 0); months=max(1,int(months or 1)); r=float(annual_rate or 0)/1200.0
+    if principal<=0:
+        return 0.0
+    if r<=0:
+        return round(principal/months,2)
+    return round(principal*r/(1-(1+r)**(-months)),2)
+
+
+def _financing_cost(financing, annual_rate, months):
+    if not financing or financing<=0:
+        return None
+    m=loan_payment(financing,annual_rate,months)
+    return {'principal':round(financing,2),'rate':annual_rate,'months':int(months),'monthly':m,
+            'interest':round(m*int(months)-financing,2),'total':round(m*int(months),2)}
+
+
+def _profitability(kind, amount, monthly_cost, monthly_revenue, expected_inflow, horizon_months,
+                   financing_cost=None):
+    """Rentabilité au-delà de 90 jours, sur l'horizon choisi (montants hors TVA : la TVA
+    du décaissement est récupérée). Retour sur investissement = mois nécessaires pour que
+    les gains nets mensuels remboursent le décaissement net de l'encaissement ponctuel."""
+    n=max(1,int(horizon_months or 36))
+    net_monthly=round(float(monthly_revenue or 0)-float(monthly_cost or 0),2)
+    upfront=round(float(amount or 0)-float(expected_inflow or 0),2)
+    interest=financing_cost['interest']*min(1.0,n/financing_cost['months']) if financing_cost else 0.0
+    total=round(net_monthly*n-upfront-interest,2)
+    if upfront<=0:
+        payback=0.0
+    elif net_monthly>0:
+        payback=round(upfront/net_monthly,1)
+    else:
+        payback=None
+    invested=max(float(amount or 0),0.01)
+    roi=round(total*100/invested,1) if float(amount or 0)>0 else None
+    if not monthly_revenue and not expected_inflow:
+        verdict='Aucune recette associée : cette décision est un coût. Sa justification est opérationnelle (obligation, remplacement, confort), pas financière.'
+    elif payback is None:
+        verdict=f"Les recettes mensuelles ne couvrent pas les coûts mensuels : la décision ne se rembourse pas, elle coûte {fr_number(-net_monthly)} € de plus chaque mois."
+    elif payback<=n:
+        verdict=f"La décision se rembourse en {fr_number(payback,1)} mois, puis rapporte {fr_number(net_monthly)} € nets par mois."
+    else:
+        verdict=f"Retour sur investissement en {fr_number(payback,1)} mois : au-delà de l'horizon de {n} mois retenu."
+    return {'horizon':n,'net_monthly':net_monthly,'upfront':upfront,'total':total,'payback':payback,
+            'roi':roi,'interest':round(interest,2),'verdict':verdict,
+            'positive':total>0}
+
+
+def _impact_chart(baseline, decision_values, optimized_values=None, reserve=None):
+    """Courbes avant / après décision (et plan optimisé) sur une échelle commune."""
+    from profitos.routes.cash_intelligence import _chart_scale, _curve_points
+    series=[{'values':baseline}, {'values':decision_values}]
+    if optimized_values:
+        series.append({'values':optimized_values})
+    extra=[{'values':[reserve]}] if reserve else []
+    lo,hi=_chart_scale(series+extra+[{'values':[0.0]}])
+    left=74
+    pts=[_curve_points(x['values'],lo=lo,hi=hi,left=left) for x in series]
+    y=lambda v: round(18+184*(hi-v)/max(hi-lo,1.0),1)
+    ticks=[{'y':round(18+184*i/4,1),'value':round(hi-(hi-lo)*i/4,-1) if abs(hi-lo)>200 else round(hi-(hi-lo)*i/4,2)} for i in range(5)]
+    return {'baseline':pts[0],'decision':pts[1],'optimized':pts[2] if optimized_values else None,
+            'zero_y':y(0) if lo<0<hi else None,'reserve_y':y(reserve) if reserve and lo<reserve<hi else None,
+            'ticks':ticks,'left':left,'x30':round(left+(920-left-18)*30/90,1),'x60':round(left+(920-left-18)*60/90,1)}
+
+
 def _cfo_answer(question, simulation):
     q=(question or '').strip()
     if not q or not simulation or not simulation.get('optimizer'): return None
@@ -511,9 +632,16 @@ def register(app):
             'allow_installments': _request_flag('allow_installments', False),
             'max_installments': _installment_count(request.args.get('max_installments'),1),
             'allow_financing': _request_flag('allow_financing', False),
+            # TVA du décaissement : 20 % proposés par défaut sur un formulaire vierge ; un
+            # formulaire envoyé sans le champ (ancien lien) garde l'ancien calcul sans TVA.
+            'vat_rate': _vat(request.args.get('vat_rate'), 0.0 if submitted else 20.0),
+            'monthly_revenue':_num(request.args.get('monthly_revenue')),
+            'horizon_months': _bounded_int(request.args.get('horizon_months'), 36, 6, 120),
+            'loan_rate': min(20.0, _num(request.args.get('loan_rate'), 4.5)),
+            'loan_months': _bounded_int(request.args.get('loan_months'), 48, 6, 120),
         }
         if submitted and cash['cash_balance'] is not None:
-            sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline','allow_delay','max_delay','allow_installments','max_installments','allow_financing')}
+            sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline','allow_delay','max_delay','allow_installments','max_installments','allow_financing','horizon_months','loan_rate','loan_months')}
             simulation=_simulate_decision(cash, **sim_args)
             simulation['optimizer']=_optimize_decision(
                 cash, reserve=inputs['reserve'], max_financing=inputs['max_financing'], deadline=inputs['deadline'],
@@ -523,8 +651,27 @@ def register(app):
             simulation['resolutions']=_build_constraint_resolutions(
                 cash, kind, inputs['amount'], simulation['optimizer'], inputs['decision_day'], inputs['monthly_cost'],
                 inputs['expected_inflow'], inputs['inflow_day'], inputs['allow_delay'], inputs['max_delay'],
-                inputs['allow_installments'], inputs['max_installments'], inputs['allow_financing'])
+                inputs['allow_installments'], inputs['max_installments'], inputs['allow_financing'],
+                vat_rate=inputs['vat_rate'], monthly_revenue=inputs['monthly_revenue'])
             simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
+            opt=simulation['optimizer']
+            # Coût du financement recommandé et rentabilité au-delà de 90 jours.
+            simulation['financing_cost']=_financing_cost(opt['best']['financing'] if opt else 0, inputs['loan_rate'], inputs['loan_months'])
+            simulation['profitability']=_profitability(kind, inputs['amount'], inputs['monthly_cost'], inputs['monthly_revenue'],
+                                                       inputs['expected_inflow'], inputs['horizon_months'], simulation['financing_cost'])
+            # Test de résistance : la même décision si les clients paient en retard (scénario prudent).
+            prudent=next((x for x in cash.get('curves',[]) if x['mode']=='prudent'),None)
+            if prudent:
+                stressed=_simulate_decision({**cash,'curves':[{**prudent,'mode':'probable'}]}, **sim_args)
+                simulation['stress']={'minimum':stressed['minimum'],'min_day':stressed['min_day'],'gap':stressed['financing_gap'],
+                                      'level':stressed['level'],'tone':stressed['tone']}
+            baseline=next((x for x in cash.get('curves',[]) if x['mode']=='probable'),None)
+            optimized=None
+            if opt and (opt['best']['decision_day']!=inputs['decision_day'] or opt['best']['installments']>1):
+                optimized=_simulate_strategy(cash,kind,inputs['amount'],opt['best']['decision_day'],inputs['monthly_cost'],
+                                             inputs['expected_inflow'],inputs['inflow_day'],opt['best']['installments'],
+                                             vat_rate=inputs['vat_rate'],monthly_revenue=inputs['monthly_revenue'])['values']
+            simulation['chart']=_impact_chart(baseline['values'],simulation['values'],optimized,inputs['reserve'])
             log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
         else:
             log_activity('DECISION_SIMULATOR_VIEW','Consultation du simulateur de décision')

@@ -4,12 +4,12 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">FLUX PROJETÉS</div>
 <h1 class="purchase-title">{{ total_90j|fr_signed }}&nbsp;€ de flux nets sur 90 jours</h1>
-<p class="purchase-subtitle">Encaissements attendus moins décaissements prévus, avec les mêmes données que <a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">Trésorerie &amp; scénarios</a> (scénario probable). Estimation indicative, pas une garantie de trésorerie.</p>
+<p class="purchase-subtitle">Encaissements attendus moins décaissements prévus, {% set ci_ok = auth_org and plan_feature_enabled(auth_org.plan,'advanced_ai') and can_access('pilotage') %}avec les mêmes données que {% if ci_ok %}<a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">Trésorerie &amp; scénarios</a>{% else %}Trésorerie &amp; scénarios{% endif %} (scénario probable). Estimation indicative, pas une garantie de trésorerie.</p>
 
 <div class="purchase-stats" style="margin:20px 0;">
   <div class="purchase-stat"><div><div class="purchase-stat-label">Encaissements attendus</div><div class="purchase-stat-value">{{ gross_expected|fr_number }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">{{ pluralize(invoice_count, 'facture client', 'factures clients') }} (émises et importées){% if other_inflows %} + {{ pluralize(other_inflows, 'encaissement prévu', 'encaissements prévus') }}{% endif %}</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Factures fournisseurs à payer</div><div class="purchase-stat-value">{{ supplier_payables_total|fr_signed }}&nbsp;€</div><div class="purchase-muted" style="font-size:12px;">déduites à leur échéance</div></div></div>
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Solde de départ</div><div class="purchase-stat-value">{% if ci.cash_balance is not none %}{{ ci.cash_balance|fr_number }}&nbsp;€{% else %}—{% endif %}</div><div class="purchase-muted" style="font-size:12px;">{% if ci.cash_as_of %}déclaré le {{ ci.cash_as_of|fr_date }}{% else %}<a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">à renseigner</a>{% endif %}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Solde de départ</div><div class="purchase-stat-value">{% if ci.cash_balance is not none %}{{ ci.cash_balance|fr_number }}&nbsp;€{% else %}—{% endif %}</div><div class="purchase-muted" style="font-size:12px;">{% if ci.cash_as_of %}déclaré le {{ ci.cash_as_of|fr_date }}{% elif ci_ok %}<a class="purchase-detail-link" href="{{ url_for('cash_intelligence') }}">à renseigner</a>{% elif auth_org and plan_feature_enabled(auth_org.plan,'banking') and can_access('banking') %}<a class="purchase-detail-link" href="{{ url_for('banking') }}">à reprendre de vos comptes bancaires</a>{% else %}non renseigné{% endif %}</div></div></div>
 </div>
 
 {% if chart %}

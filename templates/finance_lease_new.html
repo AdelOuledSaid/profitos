@@ -27,6 +27,7 @@
     </label>
     <label>Durée totale (mois)<input type="number" name="duration_months" min="1" required></label>
     <label>Date de départ<input type="date" name="start_date" value="{{ today }}"></label>
+    <label class="wide" style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="past_paid" value="1" checked style="width:auto;"> Contrat déjà en cours : les redevances antérieures à aujourd'hui ont déjà été payées</label>
     <label>Montant de la levée d'option (€, si connu)<input type="number" name="purchase_option_amount" step="0.01" min="0"></label>
     <label class="wide">Notes<input name="notes"></label>
     <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer le contrat</button></div>

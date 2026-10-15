@@ -22,7 +22,7 @@
     <div>
       <h2 style="margin-bottom:6px;color:#fff;">Connexion bancaire</h2>
       {% if connection %}
-        <p class="purchase-muted">Statut : <strong>{{ connection.status }}</strong>{% if connection.last_synced_at %} · dernière synchronisation {{ connection.last_synced_at[:16]|replace('T',' ') }}{% endif %}</p>
+        <p class="purchase-muted">Statut : <strong>{{ connection.status|fr_label }}</strong>{% if connection.last_synced_at %} · dernière synchronisation {{ connection.last_synced_at[:16]|replace('T',' ') }}{% endif %}</p>
       {% else %}
         <p class="purchase-muted">Aucune banque connectée.</p>
       {% endif %}

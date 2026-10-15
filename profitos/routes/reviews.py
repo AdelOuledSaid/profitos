@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.reviews import create_review, toggle_review_item, review_progress, complete_review, run_review_diagnostics, latest_review_diagnostics, automatic_review_item_statuses
+from profitos.accounting import paris_today
 
 
 def register(app):
@@ -15,7 +16,7 @@ def register(app):
         progress = {r['id']: review_progress(c, r['id']) for r in reviews}
         c.close()
         return render_template('reviews_list.html', reviews=reviews, progress=progress,
-                                today_year=date.today().year, today_month=date.today().strftime('%Y-%m'))
+                                today_year=paris_today().year, today_month=paris_today().strftime('%Y-%m'))
 
     @app.route('/comptabilite/revision/nouvelle', methods=['POST'])
     @login_required

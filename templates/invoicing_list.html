@@ -36,7 +36,7 @@
       <div class="purchase-stat-icon">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
       </div>
-      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ totals.overdue|fr_number(2) }}&nbsp;€</div></div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ totals.overdue|fr_number(2) }}&nbsp;€</div>{% if totals.imported_overdue %}<div class="purchase-muted" style="font-size:12px;">dont {{ totals.imported_overdue|fr_number(2) }}&nbsp;€ de factures importées</div>{% endif %}</div>
     </div>
     <div class="purchase-stat">
       <div class="purchase-stat-icon">

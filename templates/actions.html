@@ -16,7 +16,7 @@
       <div class="type {{ a.kind|lower }}">{{ a.kind|label }}</div>
       <h2>{{ a.title }}</h2>
     </div>
-    <span class="status">{{ a.status }}</span>
+    <span class="status">{{ a.status|fr_label }}</span>
   </div>
 
   <details style="margin:12px 0;">
@@ -86,7 +86,7 @@
           <div class="type {{ a.kind|lower }}">{{ a.kind|label }}</div>
           <h2>{{ a.title }}</h2>
         </div>
-        <span class="status">{{ a.status }}</span>
+        <span class="status">{{ a.status|fr_label }}</span>
       </div>
 
       <pre>{{ a.draft }}</pre>

@@ -11,6 +11,7 @@ Pour un compte comptable de banque (512000, 512100…) et une date :
 Lecture seule : aucune écriture n'est passée ici.
 """
 from datetime import date, timedelta
+from profitos.accounting import paris_today
 
 PROVIDERS = ('powens', 'swan', 'import')
 LINKED_SOURCES = ('bank_fee', 'bank_categorization')
@@ -95,7 +96,7 @@ def _booked_amount(conn, tx_id, entity_id):
 
 
 def reconciliation_statement(conn, entity_id, ledger_code, as_of, statement_balance=None):
-    as_of = str(as_of or date.today().isoformat())[:10]
+    as_of = str(as_of or paris_today().isoformat())[:10]
     accounts = bank_accounts_for(conn, entity_id, ledger_code)
     account_rows = [a for a, _ in accounts]
 

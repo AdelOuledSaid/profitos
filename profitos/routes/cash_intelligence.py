@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from profitos.runtime import *
 from profitos.feature_access import requires_paid_plan, requires_feature
 from .money_hunter import _safe_float, _confidence
+from profitos.accounting import paris_today
 
 
 HORIZON_DAYS=90
@@ -88,7 +89,7 @@ _SOURCE_CATEGORY={'purchase_invoice':'suppliers','expense':'expenses'}
 def _curve_events(receivables, scheduled_outflows=None, inflows=None, mode='probable', top_delay=None, today=None):
     """Flux datés d'un scénario : (jour 1..90, montant signé, catégorie). Source unique des
     courbes, de la cascade « du solde actuel à J+90 » et du plan de trésorerie mensuel."""
-    today=today or date.today()
+    today=today or paris_today()
     rule=SCENARIO_RULES.get(mode,SCENARIO_RULES['probable'])
     events=[]
     for item in (scheduled_outflows or []):
@@ -213,7 +214,7 @@ def compute_cash_forecast(cash_balance, cash_as_of, sales, purchases, expenses, 
     include_burn  : compter ou non la dépense courante observée (à couper si les charges
                     récurrentes sont saisies en flux prévus, pour ne pas les compter deux fois) ;
     safety_threshold : seuil de sécurité de trésorerie choisi par l'entreprise."""
-    today=today or date.today()
+    today=today or paris_today()
     _einvoice_hold=einvoice_hold or (lambda inv: None)
     cash=None if cash_balance is None else _safe_float(cash_balance)
     recent=[]; scheduled_outflows=[]; supplier_payables=[]
@@ -393,7 +394,7 @@ def build_cash_intelligence(with_extras=False):
         from profitos.entities import current_entity_id
         eid=current_entity_id()
         ef='entity_id=?' if eid else 'entity_id IS NULL'; ep=(eid,) if eid else ()
-        today=date.today()
+        today=paris_today()
         settings=_cash_settings(c)
         tsettings=T.get_settings(c,eid)
         # Créances : vue unique (factures émises ET factures importées), cf. profitos/receivables.py.
@@ -470,7 +471,7 @@ def register(app):
                 custom['choice']=raw_delay
         from profitos import treasury as T
         log_activity('CASH_INTELLIGENCE_VIEW','Consultation de Trésorerie & scénarios')
-        return render_template('cash_intelligence.html',cash=cash,custom=custom,today=date.today().isoformat(),
+        return render_template('cash_intelligence.html',cash=cash,custom=custom,today=paris_today().isoformat(),
                                planned_categories=T.PLANNED_CATEGORIES,frequencies=T.FREQUENCIES)
 
     @app.route('/cash-intelligence/plan')
@@ -483,7 +484,7 @@ def register(app):
         if cash['cash_balance'] is None:
             flash('Renseignez le solde bancaire pour exporter le plan de trésorerie.')
             return redirect(url_for('cash_intelligence'))
-        return export_response(_plan_rows(cash),f"plan-de-tresorerie-{date.today().isoformat()}")
+        return export_response(_plan_rows(cash),f"plan-de-tresorerie-{paris_today().isoformat()}")
 
     def _handle_post():
         from profitos import treasury as T
@@ -497,7 +498,7 @@ def register(app):
                 if balance is None:
                     flash('Solde bancaire invalide.')
                 else:
-                    set_cash_balance(c, eid, balance, date.today().isoformat(), now())
+                    set_cash_balance(c, eid, balance, paris_today().isoformat(), now())
                     log_activity('CASH_BALANCE_UPDATE','Mise à jour manuelle du solde de trésorerie')
                     flash('Solde de trésorerie mis à jour.')
             elif action=='bank_balance':

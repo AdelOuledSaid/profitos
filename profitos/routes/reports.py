@@ -1,6 +1,7 @@
 from profitos.runtime import *
 from profitos.plan_usage import quota_state, record_usage
 from profitos.feature_access import requires_paid_plan
+from profitos.accounting import paris_today
 
 
 def register(app):
@@ -38,7 +39,7 @@ def register(app):
         # sont affichées à part et jamais ajoutées aux flux.
         from profitos.routes.cash_intelligence import build_cash_intelligence
         ci=build_cash_intelligence()
-        today=date.today()
+        today=paris_today()
         labels=('0-30j','31-60j','61-90j')
         bounds={'0-30j':(1,30),'31-60j':(31,60),'61-90j':(61,90)}
         inflows={k:0.0 for k in labels}; supplier_out={k:0.0 for k in labels}
@@ -210,7 +211,15 @@ def register(app):
         from profitos.entities import current_entity_id
         c=cx(); eid=current_entity_id()
         if request.method=='POST':
-            aid=int(request.form['action_id']); typ=request.form['outcome_type']; amount=float(request.form['amount']); ver=1 if request.form.get('verified') else 0; note=request.form.get('note','')
+            try:
+                aid=int(request.form.get('action_id') or 0); amount=form_float(request.form.get('amount'))
+            except ValueError:
+                c.close(); flash('Montant invalide : saisissez par exemple 1 250,00.')
+                return redirect(url_for('impact'))
+            typ=(request.form.get('outcome_type') or '').strip(); ver=1 if request.form.get('verified') else 0; note=request.form.get('note','')
+            if typ not in ('RECOVERED','SAVED','WON_REVENUE') or amount<=0:
+                c.close(); flash('Choisissez un type de résultat et un montant positif.')
+                return redirect(url_for('impact'))
             a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,eid)).fetchone()
             if not a:
                 c.close(); abort(404)

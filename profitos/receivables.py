@@ -194,6 +194,8 @@ def summarize(rows):
         'overdue_count': len(overdue),
         'imported_due': round(sum(r['outstanding'] for r in rows if r['source'] == SOURCE_IMPORTED), 2),
         'outgoing_due': round(sum(r['outstanding'] for r in rows if r['source'] == SOURCE_OUTGOING), 2),
+        'imported_not_due': round(sum(r['outstanding'] for r in rows if r['source'] == SOURCE_IMPORTED and not r['overdue']), 2),
+        'imported_overdue': round(sum(r['outstanding'] for r in overdue if r['source'] == SOURCE_IMPORTED), 2),
     }
 
 

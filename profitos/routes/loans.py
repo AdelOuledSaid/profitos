@@ -30,13 +30,13 @@ def register(app):
         if request.method == 'POST':
             lender_name = (request.form.get('lender_name') or '').strip()
             try:
-                principal_amount = float(request.form.get('principal_amount') or 0)
-                annual_rate = float(request.form.get('annual_rate') or 0)
+                principal_amount = form_float(request.form.get('principal_amount'))
+                annual_rate = form_float(request.form.get('annual_rate'))
                 duration_months = int(request.form.get('duration_months') or 0)
             except ValueError:
                 flash("Montant, taux et durée doivent être des nombres valides.")
                 return redirect(url_for('loan_new'))
-            start_date = request.form.get('start_date') or date.today().isoformat()
+            start_date = request.form.get('start_date') or paris_today().isoformat()
             if not lender_name or principal_amount <= 0 or duration_months <= 0:
                 flash("Le prêteur, le montant emprunté et la durée sont obligatoires.")
                 return redirect(url_for('loan_new'))
@@ -47,12 +47,28 @@ def register(app):
                 entity_id=current_entity_id(), notes=(request.form.get('notes') or '').strip(),
                 created_by=current_user()['email'],
             )
+            settled, settle_error = 0, None
+            if request.form.get('past_paid'):
+                # Emprunt déjà en cours : les échéances passées ont été prélevées par la banque.
+                # Sans cela, la trésorerie les comptait toutes comme une sortie immédiate.
+                past = c.execute("SELECT id,due_date FROM loan_installments WHERE loan_id=? AND COALESCE(paid,0)=0 AND due_date<? ORDER BY due_date",
+                                 (loan_id, paris_today().isoformat())).fetchall()
+                for row in past:
+                    try:
+                        pay_installment(c, row['id'], entity_id=current_entity_id(), created_by=current_user()['email'],
+                                        payment_date=str(row['due_date'])[:10])
+                        settled += 1
+                    except AccountingError as e:
+                        c.rollback(); settle_error = str(e); break
             c.close()
             log_activity('LOAN_CREATED', f"Emprunt créé : {lender_name} ({fr_number(principal_amount,2)} €)")
-            flash("Emprunt enregistré avec son échéancier complet.")
+            flash("Emprunt enregistré avec son échéancier complet."
+                  + (f" {settled} échéance{'s' if settled > 1 else ''} passée{'s' if settled > 1 else ''} marquée{'s' if settled > 1 else ''} comme réglée{'s' if settled > 1 else ''}." if settled else ''))
+            if settle_error:
+                flash(f"Certaines échéances passées n'ont pas pu être réglées automatiquement : {settle_error} Réglez-les depuis l'échéancier.")
             return redirect(url_for('loan_detail', loan_id=loan_id))
 
-        return render_template('loan_new.html', today=date.today().isoformat())
+        return render_template('loan_new.html', today=paris_today().isoformat())
 
     @app.route('/comptabilite/emprunts/<int:loan_id>')
     @login_required

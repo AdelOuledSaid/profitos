@@ -1,5 +1,6 @@
 from profitos.runtime import *
 import uuid
+from profitos.accounting import paris_today
 
 
 CABINET_ALLOWED_EXTENSIONS={'.pdf','.png','.jpg','.jpeg','.webp','.heic','.doc','.docx','.xls','.xlsx','.csv','.txt','.odt','.ods','.zip','.xml'}
@@ -84,7 +85,7 @@ def register(app):
         donnée comptable d'un client n'est jointe à celle d'un autre client.
         """
         orgs = cabinet_organizations()
-        month_start = date.today().replace(day=1).isoformat()
+        month_start = paris_today().replace(day=1).isoformat()
 
         ac = auth_cx()
         rows = []
@@ -148,7 +149,7 @@ def register(app):
             rows.append({'org': org, 'minutes_month': minutes_month, **metrics})
         ac.close()
         return render_template('cabinet_portfolio.html', rows=rows,
-                               month_label=date.today().strftime('%B %Y'))
+                               month_label=paris_today().strftime('%B %Y'))
 
     @app.route('/cabinet/client/<int:organization_id>/ouvrir', methods=['POST'])
     @login_required
@@ -178,7 +179,7 @@ def register(app):
             if org_id not in {o['id'] for o in orgs}:
                 flash("Vous n'avez pas accès à ce client.")
                 return redirect(url_for('cabinet_time_new'))
-            entry_date = request.form.get('entry_date') or date.today().isoformat()
+            entry_date = request.form.get('entry_date') or paris_today().isoformat()
             try:
                 duration_minutes = int(request.form.get('duration_minutes') or 0)
             except ValueError:
@@ -200,7 +201,7 @@ def register(app):
             flash("Temps enregistré.")
             return redirect(url_for('cabinet_portfolio'))
 
-        return render_template('cabinet_time_new.html', orgs=orgs, today=date.today().isoformat())
+        return render_template('cabinet_time_new.html', orgs=orgs, today=paris_today().isoformat())
 
     @app.route('/cabinet/temps/<int:organization_id>')
     @login_required

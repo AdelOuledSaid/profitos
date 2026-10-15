@@ -11,7 +11,7 @@
   <label>OD CSV/XLSX <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required></label>
   <button type="submit">Préparer l'import</button>
 </form>
-<table><thead><tr><th>ID</th><th>Source</th><th>Période</th><th>Fichier</th><th>Débit</th><th>Crédit</th><th>Statut</th><th>Action</th></tr></thead><tbody>
-{% for r in rows %}<tr><td>{{ r.id }}</td><td>{{ r.provider }}</td><td>{{ r.period_label }}</td><td>{{ r.original_filename }}</td><td>{{ r.total_debit|fr_number(2) }}&nbsp;€</td><td>{{ r.total_credit|fr_number(2) }}&nbsp;€</td><td>{{ {'pending':'À valider','posted':'Comptabilisé','invalid':'Déséquilibré'}.get(r.status, r.status) }}</td><td>{% if r.status == 'pending' %}<form method="post" action="{{ url_for('payroll_import_validate', import_id=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Valider et comptabiliser</button></form>{% elif r.error_message %}{{ r.error_message }}{% endif %}</td></tr>{% endfor %}
-</tbody></table>
+<div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>ID</th><th>Source</th><th>Période</th><th>Fichier</th><th>Débit</th><th>Crédit</th><th>Statut</th><th>Action</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.id }}</td><td>{{ r.provider|fr_label }}</td><td>{{ r.period_label }}</td><td>{{ r.original_filename }}</td><td>{{ r.total_debit|fr_number(2) }}&nbsp;€</td><td>{{ r.total_credit|fr_number(2) }}&nbsp;€</td><td>{{ {'pending':'À valider','posted':'Comptabilisé','invalid':'Déséquilibré'}.get(r.status, r.status) }}</td><td>{% if r.status == 'pending' %}<form method="post" action="{{ url_for('payroll_import_validate', import_id=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Valider et comptabiliser</button></form>{% elif r.error_message %}{{ r.error_message }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
 {% endblock %}

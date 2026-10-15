@@ -908,7 +908,7 @@ def register(app):
         return out
 
     def detect_stale_contracts(clean):
-        out=[]; today=date.today()
+        out=[]; today=paris_today()
         by_vendor_cat=defaultdict(list)
         for v,a,d,cat in clean:
             fam=next((fam for fam,kws in RENEWABLE_CATEGORIES.items() if any(k in norm(cat) or k in norm(v) for k in kws)),None)

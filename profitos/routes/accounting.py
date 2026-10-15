@@ -41,7 +41,7 @@ def register(app):
             counterpart_account_code = (request.form.get('counterpart_account_code') or '').strip()
             period_end_date = request.form.get('period_end_date') or paris_today().isoformat()
             try:
-                amount = float(request.form.get('amount') or 0)
+                amount = form_float(request.form.get('amount'))
             except ValueError:
                 amount = 0
             if not label or not counterpart_account_code:
@@ -564,8 +564,8 @@ def register(app):
             purchase_date_str = request.form.get('purchase_date') or ''
             method = 'degressive' if request.form.get('method') == 'degressive' else 'linear'
             try:
-                purchase_amount = float(request.form.get('purchase_amount') or 0)
-                useful_life_years = float(request.form.get('useful_life_years') or 0)
+                purchase_amount = form_float(request.form.get('purchase_amount'))
+                useful_life_years = form_float(request.form.get('useful_life_years'))
             except ValueError:
                 purchase_amount = useful_life_years = 0
             if not label or not purchase_date_str:

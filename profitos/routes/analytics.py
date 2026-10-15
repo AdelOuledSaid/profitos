@@ -1,5 +1,6 @@
 from profitos.runtime import *
 from profitos.entities import current_entity_id
+from profitos.accounting import paris_today
 
 
 def register(app):
@@ -89,8 +90,8 @@ def register(app):
         axis_id = int(axis_id_raw) if axis_id_raw and axis_id_raw.isdigit() else (axes[0]['id'] if axes else None)
         if axis_id and not c.execute('SELECT 1 FROM analytical_axes WHERE id=? AND entity_id IS ?', (axis_id, eid)).fetchone():
             c.close(); abort(404)
-        date_from = request.args.get('date_from') or f"{date.today().year}-01-01"
-        date_to = request.args.get('date_to') or date.today().isoformat()
+        date_from = request.args.get('date_from') or f"{paris_today().year}-01-01"
+        date_to = request.args.get('date_to') or paris_today().isoformat()
         rows = []
         if axis_id:
             tags = c.execute('SELECT * FROM analytical_tags WHERE axis_id=? AND entity_id IS ? ORDER BY name', (axis_id, eid)).fetchall()

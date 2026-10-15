@@ -8,6 +8,7 @@ import json
 from profitos.runtime import *
 from profitos import account_security as acsec
 from profitos import totp as totp_mod
+from profitos.accounting import paris_today
 
 _GUARD_ALLOWED = {
     'static', 'logout', 'login', 'login_two_factor', 'org_switch', 'two_factor_setup', 'account_security',
@@ -399,7 +400,7 @@ def register(app):
         data = build_personal_export(session['user_id'])
         log_security_event('PERSONAL_DATA_EXPORT', 'SUCCESS', target='account')
         return send_file(io.BytesIO(data), mimetype='application/zip', as_attachment=True,
-                         download_name=f"profitos-mes-donnees-{date.today().isoformat()}.zip", max_age=0)
+                         download_name=f"profitos-mes-donnees-{paris_today().isoformat()}.zip", max_age=0)
 
     # ------------------------------------------------------------------ organisation en cours de suppression
     @app.route('/organisation/suppression-programmee')

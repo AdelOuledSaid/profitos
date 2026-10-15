@@ -31,10 +31,10 @@ def register(app):
             asset_description = (request.form.get('asset_description') or '').strip()
             periodicity = request.form.get('periodicity') or 'monthly'
             try:
-                asset_value = float(request.form.get('asset_value') or 0)
-                redevance_amount = float(request.form.get('redevance_amount') or 0)
+                asset_value = form_float(request.form.get('asset_value'))
+                redevance_amount = form_float(request.form.get('redevance_amount'))
                 duration_months = int(request.form.get('duration_months') or 0)
-                purchase_option_amount = float(request.form.get('purchase_option_amount') or 0)
+                purchase_option_amount = form_float(request.form.get('purchase_option_amount'))
                 vat_raw = (request.form.get('vat_rate') or '').strip().replace(',', '.')
                 vat_rate = float(vat_raw) if vat_raw else None
                 if vat_rate is not None and not (0 <= vat_rate <= 20):
@@ -42,7 +42,7 @@ def register(app):
             except ValueError:
                 flash("Les montants et la durée doivent être des nombres valides.")
                 return redirect(url_for('finance_lease_new'))
-            start_date = request.form.get('start_date') or date.today().isoformat()
+            start_date = request.form.get('start_date') or paris_today().isoformat()
             if not lessor_name or not asset_description or redevance_amount <= 0 or duration_months <= 0:
                 flash("Le bailleur, le bien, la redevance et la durée sont obligatoires.")
                 return redirect(url_for('finance_lease_new'))
@@ -59,12 +59,27 @@ def register(app):
                 c.close()
                 flash(f"Impossible de créer ce contrat : {e}")
                 return redirect(url_for('finance_lease_new'))
+            settled, settle_error = 0, None
+            if request.form.get('past_paid'):
+                past = c.execute("SELECT id,due_date FROM finance_lease_payments WHERE lease_id=? AND COALESCE(paid,0)=0 AND due_date<? ORDER BY due_date",
+                                 (lease_id, paris_today().isoformat())).fetchall()
+                for row in past:
+                    try:
+                        pay_lease_payment(c, row['id'], entity_id=current_entity_id(), created_by=current_user()['email'],
+                                          payment_date=str(row['due_date'])[:10])
+                        settled += 1
+                    except AccountingError as e:
+                        c.rollback(); settle_error = str(e); break
             c.close()
+            if settled:
+                flash(f"{settled} redevance{'s' if settled > 1 else ''} passée{'s' if settled > 1 else ''} marquée{'s' if settled > 1 else ''} comme réglée{'s' if settled > 1 else ''}.")
+            if settle_error:
+                flash(f"Certaines redevances passées n'ont pas pu être réglées automatiquement : {settle_error} Réglez-les depuis l'échéancier.")
             log_activity('FINANCE_LEASE_CREATED', f"Crédit-bail créé : {asset_description} ({lessor_name})")
             flash("Contrat de crédit-bail enregistré avec son échéancier de redevances.")
             return redirect(url_for('finance_lease_detail', lease_id=lease_id))
 
-        return render_template('finance_lease_new.html', today=date.today().isoformat())
+        return render_template('finance_lease_new.html', today=paris_today().isoformat())
 
     @app.route('/comptabilite/credit-bail/<int:lease_id>')
     @login_required
@@ -124,11 +139,11 @@ def register(app):
         ownership_c.close()
         if not owned:
             abort(404)
-        exercise_date = request.form.get('exercise_date') or date.today().isoformat()
+        exercise_date = request.form.get('exercise_date') or paris_today().isoformat()
         asset_account = request.form.get('asset_account')
         depreciation_account = request.form.get('depreciation_account')
         try:
-            useful_life_years = float(request.form.get('useful_life_years') or 0)
+            useful_life_years = form_float(request.form.get('useful_life_years'))
         except ValueError:
             useful_life_years = 0
         if not asset_account or not depreciation_account or useful_life_years <= 0:

@@ -41,7 +41,7 @@
         <tr>
           <td><code>{{ j.code }}</code></td>
           <td><a class="purchase-detail-link" href="{{ url_for('accounting_journal_detail',code=j.code) }}">{{ j.label }}</a>{% if j.is_default %} <span class="purchase-muted" style="font-size:12px;">(par défaut)</span>{% endif %}</td>
-          <td>{{ j.journal_type }}</td>
+          <td>{{ j.journal_type|fr_label }}</td>
           <td>{{ counts.get(j.code, 0) }}</td>
         </tr>
       {% endfor %}

@@ -536,11 +536,43 @@
 <p>Menu <strong>Trésorerie → Simulateur de décision</strong>. Il répond à la question : « puis-je me le permettre, et comment ? »</p>
 <ol>
 <li>Choisissez le type de décision : investissement ou machine, embauche, dépense exceptionnelle, nouveau marché.</li>
-<li>Renseignez le décaissement initial et son jour, le coût mensuel supplémentaire, l'encaissement attendu et son jour, la réserve minimale à préserver, le financement maximum accepté et la date limite de décision.</li>
+<li>Renseignez le décaissement initial HT et son jour, le taux de TVA (payée avec le décaissement, récupérée le 15 du mois suivant), le coût mensuel supplémentaire (pour une embauche : salaire brut × 1,45 environ), la recette mensuelle que la décision rapporte, l'encaissement ponctuel attendu et son jour, la réserve minimale à préserver, le financement maximum accepté et la date limite de décision. Les montants acceptent le format « 12 500,50 ».</li>
 <li>Dans <strong>Contraintes réelles</strong>, cochez les leviers que vous acceptez : report négociable (et de combien de jours), paiement fractionnable (en combien d'échéances), financement externe.</li>
+<li>Dans <strong>Rentabilité et financement</strong>, choisissez l'horizon de rentabilité (36 mois par défaut), le taux et la durée du prêt envisagé.</li>
 <li><strong>Simuler la décision</strong>.</li>
 </ol>
-<p>Le résultat donne d'abord le verdict de la décision telle que saisie (soutenable, vigilance ou risqué, avec le besoin de financement pour éviter le négatif), puis un <strong>plan optimisé</strong> qui n'utilise que les leviers cochés, les trois alternatives les plus proches et l'impact sur le point bas et le solde à 90 jours. Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire.</p>
+<p>Le résultat se lit en cinq blocs :</p>
+<div class="help-table"><table>
+<thead>
+<tr>
+<th>Bloc</th>
+<th>Ce qu'il dit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scénario initial</td>
+<td>Verdict de la décision telle que saisie (soutenable, vigilance ou risqué) et besoin de financement pour éviter le négatif</td>
+</tr>
+<tr>
+<td>Impact sur votre trésorerie</td>
+<td>Graphique sur 90 jours : sans la décision, avec la décision, avec le plan optimisé, et votre réserve</td>
+</tr>
+<tr>
+<td>Test de résistance</td>
+<td>Le point bas si vos clients paient en retard (scénario prudent)</td>
+</tr>
+<tr>
+<td>Rentabilité</td>
+<td>Gain net mensuel, délai de retour sur investissement, résultat cumulé sur l'horizon choisi, rendement, et coût du prêt recommandé (mensualité, intérêts)</td>
+</tr>
+<tr>
+<td>Plan optimisé</td>
+<td>La meilleure date, le fractionnement et le financement, en n'utilisant que les leviers cochés, avec les trois alternatives les plus proches</td>
+</tr>
+</tbody>
+</table></div>
+<p>Un report ou un fractionnement reste à confirmer avec le fournisseur ou le partenaire ; le prêt, avec votre banque.</p>
 <h3 id="diagnostic-financier">Diagnostic financier</h3>
 <p>Menu <strong>Trésorerie → Diagnostic financier</strong>. Un score de maîtrise financière sur 100, la décision qui protège le plus votre argent en ce moment, la liste des décisions classées par impact, et une réponse à « peut-on financièrement prendre ce marché ? » pour vos opportunités. La page dit aussi ce que ProfitOS ne sait pas encore, pour que vous complétiez les données manquantes.</p>
 <h3 id="gisements-de-cash">Gisements de cash</h3>

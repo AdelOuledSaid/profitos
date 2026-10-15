@@ -26,7 +26,7 @@
       <div>
         <div class="purchase-eyebrow">MISSION CABINET</div>
         <h2>{{ collab.firm_name or 'Cabinet comptable' }}</h2>
-        <div class="purchase-muted">{{ collab.accountant_email or 'Email non renseigné' }} · statut : {{ collab.status }}</div>
+        <div class="purchase-muted">{{ collab.accountant_email or 'Email non renseigné' }} · statut : {{ collab.status|fr_label }}</div>
       </div>
       {% if collab.status=='active' %}
       <form method="post" action="{{ url_for('accountant_collaboration_close',review_id=review.id) }}">
@@ -56,7 +56,7 @@
       <div>
         <strong>#{{ req.id }} · {{ req.title }}</strong>
         <div class="purchase-muted">{{ req.description or '' }}</div>
-        <div class="purchase-muted">Statut : {{ req.status }}{% if req.due_date %} · échéance {{ req.due_date|fr_date }}{% endif %}</div>
+        <div class="purchase-muted">Statut : {{ req.status|fr_label }}{% if req.due_date %} · échéance {{ req.due_date|fr_date }}{% endif %}</div>
       </div>
       {% if collab.status=='active' %}
       <form method="post" action="{{ url_for('accountant_request_status',review_id=review.id,request_id=req.id) }}">

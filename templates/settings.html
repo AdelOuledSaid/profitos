@@ -30,8 +30,6 @@
     <h2>Préférences</h2>
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Devise<select name="currency">{% for cur in ("EUR","USD","GBP") %}<option value="{{ cur }}" {% if app_settings and app_settings.currency==cur %}selected{% endif %}>{{ {"EUR":"Euro (€)","USD":"Dollar américain ($)","GBP":"Livre sterling (£)"}[cur] }}</option>{% endfor %}</select></label>
-      <label>Langue et format<select name="locale"><option value="fr-FR">Français (France)</option><option value="en-GB">Anglais (Royaume-Uni)</option><option value="en-US">Anglais (États-Unis)</option></select></label>
       <label class="check"><input type="checkbox" name="notifications_enabled" {% if app_settings and app_settings.notifications_enabled %}checked{% endif %}> Notifications Slack / Teams</label>
       <label>Webhook Slack (optionnel)<input name="slack_webhook_url" placeholder="https://hooks.slack.com/services/..." value="{{ app_settings.slack_webhook_url or '' }}"></label>
       <label>Webhook Teams (optionnel)<input name="teams_webhook_url" placeholder="https://outlook.office.com/webhook/..." value="{{ app_settings.teams_webhook_url or '' }}"></label>

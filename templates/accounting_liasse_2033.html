@@ -24,17 +24,17 @@
 <div class="twocol">
 <section class="purchase-panel">
   <h2 style="color:#fff;margin-top:0;">2033-A — Actif</h2>
-  <table class="purchase-table ca3-table">
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
     <thead><tr><th>Case</th><th>Poste</th><th class="num">Brut</th><th class="num">Amort.</th><th class="num">Net</th></tr></thead>
     <tbody>
     {% for a in l.actif %}<tr><td class="ca3-box">{{ a.box_brut }}{% if a.box_amort %}<br><small>{{ a.box_amort }}</small>{% endif %}</td><td>{{ a.label }}</td><td class="num">{{ a.brut|fr_number(0) }}</td><td class="num">{% if a.box_amort %}{{ a.amort|fr_number(0) }}{% endif %}</td><td class="num">{{ a.net|fr_number(0) }}</td></tr>{% endfor %}
     <tr class="ca3-total"><td class="ca3-box">110</td><td colspan="3">Total actif</td><td class="num">{{ l.total_actif|fr_number(0) }}</td></tr>
     </tbody>
-  </table>
+  </table></div>
 </section>
 <section class="purchase-panel">
   <h2 style="color:#fff;margin-top:0;">2033-A — Passif</h2>
-  <table class="purchase-table ca3-table">
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
     <thead><tr><th>Case</th><th>Poste</th><th class="num">Montant</th></tr></thead>
     <tbody>
     {% for p in l.passif %}
@@ -43,13 +43,13 @@
     {% endfor %}
     <tr class="ca3-total"><td class="ca3-box">180</td><td>Total passif</td><td class="num">{{ l.total_passif|fr_number(0) }}</td></tr>
     </tbody>
-  </table>
+  </table></div>
 </section>
 </div>
 
 <section class="purchase-panel" style="margin-top:14px;">
   <h2 style="color:#fff;margin-top:0;">2033-B — Compte de résultat</h2>
-  <table class="purchase-table ca3-table"><tbody>
+  <div class="purchase-table-wrap"><div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
     {% for x in l.produits %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
     <tr class="ca3-total"><td class="ca3-box">232</td><td>Total des produits d'exploitation</td><td class="num">{{ l.total_produits|fr_number(0) }}</td></tr>
     {% for x in l.charges %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
@@ -57,7 +57,7 @@
     <tr class="ca3-total"><td class="ca3-box">270</td><td>Résultat d'exploitation</td><td class="num">{{ l.resultat_exploitation|fr_number(0) }}</td></tr>
     {% for x in l.financier_exceptionnel %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
     <tr class="ca3-total"><td class="ca3-box">310</td><td>Bénéfice ou perte</td><td class="num">{{ l.resultat|fr_number(0) }}</td></tr>
-  </tbody></table>
+  </tbody></table></div>
   {% if l.unclassified %}<p class="purchase-muted" style="font-size:12px;">Comptes de gestion rattachés par défaut aux autres produits / autres charges : {{ l.unclassified|join(', ') }}.</p>{% endif %}
 </section>
 
