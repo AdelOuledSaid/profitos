@@ -280,7 +280,9 @@ def register(app):
                 description = detected.get('description') or ''
 
         try:
-            amount = float(amount)
+            amount = form_float(amount, None)
+            if amount is None:
+                raise ValueError
         except (TypeError, ValueError):
             c.close()
             flash("Montant manquant ou invalide.")

@@ -922,7 +922,7 @@ MODULE_AREAS={
     'profitos.routes.accounting':'accounting','profitos.routes.loans':'accounting',
     'profitos.routes.finance_leases':'accounting','profitos.routes.analytics':'accounting',
     'profitos.routes.reviews':'accounting','profitos.routes.payroll':'accounting',
-    'profitos.routes.ledger':'accounting',
+    'profitos.routes.ledger':'accounting','profitos.routes.teledeclarations':'accounting','profitos.routes.automations':'accounting',
     'profitos.routes.bank_sync':'banking','profitos.routes.swan_baas':'banking',
     'profitos.routes.gocardless_baas':'banking',
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
@@ -2183,6 +2183,55 @@ def _migrate_tenant_schema(org_id=None):
         created_at TEXT NOT NULL,
         created_by TEXT
     );
+    CREATE TABLE IF NOT EXISTS recurring_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        label TEXT NOT NULL,
+        journal_code TEXT NOT NULL,
+        lines_json TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        day_of_month INTEGER,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        next_date TEXT NOT NULL,
+        active INTEGER DEFAULT 1,
+        last_generated TEXT,
+        created_by TEXT,
+        created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS teledeclarations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        decl_type TEXT NOT NULL,
+        form TEXT,
+        channel TEXT,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        provider TEXT,
+        remote_id TEXT,
+        ack_number TEXT,
+        ack_at TEXT,
+        rejection_json TEXT,
+        history_json TEXT,
+        corrective INTEGER DEFAULT 0,
+        replaces_id INTEGER,
+        payment_amount REAL,
+        submitted_by TEXT,
+        submitted_at TEXT,
+        updated_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS fiscal_settings(
+        entity_key INTEGER NOT NULL,
+        fy_end TEXT NOT NULL,
+        data TEXT,
+        updated_at TEXT,
+        updated_by TEXT,
+        PRIMARY KEY(entity_key, fy_end)
+    );
     CREATE TABLE IF NOT EXISTS treasury_settings(
         entity_key INTEGER PRIMARY KEY,
         safety_threshold REAL DEFAULT 0,
@@ -3328,6 +3377,12 @@ def api_key_required(fn):
         if not org or not org_has_access(org):
             c.close()
             return jsonify({'error':'subscription_inactive','message':"L'abonnement de cette organisation n'est pas actif."}),403
+        # La formule doit toujours inclure l'API (une organisation repassée en Starter ne
+        # garde pas l'accès avec ses anciennes clés).
+        from profitos.plan_limits import feature_enabled as _plan_feature
+        if not _plan_feature(effective_plan(org),'api'):
+            c.close()
+            return jsonify({'error':'plan_without_api','message':"La formule actuelle de cette organisation n'inclut pas l'API."}),403
         # Une clé créée par un membre retiré de l'équipe n'est plus valable.
         creator=(row['created_by'] or '').strip().lower()
         if creator:
@@ -3613,6 +3668,9 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-15','title':'Automatisations : écritures récurrentes, rappels des échéances fiscales, contrôles avant liasse'},
+    {'date':'2026-10-15','title':'Télédéclarations : TVA, liasse, IS et CVAE préparées, contrôlées et suivies (simulation tant que le partenaire EDI n\'est pas connecté)'},
+    {'date':'2026-10-15','title':"Liasse fiscale du régime normal (2050 à 2059), impôt sur les sociétés et CVAE 2026"},
     {'date':'2026-10-15','title':"Guide utilisateur intégré (menu Aide) et abonnement annuel : 2 mois offerts"},
     {'date':'2026-10-14','title':'Trésorerie : plan mensuel, flux prévus, TVA et emprunts intégrés ; simulateur de décision enrichi'},
     {'date':'2026-10-14','title':'Comptabilité complète : saisie, grand livre, balances, CA3 case par case, tableaux 2033'},

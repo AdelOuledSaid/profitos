@@ -134,3 +134,6 @@ nav a.nav-locked{color:#8a8a8a;display:flex;align-items:center;gap:6px;white-spa
 /* v446 : rôle Lecture seule */
 .is-readonly{opacity:.45!important;cursor:not-allowed!important;filter:grayscale(.6)}
 a.is-readonly{pointer-events:auto}
+
+/* v447 : longs mots sans espace (URL, a/b/c) coupés plutôt que de déborder sur mobile */
+label,.purchase-muted,.flash{overflow-wrap:break-word}

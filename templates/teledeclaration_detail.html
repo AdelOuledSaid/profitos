@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">TÉLÉDÉCLARATION · {{ row.channel }}{% if row.mode != 'production' %} · SIMULATION{% endif %}</div>
+    <h1 class="purchase-title">{{ types[row.decl_type].label }} ({{ row.form }})</h1>
+    <p class="purchase-subtitle">Période du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}{% if row.corrective %} — déclaration rectificative{% endif %}. Déposée le {{ row.submitted_at|fr_datetime_paris }} par {{ row.submitted_by or '—' }}.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">← Télédéclarations</a>
+    <a class="purchase-nav-btn" href="{{ url_for('teledeclaration_payload', decl_id=row.id) }}">Télécharger le contenu (JSON)</a>
+  </div>
+</div>
+
+{% if row.mode != 'production' %}<div class="flash" role="status">Déclaration de simulation : elle n'a pas été transmise à l'administration fiscale.</div>{% endif %}
+
+<div class="purchase-stats" style="margin-bottom:14px;">
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Statut</div><div class="purchase-stat-value" style="font-size:18px;">{{ teledeclaration_status_label(row.status) }}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Accusé de réception</div><div class="purchase-stat-value" style="font-size:18px;">{{ row.ack_number or '—' }}</div>{% if row.ack_at %}<div class="purchase-muted" style="font-size:12px;">{{ row.ack_at|fr_datetime_paris }}</div>{% endif %}</div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Paiement associé</div><div class="purchase-stat-value" style="font-size:18px;">{{ (row.payment_amount|fr_number(0) ~ ' €') if row.payment_amount else '—' }}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Référence de dépôt</div><div class="purchase-stat-value" style="font-size:14px;overflow-wrap:anywhere;">{{ row.remote_id or '—' }}</div></div></div>
+</div>
+
+{% if reasons %}<div class="flash" role="alert"><strong>Motifs de rejet :</strong><ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul></div>{% endif %}
+
+{% if row.status not in ('accepted', 'rejected') %}
+<form method="post" action="{{ url_for('teledeclaration_refresh', decl_id=row.id) }}" style="margin-bottom:14px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut</button>
+</form>
+{% endif %}
+
+<div class="twocol">
+<section class="purchase-panel">
+  <h2>Historique</h2>
+  <ul class="purchase-timeline" style="padding-left:18px;">
+    {% for h in history %}<li><strong>{{ h.at|fr_datetime_paris }}</strong> — {{ teledeclaration_status_label(h.status) }}{% if h.message %} <span class="purchase-muted">· {{ h.message }}</span>{% endif %}</li>{% endfor %}
+  </ul>
+  <p class="purchase-muted" style="font-size:12px;overflow-wrap:anywhere;">Empreinte SHA-256 du contenu déposé : {{ row.payload_hash }}</p>
+</section>
+<section class="purchase-panel">
+  <h2>Contenu déposé</h2>
+  <div class="purchase-table-wrap" style="max-height:420px;overflow:auto;"><table class="purchase-table ca3-table">
+    <tbody>
+    {% for b in payload.boxes %}{% if b.amount %}<tr><td class="ca3-box">{{ b.code }}</td><td>{{ b.label }}</td><td class="num">{{ b.amount|fr_number(0) }}</td></tr>{% endif %}{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+</div>
+</div>
+{% endblock %}

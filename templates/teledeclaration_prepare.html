@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+{% set p = built.payload %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">TÉLÉDÉCLARATION · {{ built.meta.channel }}</div>
+    <h1 class="purchase-title">{{ built.meta.label }} ({{ built.meta.form }})</h1>
+    <p class="purchase-subtitle">Période du {{ start|fr_date }} au {{ end|fr_date }}{% if p.annexes %} — annexes {{ p.annexes }}{% endif %}. {{ p.declarant.name or 'Entreprise' }}{% if p.declarant.siren %} · SIREN {{ p.declarant.siren }}{% endif %}.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">← Télédéclarations</a>
+</div>
+
+{% if decl_type == 'LIASSE' %}
+<nav class="seg-tabs" aria-label="Régime" style="margin-bottom:12px;">
+  <a href="{{ url_for('teledeclaration_prepare', type='LIASSE', du=start.isoformat(), au=end.isoformat(), regime='normal') }}" class="{{ 'is-active' if regime=='normal' else '' }}">Régime réel normal (2050)</a>
+  <a href="{{ url_for('teledeclaration_prepare', type='LIASSE', du=start.isoformat(), au=end.isoformat(), regime='simplifie') }}" class="{{ 'is-active' if regime=='simplifie' else '' }}">Régime simplifié (2033)</a>
+</nav>
+{% endif %}
+
+{% for e in built.errors %}<div class="flash" role="alert">⛔ {{ e }}</div>{% endfor %}
+{% for w in built.warnings %}<div class="flash" role="status">⚠ {{ w }}</div>{% endfor %}
+{% if not built.errors %}<div class="flash" role="status">✓ Contrôles bloquants passés : la déclaration peut être déposée.</div>{% endif %}
+{% if existing %}<div class="flash" role="status">Une déclaration est déjà déposée pour cette période : <a class="link" href="{{ url_for('teledeclaration_detail', decl_id=existing.id) }}">{{ teledeclaration_status_label(existing.status) }}</a>.</div>{% endif %}
+
+<section class="purchase-panel">
+  <h2>Contenu de la déclaration</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr>{% if decl_type == 'LIASSE' and regime == 'normal' %}<th>Formulaire</th>{% endif %}<th>Case</th><th>Libellé</th><th class="num">Montant (€)</th></tr></thead>
+    <tbody>
+    {% for b in p.boxes %}{% if b.amount or decl_type != 'LIASSE' %}
+      <tr>{% if decl_type == 'LIASSE' and regime == 'normal' %}<td>{{ b.form }}</td>{% endif %}<td class="ca3-box">{{ b.code }}</td><td>{{ b.label }}</td><td class="num">{{ b.amount|fr_number(0) }}</td></tr>
+    {% endif %}{% endfor %}
+    {% if p.payment %}<tr class="ca3-total"><td class="ca3-box" {% if decl_type == 'LIASSE' and regime == 'normal' %}colspan="2"{% endif %}>€</td><td>Montant du paiement associé</td><td class="num">{{ p.payment.amount|fr_number(0) }}</td></tr>{% endif %}
+    </tbody>
+  </table></div>
+  {% if decl_type == 'LIASSE' %}<p class="purchase-muted" style="font-size:12px;">Seules les cases non nulles sont affichées ; toutes sont transmises.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Dépôt</h2>
+  {% if not can_submit %}
+    <p class="purchase-muted">Seuls le propriétaire, un administrateur ou le comptable peuvent déposer une déclaration.</p>
+  {% elif built.errors %}
+    <p class="purchase-muted">Corrigez les anomalies bloquantes ci-dessus pour pouvoir déposer.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('teledeclaration_submit') }}" class="stack" data-confirm="{{ 'Transmettre réellement cette déclaration à l\'administration fiscale ?' if partner else 'Déposer cette déclaration en mode simulation ?' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="type" value="{{ decl_type }}"><input type="hidden" name="du" value="{{ start.isoformat() }}">
+    <input type="hidden" name="au" value="{{ end.isoformat() }}"><input type="hidden" name="regime" value="{{ regime }}">
+    {% if decl_type == 'IS_2571' %}<label>Montant de l'acompte (€)<input name="acompte" inputmode="decimal" value="{{ acompte or (p.payment.amount if p.payment else '') }}"></label>{% endif %}
+    {% if existing and existing.status == 'accepted' %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration acceptée)</label>{% endif %}
+    <label class="check"><input type="checkbox" name="certify" value="1" required> Je certifie l'exactitude des informations déclarées et je suis habilité(e) à déposer cette déclaration pour l'entreprise.</label>
+    <button type="submit" class="purchase-primary-btn primary">{{ 'Déposer la déclaration' if partner else 'Déposer en mode simulation' }}</button>
+  </form>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

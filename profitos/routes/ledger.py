@@ -325,3 +325,98 @@ def register(app):
         return render_template('accounting_liasse_2033.html', l=data, fy=fy, choice=choice,
                                current=current, previous=previous)
 
+    # ------------------------------------------------------------------ régime normal 2050-2059, IS, CVAE
+    def _fiscal_years(c, eid):
+        current = L.fiscal_year_for(c, paris_today(), eid)
+        previous = L.fiscal_year_for(c, current['start'] - timedelta(days=1), eid)
+        before = L.fiscal_year_for(c, previous['start'] - timedelta(days=1), eid)
+        choice = request.args.get('exercice') or 'precedent'
+        if choice == 'courant':
+            return current, previous, choice, current, previous
+        return previous, before, 'precedent', current, previous
+
+    def _liasse_and_tax(c, eid, fy, prior):
+        from profitos.liasse_normal import liasse_normale
+        from profitos import corporate_tax as CT
+        settings = CT.get_fiscal_settings(c, eid, fy['end'].isoformat())
+        data = liasse_normale(c, fy['start'], fy['end'], eid, settings=settings,
+                              previous=(prior['start'], prior['end']))
+        eligible = CT.pme_eligible(data['chiffre_affaires'], fy['start'], fy['end'],
+                                   settings.get('capital_libere'), settings.get('detention_pp'))
+        acomptes = settings.get('acomptes_verses')
+        acomptes_auto = CT.acomptes_from_ledger(c, fy['start'], fy['end'], eid)
+        if acomptes is None or acomptes == '':
+            acomptes = acomptes_auto
+        is_res = CT.compute_is(data['fiscal']['XN'], fy['start'], fy['end'], data['chiffre_affaires'], eligible,
+                               credits=settings.get('credits_impot') or 0, acomptes=acomptes)
+        cvae = CT.compute_cvae(data['va']['OX'], data['va']['OG'], fy['start'], fy['end'])
+        calendar = CT.fiscal_calendar(fy['start'], fy['end'], is_res, cvae)
+        return data, settings, is_res, cvae, calendar, acomptes_auto
+
+    @app.route('/comptabilite/liasse-2050')
+    @login_required
+    def accounting_liasse_2050():
+        from profitos.liasse_normal import liasse_normale_rows
+        eid = _eid()
+        c = cx()
+        fy, prior, choice, current, previous = _fiscal_years(c, eid)
+        data, settings, is_res, cvae, calendar, _a = _liasse_and_tax(c, eid, fy, prior)
+        c.close()
+        if request.args.get('format') in ('xlsx', 'csv'):
+            return export_response(liasse_normale_rows(data), f"liasse-2050-2059-{fy['end'].isoformat()}")
+        from profitos.automation import precontrols
+        c = cx()
+        controls = precontrols(c, fy['start'], fy['end'], eid, today=paris_today())
+        c.close()
+        return render_template('accounting_liasse_2050.html', l=data, fy=fy, choice=choice,
+                               current=current, previous=previous, is_res=is_res, controls=controls)
+
+    @app.route('/comptabilite/impot-societes', methods=['GET', 'POST'])
+    @login_required
+    def accounting_corporate_tax():
+        from profitos import corporate_tax as CT
+        eid = _eid()
+        c = cx()
+        fy, prior, choice, current, previous = _fiscal_years(c, eid)
+        if request.method == 'POST':
+            action = request.form.get('action')
+            try:
+                if action == 'settings':
+                    def _rows(prefix):
+                        out = []
+                        for i in range(1, 9):
+                            amt = (request.form.get(f'{prefix}_amount_{i}') or '').strip()
+                            if not amt:
+                                continue
+                            out.append({'code': (request.form.get(f'{prefix}_code_{i}') or '').strip()[:3],
+                                        'label': (request.form.get(f'{prefix}_label_{i}') or '').strip()[:120],
+                                        'amount': form_float(amt)})
+                        return out
+                    raw_acomptes = (request.form.get('acomptes_verses') or '').strip()
+                    CT.save_fiscal_settings(c, eid, fy['end'].isoformat(), {
+                        'capital_libere': bool(request.form.get('capital_libere')),
+                        'detention_pp': bool(request.form.get('detention_pp')),
+                        'deficits_anterieurs': form_float(request.form.get('deficits_anterieurs')),
+                        'credits_impot': form_float(request.form.get('credits_impot')),
+                        'acomptes_verses': form_float(raw_acomptes) if raw_acomptes else None,
+                        'reintegrations': _rows('reint'), 'deductions': _rows('deduc'),
+                    }, now(), _who())
+                    log_activity('FISCAL_SETTINGS', f"Paramètres fiscaux de l'exercice clos le {fy['end'].isoformat()}")
+                    flash('Paramètres fiscaux enregistrés : la liasse et l\'impôt sont recalculés.')
+                elif action == 'entry':
+                    _d, _s, is_res, _cv, _cal, _aa = _liasse_and_tax(c, eid, fy, prior)
+                    entry_id = CT.generate_is_entry(c, fy['end'], is_res['is_du'], eid, _who())
+                    log_activity('CORPORATE_TAX_ENTRY', f"IS comptabilisé ({fr_number(is_res['is_du'], 0)} €)")
+                    flash("Écriture d'impôt sur les sociétés enregistrée.")
+                    c.close()
+                    return redirect(url_for('accounting_entry_detail', entry_id=entry_id))
+            except ValueError as exc:
+                flash(f"Saisie invalide : {exc}" if not isinstance(exc, AccountingError) else str(exc))
+            c.close()
+            return redirect(url_for('accounting_corporate_tax', exercice=choice))
+        data, settings, is_res, cvae, calendar, acomptes_auto = _liasse_and_tax(c, eid, fy, prior)
+        c.close()
+        return render_template('accounting_corporate_tax.html', l=data, fy=fy, choice=choice, current=current,
+                               previous=previous, settings=settings, is_res=is_res, cvae=cvae, calendar=calendar,
+                               acomptes_auto=acomptes_auto, today=paris_today())
+

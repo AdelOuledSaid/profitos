@@ -86,19 +86,27 @@ def register(app):
             if not user or not m:
                 session.pop('pending_2fa', None)
                 return redirect(url_for('login'))
+            if acsec.account_locked_until(user):
+                session.pop('pending_2fa', None)
+                flash('Trop de tentatives infructueuses : la connexion à ce compte est temporairement bloquée. Réessayez dans quelques minutes.')
+                return redirect(url_for('login'))
             method = acsec.verify_second_factor(user, request.form.get('code', ''))
             if not method:
                 pending['fails'] = int(pending.get('fails', 0)) + 1
                 log_security_event('LOGIN_2FA_FAILED', 'FAILURE', user_id=user['id'], target='account')
+                # Compteur côté serveur : le compteur de la session (cookie) peut être rejoué,
+                # celui du compte verrouille réellement après le seuil.
+                if acsec.register_login_failure(user):
+                    log_security_event('ACCOUNT_LOCKED', 'BLOCKED', user_id=user['id'], target='2fa')
                 if pending['fails'] >= 5:
                     session.pop('pending_2fa', None)
-                    acsec.register_login_failure(user)
                     flash('Trop de codes incorrects. Veuillez vous reconnecter.')
                     return redirect(url_for('login'))
                 session['pending_2fa'] = pending
                 flash('Code incorrect.')
                 return redirect(url_for('login_two_factor'))
             next_url = safe_next_url(pending.get('next'))
+            acsec.reset_login_failures(user['id'])
             acsec.start_user_session(user, m['organization_id'], m['role'])
             init_tenant_db()
             log_activity('LOGIN', 'Connexion (double authentification)')

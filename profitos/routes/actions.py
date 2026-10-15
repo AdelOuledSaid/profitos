@@ -14,6 +14,13 @@ def register(app):
             return text
         return repaired
 
+    def _kind_allowed(row):
+        """Une action n'est visible et modifiable que si le rôle a accès à son module
+        (relance → Relances clients, économie → Économies, marché → Marchés publics)."""
+        if row is None or not can_access(KIND_TO_AREA.get(str(row['kind'] or '').upper(), '')):
+            return None
+        return row
+
     def present_action(row):
         x=dict(row)
         x['title']=clean_legacy_text(x.get('title'))
@@ -34,8 +41,8 @@ def register(app):
             "SELECT * FROM actions WHERE entity_id IS ? AND status NOT IN ('PENDING','APPROVED') ORDER BY id DESC", (eid,)
         ).fetchall()
         c.close()
-        active_rows=[present_action(r) for r in active_rows]
-        history_rows=[present_action(r) for r in history_rows]
+        active_rows=[present_action(r) for r in active_rows if _kind_allowed(r)]
+        history_rows=[present_action(r) for r in history_rows if _kind_allowed(r)]
         return render_template('actions.html',rows=active_rows,history_rows=history_rows)
 
     @app.route('/actions/create/<kind>/<int:item_id>',methods=['POST'])
@@ -141,7 +148,7 @@ def register(app):
     @requires_paid_plan
     def action_edit(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
+        a=_kind_allowed(c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone())
         if not a:
             c.close()
             abort(404)
@@ -169,7 +176,7 @@ def register(app):
     @requires_paid_plan
     def action_delete(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
+        a=_kind_allowed(c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone())
         if not a:
             c.close()
             return redirect(url_for('actions'))
@@ -196,7 +203,7 @@ def register(app):
             return redirect(url_for('actions'))
 
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
+        a=_kind_allowed(c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone())
         if not a:
             c.close()
             return redirect(url_for('actions'))
@@ -238,7 +245,7 @@ def register(app):
     @requires_feature('advanced_features')
     def action_send(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
+        a=_kind_allowed(c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone())
         if not a:
             c.close()
             abort(404)
@@ -295,7 +302,7 @@ def register(app):
     @requires_feature('advanced_features')
     def action_send_sms(aid):
         c=cx()
-        a=c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone()
+        a=_kind_allowed(c.execute('SELECT * FROM actions WHERE id=? AND entity_id IS ?',(aid,current_entity_id())).fetchone())
         if not a:
             c.close(); abort(404)
         if a['status']!='APPROVED':

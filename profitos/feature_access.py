@@ -185,6 +185,8 @@ MODULE_FEATURES = {
     "profitos.routes.reviews": "accounting_core",
     "profitos.routes.payroll": "accounting_core",
     "profitos.routes.ledger": "accounting_core",
+    "profitos.routes.teledeclarations": "accounting_core",
+    "profitos.routes.automations": "accounting_core",
     "profitos.routes.bank_sync": "banking",
     "profitos.routes.swan_baas": "banking",
     "profitos.routes.entities": "multi_entity",

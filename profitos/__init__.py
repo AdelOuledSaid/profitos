@@ -200,6 +200,10 @@ def create_app(config_object=None):
     bank_sync.register(app)
     accounting.register(app)
     ledger_routes.register(app)
+    from .routes import teledeclarations as teledeclaration_routes
+    teledeclaration_routes.register(app)
+    from .routes import automations as automation_routes
+    automation_routes.register(app)
     expenses.register(app)
     cloud_storage.register(app)
     entities.register(app)

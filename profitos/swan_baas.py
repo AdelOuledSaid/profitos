@@ -172,9 +172,9 @@ def initiate_sepa_credit_transfer_sandbox(project_token, user_id, account_id, be
     import re
     beneficiary_name = (beneficiary_name or '').strip()
     iban = re.sub(r'\s+', '', (iban or '')).upper()
-    try:
-        value = float(amount)
-    except (TypeError, ValueError):
+    from profitos.invoice_amounts import parse_number
+    value = parse_number(amount, None) if not isinstance(amount, (int, float)) else float(amount)
+    if value is None:
         raise ValueError("Montant de virement invalide.")
     if not beneficiary_name or len(beneficiary_name) > 70:
         raise ValueError("Le nom du bénéficiaire est obligatoire (70 caractères maximum).")

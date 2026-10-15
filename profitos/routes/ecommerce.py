@@ -71,6 +71,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @require_area('settings')
     def ecommerce_sync(platform):
         from profitos.entities import current_entity_id
         if platform not in PLATFORM_LABELS:

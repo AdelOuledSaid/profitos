@@ -335,7 +335,7 @@ def register(app):
                 c.close(); return redirect(url_for('margin_watch'))
             if form=='reading':
                 d=request.form.get('reading_date','').strip(); v=request.form.get('value','').strip()
-                try: v=float(v)
+                try: v=form_float(v) if v else None
                 except ValueError: v=None
                 if d and v is not None:
                     c.execute('INSERT INTO price_index_readings(index_name,reading_date,value,created_at) VALUES(?,?,?,?)',(index_name,d,v,now())); c.commit()

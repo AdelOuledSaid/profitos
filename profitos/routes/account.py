@@ -185,14 +185,17 @@ def register(app):
             m=c.execute('SELECT memberships.* FROM memberships JOIN organizations o ON o.id=memberships.organization_id '
                         'WHERE memberships.user_id=? ORDER BY (o.deleted_at IS NOT NULL), memberships.id LIMIT 1',(u['id'],)).fetchone(); c.close()
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
-            acsec.reset_login_failures(u['id'])
             next_url=safe_next_url(request.args.get('next'))
             if acsec.user_has_2fa(u):
+                # Le compteur d'échecs n'est remis à zéro qu'après le second facteur :
+                # sinon un mot de passe connu permettait de relancer indéfiniment les
+                # essais de code 2FA en se reconnectant entre deux séries.
                 # Second facteur exigé avant d'ouvrir la session.
                 session.clear()
                 session['pending_2fa']={'uid':u['id'],'org':m['organization_id'],'at':now(),'next':next_url}
                 return redirect(url_for('login_two_factor'))
             session.pop('login_email',None)
+            acsec.reset_login_failures(u['id'])
             acsec.start_user_session(u,m['organization_id'],m['role']); init_tenant_db(); log_activity('LOGIN','Connexion'); log_security_event('LOGIN_SUCCESS','SUCCESS',user_id=u['id'],organization_id=m['organization_id'],target='account')
             return redirect(next_url or url_for('home'))
         return render_template('login.html',login_email=session.pop('login_email',''))
@@ -404,6 +407,7 @@ def register(app):
 
     @app.route('/referral')
     @login_required
+    @require_area('settings')
     def referral():
         org=current_org()
         if not org['referral_code']:
@@ -429,9 +433,24 @@ def register(app):
             if teams_url and not validate_webhook_url(teams_url): flash('Webhook Teams invalide ou non autorisé.'); return redirect(request.url)
             accountant_email=request.form.get('accountant_email','').strip() or None
             weekly_export=1 if request.form.get('weekly_export_enabled')=='on' else 0
-            logo_url=request.form.get('logo_url','').strip() or None
+            # Logo : fichier téléversé, conservé en data: URI (la CSP n'autorise aucune image
+            # externe ; une URL tierce s'affichait cassée et exposait l'IP des utilisateurs).
+            _cur=cx(); _row=_cur.execute('SELECT logo_url FROM app_settings WHERE id=1').fetchone(); _cur.close()
+            logo_url=_row['logo_url'] if _row and str(_row['logo_url'] or '').startswith('data:image/') else None
+            if request.form.get('remove_logo'):
+                logo_url=None
+            upload=request.files.get('logo_file')
+            if upload and upload.filename:
+                raw=upload.read(100*1024+1)
+                mime=('image/png' if raw[:8]==b'\x89PNG\r\n\x1a\n' else 'image/jpeg' if raw[:3]==b'\xff\xd8\xff'
+                      else 'image/webp' if raw[:4]==b'RIFF' and raw[8:12]==b'WEBP' else None)
+                if not mime:
+                    flash('Logo refusé : utilisez une image PNG, JPEG ou WebP.'); return redirect(request.url)
+                if len(raw)>100*1024:
+                    flash('Logo trop lourd : 100 Ko maximum.'); return redirect(request.url)
+                import base64
+                logo_url=f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
             accent_color=request.form.get('accent_color','').strip() or None
-            if logo_url and not validate_logo_url(logo_url): flash('URL de logo invalide (https requis).'); return redirect(request.url)
             if accent_color and not validate_hex_color(accent_color): flash('Couleur invalide : utilisez un format hexadécimal (ex. : #111827).'); return redirect(request.url)
             require_validation=1 if request.form.get('require_purchase_validation')=='on' else 0
             c=cx(); c.execute("INSERT INTO app_settings(id,onboarding_complete,currency,locale,notifications_enabled,slack_webhook_url,teams_webhook_url,accountant_email,weekly_export_enabled,logo_url,accent_color,require_purchase_validation,created_at,updated_at) VALUES(1,1,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET currency=excluded.currency,locale=excluded.locale,notifications_enabled=excluded.notifications_enabled,slack_webhook_url=excluded.slack_webhook_url,teams_webhook_url=excluded.teams_webhook_url,accountant_email=excluded.accountant_email,weekly_export_enabled=excluded.weekly_export_enabled,logo_url=excluded.logo_url,accent_color=excluded.accent_color,require_purchase_validation=excluded.require_purchase_validation,updated_at=excluded.updated_at",(currency,locale,notif,slack_url,teams_url,accountant_email,weekly_export,logo_url,accent_color,require_validation,now(),now())); c.commit(); c.close()

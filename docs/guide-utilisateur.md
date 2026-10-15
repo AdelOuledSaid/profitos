@@ -16,7 +16,7 @@ Ce guide explique, module par module, comment utiliser ProfitOS au quotidien. Le
 | Facture électronique | Factures Factur-X, envoi par plateforme agréée, suivi des statuts | Starter |
 | Achats et dépenses | Factures fournisseurs, notes de frais, budgets | Starter |
 | Banque | Connexion ou import des relevés, rapprochement, catégorisation | Pro |
-| Comptabilité | Écritures, grand livre, balance, TVA, clôture, FEC, liasse 2033 | Pro |
+| Comptabilité | Écritures, grand livre, balance, TVA, clôture, FEC, liasses 2033 et 2050, IS et CVAE | Pro |
 | Trésorerie et scénarios | Prévision à 90 jours, plan mensuel, simulateur de décision | Business |
 | Multi-sociétés | Plusieurs entités, consolidation, portefeuille cabinet | Multi-sociétés |
 
@@ -442,6 +442,35 @@ La TVA sur encaissements (prestations de services) est gérée : elle devient ex
 3. **Clôture** : verrouille la période (plus aucune écriture possible avant la date de clôture) et génère les à-nouveaux de l'exercice suivant, le résultat étant reporté en 120 (bénéfice) ou 129 (perte).
 4. **Plaquette** : bilan et compte de résultat de l'exercice en PDF.
 5. **Liasse 2033** : les tableaux 2033-A (bilan simplifié) et 2033-B (compte de résultat simplifié) préremplis depuis la balance, pour le régime réel simplifié.
+6. **Liasse 2050 (réel normal)** : les tableaux 2050 à 2059 préremplis depuis la comptabilité — bilan actif et passif avec la colonne N-1, compte de résultat, immobilisations, amortissements, provisions, échéances des créances et dettes (emprunts ventilés selon leur échéancier), résultat fiscal (2058-A), suivi des déficits (2058-B), renseignements divers (2058-C) et valeur ajoutée (2059-E). Export Excel case par case, à transmettre à votre expert-comptable ou à votre partenaire EDI.
+7. **Impôt sur les sociétés et CVAE** : calcul de l'IS (taux réduit de 15 % jusqu'à 42 500 € pour les PME éligibles, 25 % au-delà, contribution sociale), des acomptes et du solde à payer, et de la CVAE de l'année. Saisissez les réintégrations et déductions extra-comptables, les déficits antérieurs et les crédits d'impôt : la liasse et l'impôt sont recalculés. Un bouton passe l'écriture d'impôt de l'exercice (695 / 444) et un calendrier liste les échéances (acomptes, relevé de solde, dépôt de la liasse, CVAE).
+
+Ces calculs sont des aides à la préparation : ils doivent être validés par votre expert-comptable.
+
+### Télédéclarations
+
+Menu **Comptabilité → Télédéclarations**. ProfitOS prépare vos déclarations à partir de la comptabilité, les contrôle, puis les dépose par l'intermédiaire d'un partenaire EDI agréé par l'administration fiscale :
+
+| Déclaration | Formulaire | Canal |
+| --- | --- | --- |
+| TVA | 3310-CA3 | EDI-TVA |
+| Liasse fiscale | 2065 + 2033 ou 2050 à 2059 | EDI-TDFC |
+| Solde d'impôt sur les sociétés | 2572 | EDI-Paiement |
+| Acompte d'impôt sur les sociétés | 2571 | EDI-Paiement |
+| Valeur ajoutée (CVAE) | 1330-CVAE | EDI-TDFC |
+
+1. **Préparer** : ProfitOS affiche le contenu case par case et ses contrôles. Les anomalies bloquantes (SIREN manquant, bilan déséquilibré, période non terminée) empêchent le dépôt ; les avertissements (TVA non liquidée…) le permettent.
+2. **Déposer** : réservé au propriétaire, à un administrateur ou au comptable, après certification. Le contenu est figé (empreinte SHA-256) ; une seule déclaration active par période, et une déclaration rectificative une fois la première acceptée.
+3. **Suivre** : statut « déposée », puis « accusé de réception » (avec son numéro), puis « acceptée » ou « rejetée » avec les motifs.
+
+Tant qu'aucun partenaire EDI n'est connecté, les dépôts se font en **mode simulation** : vous testez tout le parcours, mais rien n'est transmis à l'administration.
+
+### Échéances fiscales et automatisations
+
+- **Échéances fiscales** (menu Comptabilité) : les 90 prochains jours — TVA, acomptes et solde d'IS, liasse, CVAE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail **7 jours puis la veille** de chaque échéance non encore déposée.
+- **Contrôles avant liasse** : IS non comptabilisé, TVA non liquidée, comptes de charges ou de produits de sens anormal, capital non repris, comptes d'attente, exercice non clôturé. Ils s'affichent aussi sur la liasse et lors de la préparation de sa télédéclaration.
+- **Écritures récurrentes** : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : ProfitOS passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.
+- **Suivi des télédéclarations** : avec un partenaire EDI connecté, les statuts sont actualisés toutes les heures et le propriétaire est prévenu en cas de rejet.
 
 ### Export FEC
 

@@ -170,6 +170,14 @@ services:
         sync: false
       - key: WEINVOICE_INVOICE_WEBHOOK_SECRET
         sync: false
+      # Télédéclarations (partenaire EDI agréé DGFiP). Mode simulation tant que
+      # EDI_PARTNER_ENABLED n'est pas à 1.
+      - key: EDI_PARTNER_ENABLED
+        value: "0"
+      - key: EDI_PARTNER_API_URL
+        sync: false
+      - key: EDI_PARTNER_API_KEY
+        sync: false
       - key: OPS_HEALTH_TOKEN
         generateValue: true
       - key: DEMO_NOTIFY_EMAIL

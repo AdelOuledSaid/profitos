@@ -10,6 +10,7 @@
   <div class="actionbuttons">
     <a class="purchase-nav-btn" href="{{ url_for('accounting_liasse_2033', exercice=choice, format='xlsx') }}">Exporter Excel</a>
     <a class="purchase-nav-btn" href="{{ url_for('accounting_trial_balance', du=fy.start.isoformat(), au=fy.end.isoformat()) }}">Balance</a>
+    <a class="purchase-nav-btn" href="{{ url_for('accounting_liasse_2050', exercice=choice) }}">Régime normal (2050)</a>
   </div>
 </div>
 

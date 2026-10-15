@@ -1678,10 +1678,12 @@ def register(app):
         q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q:
             c.close(); abort(404)
-        if q['status']!='sent':
+        if q['status'] not in ('draft','sent'):
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        # Un devis remis en main propre ou envoyé hors ProfitOS (PDF) peut être accepté ou
+        # refusé directement depuis le brouillon : sinon il ne pouvait jamais être facturé.
         c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
         log_activity('QUOTE_ACCEPTED',f"Devis {q['quote_number']} accepté")
@@ -1700,10 +1702,12 @@ def register(app):
         q=c.execute('SELECT * FROM outgoing_quotes WHERE id=? AND entity_id IS ?',(quote_id,eid)).fetchone()
         if not q:
             c.close(); abort(404)
-        if q['status']!='sent':
+        if q['status'] not in ('draft','sent'):
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
+        # Un devis remis en main propre ou envoyé hors ProfitOS (PDF) peut être accepté ou
+        # refusé directement depuis le brouillon : sinon il ne pouvait jamais être facturé.
         c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
         log_activity('QUOTE_REFUSED',f"Devis {q['quote_number']} refusé")
@@ -4177,18 +4181,7 @@ def register(app):
                 items=credit_note_items(source_items)
             else:
                 ratio=amount_ttc/float(inv['total'])
-                items=credit_note_items(source_items,ratio)
-                # Ajustement au centime pour atteindre exactement le TTC demandé, sans
-                # jamais dépasser le reste créditable ; lignes = totaux d'en-tête.
-                for _ in range(6):
-                    _, _, ttc_now=_totals(items)
-                    diff=round(amount_ttc-ttc_now,2)
-                    if abs(diff)<0.005 or not items:
-                        break
-                    biggest=max(items,key=lambda x:abs(x['line_total']))
-                    step=0.01 if diff>0 else -0.01
-                    biggest['line_total']=round(biggest['line_total']+step,2)
-                    biggest['unit_price']=abs(biggest['line_total'])
+                items=_adjust_credit_items(credit_note_items(source_items,ratio),amount_ttc)
             subtotal,vat_amount,credit_total=_totals(items)
             if credit_total > remaining + 0.005:
                 c.rollback(); c.close()
@@ -4203,6 +4196,7 @@ def register(app):
                  VALUES(?,?,?,?,?,?,?,?,?,?,?,'issued',?)""",
                 (inv['entity_id'],credit_number,invoice_id,inv['invoice_number'],inv['client_name'],issue_date,
                  json.dumps(items,ensure_ascii=False),subtotal,vat_amount,credit_total,reason,now()))
+            requested_ttc=amount_ttc
             amount_ttc=credit_total
             credit_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
             credit=_current_credit(c,credit_id)
@@ -4225,7 +4219,11 @@ def register(app):
                 return redirect(url_for('invoicing_credit_new',invoice_id=invoice_id))
             c.close()
             log_activity('CREDIT_NOTE_CREATED',f"Avoir {credit_number} créé pour {inv['invoice_number']} ({fr_number(amount_ttc,2)} € TTC)")
-            flash(f"Avoir {credit_number} créé.")
+            if abs(requested_ttc-credit_total)>=0.005:
+                flash(f"Avoir {credit_number} créé pour {fr_number(credit_total,2)} € TTC : avec l'arrondi de la TVA, "
+                      f"{fr_number(requested_ttc,2)} € n'est pas atteignable au centime près.")
+            else:
+                flash(f"Avoir {credit_number} créé.")
             return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
 
         c.close()
@@ -4859,6 +4857,48 @@ def render_facturx_pdf(inv, company_row):
     xml_bytes = generate_facturx_xml(inv, items, company_row, type_code=type_code)
     doc = build_invoice_document(inv, company_row)
     return _render_facturx(doc, xml_bytes, doc['title'], 'Factur-X invoice data (EN16931)')
+
+
+def _adjust_credit_items(items, target_ttc):
+    """Ajuste les lignes HT d'un avoir partiel au centime pour que le TTC (TVA arrondie
+    par taux) tombe exactement sur le montant demandé. Avec plusieurs taux, corriger une
+    seule ligne ne suffit pas toujours (12,74 / 12,76 € pour 12,75 € demandés) : on essaie
+    des corrections d'une ligne, puis de deux lignes, de quelques centimes."""
+    import itertools
+    def ttc(its):
+        return round(_totals(its)[2], 2)
+    def apply(base, deltas):
+        out = [dict(x) for x in base]
+        for idx, d in deltas:
+            lt = round(out[idx]['line_total'] + d / 100.0, 2)
+            out[idx]['line_total'] = lt
+            out[idx]['unit_price'] = abs(lt)
+            out[idx]['qty'] = -1.0 if lt < 0 else 1.0
+        return out
+    target = round(float(target_ttc), 2)
+    if not items or abs(ttc(items) - target) < 0.005:
+        return items
+    order = sorted(range(len(items)), key=lambda i: -abs(items[i]['line_total']))
+    steps = [d for k in range(1, 6) for d in (k, -k)]
+    for i in order:
+        for d in steps:
+            cand = apply(items, [(i, d)])
+            if abs(ttc(cand) - target) < 0.005:
+                return cand
+    for i, j in itertools.combinations(order[:6], 2):
+        for di in steps:
+            for dj in steps:
+                cand = apply(items, [(i, di), (j, dj)])
+                if abs(ttc(cand) - target) < 0.005:
+                    return cand
+    # Inatteignable (cas extrême) : le plus proche sans dépasser la cible.
+    best = items
+    for i in order:
+        for d in steps:
+            cand = apply(items, [(i, d)])
+            if ttc(cand) <= target + 0.005 and abs(ttc(cand) - target) < abs(ttc(best) - target):
+                best = cand
+    return best
 
 
 def credit_note_items(original_items, ratio=None):

@@ -187,7 +187,7 @@ PAGE_TITLES = {
     'demo_requests_admin': 'Demandes de démo', 'banking_reconciliation_statement': 'État de rapprochement bancaire',
     'accountant_invite_accept': 'Invitation du cabinet', 'company_weinvoice_onboard': 'Facturation électronique',
     'accounting_trial_balance': 'Balance', 'accounting_entry_detail': 'Écriture comptable', 'accounting_entry_new': 'Saisir une écriture',
-    'accounting_general_ledger': 'Grand livre', 'accounting_liasse_2033': 'Tableaux 2033-A et 2033-B',
+    'accounting_general_ledger': 'Grand livre', 'accounting_liasse_2033': 'Tableaux 2033-A et 2033-B', 'accounting_liasse_2050': 'Liasse fiscale 2050 à 2059', 'accounting_corporate_tax': 'Impôt sur les sociétés et CVAE', 'teledeclarations': 'Télédéclarations', 'fiscal_calendar_page': 'Échéances fiscales et contrôles', 'recurring_entries': 'Écritures récurrentes', 'teledeclaration_prepare': 'Préparer une télédéclaration', 'teledeclaration_detail': 'Télédéclaration',
     'accounting_fec_import': 'Reprise de comptabilité', 'accounting_ca3': 'Déclaration CA3',
     'public_quote_view': 'Devis', 'public_invoice_view': 'Facture', 'public_invoice_status': 'Statut du paiement',
     'weekly_report_unsubscribe': 'Désinscription', 'org_deletion_pending': 'Suppression programmée',

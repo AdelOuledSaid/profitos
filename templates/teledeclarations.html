@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FISCALITÉ</div>
+    <h1 class="purchase-title">Télédéclarations</h1>
+    <p class="purchase-subtitle">Préparez, contrôlez et déposez vos déclarations de TVA, liasse fiscale, impôt sur les sociétés et CVAE par l'intermédiaire d'un partenaire EDI agréé, puis suivez les accusés de réception.</p>
+  </div>
+</div>
+
+{% if partner %}
+<div class="flash" role="status">Partenaire EDI connecté : les déclarations déposées sont réellement transmises à l'administration fiscale.</div>
+{% else %}
+<div class="flash" role="status">Mode simulation : aucun partenaire EDI n'est encore connecté. Vous pouvez préparer et contrôler vos déclarations et tester le parcours complet ; rien n'est transmis à l'administration.</div>
+{% endif %}
+
+<section class="purchase-panel">
+  <h2>À préparer</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Déclaration</th><th>Formulaire</th><th>Période</th><th>État</th><th></th></tr></thead>
+    <tbody>
+    {% for c in candidates %}
+      <tr><td><strong>{{ c.title }}</strong><br><span class="purchase-muted">{{ c.meta.label }}</span></td>
+        <td>{{ c.meta.form }} <span class="purchase-muted">({{ c.meta.channel }})</span></td>
+        <td>{{ c.start|fr_date }} → {{ c.end|fr_date }}</td>
+        <td>{% if c.existing %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=c.existing.id) }}">{{ teledeclaration_status_label(c.existing.status) }}</a>{% else %}<span class="purchase-muted">Non déposée</span>{% endif %}</td>
+        <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=c.type, du=c.start.isoformat(), au=c.end.isoformat()) }}">Préparer</a></td></tr>
+    {% endfor %}
+    {% for d in instalments %}
+      <tr><td><strong>Acompte d'IS du {{ d|fr_date }}</strong><br><span class="purchase-muted">{{ types.IS_2571.label }}</span></td>
+        <td>2571 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td></td>
+        <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='IS_2571', du=closed.start.isoformat(), au=closed.end.isoformat()) }}">Préparer</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <form method="get" action="{{ url_for('teledeclaration_prepare') }}" class="ledger-filters" style="margin-top:12px;">
+    <label>Autre déclaration<select name="type">{% for code, t in types.items() %}<option value="{{ code }}">{{ t.form }} — {{ t.label }}</option>{% endfor %}</select></label>
+    <label>Du<input type="date" name="du" required></label>
+    <label>Au<input type="date" name="au" required></label>
+    <button type="submit" class="purchase-primary-btn secondary">Préparer</button>
+  </form>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Historique des dépôts</h2>
+  {% if rows %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Déposée le</th><th>Formulaire</th><th>Période</th><th>Mode</th><th>Statut</th><th class="num">Paiement</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=r.id) }}">{{ r.submitted_at|fr_datetime_paris if r.submitted_at else '—' }}</a></td>
+        <td>{{ r.form }}{% if r.corrective %} <span class="purchase-status">Rectificative</span>{% endif %}</td>
+        <td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
+        <td>{{ 'Réelle' if r.mode=='production' else 'Simulation' }}</td>
+        <td><span class="purchase-status {{ 'paid' if r.status=='accepted' else ('overdue' if r.status=='rejected' else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+        <td class="num">{{ (r.payment_amount|fr_number(0) ~ ' €') if r.payment_amount else '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucune déclaration déposée pour l'instant.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

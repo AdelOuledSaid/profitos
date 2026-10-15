@@ -23,8 +23,10 @@
     {% endif %}
     {% if q.status=='sent' %}
     <form method="post" action="{{ url_for('invoicing_quote_send',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Renvoyer par e-mail</button></form>
-    <form method="post" action="{{ url_for('invoicing_quote_accept',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Accepter</button></form>
-    <form method="post" action="{{ url_for('invoicing_quote_refuse',quote_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Refuser</button></form>
+    {% endif %}
+    {% if q.status in ('draft','sent') %}
+    <form method="post" action="{{ url_for('invoicing_quote_accept',quote_id=q.id) }}" data-confirm="Enregistrer l'accord du client sur ce devis ? Cette réponse sera verrouillée."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn {{ 'primary' if q.status=='sent' else 'secondary' }}">{{ 'Accepter' if q.status=='sent' else 'Le client a accepté' }}</button></form>
+    <form method="post" action="{{ url_for('invoicing_quote_refuse',quote_id=q.id) }}" data-confirm="Enregistrer le refus du client ? Cette réponse sera verrouillée."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">{{ 'Refuser' if q.status=='sent' else 'Le client a refusé' }}</button></form>
     {% endif %}
     {% if q.status=='accepted' %}
     <form method="post" action="{{ url_for('invoicing_quote_deposit',quote_id=q.id) }}" style="display:flex;gap:6px;align-items:center;">

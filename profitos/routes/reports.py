@@ -180,6 +180,7 @@ def register(app):
     @login_required
     @requires_active_plan
     @requires_paid_plan
+    @require_area('weekly')
     def weekly_report_send():
         org=current_org()
         quota=quota_state('reports_per_month',organization_id=org['id'],plan=org['plan'])

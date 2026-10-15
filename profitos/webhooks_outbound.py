@@ -82,6 +82,17 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None, entity_id
             ).fetchall()
     if not subs:
         return
+    # Webhooks = fonction « API » de la formule : plus d'envoi après passage en Starter.
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            from profitos.runtime import current_org, effective_plan
+            from profitos.plan_limits import feature_enabled
+            org = current_org()
+            if org and not feature_enabled(effective_plan(org), 'api'):
+                return
+    except Exception:
+        pass
     event_id='evt_'+secrets.token_hex(12)
     body = json.dumps({'id':event_id,'event': event_type, 'data': data,
                        'created_at': datetime.utcnow().isoformat()},

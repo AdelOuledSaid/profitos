@@ -439,6 +439,97 @@ def recurring_invoices(org, ctx):
     return f'{n} brouillon(s)'
 
 
+@job('recurring_entries', 'daily', hour=5,
+     description="Passe les écritures comptables récurrentes échues (loyers, abonnements…), une seule fois par échéance.")
+def recurring_entries(org, ctx):
+    _require_paid(org, 'accounting_core')
+    from profitos.runtime import tenant_cx_direct
+    from profitos.automation import generate_due_entries
+    from profitos.accounting import paris_today
+    c = tenant_cx_direct(org['id'])
+    created, errors = [], []
+    try:
+        for eid in _entity_ids(c):
+            try:
+                cr, er = generate_due_entries(c, eid, paris_today())
+            except Exception:
+                c.rollback()
+                raise
+            created += cr
+            errors += er
+    finally:
+        c.close()
+    if errors:
+        _notify_owner(
+            org, f"Écritures récurrentes non passées — {org['name']}", 'Écritures récurrentes à vérifier',
+            "ProfitOS n'a pas pu passer certaines écritures récurrentes : " + ' ; '.join(errors[:5])
+            + ". Vérifiez la date de clôture des périodes ou le modèle concerné.",
+            'Voir les écritures récurrentes', '/comptabilite/ecritures-recurrentes')
+    return f"{len(created)} écriture(s)" + (f", {len(errors)} erreur(s)" if errors else '')
+
+
+@job('fiscal_deadlines', 'daily', hour=8,
+     description="Rappelle au propriétaire les échéances fiscales à 7 jours et à la veille (TVA, IS, liasse, CVAE).")
+def fiscal_deadlines(org, ctx):
+    _require_paid(org, 'accounting_core')
+    from profitos.runtime import tenant_cx_direct, fr_number
+    from profitos.automation import upcoming_deadlines
+    from profitos.accounting import paris_today
+    today = paris_today()
+    c = tenant_cx_direct(org['id'])
+    due = []
+    try:
+        for eid in _entity_ids(c):
+            for item in upcoming_deadlines(c, eid, today, horizon_days=8):
+                left = (item['date'] - today).days
+                if left in (7, 1) and not item.get('deposited'):
+                    due.append((left, item))
+    finally:
+        c.close()
+    if not due:
+        return '0 rappel'
+    lines = []
+    for left, item in sorted(due, key=lambda x: x[1]['date']):
+        amount = f" — environ {fr_number(item['amount'], 0)} €" if item.get('amount') else ''
+        when = 'demain' if left == 1 else 'dans 7 jours'
+        lines.append(f"{item['date'].strftime('%d/%m/%Y')} ({when}) : {item['label']} ({item['form']}){amount}")
+    _notify_owner(
+        org, f"Échéances fiscales à venir — {org['name']}", 'Échéances fiscales à venir',
+        'Rappel : ' + ' · '.join(lines) + '. Préparez et déposez vos déclarations depuis ProfitOS.',
+        'Ouvrir les télédéclarations', '/comptabilite/teledeclarations',
+        "Vous recevez ce rappel car la comptabilité est activée pour votre organisation.")
+    return f'{len(due)} rappel(s)'
+
+
+@job('teledeclaration_status', 'hourly',
+     description="Interroge le partenaire EDI pour les télédéclarations en cours et prévient en cas de rejet.")
+def teledeclaration_status(org, ctx):
+    _require_paid(org, 'accounting_core')
+    from profitos.runtime import tenant_cx_direct
+    from profitos import teledeclaration as T
+    c = tenant_cx_direct(org['id'])
+    updated, rejected = 0, []
+    try:
+        rows = c.execute("SELECT * FROM teledeclarations WHERE status IN ('deposited','acknowledged') AND mode='production'").fetchall()
+        for row in rows:
+            try:
+                status = T.refresh_status(c, row)
+            except Exception:
+                continue
+            if status != row['status']:
+                updated += 1
+                if status == 'rejected':
+                    rejected.append(f"{row['form']} du {row['period_start']} au {row['period_end']}")
+    finally:
+        c.close()
+    if rejected:
+        _notify_owner(
+            org, f"Télédéclaration rejetée — {org['name']}", 'Une télédéclaration a été rejetée',
+            'Déclaration(s) rejetée(s) : ' + ' ; '.join(rejected) + '. Consultez les motifs de rejet, corrigez puis déposez à nouveau.',
+            'Voir les télédéclarations', '/comptabilite/teledeclarations')
+    return f'{updated} mise(s) à jour'
+
+
 @job('einvoice_inbound_sync', 'hourly', needs_disk=True,
      description="Réception des factures électroniques fournisseurs WeInvoice (toutes les heures).")
 def einvoice_inbound_sync(org, ctx):
