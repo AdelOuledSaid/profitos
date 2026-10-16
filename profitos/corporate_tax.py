@@ -245,7 +245,8 @@ def fiscal_calendar(start, end, is_result, cvae_result):
 
 # --------------------------------------------------------------------- paramètres
 DEFAULT_SETTINGS = {'capital_libere': True, 'detention_pp': True, 'deficits_anterieurs': 0.0,
-                    'credits_impot': 0.0, 'acomptes_verses': None, 'reintegrations': [], 'deductions': []}
+                    'credits_impot': 0.0, 'acomptes_verses': None, 'reintegrations': [], 'deductions': [],
+                    'mvlt_anterieures': 0.0, 'tva_acomptes_verses': None}
 
 
 def _ekey(entity_id):
@@ -276,3 +277,55 @@ def save_fiscal_settings(conn, entity_id, fy_end, data, now_iso, user=None):
         (_ekey(entity_id), str(fy_end)[:10], json.dumps(clean, ensure_ascii=False), now_iso, user))
     conn.commit()
     return clean
+
+
+# ------------------------------------------------------------ profil fiscal (entreprise)
+PROFILE_KEY = 'profil'
+DEFAULT_PROFILE = {
+    'tax_regime': 'normal', 'vat_filing': 'ca3_mensuelle', 'activite': '', 'pme_innovante': False,
+    'groupe': False, 'societe_mere_siren': '', 'expert_comptable': '', 'expert_comptable_tel': '', 'conseil': '',
+    'signataire': '', 'signataire_qualite': '', 'mel': '', 'shareholders': [], 'subsidiaries': [],
+    'mandate': {'iban': '', 'bic': '', 'holder': '', 'rum': '', 'signed_at': '', 'bank_confirmed': False},
+    'date_creation': '', 'premises': [],
+}
+VAT_FILINGS = {'ca3_mensuelle': 'CA3 mensuelle (régime réel normal)', 'ca3_trimestrielle': 'CA3 trimestrielle (TVA due < 4 000 € / an)',
+               'ca12': 'CA12 annuelle (régime simplifié)', 'franchise': 'Franchise en base (pas de déclaration de TVA)'}
+
+
+def get_fiscal_profile(conn, entity_id):
+    import json
+    row = conn.execute('SELECT data FROM fiscal_settings WHERE entity_key=? AND fy_end=?',
+                       (_ekey(entity_id), PROFILE_KEY)).fetchone()
+    data = json.loads(json.dumps(DEFAULT_PROFILE))
+    if row and row['data']:
+        try:
+            stored = json.loads(row['data'])
+            data.update({k: v for k, v in stored.items() if k in DEFAULT_PROFILE})
+            data['mandate'] = dict(DEFAULT_PROFILE['mandate'], **(stored.get('mandate') or {}))
+        except ValueError:
+            pass
+    return data
+
+
+def save_fiscal_profile(conn, entity_id, data, now_iso, user=None):
+    import json
+    clean = get_fiscal_profile(conn, entity_id)
+    clean.update({k: v for k, v in data.items() if k in DEFAULT_PROFILE})
+    conn.execute(
+        """INSERT INTO fiscal_settings(entity_key,fy_end,data,updated_at,updated_by) VALUES(?,?,?,?,?)
+           ON CONFLICT(entity_key,fy_end) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at,
+           updated_by=excluded.updated_by""",
+        (_ekey(entity_id), PROFILE_KEY, json.dumps(clean, ensure_ascii=False), now_iso, user))
+    conn.commit()
+    return clean
+
+
+def mandate_ready(profile):
+    m = (profile or {}).get('mandate') or {}
+    from profitos.fr_identifiers import iban_is_valid
+    return bool(m.get('iban') and iban_is_valid(m['iban']) and m.get('rum') and m.get('signed_at') and m.get('bank_confirmed'))
+
+
+def masked_iban(iban):
+    s = ''.join(str(iban or '').split()).upper()
+    return f"{s[:4]} •••• •••• {s[-4:]}" if len(s) > 8 else s

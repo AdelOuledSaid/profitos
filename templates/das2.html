@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">DÉCLARATIONS DE TIERS</div>
+    <h1 class="purchase-title">DAS2 — honoraires, commissions et droits d'auteur {{ year }}</h1>
+    <p class="purchase-subtitle">Sommes versées en {{ year }} à des tiers non salariés, toutes taxes comprises. À déclarer pour chaque bénéficiaire ayant reçu plus de {{ d.threshold|fr_number(0) }} € sur l'année. Date limite : {{ d.deadline|fr_date }}.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('das2_page', annee=year, format='xlsx') }}">Exporter Excel</a>
+    <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Télédéclarations</a>
+  </div>
+</div>
+
+<nav class="seg-tabs" aria-label="Année" style="margin-bottom:14px;">
+  {% for y in years %}<a href="{{ url_for('das2_page', annee=y) }}" class="{{ 'is-active' if y == year else '' }}">{{ y }}</a>{% endfor %}
+</nav>
+
+{% for i in d.issues %}<div class="flash" role="alert">⚠ {{ i }}</div>{% endfor %}
+
+<div class="purchase-stats" style="margin-bottom:14px;">
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Bénéficiaires à déclarer</div><div class="purchase-stat-value">{{ d.included|length }}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Total déclaré</div><div class="purchase-stat-value">{{ d.total|fr_number(0) }}&nbsp;€</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Date limite</div><div class="purchase-stat-value">{{ d.deadline|fr_date }}</div></div></div>
+</div>
+
+<section class="purchase-panel">
+  <h2>Bénéficiaires</h2>
+  {% if d.rows %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ year }}">
+    <div class="purchase-table-wrap"><table class="purchase-table">
+      <thead><tr><th>Déclarer</th><th>Bénéficiaire</th><th>Catégorie</th><th class="num">Comptabilisé TTC</th><th class="num">Versé TTC à déclarer</th><th>SIRET</th><th>Adresse</th><th>Profession</th></tr></thead>
+      <tbody>
+      {% for r in d.rows %}
+      <tr>
+        <td><input type="hidden" name="key_{{ loop.index }}" value="{{ r.key }}"><input type="checkbox" name="include_{{ loop.index }}" value="1" {{ 'checked' if r.include }} aria-label="Déclarer {{ r.name }}"></td>
+        <td><strong>{{ r.name }}</strong>{% if not r.above %}<br><span class="purchase-muted" style="font-size:12px;">sous le seuil</span>{% endif %}</td>
+        <td><select name="category_{{ loop.index }}" aria-label="Catégorie">{% for k, v in categories.items() %}<option value="{{ k }}" {{ 'selected' if r.category == k }}>{{ v }}</option>{% endfor %}</select></td>
+        <td class="num">{{ r.amount_booked|fr_number(2) }}</td>
+        <td><input name="amount_{{ loop.index }}" inputmode="decimal" size="9" value="{{ r.amount|fr_number(2) }}" aria-label="Montant versé"></td>
+        <td><input name="siret_{{ loop.index }}" maxlength="20" size="15" value="{{ r.siret }}" aria-label="SIRET"></td>
+        <td><input name="address_{{ loop.index }}" maxlength="200" value="{{ r.address }}" aria-label="Adresse"></td>
+        <td><input name="profession_{{ loop.index }}" maxlength="80" size="12" value="{{ r.profession }}" aria-label="Profession"></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div><button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+      {% if d.included and not d.issues %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='DAS2', du=year ~ '-01-01', au=year ~ '-12-31') }}">Préparer la télédéclaration</a>{% endif %}</div>
+  </form>
+  <p class="purchase-muted" style="font-size:12px;">Montants repris des comptes d'honoraires (6226), frais d'actes (6227), commissions (6221, 6222), droits d'auteur (6516), redevances (6511) et jetons de présence (653), TVA comprise. Ils correspondent aux factures comptabilisées en {{ year }} : corrigez le montant si un paiement a eu lieu une autre année. Le SIRET et l'adresse sont repris de la fiche fournisseur quand elle existe.</p>
+  {% else %}
+  <p class="purchase-muted">Aucun honoraire, commission ou droit d'auteur comptabilisé en {{ year }}.</p>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

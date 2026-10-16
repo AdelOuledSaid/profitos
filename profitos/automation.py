@@ -154,19 +154,41 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
     today = _d(today)
     limit = today + timedelta(days=horizon_days)
     items = []
-    # TVA mensuelle : déclaration du mois précédent, à déposer à partir du 15 du mois.
-    for back in (1, 0):
-        first = (today.replace(day=1) - timedelta(days=1)).replace(day=1) if back else today.replace(day=1)
-        last = (_add_months(first, 1, 1) - timedelta(days=1))
-        due = _add_months(first, 1, 15)
+    profile = CT.get_fiscal_profile(conn, entity_id)
+    vat_filing = profile.get('vat_filing') or 'ca3_mensuelle'
+    current = L.fiscal_year_for(conn, today, entity_id)
+    closed = L.fiscal_year_for(conn, current['start'] - timedelta(days=1), entity_id)
+    if vat_filing == 'ca12':
+        from profitos.vat_return import ca12_form
+        f12 = ca12_form(conn, closed['start'].isoformat(), closed['end'].isoformat(), entity_id)
+        if today <= f12['deadline'] <= limit:
+            items.append({'date': f12['deadline'], 'label': "Déclaration annuelle de TVA de l'exercice clos", 'form': '3517-S CA12',
+                          'type': 'TVA_CA12', 'start': closed['start'], 'end': closed['end'], 'amount': f12['l56'] or None,
+                          'deposited': active_declaration(conn, entity_id, 'TVA_CA12', closed['start'], closed['end'])})
+        for a in f12['instalments']:
+            if today <= a['date'] <= limit:
+                items.append({'date': a['date'], 'label': a['label'] + ' de TVA', 'form': '3514', 'type': 'TVA_3514',
+                              'start': closed['start'], 'end': closed['end'], 'amount': a['amount'], 'due_date': a['date'],
+                              'deposited': active_declaration(conn, entity_id, 'TVA_3514', closed['start'], closed['end'], a['date'])})
+    periods = []
+    if vat_filing == 'ca3_mensuelle':
+        for back in (1, 0):
+            first = (today.replace(day=1) - timedelta(days=1)).replace(day=1) if back else today.replace(day=1)
+            periods.append((back, first, _add_months(first, 1, 1) - timedelta(days=1)))
+    elif vat_filing == 'ca3_trimestrielle':
+        q_first = date(today.year, ((today.month - 1) // 3) * 3 + 1, 1)
+        prev_first = _add_months(q_first, -3, 1)
+        periods.append((1, prev_first, q_first - timedelta(days=1)))
+        periods.append((0, q_first, _add_months(q_first, 3, 1) - timedelta(days=1)))
+    for back, first, last in periods:
+        due = _add_months(last.replace(day=1), 1, 15)
         if today <= due <= limit or (back and due >= today - timedelta(days=10)):
             form = ca3_form(conn, first.isoformat(), last.isoformat(), entity_id)
             dep = active_declaration(conn, entity_id, 'TVA_CA3', first, last)
-            items.append({'date': due, 'label': f"Déclaration de TVA de {first.strftime('%m/%Y')} (à partir du 15, selon votre SIREN)",
+            period_label = first.strftime('%m/%Y') if first.month == last.month else f"{first.strftime('%m')} à {last.strftime('%m/%Y')}"
+            items.append({'date': due, 'label': f"Déclaration de TVA de {period_label} (à partir du 15, selon votre SIREN)",
                           'form': '3310-CA3', 'type': 'TVA_CA3', 'start': first, 'end': last,
                           'amount': form['l32'] or None, 'deposited': dep})
-    current = L.fiscal_year_for(conn, today, entity_id)
-    closed = L.fiscal_year_for(conn, current['start'] - timedelta(days=1), entity_id)
     settings = CT.get_fiscal_settings(conn, entity_id, closed['end'].isoformat())
     l = liasse_normale(conn, closed['start'], closed['end'], entity_id, settings=settings)
     eligible = CT.pme_eligible(l['chiffre_affaires'], closed['start'], closed['end'],
@@ -182,8 +204,41 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
         if not (today <= e['date'] <= limit):
             continue
         t = type_of.get(e['form'])
-        dep = active_declaration(conn, entity_id, t, closed['start'], closed['end']) if t and t != 'IS_2571' else None
-        items.append(dict(e, type=t, start=closed['start'], end=closed['end'], deposited=dep))
+        dep = active_declaration(conn, entity_id, t, closed['start'], closed['end'],
+                                 e['date'] if t == 'IS_2571' else None) if t else None
+        items.append(dict(e, type=t, start=closed['start'], end=closed['end'], deposited=dep,
+                          due_date=e['date'] if t == 'IS_2571' else None))
+    # DAS2 de l'année civile écoulée et 2777 des dividendes payés
+    from profitos import tiers_declarations as TD
+    y = today.year - 1
+    d2 = TD.das2(conn, y, entity_id, (closed['end'].month, closed['end'].day))
+    if d2['included'] and today <= d2['deadline'] <= limit:
+        items.append({'date': d2['deadline'], 'label': f"Déclaration des honoraires versés en {y} (DAS2)", 'form': 'DAS2',
+                      'type': 'DAS2', 'start': date(y, 1, 1), 'end': date(y, 12, 31), 'amount': None,
+                      'deposited': active_declaration(conn, entity_id, 'DAS2', date(y, 1, 1), date(y, 12, 31))})
+    for m in TD.dividend_months(conn, entity_id, since=today - timedelta(days=62)):
+        r = TD.rcm_2777(conn, m, entity_id, profile)
+        if r['total'] and today <= r['deadline'] <= limit:
+            items.append({'date': r['deadline'], 'label': f"Prélèvements sur les dividendes de {m.strftime('%m/%Y')} (à déclarer en ligne)",
+                          'form': '2777', 'type': None, 'amount': r['total'], 'deposited': None,
+                          'link': ('rcm_2777_page', {'mois': m.strftime('%Y-%m')})})
+    # IFU des dividendes de l'année écoulée
+    ifu = TD.ifu_2561(conn, y, entity_id, profile)
+    if ifu['total'] and today <= ifu['deadline'] <= limit:
+        items.append({'date': ifu['deadline'], 'label': f"Imprimé fiscal unique des dividendes payés en {y}", 'form': 'IFU 2561',
+                      'type': None, 'amount': None, 'deposited': None, 'link': ('ifu_page', {'annee': y})})
+    # CFE : acompte, solde, déclarations 1447
+    from profitos import local_taxes as LT
+    for yr in {today.year, limit.year}:
+        sched = LT.cfe_schedule(yr, LT.get_cfe(conn, entity_id, yr), profile.get('date_creation'))
+        for it in sched['schedule']:
+            if today <= it['date'] <= limit:
+                items.append(dict(it, type=None, deposited=None, link=('cfe_page', {'annee': yr})))
+    # 1447-M des changements de l'année précédente
+    prev = LT.cfe_schedule(today.year - 1, LT.get_cfe(conn, entity_id, today.year - 1), profile.get('date_creation'))
+    for it in prev['schedule']:
+        if it['form'] == '1447-M' and today <= it['date'] <= limit:
+            items.append(dict(it, type=None, deposited=None, link=('cfe_page', {'annee': today.year - 1})))
     return sorted(items, key=lambda x: x['date'])
 
 

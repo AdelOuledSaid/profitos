@@ -40,6 +40,9 @@ def _period_from_args(c, eid, decl_type, args):
         return date.fromisoformat(du), date.fromisoformat(au)
     if decl_type == 'TVA_CA3':
         return _previous_month()
+    if decl_type == 'DAS2':
+        y = paris_today().year - 1
+        return date(y, 1, 1), date(y, 12, 31)
     closed, current = _closed_fy(c, eid)
     if decl_type == 'IS_2571':
         return closed['start'], closed['end']
@@ -48,16 +51,22 @@ def _period_from_args(c, eid, decl_type, args):
 
 def _build(c, eid, decl_type, start, end, args):
     from profitos import corporate_tax as CT
-    regime = args.get('regime') if args.get('regime') in ('normal', 'simplifie') else 'normal'
+    regime = args.get('regime') if args.get('regime') in ('normal', 'simplifie') else \
+        (CT.get_fiscal_profile(c, eid).get('tax_regime') or 'normal')
     instalment = None
-    if decl_type == 'IS_2571' and (args.get('acompte') or '').strip():
+    if decl_type in ('IS_2571', 'TVA_3514') and (args.get('acompte') or '').strip():
         instalment = form_float(args.get('acompte'))
+    due = (args.get('echeance') or '').strip() or None
+    if due:
+        date.fromisoformat(due)
     return T.build_declaration(c, decl_type, start, end, eid, identity=_identity(c, eid), regime=regime,
-                               instalment_amount=instalment), regime
+                               instalment_amount=instalment, due_date=due), regime
 
 
 def register(app):
     app.jinja_env.globals['teledeclaration_status_label'] = lambda s: T.STATUS_LABELS.get(s, s)
+    from profitos.corporate_tax import masked_iban
+    app.jinja_env.globals['masked_iban'] = masked_iban
 
     @app.route('/comptabilite/teledeclarations')
     @login_required
@@ -71,20 +80,37 @@ def register(app):
         q_end = m_end
         q_start = date(q_end.year, ((q_end.month - 1) // 3) * 3 + 1, 1)
         instalments = [d for d in CT.instalment_dates(current['start'], current['end'])]
+        profile = CT.get_fiscal_profile(c, eid)
+        profile_vat = profile.get('vat_filing') or 'ca3_mensuelle'
+        vat_instalments = []
+        if profile_vat == 'ca12':
+            from profitos.vat_return import ca12_form
+            vat_instalments = ca12_form(c, closed['start'].isoformat(), closed['end'].isoformat(), eid)['instalments']
         c.close()
         active = {(r['decl_type'], r['period_start'], r['period_end']): r for r in rows if r['status'] in T.ACTIVE_STATUSES}
-        candidates = [
-            {'type': 'TVA_CA3', 'title': 'TVA du mois', 'start': m_start, 'end': m_end},
-            {'type': 'TVA_CA3', 'title': 'TVA du trimestre', 'start': q_start, 'end': q_end},
+        inst_active = {(r['decl_type'], r['due_date']): r for r in reversed(rows)
+                       if r['status'] in T.ACTIVE_STATUSES and r['decl_type'] in T.INSTALMENT_TYPES
+                       and r['period_end'] == closed['end'].isoformat()}
+        vat_filing = profile_vat
+        vat_candidates = {
+            'ca3_mensuelle': [{'type': 'TVA_CA3', 'title': 'TVA du mois', 'start': m_start, 'end': m_end}],
+            'ca3_trimestrielle': [{'type': 'TVA_CA3', 'title': 'TVA du trimestre', 'start': q_start, 'end': q_end}],
+            'ca12': [{'type': 'TVA_CA12', 'title': "TVA annuelle de l'exercice clos", 'start': closed['start'], 'end': closed['end']}],
+            'franchise': [],
+        }.get(vat_filing, [])
+        candidates = vat_candidates + [
             {'type': 'LIASSE', 'title': f"Liasse de l'exercice clos le {closed['end'].strftime('%d/%m/%Y')}",
              'start': closed['start'], 'end': closed['end']},
             {'type': 'IS_2572', 'title': "Solde d'IS de l'exercice clos", 'start': closed['start'], 'end': closed['end']},
             {'type': 'CVAE_1330', 'title': "Valeur ajoutée de l'exercice clos", 'start': closed['start'], 'end': closed['end']},
+            {'type': 'DAS2', 'title': f"Honoraires versés en {paris_today().year - 1}",
+             'start': date(paris_today().year - 1, 1, 1), 'end': date(paris_today().year - 1, 12, 31)},
         ]
         for cand in candidates:
             cand['meta'] = T.TYPES[cand['type']]
             cand['existing'] = active.get((cand['type'], cand['start'].isoformat(), cand['end'].isoformat()))
         return render_template('teledeclarations.html', rows=rows, candidates=candidates, instalments=instalments,
+                               vat_instalments=vat_instalments, inst_active=inst_active, vat_filing=profile_vat, mandate_ok=CT.mandate_ready(profile),
                                closed=closed, partner=T.partner_configured(), types=T.TYPES,
                                can_submit=current_role() in SUBMIT_ROLES)
 
@@ -103,7 +129,7 @@ def register(app):
             c.close()
             flash(f"Préparation impossible : {exc}")
             return redirect(url_for('teledeclarations'))
-        existing = T.active_declaration(c, eid, decl_type, start, end)
+        existing = T.active_declaration(c, eid, decl_type, start, end, built['payload'].get('due_date'))
         c.close()
         return render_template('teledeclaration_prepare.html', built=built, decl_type=decl_type, start=start, end=end,
                                regime=regime, existing=existing, partner=T.partner_configured(),
@@ -116,7 +142,8 @@ def register(app):
         if decl_type not in T.TYPES:
             abort(404)
         back = url_for('teledeclaration_prepare', type=decl_type, du=request.form.get('du'), au=request.form.get('au'),
-                       regime=request.form.get('regime'), acompte=request.form.get('acompte') or None)
+                       regime=request.form.get('regime'), acompte=request.form.get('acompte') or None,
+                       echeance=request.form.get('echeance') or None)
         if current_role() not in SUBMIT_ROLES:
             flash("Seuls le propriétaire, un administrateur ou le comptable peuvent déposer une déclaration.")
             return redirect(back)
@@ -140,7 +167,8 @@ def register(app):
             return redirect(back)
         c.close()
         mode = 'production' if T.partner_configured() else 'simulation'
-        log_activity('TELEDECLARATION_SUBMITTED', f"{T.TYPES[decl_type]['form']} du {start.isoformat()} au {end.isoformat()} ({mode})")
+        due_txt = f", échéance {built['payload']['due_date']}" if built['payload'].get('due_date') else ''
+        log_activity('TELEDECLARATION_SUBMITTED', f"{T.TYPES[decl_type]['form']} du {start.isoformat()} au {end.isoformat()}{due_txt} ({mode})")
         log_security_event('TELEDECLARATION_SUBMITTED', 'SUCCESS', target=f"{decl_type}:{end.isoformat()}:{mode}")
         flash("Déclaration déposée chez le partenaire EDI." if mode == 'production'
               else "Déclaration déposée en mode simulation : rien n'a été transmis à l'administration.")

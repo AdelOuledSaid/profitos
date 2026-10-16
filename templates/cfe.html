@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">IMPÔTS LOCAUX</div>
+    <h1 class="purchase-title">Cotisation foncière des entreprises (CFE) {{ year }}</h1>
+    <p class="purchase-subtitle">La CFE est calculée par l'administration : saisissez le montant de l'avis (publié en novembre dans votre espace professionnel). ProfitOS en déduit les échéances, les rappels et l'écriture comptable.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('fiscal_profile') }}">Profil fiscal</a>
+</div>
+
+<nav class="seg-tabs" aria-label="Année" style="margin-bottom:14px;">
+  {% for y in years %}<a href="{{ url_for('cfe_page', annee=y) }}" class="{{ 'is-active' if y == year else '' }}">{{ y }}</a>{% endfor %}
+</nav>
+
+{% for n in s.notes %}<div class="flash" role="status">ℹ {{ n }}</div>{% endfor %}
+
+<div class="twocol">
+<section class="purchase-panel">
+  <h2>Avis d'imposition</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ year }}"><input type="hidden" name="action" value="save">
+    <label>Montant de la CFE {{ year }} (€)<input name="montant" inputmode="decimal" value="{{ d.montant|fr_number(2) if d.montant is not none else '' }}"></label>
+    <label>Montant de la CFE {{ year - 1 }} (€) — sert au calcul de l'acompte<input name="montant_n1" inputmode="decimal" value="{{ d.montant_n1|fr_number(2) if d.montant_n1 is not none else '' }}"></label>
+    <label class="check"><input type="checkbox" name="mensualise" value="1" {{ 'checked' if d.mensualise }}> Paiement mensualisé</label>
+    <label class="check"><input type="checkbox" name="changements" value="1" {{ 'checked' if d.changements }}> Changements en {{ year }} à déclarer (surface, activité, nouvel établissement…)</label>
+    <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+  </form>
+</section>
+
+<section class="purchase-panel">
+  <h2>Échéances</h2>
+  {% if s.schedule %}
+  <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
+    {% for i in s.schedule %}<tr><td>{{ i.date|fr_date }}</td><td>{{ i.label }}</td><td class="num">{{ (i.amount|fr_number(0) ~ ' €') if i.amount is not none else '—' }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<p class="purchase-muted">Aucune échéance.</p>{% endif %}
+  <p class="purchase-muted" style="font-size:12px;">Acompte de 50 % au 15 juin si la CFE de l'année précédente atteint 3 000 € ; solde au 15 décembre. Paiement en ligne ou par prélèvement depuis votre espace professionnel.</p>
+  {% if d.entry_id %}
+    <p>✓ CFE comptabilisée : <a class="link" href="{{ url_for('accounting_entry_detail', entry_id=d.entry_id) }}">voir l'écriture</a>.</p>
+  {% elif s.montant %}
+  <form method="post" class="stack" data-confirm="Comptabiliser la CFE {{ year }} ({{ s.montant|fr_number(0) }} €) en charge ?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ year }}"><input type="hidden" name="action" value="entry">
+    <label>Date de l'écriture<input type="date" name="entry_date" value="{{ year }}-12-15"></label>
+    <button type="submit" class="purchase-primary-btn secondary">Comptabiliser la charge (635110 / 447000)</button>
+  </form>
+  {% endif %}
+</section>
+</div>
+</div>
+{% endblock %}

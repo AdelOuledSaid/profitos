@@ -32,13 +32,21 @@
       {% if already_run_this_year %}Déjà comptabilisée pour {{ current_year }}{% elif preview %}Comptabiliser {{ preview|fr_number(2) }}&nbsp;€ pour {{ current_year }}{% else %}Comptabiliser{% endif %}
     </button>
   </form>
-  <form method="post" action="{{ url_for('fixed_asset_dispose',asset_id=asset.id) }}" style="margin-top:14px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="purchase-primary-btn secondary">Marquer cédée</button>
-  </form>
+  <details style="margin-top:14px;">
+    <summary class="purchase-nav-btn" style="display:inline-block;cursor:pointer;">Céder ou mettre au rebut</summary>
+    <form method="post" action="{{ url_for('fixed_asset_dispose',asset_id=asset.id) }}" class="formgrid" style="margin-top:10px;"
+          data-confirm="Comptabiliser la sortie de cette immobilisation ? L'écriture de cession sera générée.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Date de cession<input type="date" name="disposal_date" value="{{ today }}" required></label>
+      <label>Prix de cession HT (€) — 0 pour une mise au rebut<input name="disposal_price" inputmode="decimal" value="0"></label>
+      <label>TVA sur le prix<select name="disposal_vat_rate"><option value="20">20 %</option><option value="0">Sans TVA</option><option value="10">10 %</option><option value="5.5">5,5 %</option></select></label>
+      <label class="check wide"><input type="checkbox" name="complementary" value="1" checked> Comptabiliser la dotation complémentaire de l'année jusqu'à la date de cession</label>
+      <div class="wide"><button type="submit" class="purchase-primary-btn secondary">Comptabiliser la cession</button></div>
+    </form>
+  </details>
 </section>
 {% else %}
-<p class="purchase-muted" style="margin-bottom:20px;">Immobilisation cédée le {{ asset.disposed_at|fr_date(true) }}.</p>
+<p class="purchase-muted" style="margin-bottom:20px;">Immobilisation cédée le {{ (asset.disposal_date or asset.disposed_at)|fr_date }}{% if asset.disposal_price is not none %} pour {{ asset.disposal_price|fr_number(2) }} € HT{% endif %}{% if asset.disposal_entry_id %} — <a class="link" href="{{ url_for('accounting_entry_detail', entry_id=asset.disposal_entry_id) }}">écriture de cession</a>{% endif %}.</p>
 {% endif %}
 
 <section class="purchase-panel">

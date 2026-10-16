@@ -100,3 +100,76 @@ def generate_liquidation_entry(conn, date_from, date_to, entity_id=None, created
     return create_entry(conn, 'OD', d_to, label, lines, source_type=LIQUIDATION_SOURCE,
                         source_id=_source_id(date_to), created_by=created_by, entity_id=entity_id,
                         piece_ref=f"CA3-{d_to:%Y%m}")
+
+
+# --- CA12 (3517-S) : déclaration annuelle du régime simplifié ------------------------------
+# Taux -> (ligne, code de la base, libellé)
+CA12_RATE_LINES = {
+    20.0: ('5A', '0207', 'Taux normal 20 %'),
+    10.0: ('6C', '0151', 'Taux réduit 10 %'),
+    5.5: ('06', '0105', 'Taux réduit 5,5 %'),
+    2.1: ('09', '0950', 'Taux particulier 2,1 %'),
+    8.5: ('07', '0201', 'Taux normal 8,5 % (DOM)'),
+}
+VAT_INSTALMENTS_ACCOUNT = '44581'
+CA12_INSTALMENT_MIN = 1000
+
+
+def ca12_form(conn, date_from, date_to, entity_id=None, acomptes=None):
+    """Cases de la CA12 (formulaire 3517-S) pour l'exercice, avec la base et le
+    calendrier des acomptes semestriels de l'exercice suivant (55 % en juillet, 40 % en
+    décembre, dispense si la base est inférieure à 1 000 €)."""
+    rates = ca3_collected_by_rate(conn, date_from, date_to, entity_id)
+    lines, warnings = [], []
+    for r in rates:
+        if r['rate'] is None:
+            continue
+        spec = CA12_RATE_LINES.get(round(float(r['rate']), 1))
+        if not spec:
+            warnings.append(f"Taux de {r['rate']} % non ventilé automatiquement : à reporter à la main.")
+            continue
+        lines.append({'line': spec[0], 'base_code': spec[1], 'label': spec[2], 'rate': r['rate'],
+                      'base': r['base'], 'vat': r['vat']})
+    l16 = round(sum(x['vat'] for x in lines), 2)
+    l19 = l16
+    l20 = _movement(conn, DEDUCTIBLE_OTHER, date_from, date_to, entity_id)
+    l21 = 0.0
+    l22 = round(l20 + l21, 2)
+    l23 = _movement(conn, DEDUCTIBLE_ASSETS, date_from, date_to, entity_id)
+    l24 = max(0.0, _balance_before(conn, VAT_CREDIT, date_from, entity_id))
+    l26 = round(l22 + l23 + l24, 2)
+    l28 = round(max(0.0, l19 - l26), 2)
+    l29 = round(max(0.0, l26 - l19), 2)
+    if acomptes is None:
+        acomptes = max(0.0, _movement(conn, VAT_INSTALMENTS_ACCOUNT, date_from, date_to, entity_id)) \
+            if conn.execute('SELECT 1 FROM accounting_chart_of_accounts WHERE code LIKE ?', (VAT_INSTALMENTS_ACCOUNT + '%',)).fetchone() else 0.0
+    l30 = round(float(acomptes or 0), 2)
+    l33 = round(max(0.0, l28 - l30), 2)
+    l34 = round(max(0.0, l30 - l28), 2)
+    l35 = round(l29 + l34, 2)
+    l57 = round(max(0.0, l16 - l22), 2)
+    end = date.fromisoformat(str(date_to)[:10])
+    nxt = end.year + 1
+    instalments = []
+    if l57 >= CA12_INSTALMENT_MIN:
+        instalments = [{'date': date(nxt, 7, 15), 'label': 'Acompte de juillet (55 %)', 'amount': round(l57 * 0.55)},
+                       {'date': date(nxt, 12, 15), 'label': 'Acompte de décembre (40 %)', 'amount': round(l57 * 0.40)}]
+    from profitos.corporate_tax import second_working_day_after_may_1, liasse_deadline
+    deadline = second_working_day_after_may_1(end.year + 1) if (end.month, end.day) == (12, 31) else liasse_deadline(end)[0]
+    return {
+        'date_from': str(date_from), 'date_to': str(date_to), 'lines': lines, 'warnings': warnings,
+        'l16': l16, 'l19': l19, 'l20': l20, 'l21': l21, 'l22': l22, 'l23': l23, 'l24': l24, 'l26': l26,
+        'l28': l28, 'l29': l29, 'l30': l30, 'l33': l33, 'l34': l34, 'l35': l35, 'l54': l33, 'l56': l33, 'l57': l57,
+        'instalments': instalments, 'deadline': deadline,
+    }
+
+
+CA12_BOXES = [
+    ('16', None, 'Total de la taxe due', 'l16'), ('19', None, 'Total de la TVA brute due', 'l19'),
+    ('20', '0702', 'Déductions sur factures (biens et services)', 'l20'), ('22', None, 'Total des déductions (20 + 21)', 'l22'),
+    ('23', '0703', 'TVA déductible sur immobilisations', 'l23'), ('24', '0058', 'Crédit antérieur non imputé et non remboursé', 'l24'),
+    ('26', None, 'Total de la TVA déductible', 'l26'), ('28', '8900', 'TVA due', 'l28'), ('29', '0705', 'Crédit de TVA', 'l29'),
+    ('30', '0018', 'Acomptes payés', 'l30'), ('33', None, 'Solde dû', 'l33'), ('34', None, 'Excédent de versement', 'l34'),
+    ('35', '0020', 'Solde excédentaire', 'l35'), ('54', '8901', 'TVA nette due', 'l54'), ('56', '9992', 'Total à payer', 'l56'),
+    ('57', None, "Base de calcul des acomptes de l'exercice suivant", 'l57'),
+]

@@ -312,18 +312,33 @@ def register(app):
     @login_required
     def accounting_liasse_2033():
         from profitos.liasse import liasse_2033, liasse_rows
+        from profitos.liasse_2033_annexes import annexes_2033, annexes_2033_rows
+        from profitos.liasse_annexes import form_2065
+        from profitos import corporate_tax as CT
+        from profitos.entities import resolve_entity
         eid = _eid()
         c = cx()
-        current = L.fiscal_year_for(c, paris_today(), eid)
-        previous = L.fiscal_year_for(c, current['start'] - timedelta(days=1), eid)
-        choice = request.args.get('exercice') or 'precedent'
-        fy = current if choice == 'courant' else previous
+        fy, prior, choice, current, previous = _fiscal_years(c, eid)
         data = liasse_2033(c, fy['start'], fy['end'], eid)
+        ln, settings, is_res, _cv, _cal, _a = _liasse_and_tax(c, eid, fy, prior)
+        profile = CT.get_fiscal_profile(c, eid)
+        try:
+            identity = dict(resolve_entity(c, eid))
+        except Exception:
+            identity = {}
+        ax = annexes_2033(c, fy['start'], fy['end'], eid, profile=profile, settings=settings, liasse=ln)
+        from profitos import local_taxes as LT
+        dl = LT.decloyer(profile, LT.rent_booked(c, fy['start'], fy['end'], eid))
+        f2065 = form_2065(identity, dict(profile, tax_regime='simplifie'), ln, is_res, fy['start'], fy['end'])
         c.close()
         if request.args.get('format') in ('xlsx', 'csv'):
-            return export_response(liasse_rows(data), f"liasse-2033-{fy['end'].isoformat()}")
+            extra = [{'Tableau': r['Tableau'], 'Case': r['Case'], 'Libellé': r['Libellé'], 'Net': r['Montant']}
+                     for r in annexes_2033_rows(ax, f2065)]
+            extra += [{'Tableau': 'DECLOYER', 'Case': r['Case'], 'Libellé': r['Libellé'], 'Net': r['Montant']}
+                      for r in LT.decloyer_rows(dl)]
+            return export_response(liasse_rows(data) + extra, f"liasse-2033-{fy['end'].isoformat()}")
         return render_template('accounting_liasse_2033.html', l=data, fy=fy, choice=choice,
-                               current=current, previous=previous)
+                               current=current, previous=previous, ax=ax, f2065=f2065, is_res=is_res, dl=dl)
 
     # ------------------------------------------------------------------ régime normal 2050-2059, IS, CVAE
     def _fiscal_years(c, eid):
@@ -361,15 +376,29 @@ def register(app):
         c = cx()
         fy, prior, choice, current, previous = _fiscal_years(c, eid)
         data, settings, is_res, cvae, calendar, _a = _liasse_and_tax(c, eid, fy, prior)
+        from profitos import corporate_tax as CT
+        from profitos.liasse_annexes import annexes, annexes_rows, form_2065
+        from profitos.entities import resolve_entity
+        profile = CT.get_fiscal_profile(c, eid)
+        try:
+            identity = dict(resolve_entity(c, eid))
+        except Exception:
+            identity = {}
+        ax = annexes(c, fy['start'], fy['end'], eid, profile=profile, settings=settings)
+        f2065 = form_2065(identity, profile, data, is_res, fy['start'], fy['end'])
+        from profitos import local_taxes as LT
+        dl = LT.decloyer(profile, LT.rent_booked(c, fy['start'], fy['end'], eid))
         c.close()
         if request.args.get('format') in ('xlsx', 'csv'):
-            return export_response(liasse_normale_rows(data), f"liasse-2050-2059-{fy['end'].isoformat()}")
+            return export_response(liasse_normale_rows(data) + annexes_rows(ax, f2065) + LT.decloyer_rows(dl),
+                                   f"liasse-2050-2059-{fy['end'].isoformat()}")
         from profitos.automation import precontrols
         c = cx()
         controls = precontrols(c, fy['start'], fy['end'], eid, today=paris_today())
         c.close()
         return render_template('accounting_liasse_2050.html', l=data, fy=fy, choice=choice,
-                               current=current, previous=previous, is_res=is_res, controls=controls)
+                               current=current, previous=previous, is_res=is_res, controls=controls,
+                               ax=ax, f2065=f2065, profile=profile, dl=dl)
 
     @app.route('/comptabilite/impot-societes', methods=['GET', 'POST'])
     @login_required
@@ -393,6 +422,7 @@ def register(app):
                                         'amount': form_float(amt)})
                         return out
                     raw_acomptes = (request.form.get('acomptes_verses') or '').strip()
+                    raw_tva = (request.form.get('tva_acomptes_verses') or '').strip()
                     CT.save_fiscal_settings(c, eid, fy['end'].isoformat(), {
                         'capital_libere': bool(request.form.get('capital_libere')),
                         'detention_pp': bool(request.form.get('detention_pp')),
@@ -400,6 +430,8 @@ def register(app):
                         'credits_impot': form_float(request.form.get('credits_impot')),
                         'acomptes_verses': form_float(raw_acomptes) if raw_acomptes else None,
                         'reintegrations': _rows('reint'), 'deductions': _rows('deduc'),
+                        'mvlt_anterieures': form_float(request.form.get('mvlt_anterieures')),
+                        'tva_acomptes_verses': form_float(raw_tva) if raw_tva else None,
                     }, now(), _who())
                     log_activity('FISCAL_SETTINGS', f"Paramètres fiscaux de l'exercice clos le {fy['end'].isoformat()}")
                     flash('Paramètres fiscaux enregistrés : la liasse et l\'impôt sont recalculés.')

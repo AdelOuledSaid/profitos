@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">TÉLÉDÉCLARATION · {{ row.channel }}{% if row.mode != 'production' %} · SIMULATION{% endif %}</div>
     <h1 class="purchase-title">{{ types[row.decl_type].label }} ({{ row.form }})</h1>
-    <p class="purchase-subtitle">Période du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}{% if row.corrective %} — déclaration rectificative{% endif %}. Déposée le {{ row.submitted_at|fr_datetime_paris }} par {{ row.submitted_by or '—' }}.</p>
+    <p class="purchase-subtitle">{% if row.due_date %}Acompte à l'échéance du {{ row.due_date|fr_date }} (exercice de référence du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}){% else %}Période du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}{% endif %}{% if row.corrective %} — déclaration rectificative{% endif %}. Déposée le {{ row.submitted_at|fr_datetime_paris }} par {{ row.submitted_by or '—' }}.</p>
   </div>
   <div class="actionbuttons">
     <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">← Télédéclarations</a>
@@ -18,7 +18,7 @@
 <div class="purchase-stats" style="margin-bottom:14px;">
   <div class="purchase-stat"><div><div class="purchase-stat-label">Statut</div><div class="purchase-stat-value" style="font-size:18px;">{{ teledeclaration_status_label(row.status) }}</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Accusé de réception</div><div class="purchase-stat-value" style="font-size:18px;">{{ row.ack_number or '—' }}</div>{% if row.ack_at %}<div class="purchase-muted" style="font-size:12px;">{{ row.ack_at|fr_datetime_paris }}</div>{% endif %}</div></div>
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Paiement associé</div><div class="purchase-stat-value" style="font-size:18px;">{{ (row.payment_amount|fr_number(0) ~ ' €') if row.payment_amount else '—' }}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Paiement associé</div><div class="purchase-stat-value" style="font-size:18px;">{{ (row.payment_amount|fr_number(0) ~ ' €') if row.payment_amount else '—' }}</div>{% if payload.payment %}<div class="purchase-muted" style="font-size:12px;">{{ 'Prélèvement sur ' ~ masked_iban(payload.payment.iban) ~ ' (mandat ' ~ payload.payment.rum ~ ')' if payload.payment.method == 'prelevement_edi' else 'À payer depuis votre espace professionnel' }}</div>{% endif %}</div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Référence de dépôt</div><div class="purchase-stat-value" style="font-size:14px;overflow-wrap:anywhere;">{{ row.remote_id or '—' }}</div></div></div>
 </div>
 

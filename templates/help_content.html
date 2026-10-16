@@ -645,8 +645,9 @@
 <h3 id="tva">TVA</h3>
 <ul>
 <li><strong>TVA</strong> : récapitulatif de la TVA collectée par taux et de la TVA déductible sur une période.</li>
-<li><strong>Déclaration CA3</strong> : les cases du formulaire 3310-CA3 préremplies à partir des écritures (base HT et TVA par taux, TVA déductible sur immobilisations et sur autres biens et services, crédit antérieur, TVA nette due ou crédit à reporter). Vous reportez les montants sur impots.gouv.fr ou les transmettez à votre expert-comptable ; ProfitOS ne télédéclare pas.</li>
+<li><strong>Déclaration CA3</strong> : les cases du formulaire 3310-CA3 préremplies à partir des écritures (base HT et TVA par taux, TVA déductible sur immobilisations et sur autres biens et services, crédit antérieur, TVA nette due ou crédit à reporter). Vous reportez les montants sur impots.gouv.fr ou les transmettez à votre expert-comptable, ou les télédéclarez depuis la page Télédéclarations.</li>
 <li><strong>Liquider</strong> passe l'écriture de liquidation de la période (TVA à décaisser ou crédit à reporter), une seule fois par période.</li>
+<li><strong>TVA annuelle CA12</strong> (régime simplifié) : les cases du formulaire 3517-S de l'exercice — base et taxe par taux, TVA déductible, crédit antérieur, acomptes payés (compte 44581, ou montant saisi dans les paramètres de l'impôt sur les sociétés), solde dû ou crédit — avec la date limite de dépôt et les deux acomptes de l'exercice suivant (55 % en juillet, 40 % en décembre ; aucun acompte si la base est inférieure à 1 000 €).</li>
 </ul>
 <h3 id="immobilisations-emprunts-credit-bail-paie">Immobilisations, emprunts, crédit-bail, paie</h3>
 <div class="help-table"><table>
@@ -659,7 +660,7 @@
 <tbody>
 <tr>
 <td>Immobilisations</td>
-<td>Registre des biens ; amortissement linéaire ou dégressif, dotations calculées et passées en écriture ; cession</td>
+<td>Registre des biens ; amortissement linéaire ou dégressif, dotations calculées et passées en écriture ; cession avec prix et TVA : dotation complémentaire au prorata, sortie de l'actif (valeur nette en 675, prix en 775) et plus ou moins-value reprise au 2059-A</td>
 </tr>
 <tr>
 <td>Emprunts</td>
@@ -685,8 +686,8 @@
 <li><strong>Révision</strong> : une liste de contrôles de fin d'exercice à cocher, avec un diagnostic automatique ; vous pouvez y inviter votre expert-comptable.</li>
 <li><strong>Clôture</strong> : verrouille la période (plus aucune écriture possible avant la date de clôture) et génère les à-nouveaux de l'exercice suivant, le résultat étant reporté en 120 (bénéfice) ou 129 (perte).</li>
 <li><strong>Plaquette</strong> : bilan et compte de résultat de l'exercice en PDF.</li>
-<li><strong>Liasse 2033</strong> : les tableaux 2033-A (bilan simplifié) et 2033-B (compte de résultat simplifié) préremplis depuis la balance, pour le régime réel simplifié.</li>
-<li><strong>Liasse 2050 (réel normal)</strong> : les tableaux 2050 à 2059 préremplis depuis la comptabilité — bilan actif et passif avec la colonne N-1, compte de résultat, immobilisations, amortissements, provisions, échéances des créances et dettes (emprunts ventilés selon leur échéancier), résultat fiscal (2058-A), suivi des déficits (2058-B), renseignements divers (2058-C) et valeur ajoutée (2059-E). Export Excel case par case, à transmettre à votre expert-comptable ou à votre partenaire EDI.</li>
+<li><strong>Liasse 2033</strong> (régime réel simplifié) : les tableaux 2033-A (bilan simplifié) et 2033-B (compte de résultat et détermination du résultat fiscal), 2033-C (immobilisations, amortissements, plus et moins-values de cession), 2033-D (provisions, suivi des déficits), 2033-E (valeur ajoutée), 2033-F (composition du capital), 2033-G (filiales et participations) et la page de garde 2065, préremplis depuis la comptabilité et le profil fiscal. Les réintégrations, déductions et déficits antérieurs se saisissent dans l'écran Impôt sur les sociétés, commun aux deux régimes. Export Excel complet.</li>
+<li><strong>Liasse 2050 (réel normal)</strong> : les tableaux 2050 à 2059 préremplis depuis la comptabilité — bilan actif et passif avec la colonne N-1, compte de résultat, immobilisations, amortissements, provisions, échéances des créances et dettes (emprunts ventilés selon leur échéancier), résultat fiscal (2058-A), suivi des déficits (2058-B), renseignements divers (2058-C) et valeur ajoutée (2059-E). Les tableaux 2054 (immobilisations), 2055 (amortissements) et 2056 (provisions) portent les codes de cases du formulaire. S'y ajoutent les plus et moins-values de cession (2059-A), le suivi des moins-values à long terme (2059-C), la composition du capital (2059-F), les filiales et participations (2059-G) et la page de garde 2065, remplis depuis le <strong>profil fiscal</strong> ; les tableaux 2059-B et 2059-D sont présentés à néant. Export Excel case par case.</li>
 <li><strong>Impôt sur les sociétés et CVAE</strong> : calcul de l'IS (taux réduit de 15 % jusqu'à 42 500 € pour les PME éligibles, 25 % au-delà, contribution sociale), des acomptes et du solde à payer, et de la CVAE de l'année. Saisissez les réintégrations et déductions extra-comptables, les déficits antérieurs et les crédits d'impôt : la liasse et l'impôt sont recalculés. Un bouton passe l'écriture d'impôt de l'exercice (695 / 444) et un calendrier liste les échéances (acomptes, relevé de solde, dépôt de la liasse, CVAE).</li>
 </ol>
 <p>Ces calculs sont des aides à la préparation : ils doivent être validés par votre expert-comptable.</p>
@@ -702,9 +703,19 @@
 </thead>
 <tbody>
 <tr>
-<td>TVA</td>
+<td>TVA (régime normal)</td>
 <td>3310-CA3</td>
 <td>EDI-TVA</td>
+</tr>
+<tr>
+<td>TVA annuelle (régime simplifié)</td>
+<td>3517-S CA12</td>
+<td>EDI-TVA</td>
+</tr>
+<tr>
+<td>Acompte de TVA (régime simplifié)</td>
+<td>3514</td>
+<td>EDI-Paiement</td>
 </tr>
 <tr>
 <td>Liasse fiscale</td>
@@ -726,6 +737,11 @@
 <td>1330-CVAE</td>
 <td>EDI-TDFC</td>
 </tr>
+<tr>
+<td>Honoraires versés</td>
+<td>DAS2</td>
+<td>EDI-TDFC</td>
+</tr>
 </tbody>
 </table></div>
 <ol>
@@ -733,10 +749,31 @@
 <li><strong>Déposer</strong> : réservé au propriétaire, à un administrateur ou au comptable, après certification. Le contenu est figé (empreinte SHA-256) ; une seule déclaration active par période, et une déclaration rectificative une fois la première acceptée.</li>
 <li><strong>Suivre</strong> : statut « déposée », puis « accusé de réception » (avec son numéro), puis « acceptée » ou « rejetée » avec les motifs.</li>
 </ol>
+<p>Les déclarations proposées suivent votre régime de TVA (CA3 mensuelle ou trimestrielle, CA12, franchise). Chaque acompte (IS ou TVA) se dépose pour son échéance : plusieurs acomptes peuvent être déposés sur le même exercice de référence.</p>
 <p>Tant qu'aucun partenaire EDI n'est connecté, les dépôts se font en <strong>mode simulation</strong> : vous testez tout le parcours, mais rien n'est transmis à l'administration.</p>
+<h3 id="profil-fiscal-et-paiement-en-ligne">Profil fiscal et paiement en ligne</h3>
+<p>Menu <strong>Comptabilité → Profil fiscal</strong> :</p>
+<ul>
+<li><strong>Régimes</strong> : imposition des bénéfices (réel normal ou simplifié) et TVA (CA3 mensuelle, CA3 trimestrielle, CA12, franchise). Ils déterminent la liasse proposée, les déclarations de TVA et l'échéancier.</li>
+<li><strong>Page de garde 2065</strong> : activité, signataire et sa qualité, expert-comptable, conseil, groupe fiscal, PME innovante.</li>
+<li><strong>Composition du capital (2059-F)</strong> et <strong>filiales (2059-G)</strong> : associés et sociétés détenues à 10 % ou plus.</li>
+<li><strong>Date de création</strong> (pour la CFE) et <strong>locaux professionnels</strong> loués (pour la DECLOYER).</li>
+<li><strong>Mandat de prélèvement</strong> (propriétaire ou administrateur) : IBAN, BIC, titulaire, référence unique du mandat (RUM), date de signature, transmission à la banque. Une fois le mandat complet, le paiement (TVA, IS) est joint à la télédéclaration par prélèvement (EDI-Paiement) ; sans mandat, le montant est affiché et vous payez depuis votre espace professionnel. L'IBAN n'est jamais réaffiché en entier. Le paiement n'est réellement transmis qu'une fois le partenaire EDI activé.</li>
+</ul>
+<h3 id="das2-et-dividendes">DAS2 et dividendes</h3>
+<ul>
+<li><strong>DAS2</strong> (menu Comptabilité → DAS2) : ProfitOS reprend les honoraires, frais d'actes, commissions, droits d'auteur, redevances et jetons de présence comptabilisés dans l'année, TVA comprise, regroupés par bénéficiaire. Ceux qui ont reçu plus de 1 200 € sont cochés d'office. Complétez le SIRET, l'adresse et la profession (repris de la fiche fournisseur quand elle existe) et corrigez le montant si un paiement a eu lieu une autre année : la DAS2 porte sur les sommes <strong>versées</strong> dans l'année civile. Date limite : celle de la liasse pour une clôture au 31 décembre. Dépôt depuis les Télédéclarations, export Excel possible.</li>
+<li><strong>Dividendes (2777)</strong> : pour chaque mois où des dividendes ont été payés (débit du compte 457), ProfitOS calcule le prélèvement forfaitaire non libératoire de 12,8 % et les prélèvements sociaux (18,6 % en 2026) dus sur la part versée aux associés personnes physiques, selon la composition du capital du profil fiscal ; vous pouvez saisir la part et les montants versés à des associés dispensés. Le résultat est comparé aux retenues comptabilisées au compte 442. La déclaration se fait et se paie en ligne sur impots.gouv.fr au plus tard le 15 du mois suivant ; le rappel apparaît dans les échéances fiscales.</li>
+</ul>
+<h3 id="ifu-cfe-et-decloyer">IFU, CFE et DECLOYER</h3>
+<ul>
+<li><strong>IFU 2561</strong> (menu Comptabilité → IFU) : récapitulatif annuel des dividendes payés à chaque associé, à déposer et à remettre aux associés avant le 15 février. ProfitOS attribue chaque paiement selon le nom porté sur l'écriture du compte 457, sinon au prorata du capital, et indique les montants à reporter sur la déclaration de revenus de l'associé : 2DC (dividendes éligibles à l'abattement de 40 %), 2CK (prélèvement de 12,8 % retenu) et 2BH (revenus soumis aux prélèvements sociaux). Cochez les associés dispensés du prélèvement. Export Excel.</li>
+<li><strong>CFE</strong> (menu Comptabilité → CFE) : saisissez le montant de l'avis (publié en novembre dans votre espace professionnel) et celui de l'année précédente. ProfitOS calcule l'acompte de 50 % du 15 juin (si la CFE précédente atteint 3 000 € et que le paiement n'est pas mensualisé) et le solde du 15 décembre, les ajoute aux échéances fiscales, et passe l'écriture de charge (635110 / 447000) une seule fois par année. La date de création (profil fiscal) gère l'exonération de la première année et la déclaration initiale 1447-C ; cochez « changements » pour être rappelé de la déclaration 1447-M.</li>
+<li><strong>DECLOYER</strong> : renseignez dans le profil fiscal les locaux professionnels loués (identifiant du local, adresse, loyer annuel hors taxes et hors charges). La déclaration est jointe à la télédéclaration de la liasse (régime normal ou simplifié) et apparaît sur les pages de la liasse ; ProfitOS vous alerte si des loyers sont comptabilisés sans local renseigné.</li>
+</ul>
 <h3 id="echeances-fiscales-et-automatisations">Échéances fiscales et automatisations</h3>
 <ul>
-<li><strong>Échéances fiscales</strong> (menu Comptabilité) : les 90 prochains jours — TVA, acomptes et solde d'IS, liasse, CVAE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail <strong>7 jours puis la veille</strong> de chaque échéance non encore déposée.</li>
+<li><strong>Échéances fiscales</strong> (menu Comptabilité) : les 90 prochains jours — TVA selon votre régime (CA3, ou CA12 et ses acomptes), acomptes et solde d'IS, liasse, CVAE, DAS2, prélèvements sur dividendes, IFU, CFE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail <strong>7 jours puis la veille</strong> de chaque échéance non encore déposée.</li>
 <li><strong>Contrôles avant liasse</strong> : IS non comptabilisé, TVA non liquidée, comptes de charges ou de produits de sens anormal, capital non repris, comptes d'attente, exercice non clôturé. Ils s'affichent aussi sur la liasse et lors de la préparation de sa télédéclaration.</li>
 <li><strong>Écritures récurrentes</strong> : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : ProfitOS passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.</li>
 <li><strong>Suivi des télédéclarations</strong> : avec un partenaire EDI connecté, les statuts sont actualisés toutes les heures et le propriétaire est prévenu en cas de rejet.</li>

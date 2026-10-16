@@ -201,11 +201,13 @@ PCG_EXTENDED_ACCOUNTS = [
     ('413000', 'Clients — effets à recevoir', 4, False),
     ('416000', 'Clients douteux ou litigieux', 4, True),
     ('419800', 'Clients — rabais, remises, ristournes à accorder', 4, False),
+    ('442000', 'État — impôts et taxes recouvrables sur des tiers (prélèvements sur dividendes)', 4, False),
     ('444000', 'État — impôts sur les bénéfices', 4, False),
     ('445200', 'TVA due intracommunautaire', 4, False),
     ('445620', 'TVA déductible sur immobilisations', 4, False),
     ('445670', 'Crédit de TVA à reporter', 4, False),
     ('445800', 'TVA à régulariser ou en attente', 4, False),
+    ('445810', 'TVA — acomptes versés (régime simplifié)', 4, False),
     ('445860', 'TVA sur factures non parvenues', 4, False),
     ('445870', 'TVA sur factures à établir', 4, False),
     ('448600', 'État — charges à payer', 4, False),
@@ -1853,3 +1855,78 @@ def pending_vat_balance(conn, as_of, entity_id=None):
             WHERE l.account_code=? AND e.entry_date<=? AND {ef}""",
         (VAT_PENDING_ACCOUNT, str(as_of), *ep)).fetchone()
     return round(float(row['n'] or 0), 2)
+
+
+# --- Cession d'immobilisation --------------------------------------------------------------
+def dispose_fixed_asset(conn, asset, disposal_date, price_ht=0.0, vat_rate=0.0, entity_id=None,
+                        created_by=None, complementary=True):
+    """Sortie d'une immobilisation cédée ou mise au rebut :
+    - dotation complémentaire de l'année de cession, au prorata jusqu'à la date de sortie
+      (si l'annuité de l'année n'a pas déjà été passée) ;
+    - écriture de sortie : amortissements cumulés (28) et valeur nette comptable (675) au
+      débit, valeur d'origine (2x) au crédit ;
+    - prix de cession : créance sur cession (462) au débit, produit de cession (775) et TVA
+      collectée au crédit.
+    Renvoie {'entry_id', 'vnc', 'gain', 'complementary'}. Une seule sortie par actif."""
+    if asset['status'] == 'disposed':
+        raise AccountingError("Cette immobilisation est déjà cédée.")
+    day = date.fromisoformat(str(disposal_date)[:10])
+    purchase = date.fromisoformat(str(asset['purchase_date'])[:10])
+    if day < purchase:
+        raise AccountingError("La date de cession précède la date d'acquisition.")
+    price_ht = round(float(price_ht or 0), 2)
+    vat_rate = float(vat_rate or 0)
+    if price_ht < 0 or vat_rate not in (0.0, 5.5, 10.0, 20.0):
+        raise AccountingError("Prix ou taux de TVA de cession invalide.")
+    comp = 0.0
+    label_year = str(day.year)
+    already = conn.execute('SELECT 1 FROM fixed_asset_depreciation_runs WHERE asset_id=? AND period_label=?',
+                           (asset['id'], label_year)).fetchone()
+    # Dotations mensuelles ou trimestrielles déjà passées dans l'année (« 2026-03 », « 2026-T1 »).
+    posted_year = float(conn.execute(
+        'SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=? AND period_label LIKE ?',
+        (asset['id'], label_year + '-%')).fetchone()['t'])
+    if complementary and not already:
+        full = compute_depreciation_for_year(conn, asset, day.year) + posted_year
+        start = max(date(day.year, 1, 1), purchase)
+        span = (date(day.year, 12, 31) - start).days + 1
+        prorata = full * ((day - start).days + 1) / span if span > 0 else 0.0
+        comp = round(max(0.0, prorata - posted_year), 2)
+        if comp > 0:
+            entry = create_entry(conn, 'OD', day, f"Dotation complémentaire avant cession — {asset['label']}",
+                                 [{'account_code': asset['expense_account'], 'debit': comp},
+                                  {'account_code': asset['depreciation_account'], 'credit': comp}],
+                                 source_type='fixed_asset_depreciation', source_id=asset['id'],
+                                 entity_id=entity_id, created_by=created_by, commit=False)
+            conn.execute('INSERT INTO fixed_asset_depreciation_runs(asset_id,period_label,amount,entry_id,created_at) VALUES(?,?,?,?,?)',
+                         (asset['id'], label_year, comp, entry, datetime.now(timezone.utc).isoformat()))
+    accumulated = round(float(conn.execute('SELECT COALESCE(SUM(amount),0) t FROM fixed_asset_depreciation_runs WHERE asset_id=?',
+                                           (asset['id'],)).fetchone()['t']), 2)
+    gross = round(float(asset['purchase_amount']), 2)
+    accumulated = min(accumulated, gross)
+    vnc = round(gross - accumulated, 2)
+    lines = []
+    if accumulated:
+        lines.append({'account_code': asset['depreciation_account'], 'debit': accumulated, 'label': 'Amortissements cumulés'})
+    if vnc:
+        lines.append({'account_code': '675000', 'debit': vnc, 'label': 'Valeur nette comptable'})
+    lines.append({'account_code': asset['asset_account'], 'credit': gross, 'label': "Valeur d'origine"})
+    vat = round(price_ht * vat_rate / 100, 2)
+    if price_ht:
+        lines.append({'account_code': '462000', 'debit': round(price_ht + vat, 2), 'label': 'Prix de cession'})
+        lines.append({'account_code': '775000', 'credit': price_ht, 'label': 'Produit de cession'})
+        if vat:
+            lines.append({'account_code': VAT_COLLECTED_ACCOUNT, 'credit': vat, 'label': 'TVA sur cession',
+                          'vat_rate': vat_rate, 'vat_base': price_ht})
+    entry_id = create_entry(conn, 'OD', day, f"Cession — {asset['label']}", lines,
+                            source_type='fixed_asset_disposal', source_id=asset['id'],
+                            entity_id=entity_id, created_by=created_by, commit=False)
+    conn.execute("""UPDATE fixed_assets SET status='disposed',disposed_at=?,disposal_date=?,disposal_price=?,disposal_vat=?,
+                    disposal_entry_id=? WHERE id=?""",
+                 (datetime.now(timezone.utc).isoformat(), day.isoformat(), price_ht, vat, entry_id, asset['id']))
+    conn.commit()
+    labels = [str(r['period_label']) for r in conn.execute(
+        'SELECT period_label FROM fixed_asset_depreciation_runs WHERE asset_id=?', (asset['id'],)).fetchall()]
+    missing = [y for y in range(purchase.year, day.year) if not any(l[:4] == str(y) for l in labels)]
+    return {'entry_id': entry_id, 'vnc': vnc, 'gain': round(price_ht - vnc, 2), 'complementary': comp,
+            'accumulated': accumulated, 'missing_years': missing}

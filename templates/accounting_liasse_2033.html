@@ -4,7 +4,7 @@
 <div class="purchase-toolbar">
   <div>
     <div class="purchase-eyebrow">LIASSE FISCALE — RÉGIME SIMPLIFIÉ</div>
-    <h1 class="purchase-title">Tableaux 2033-A et 2033-B</h1>
+    <h1 class="purchase-title">Tableaux 2033-A à 2033-G</h1>
     <p class="purchase-subtitle">Exercice {{ fy.label }}{% if choice=='courant' %} — situation provisoire{% endif %}. Pré-remplis à partir de la balance : à relire et compléter avant la déclaration.</p>
   </div>
   <div class="actionbuttons">
@@ -14,17 +14,23 @@
   </div>
 </div>
 
-<nav class="seg-tabs" aria-label="Exercice" style="margin-bottom:14px;">
+<nav class="seg-tabs" aria-label="Exercice" style="margin-bottom:10px;">
   <a href="{{ url_for('accounting_liasse_2033', exercice='precedent') }}" class="{{ 'is-active' if choice!='courant' else '' }}">Exercice clos ({{ previous.end|fr_date }})</a>
   <a href="{{ url_for('accounting_liasse_2033', exercice='courant') }}" class="{{ 'is-active' if choice=='courant' else '' }}">Exercice en cours</a>
 </nav>
+<nav class="seg-tabs" aria-label="Tableaux" style="margin-bottom:14px;">
+  <a href="#bilan">2033-A Bilan</a><a href="#resultat">2033-B Résultat</a><a href="#fiscal">Résultat fiscal</a>
+  <a href="#immo">2033-C Immobilisations</a><a href="#prov">2033-D Provisions et déficits</a><a href="#va">2033-E Valeur ajoutée</a>
+  <a href="#capital">2033-F/G Capital et filiales</a><a href="#f2065">2065 Page de garde</a><a href="#decloyer">DECLOYER</a>
+</nav>
 
+{% for msg in ax.checks %}<div class="flash" role="alert">⚠ {{ msg }}</div>{% endfor %}
 {% if not l.balanced %}<div class="flash" role="alert">⚠ Le total de l'actif ({{ l.total_actif|fr_number(0) }} €) diffère du total du passif ({{ l.total_passif|fr_number(0) }} €){% if l.unassigned %} : comptes non rattachés à une case : {{ l.unassigned|join(', ') }}{% endif %}. Vérifiez la balance.</div>
 {% else %}<div class="flash" role="status">✓ Bilan équilibré : total actif = total passif = {{ l.total_actif|fr_number(0) }} €.</div>{% endif %}
 
-<div class="twocol">
+<div class="twocol" id="bilan">
 <section class="purchase-panel">
-  <h2 style="color:#fff;margin-top:0;">2033-A — Actif</h2>
+  <h2 style="margin-top:0;">2033-A — Actif</h2>
   <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
     <thead><tr><th>Case</th><th>Poste</th><th class="num">Brut</th><th class="num">Amort.</th><th class="num">Net</th></tr></thead>
     <tbody>
@@ -34,7 +40,7 @@
   </table></div>
 </section>
 <section class="purchase-panel">
-  <h2 style="color:#fff;margin-top:0;">2033-A — Passif</h2>
+  <h2 style="margin-top:0;">2033-A — Passif</h2>
   <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
     <thead><tr><th>Case</th><th>Poste</th><th class="num">Montant</th></tr></thead>
     <tbody>
@@ -48,9 +54,9 @@
 </section>
 </div>
 
-<section class="purchase-panel" style="margin-top:14px;">
-  <h2 style="color:#fff;margin-top:0;">2033-B — Compte de résultat</h2>
-  <div class="purchase-table-wrap"><div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
+<section class="purchase-panel" id="resultat" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-B — Compte de résultat</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
     {% for x in l.produits %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
     <tr class="ca3-total"><td class="ca3-box">232</td><td>Total des produits d'exploitation</td><td class="num">{{ l.total_produits|fr_number(0) }}</td></tr>
     {% for x in l.charges %}<tr><td class="ca3-box">{{ x.box }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
@@ -62,8 +68,100 @@
   {% if l.unclassified %}<p class="purchase-muted" style="font-size:12px;">Comptes de gestion rattachés par défaut aux autres produits / autres charges : {{ l.unclassified|join(', ') }}.</p>{% endif %}
 </section>
 
+{% set rf = ax.resultat_fiscal %}
+<section class="purchase-panel" id="fiscal" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-B — Détermination du résultat fiscal</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
+    <tr class="ca3-total"><td class="ca3-box">310</td><td>Résultat comptable</td><td class="num">{{ rf.resultat_comptable|fr_number(0) }}</td></tr>
+    {% for x in rf.reintegrations %}<tr><td class="ca3-box"></td><td>Réintégration — {{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+    {% for x in rf.deductions %}<tr><td class="ca3-box"></td><td>Déduction — {{ x.label }}</td><td class="num">− {{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+    <tr><td class="ca3-box"></td><td>Résultat fiscal avant imputation des déficits</td><td class="num">{{ rf.avant_deficits|fr_number(0) }}</td></tr>
+    <tr><td class="ca3-box"></td><td>Déficits antérieurs imputés</td><td class="num">− {{ rf.deficits_imputes|fr_number(0) }}</td></tr>
+    <tr class="ca3-total"><td class="ca3-box">370</td><td>Résultat fiscal — bénéfice</td><td class="num">{{ rf.benefice|fr_number(0) }}</td></tr>
+    <tr class="ca3-total"><td class="ca3-box">372</td><td>Résultat fiscal — déficit</td><td class="num">{{ rf.deficit|fr_number(0) }}</td></tr>
+  </tbody></table></div>
+  <p class="purchase-muted" style="font-size:12px;">Les réintégrations et déductions extra-comptables, les déficits antérieurs et les crédits d'impôt se saisissent dans les paramètres de l'<a class="link" href="{{ url_for('accounting_corporate_tax', exercice=choice) }}">impôt sur les sociétés</a> (impôt dû : {{ is_res.is_du|fr_number(0) }} €).</p>
+</section>
+
+<section class="purchase-panel" id="immo" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-C — Immobilisations</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Rubrique</th><th class="num">Valeur brute début</th><th class="num">Augmentations</th><th class="num">Diminutions</th><th class="num">Valeur brute fin</th></tr></thead>
+    <tbody>
+    {% for r in ax.immo %}{% if r.debut or r.augmentations or r.diminutions or r.fin %}<tr><td>{{ r.label }}</td><td class="num">{{ r.debut|fr_number(0) }}</td><td class="num">{{ r.augmentations|fr_number(0) }}</td><td class="num">{{ r.diminutions|fr_number(0) }}</td><td class="num">{{ r.fin|fr_number(0) }}</td></tr>{% endif %}{% endfor %}
+    <tr class="ca3-total"><td>Total</td><td class="num">{{ ax.immo_tot.debut|fr_number(0) }}</td><td class="num">{{ ax.immo_tot.augmentations|fr_number(0) }}</td><td class="num">{{ ax.immo_tot.diminutions|fr_number(0) }}</td><td class="num">{{ ax.immo_tot.fin|fr_number(0) }}</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 style="margin-top:18px;">2033-C — Amortissements</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Rubrique</th><th class="num">Début d'exercice</th><th class="num">Dotations</th><th class="num">Diminutions</th><th class="num">Fin d'exercice</th></tr></thead>
+    <tbody>
+    {% for r in ax.amort %}{% if r.debut or r.dotations or r.diminutions or r.fin %}<tr><td>{{ r.label }}</td><td class="num">{{ r.debut|fr_number(0) }}</td><td class="num">{{ r.dotations|fr_number(0) }}</td><td class="num">{{ r.diminutions|fr_number(0) }}</td><td class="num">{{ r.fin|fr_number(0) }}</td></tr>{% endif %}{% endfor %}
+    <tr class="ca3-total"><td>Total</td><td class="num">{{ ax.amort_tot.debut|fr_number(0) }}</td><td class="num">{{ ax.amort_tot.dotations|fr_number(0) }}</td><td class="num">{{ ax.amort_tot.diminutions|fr_number(0) }}</td><td class="num">{{ ax.amort_tot.fin|fr_number(0) }}</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 style="margin-top:18px;">2033-C — Plus et moins-values</h2>
+  {% if ax.pv %}
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Immobilisation</th><th>Cédée le</th><th class="num">Valeur d'origine</th><th class="num">Valeur résiduelle</th><th class="num">Prix de cession</th><th class="num">Court terme</th><th class="num">Long terme</th></tr></thead>
+    <tbody>
+    {% for r in ax.pv %}<tr><td>{{ r.label }}</td><td>{{ r.disposed|fr_date }}</td><td class="num">{{ r.valeur_origine|fr_number(0) }}</td><td class="num">{{ r.valeur_residuelle|fr_number(0) }}</td><td class="num">{{ r.prix|fr_number(0) }}</td><td class="num">{{ r.court_terme|fr_number(0) }}</td><td class="num">{{ r.long_terme|fr_number(0) }}</td></tr>{% endfor %}
+    <tr class="ca3-total"><td colspan="5">Plus ou moins-values nettes</td><td class="num">{{ ax.pv_tot.court_terme|fr_number(0) }}</td><td class="num">{{ ax.pv_tot.long_terme|fr_number(0) }}</td></tr>
+    </tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Néant : aucune immobilisation cédée sur l'exercice (les cessions s'enregistrent depuis la fiche de l'immobilisation).</p>{% endif %}
+</section>
+
+<section class="purchase-panel" id="prov" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-D — Provisions et dépréciations</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Nature</th><th class="num">Début d'exercice</th><th class="num">Dotations</th><th class="num">Reprises</th><th class="num">Fin d'exercice</th></tr></thead>
+    <tbody>
+    {% for r in ax.prov %}{% if r.debut or r.dotations or r.reprises or r.fin %}<tr><td>{{ r.label }}</td><td class="num">{{ r.debut|fr_number(0) }}</td><td class="num">{{ r.dotations|fr_number(0) }}</td><td class="num">{{ r.reprises|fr_number(0) }}</td><td class="num">{{ r.fin|fr_number(0) }}</td></tr>{% endif %}{% endfor %}
+    <tr class="ca3-total"><td>Total</td><td class="num">{{ ax.prov_tot.debut|fr_number(0) }}</td><td class="num">{{ ax.prov_tot.dotations|fr_number(0) }}</td><td class="num">{{ ax.prov_tot.reprises|fr_number(0) }}</td><td class="num">{{ ax.prov_tot.fin|fr_number(0) }}</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 style="margin-top:18px;">2033-D — Suivi des déficits</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
+    {% for x in ax.deficits %}<tr{% if x.code == '870' %} class="ca3-total"{% endif %}><td class="ca3-box">{{ x.code }}</td><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="purchase-panel" id="va" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-E — Valeur ajoutée</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
+    {% for x in ax.va %}<tr{% if x.total %} class="ca3-total"{% endif %}><td>{{ x.label }}</td><td class="num">{{ x.amount|fr_number(0) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="purchase-muted" style="font-size:12px;">Le 2033-E est obligatoire dès que le chiffre d'affaires dépasse 152 500 € (déclaration de la CVAE).</p>
+</section>
+
+<section class="purchase-panel" id="capital" style="margin-top:14px;">
+  <h2 style="margin-top:0;">2033-F — Composition du capital social</h2>
+  {% set cap = ax.capital %}
+  {% if cap.pm or cap.pp %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Associé</th><th>Type</th><th>SIREN</th><th class="num">% détenu</th><th class="num">Parts</th><th>Adresse</th></tr></thead>
+    <tbody>{% for r in cap.pm + cap.pp %}<tr><td>{{ r.name }} {{ r.first_name or '' }}</td><td>{{ 'Personne morale' if r.kind=='PM' else 'Personne physique' }}</td><td>{{ r.siren or '' }}</td><td class="num">{{ r.pct|fr_number(2) }}</td><td class="num">{{ (r.shares or 0)|fr_number(0) }}</td><td>{{ r.address or '' }} {{ r.postal_code or '' }} {{ r.city or '' }}{% if r.country %} ({{ r.country }}){% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucun associé renseigné. Complétez la composition du capital dans le <a class="link" href="{{ url_for('fiscal_profile') }}">profil fiscal</a>.</p>{% endif %}
+
+  <h2 style="margin-top:18px;">2033-G — Filiales et participations</h2>
+  {% if ax.filiales.rows %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Dénomination</th><th>Forme</th><th>SIREN</th><th class="num">% détenu</th><th>Adresse</th></tr></thead>
+    <tbody>{% for r in ax.filiales.rows %}<tr><td>{{ r.name }}</td><td>{{ r.legal_form or '' }}</td><td>{{ r.siren or '' }}</td><td class="num">{{ r.pct|fr_number(2) }}</td><td>{{ r.address or '' }} {{ r.postal_code or '' }} {{ r.city or '' }}{% if r.country %} ({{ r.country }}){% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Néant : aucune filiale ni participation d'au moins 10 % renseignée dans le <a class="link" href="{{ url_for('fiscal_profile') }}">profil fiscal</a>.</p>{% endif %}
+</section>
+
+{% include '_form_2065.html' %}
+{% include '_decloyer.html' %}
+
 <section class="purchase-panel" style="margin-top:14px;">
-  <p class="purchase-muted" style="margin:0;">Aide au remplissage : les montants sont arrondis à l'euro et répartis selon la correspondance usuelle entre le plan comptable et les cases de la notice 2033. Restent à compléter selon votre situation : tableaux 2033-C à 2033-G (immobilisations, amortissements, provisions, plus-values, déficits, détermination du résultat fiscal), crédit-bail, effectif… La liasse doit être télétransmise (EDI-TDFC) par votre expert-comptable ou un partenaire EDI ; ProfitOS ne la transmet pas.</p>
+  <p class="purchase-muted" style="margin:0;">Aide au remplissage : les montants sont arrondis à l'euro et répartis selon la correspondance usuelle entre le plan comptable et les rubriques des formulaires 2033. Seuls les codes de cases établis avec certitude sont affichés ; reportez les autres montants sur la ligne correspondante. Le dépôt se fait depuis la page Télédéclarations (EDI-TDFC, via le partenaire EDI une fois activé).</p>
 </section>
 </div>
 {% endblock %}

@@ -29,7 +29,7 @@
 </section>
 
 <section class="purchase-panel" style="margin-bottom:20px;">
-<div class="purchase-panel-head"><h2>Préparation fiscale CA3 / CA12</h2></div>
+<div class="purchase-panel-head"><h2>Préparation fiscale CA3 / CA12</h2>{% if can_access('accounting') %}<a class="purchase-nav-btn" href="{{ url_for('accounting_ca12') }}">Déclaration annuelle CA12 →</a>{% endif %}</div>
 <p><strong>Préparation interne uniquement :</strong> ProfitOS calcule, contrôle et fige un dossier de travail. La validation ci-dessous ne constitue ni un dépôt, ni une télédéclaration, ni un accusé de réception DGFiP.</p>
 <form method="get" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:12px;">
 <input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">

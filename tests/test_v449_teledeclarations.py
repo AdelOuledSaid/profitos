@@ -39,7 +39,7 @@ def test_build_ca3_and_liasse_payloads(app):
     b = T.build_declaration(c, 'TVA_CA3', '2025-03-01', '2025-03-31', identity=ident)
     boxes = {(x['code'], x.get('kind')): x['amount'] for x in b['payload']['boxes']}
     assert boxes[('16', None)] == 20000 and boxes[('20', None)] == 6000 and boxes[('28', None)] == 14000
-    assert b['payload']['payment'] == {'amount': 14000} and not b['errors']
+    assert b['payload']['payment'] == {'amount': 14000, 'method': 'hors_edi'} and not b['errors']
     l = T.build_declaration(c, 'LIASSE', '2025-01-01', '2025-12-31', identity=ident, regime='normal')
     cases = {(x['form'], x['code']): x['amount'] for x in l['payload']['boxes']}
     assert cases[('2053', 'HN')] == 70000 and cases[('2050', 'BX')] == 120000 and not l['errors']

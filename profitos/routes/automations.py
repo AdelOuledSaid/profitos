@@ -1,6 +1,6 @@
 """Écrans des automatisations comptables : écritures récurrentes, échéancier fiscal et
 contrôles avant liasse."""
-from datetime import timedelta
+from datetime import date, timedelta
 
 from profitos.runtime import *
 from profitos.accounting import paris_today
@@ -94,3 +94,132 @@ def register(app):
             ac.close()
         return render_template('fiscal_calendar.html', deadlines=deadlines, controls=controls, closed=closed,
                                jobs=AUTOMATIC_JOBS, runs=runs, today=today)
+
+
+MANDATE_ROLES = ('OWNER', 'ADMIN')
+
+
+def _rows_from_form(form, prefix, fields, n):
+    out = []
+    for i in range(1, n + 1):
+        row = {f: (form.get(f'{prefix}_{f}_{i}') or '').strip() for f in fields}
+        if not row.get('name'):
+            continue
+        out.append(row)
+    return out
+
+
+def register_fiscal(app):
+    from profitos import corporate_tax as CT
+    from profitos.teledeclaration import luhn_ok
+
+    @app.route('/comptabilite/profil-fiscal', methods=['GET', 'POST'])
+    @login_required
+    def fiscal_profile():
+        eid = _eid()
+        c = cx()
+        profile = CT.get_fiscal_profile(c, eid)
+        if request.method == 'POST':
+            f = request.form
+            errors = []
+            sh_fields = ('kind', 'name', 'first_name', 'siren', 'pct', 'shares', 'address', 'postal_code', 'city', 'country', 'birth_date')
+            sub_fields = ('legal_form', 'name', 'siren', 'pct', 'address', 'postal_code', 'city', 'country')
+            shareholders = _rows_from_form(f, 'sh', sh_fields, 8)
+            subsidiaries = _rows_from_form(f, 'sub', sub_fields, 6)
+            for r in shareholders + subsidiaries:
+                try:
+                    pct = form_float(r.get('pct') or 0)
+                except ValueError:
+                    pct = -1
+                if not 0 <= pct <= 100:
+                    errors.append(f"{r['name']} : pourcentage de détention invalide.")
+                r['pct'] = pct
+                if 'shares' in r:
+                    try:
+                        r['shares'] = form_float(r.get('shares') or 0)
+                    except ValueError:
+                        errors.append(f"{r['name']} : nombre de parts invalide.")
+                siren = ''.join(ch for ch in r.get('siren', '') if ch.isdigit())
+                if siren and (len(siren) != 9 or not luhn_ok(siren)):
+                    errors.append(f"{r['name']} : SIREN invalide.")
+                r['siren'] = siren
+            premises = []
+            for i in range(1, 6):
+                addr = (f.get(f'loc_address_{i}') or '').strip()[:200]
+                inv = ''.join(ch for ch in (f.get(f'loc_invariant_{i}') or '') if ch.isalnum()).upper()[:20]
+                if not (addr or inv):
+                    continue
+                try:
+                    rent = form_float(f.get(f'loc_rent_{i}') or 0)
+                except ValueError:
+                    rent = -1
+                if rent < 0:
+                    errors.append(f"Local {addr or inv} : loyer annuel invalide.")
+                premises.append({'invariant': inv, 'address': addr, 'rent': max(rent, 0.0)})
+            if (f.get('date_creation') or '').strip():
+                try:
+                    date.fromisoformat(f.get('date_creation').strip())
+                except ValueError:
+                    errors.append('Date de création invalide.')
+            data = {
+                'tax_regime': f.get('tax_regime') if f.get('tax_regime') in ('normal', 'simplifie') else 'normal',
+                'vat_filing': f.get('vat_filing') if f.get('vat_filing') in CT.VAT_FILINGS else 'ca3_mensuelle',
+                'activite': (f.get('activite') or '').strip()[:200], 'pme_innovante': bool(f.get('pme_innovante')),
+                'groupe': bool(f.get('groupe')), 'societe_mere_siren': ''.join(ch for ch in f.get('societe_mere_siren', '') if ch.isdigit())[:9],
+                'expert_comptable': (f.get('expert_comptable') or '').strip()[:200],
+                'expert_comptable_tel': (f.get('expert_comptable_tel') or '').strip()[:30],
+                'conseil': (f.get('conseil') or '').strip()[:200], 'signataire': (f.get('signataire') or '').strip()[:120],
+                'signataire_qualite': (f.get('signataire_qualite') or '').strip()[:80], 'mel': (f.get('mel') or '').strip()[:120],
+                'shareholders': shareholders, 'subsidiaries': subsidiaries,
+                'date_creation': (f.get('date_creation') or '').strip()[:10],
+                'premises': premises,
+            }
+            if current_role() in MANDATE_ROLES and f.get('mandate_iban') is not None:
+                from profitos.fr_identifiers import iban_is_valid
+                iban = ''.join((f.get('mandate_iban') or '').split()).upper()
+                if not iban and not f.get('mandate_clear'):
+                    iban = profile['mandate'].get('iban') or ''
+                elif iban and not iban_is_valid(iban):
+                    errors.append("IBAN du compte de prélèvement invalide.")
+                bic = (f.get('mandate_bic') or '').strip().upper()
+                if bic and not re.fullmatch(r'[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?', bic):
+                    errors.append('BIC invalide.')
+                if f.get('mandate_clear'):
+                    data['mandate'] = dict(CT.DEFAULT_PROFILE['mandate'])
+                else:
+                    data['mandate'] = {'iban': iban, 'bic': bic, 'holder': (f.get('mandate_holder') or '').strip()[:120],
+                                       'rum': (f.get('mandate_rum') or '').strip()[:35], 'signed_at': (f.get('mandate_signed_at') or '').strip()[:10],
+                                       'bank_confirmed': bool(f.get('mandate_bank_confirmed'))}
+            if errors:
+                c.close()
+                for e in errors[:5]:
+                    flash(e)
+                return redirect(url_for('fiscal_profile'))
+            CT.save_fiscal_profile(c, eid, data, now(), current_user()['email'])
+            c.close()
+            log_activity('FISCAL_PROFILE', 'Profil fiscal mis à jour')
+            if 'mandate' in data:
+                log_security_event('FISCAL_MANDATE_UPDATED', 'SUCCESS', target='mandat de prélèvement')
+            flash('Profil fiscal enregistré.')
+            return redirect(url_for('fiscal_profile'))
+        c.close()
+        return render_template('fiscal_profile.html', p=profile, vat_filings=CT.VAT_FILINGS,
+                               can_mandate=current_role() in MANDATE_ROLES, mandate_ok=CT.mandate_ready(profile),
+                               masked=CT.masked_iban(profile['mandate'].get('iban')))
+
+    @app.route('/comptabilite/tva/ca12')
+    @login_required
+    def accounting_ca12():
+        from profitos import ledger as L
+        from profitos.vat_return import ca12_form, CA12_BOXES
+        eid = _eid()
+        c = cx()
+        current = L.fiscal_year_for(c, paris_today(), eid)
+        previous = L.fiscal_year_for(c, current['start'] - timedelta(days=1), eid)
+        choice = request.args.get('exercice') or 'precedent'
+        fy = current if choice == 'courant' else previous
+        settings = CT.get_fiscal_settings(c, eid, fy['end'].isoformat())
+        form = ca12_form(c, fy['start'].isoformat(), fy['end'].isoformat(), eid, acomptes=settings.get('tva_acomptes_verses'))
+        c.close()
+        return render_template('accounting_ca12.html', f=form, boxes=CA12_BOXES, fy=fy, choice=choice,
+                               current=current, previous=previous)

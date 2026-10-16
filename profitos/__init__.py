@@ -204,6 +204,9 @@ def create_app(config_object=None):
     teledeclaration_routes.register(app)
     from .routes import automations as automation_routes
     automation_routes.register(app)
+    automation_routes.register_fiscal(app)
+    from .routes import tiers as tiers_routes
+    tiers_routes.register(app)
     expenses.register(app)
     cloud_storage.register(app)
     entities.register(app)

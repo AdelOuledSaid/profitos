@@ -83,6 +83,8 @@
     <label>Déficits restant à reporter de l'exercice précédent (€)<input name="deficits_anterieurs" inputmode="decimal" value="{{ settings.deficits_anterieurs|fr_number(2) if settings.deficits_anterieurs else '' }}" placeholder="0"></label>
     <label>Crédits d'impôt imputables (CIR, mécénat…) (€)<input name="credits_impot" inputmode="decimal" value="{{ settings.credits_impot|fr_number(2) if settings.credits_impot else '' }}" placeholder="0"></label>
     <label class="wide">Acomptes d'IS versés pendant l'exercice (€) — laisser vide pour reprendre la comptabilité ({{ acomptes_auto|fr_number(0) }} € au compte 444)<input name="acomptes_verses" inputmode="decimal" value="{{ settings.acomptes_verses|fr_number(2) if settings.acomptes_verses is not none else '' }}"></label>
+    <label>Moins-values à long terme des exercices antérieurs restant à imputer (2059-C) (€)<input name="mvlt_anterieures" inputmode="decimal" value="{{ settings.mvlt_anterieures|fr_number(2) if settings.mvlt_anterieures else '' }}" placeholder="0"></label>
+    <label>Acomptes de TVA versés (régime simplifié, CA12) (€) — laisser vide pour reprendre le compte 44581<input name="tva_acomptes_verses" inputmode="decimal" value="{{ settings.tva_acomptes_verses|fr_number(2) if settings.tva_acomptes_verses is not none else '' }}"></label>
     {% for kind, title, rows in (('reint', 'Réintégrations extra-comptables (2058-A)', settings.reintegrations), ('deduc', 'Déductions extra-comptables (2058-A)', settings.deductions)) %}
     <fieldset class="wide" style="border:1px solid var(--border, #294064);border-radius:10px;padding:10px;">
       <legend>{{ title }}</legend>

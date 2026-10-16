@@ -15,6 +15,7 @@
 <div class="flash" role="status">Mode simulation : aucun partenaire EDI n'est encore connecté. Vous pouvez préparer et contrôler vos déclarations et tester le parcours complet ; rien n'est transmis à l'administration.</div>
 {% endif %}
 
+<p class="purchase-muted">Régime de TVA : <strong>{{ {'ca3_mensuelle': 'CA3 mensuelle', 'ca3_trimestrielle': 'CA3 trimestrielle', 'ca12': 'CA12 annuelle', 'franchise': 'franchise en base'}.get(vat_filing, vat_filing) }}</strong> · Paiement : <strong>{{ 'mandat de prélèvement enregistré' if mandate_ok else 'aucun mandat enregistré' }}</strong> — <a class="link" href="{{ url_for('fiscal_profile') }}">modifier dans le profil fiscal</a>.</p>
 <section class="purchase-panel">
   <h2>À préparer</h2>
   <div class="purchase-table-wrap"><table class="purchase-table">
@@ -27,10 +28,15 @@
         <td>{% if c.existing %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=c.existing.id) }}">{{ teledeclaration_status_label(c.existing.status) }}</a>{% else %}<span class="purchase-muted">Non déposée</span>{% endif %}</td>
         <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=c.type, du=c.start.isoformat(), au=c.end.isoformat()) }}">Préparer</a></td></tr>
     {% endfor %}
+    {% for a in vat_instalments %}
+      <tr><td><strong>{{ a.label }} — {{ a.date|fr_date }}</strong><br><span class="purchase-muted">{{ types.TVA_3514.label }}</span></td>
+        <td>3514 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('TVA_3514', a.date.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
+        <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='TVA_3514', du=closed.start.isoformat(), au=closed.end.isoformat(), acompte=a.amount, echeance=a.date.isoformat()) }}">Préparer</a></td></tr>
+    {% endfor %}
     {% for d in instalments %}
       <tr><td><strong>Acompte d'IS du {{ d|fr_date }}</strong><br><span class="purchase-muted">{{ types.IS_2571.label }}</span></td>
-        <td>2571 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td></td>
-        <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='IS_2571', du=closed.start.isoformat(), au=closed.end.isoformat()) }}">Préparer</a></td></tr>
+        <td>2571 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('IS_2571', d.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
+        <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='IS_2571', du=closed.start.isoformat(), au=closed.end.isoformat(), echeance=d.isoformat()) }}">Préparer</a></td></tr>
     {% endfor %}
     </tbody>
   </table></div>

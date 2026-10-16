@@ -647,7 +647,7 @@ def register(app):
                 schedule.append({'year': year, 'amount': dot, 'vnc': vnc})
         return render_template('fixed_asset_detail.html', asset=asset, runs=runs, posted_total=posted_total,
                                 current_year=current_year, preview=preview, already_run_this_year=already_run_this_year,
-                                schedule=schedule, coefficient=degressive_coefficient(asset['useful_life_years']))
+                                schedule=schedule, coefficient=degressive_coefficient(asset['useful_life_years']), today=paris_today().isoformat())
 
     @app.route('/comptabilite/immobilisations/<int:asset_id>/amortir', methods=['POST'])
     @login_required
@@ -693,12 +693,28 @@ def register(app):
             c.close()
             flash("Cette immobilisation est déjà cédée.")
             return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
-        c.execute(f"UPDATE fixed_assets SET status='disposed',disposed_at=? WHERE id=? AND {ef}", (now(), asset_id, eid) if eid else (now(), asset_id))
-        c.commit(); c.close()
-        log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée")
-        flash("Immobilisation marquée cédée. Aucune écriture de sortie/plus-value générée automatiquement — "
-              "à saisir manuellement avec votre expert-comptable selon le prix de cession réel.")
-        return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+        from profitos.accounting import dispose_fixed_asset
+        try:
+            price = form_float(request.form.get('disposal_price'))
+            vat_rate = form_float(request.form.get('disposal_vat_rate'), 0)
+            result = dispose_fixed_asset(c, asset, request.form.get('disposal_date') or paris_today().isoformat(),
+                                         price, vat_rate, eid, current_user()['email'],
+                                         complementary=bool(request.form.get('complementary')))
+        except (AccountingError, ValueError) as exc:
+            c.rollback(); c.close()
+            flash(f"Cession impossible : {exc}")
+            return redirect(url_for('fixed_asset_detail', asset_id=asset_id))
+        c.close()
+        log_activity('FIXED_ASSET_DISPOSED', f"Immobilisation #{asset_id} cédée ({fr_number(price, 2)} € HT)")
+        gain = result['gain']
+        flash(f"Cession comptabilisée : valeur nette {fr_number(result['vnc'], 2)} €, "
+              + (f"plus-value {fr_number(gain, 2)} €." if gain >= 0 else f"moins-value {fr_number(-gain, 2)} €.")
+              + (f" Dotation complémentaire : {fr_number(result['complementary'], 2)} €." if result['complementary'] else ''))
+        if result.get('missing_years'):
+            flash("Attention : aucune dotation aux amortissements n'a été passée pour "
+                  + ', '.join(str(y) for y in result['missing_years'])
+                  + " ; la valeur nette comptable retenue est donc surévaluée. Vérifiez le plan d'amortissement.")
+        return redirect(url_for('accounting_entry_detail', entry_id=result['entry_id']))
 
     def _vat_snapshot(c, eid, date_from, date_to):
         ef = 'e.entity_id=?' if eid else 'e.entity_id IS NULL'

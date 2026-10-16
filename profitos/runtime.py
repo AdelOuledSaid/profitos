@@ -2645,6 +2645,9 @@ def _migrate_tenant_schema(org_id=None):
                                                         'client_vat_number', 'counterparty_country')]
         + [('delivery_notes', col, 'TEXT') for col in ('client_siren', 'operation_nature', 'billing_address', 'due_date')]
         + [('finance_leases', 'vat_rate', 'REAL'), ('purchase_invoices', 'duplicate_ack', 'TEXT')]
+        + [('fixed_assets', 'disposal_price', 'REAL'), ('fixed_assets', 'disposal_vat', 'REAL'),
+           ('fixed_assets', 'disposal_entry_id', 'INTEGER'), ('fixed_assets', 'disposal_date', 'TEXT'),
+           ('teledeclarations', 'due_date', 'TEXT')]
         + [('invoicing_clients', 'country', 'TEXT'), ('invoicing_clients', 'is_public', 'TEXT'),
            ('accounting_entries', 'piece_ref', 'TEXT'), ('accounting_entry_lines', 'lettrage_date', 'TEXT'),
            ('accounting_entry_lines', 'vat_rate', 'REAL'), ('accounting_entry_lines', 'vat_base', 'REAL')]
@@ -3668,6 +3671,9 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-16','title':"CFE (échéances, rappels, écriture), DECLOYER jointe à la liasse, IFU 2561 des dividendes"},
+    {'date':'2026-10-16','title':"Régime simplifié : annexes 2033-C à 2033-G et page de garde 2065 ; DAS2 des honoraires versés ; prélèvements sur dividendes (2777)"},
+    {'date':'2026-10-15','title':"TVA annuelle CA12 et acomptes 3514, annexes 2054 à 2059-G codées, page de garde 2065, profil fiscal et paiement en ligne des impôts par mandat"},
     {'date':'2026-10-15','title':'Automatisations : écritures récurrentes, rappels des échéances fiscales, contrôles avant liasse'},
     {'date':'2026-10-15','title':'Télédéclarations : TVA, liasse, IS et CVAE préparées, contrôlées et suivies (simulation tant que le partenaire EDI n\'est pas connecté)'},
     {'date':'2026-10-15','title':"Liasse fiscale du régime normal (2050 à 2059), impôt sur les sociétés et CVAE 2026"},
