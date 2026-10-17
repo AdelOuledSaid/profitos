@@ -298,12 +298,38 @@ def register(app):
         c.close()
         log_activity('DECLARATION_FILED', f"{row['form']} du {row['period_start']} au {row['period_end']} : justificatif archivé")
         log_security_event('DECLARATION_FILED', 'SUCCESS', target=f"{row['decl_type']}:{row['period_end']}")
-        flash("Dépôt enregistré : le justificatif est archivé et l'échéance est marquée comme déposée.")
-        if check['status'] == 'ecarts':
-            flash("Attention : l'accusé ne correspond pas entièrement à la déclaration préparée ("
-                  + ', '.join(c_['label'] for c_ in check['checks'] if not c_['ok']) + "). Vérifiez le fichier joint.")
-        elif check['status'] == 'non_verifiable':
-            flash(f"Vérification automatique de l'accusé impossible ({check['reason']}) : contrôlez-le vous-même.")
+        if check['status'] == 'concordant':
+            flash("Dépôt confirmé : l'accusé joint correspond à la déclaration préparée (SIREN, formulaire, période, montant).")
+        elif check['status'] == 'ecarts':
+            flash("Justificatif à vérifier : l'accusé ne correspond pas entièrement à la déclaration préparée ("
+                  + ', '.join(c_['label'] for c_ in check['checks'] if not c_['ok'])
+                  + "). Joignez le bon accusé, ou confirmez le dépôt en expliquant l'écart.")
+        else:
+            flash(f"Dépôt déclaré : l'accusé est archivé mais n'a pas pu être vérifié automatiquement ({check['reason']}). "
+                  "Contrôlez-le puis confirmez le dépôt.")
+        return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+
+    @app.post('/comptabilite/teledeclarations/<int:decl_id>/confirmer')
+    @login_required
+    def teledeclaration_confirm(decl_id):
+        eid = _eid()
+        if current_role() not in SUBMIT_ROLES:
+            flash("Seuls le propriétaire, un administrateur ou le comptable peuvent confirmer un dépôt.")
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+        c = cx()
+        row = _row_or_404(c, decl_id, eid)
+        try:
+            if not request.form.get('verified'):
+                raise T.TeledeclarationError("Cochez « j'ai vérifié l'accusé » pour confirmer le dépôt.")
+            T.confirm_filing(c, row, current_user()['email'], request.form.get('note') or '')
+        except T.TeledeclarationError as exc:
+            c.close()
+            flash(str(exc))
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+        c.close()
+        log_activity('DECLARATION_CONFIRMED', f"{row['form']} du {row['period_start']} au {row['period_end']} : dépôt confirmé manuellement")
+        log_security_event('DECLARATION_CONFIRMED_MANUALLY', 'SUCCESS', target=f"{row['decl_type']}:{row['period_end']}")
+        flash("Dépôt confirmé après vérification manuelle de l'accusé.")
         return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
 
     @app.route('/comptabilite/teledeclarations/<int:decl_id>/justificatif')

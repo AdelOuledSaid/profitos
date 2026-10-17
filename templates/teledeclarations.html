@@ -65,7 +65,7 @@
         <td>{{ r.form }}{% if r.corrective %} <span class="purchase-status">Rectificative</span>{% endif %}</td>
         <td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
         <td>{{ {'production': 'Partenaire EDI', 'manual': 'Par vous', 'simulation': 'Simulation'}.get(r.mode, r.mode) }}</td>
-        <td><span class="purchase-status {{ 'paid' if r.status in ('accepted', 'filed') else ('overdue' if r.status=='rejected' else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+        <td><span class="purchase-status {{ 'paid' if r.status in ('accepted', 'confirmed') else ('overdue' if r.status in ('rejected', 'to_verify') else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
         <td class="num">{{ (r.payment_amount|fr_number(0) ~ ' €') if r.payment_amount else '—' }}</td></tr>
     {% endfor %}
     </tbody>

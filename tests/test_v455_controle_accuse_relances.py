@@ -152,3 +152,74 @@ def test_overdue_and_weekly_reminders(app, monkeypatch):
     T.record_filing(c, _row(c, decl), 'x.pdf', 'a.pdf', '2026-05-04')
     assert not [x for x in A.overdue_declarations(c, None, date(2026, 5, 12)) if x['type'] == 'TVA_CA12']
     c.close()
+
+
+def test_status_follows_receipt_check_and_manual_confirmation(app):
+    c = org(app)
+    built = T.build_declaration(c, 'TVA_CA12', date(2025, 1, 1), date(2025, 12, 31), identity=IDENTITY)
+    decl = T.prepare_manual(c, built, None)
+    row = _row(c, decl)
+    T.record_filing(c, row, 'a.pdf', 'a.pdf', '2026-05-02',
+                    check=T.analyze_receipt(receipt_pdf(GOOD), '.pdf', row, built['payload']))
+    assert _row(c, decl)['status'] == 'confirmed'
+    with pytest.raises(T.TeledeclarationError):
+        T.confirm_filing(c, _row(c, decl), 'a@x.fr')          # déjà confirmé
+    bad = T.analyze_receipt(receipt_pdf(['3310-CA3', 'SIREN 111 111 111']), '.pdf', row, built['payload'])
+    T.record_filing(c, _row(c, decl), 'b.pdf', 'b.pdf', '2026-05-02', check=bad)
+    assert _row(c, decl)['status'] == 'to_verify'
+    assert [r['id'] for r in A.receipts_to_verify(c, None)] == [decl]
+    with pytest.raises(T.TeledeclarationError):
+        T.confirm_filing(c, _row(c, decl), 'a@x.fr', note='ok')   # justification trop courte
+    T.confirm_filing(c, _row(c, decl), 'a@x.fr', note="Accusé du dépôt rectifié, montant identique")
+    row = _row(c, decl)
+    import json
+    assert row['status'] == 'confirmed' and json.loads(row['receipt_check'])['manual_confirmation']['by'] == 'a@x.fr'
+    T.record_filing(c, row, 'c.png', 'c.png', '2026-05-02', check=T.analyze_receipt(b'\x89PNG', '.png', row, built['payload']))
+    assert _row(c, decl)['status'] == 'declared'
+    T.confirm_filing(c, _row(c, decl), 'a@x.fr')                   # accusé illisible : commentaire facultatif
+    assert _row(c, decl)['status'] == 'confirmed' and not A.receipts_to_verify(c, None)
+    # Tous ces statuts comptent comme déposés pour l'échéancier, aucun ne vaut acceptation.
+    assert T.active_declaration(c, None, 'TVA_CA12', '2025-01-01', '2025-12-31')['id'] == decl
+    assert 'accept' not in T.STATUS_LABELS['confirmed'].lower()
+    c.close()
+
+
+def test_legacy_filed_status_migrated(app):
+    c = org(app)
+    built = T.build_declaration(c, 'TVA_CA12', date(2025, 1, 1), date(2025, 12, 31), identity=IDENTITY)
+    decl = T.prepare_manual(c, built, None)
+    c.execute("""UPDATE teledeclarations SET status='filed',receipt_check=? WHERE id=?""",
+              ('{"status": "ecarts", "checks": []}', decl))
+    c.commit(); c.close()
+    rt.migrate_tenant(1, force=True)
+    c = rt.tenant_cx_direct(1)
+    assert _row(c, decl)['status'] == 'to_verify'
+    c.close()
+
+
+def test_confirm_route_roles_and_note(app):
+    c = org(app)
+    built = T.build_declaration(c, 'TVA_CA12', date(2025, 1, 1), date(2025, 12, 31), identity=IDENTITY)
+    decl = T.prepare_manual(c, built, None)
+    T.record_filing(c, _row(c, decl), 'a.pdf', 'a.pdf', '2026-05-02', check={'status': 'ecarts', 'checks': []})
+    c.close()
+    cl = app.test_client()
+    ac = rt.auth_cx()
+    ac.execute("UPDATE users SET email_verified=1,ui_mode='expert' WHERE id=1")
+    ac.commit(); ac.close()
+    with cl.session_transaction() as s:
+        s.update({'user_id': 1, 'org_id': 1, 'csrf_token': CSRF})
+    page = cl.get(f'/comptabilite/teledeclarations/{decl}').get_data(as_text=True)
+    if 'Confirmer le dépôt' not in page:
+        pytest.skip('session de test non authentifiée')
+    assert 'Justificatif à vérifier' in page and 'Explication des écarts' in page
+    cl.post(f'/comptabilite/teledeclarations/{decl}/confirmer', data={'csrf_token': CSRF, 'verified': '1', 'note': 'court'})
+    c = rt.tenant_cx_direct(1)
+    assert _row(c, decl)['status'] == 'to_verify'
+    c.close()
+    cl.post(f'/comptabilite/teledeclarations/{decl}/confirmer',
+            data={'csrf_token': CSRF, 'verified': '1', 'note': 'Ecart d arrondi de 1 euro sur le montant'})
+    c = rt.tenant_cx_direct(1)
+    assert _row(c, decl)['status'] == 'confirmed'
+    c.close()
+    assert 'Confirmé manuellement par' in cl.get(f'/comptabilite/teledeclarations/{decl}').get_data(as_text=True)

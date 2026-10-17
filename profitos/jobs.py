@@ -489,12 +489,24 @@ def fiscal_deadlines(org, ctx):
             for item in overdue_declarations(c, eid, today):
                 if item['days_late'] == 1 or item['days_late'] % 7 == 0:
                     late.append(item)
+            # Justificatif avec écarts : relance le lendemain du dépôt puis chaque semaine.
+            from profitos.automation import receipts_to_verify
+            for row in receipts_to_verify(c, eid):
+                if row['status'] != 'to_verify' or not row['filed_at']:
+                    continue
+                days = (today - date.fromisoformat(str(row['filed_at'])[:10])).days
+                if 0 < days <= 63 and (days == 1 or days % 7 == 0):
+                    late.append({'date': date.fromisoformat(str(row['filed_at'])[:10]), 'to_verify': True,
+                                 'label': f"justificatif à vérifier ({row['period_start']} → {row['period_end']})", 'form': row['form']})
     finally:
         c.close()
     if not due and not late:
         return '0 rappel'
     lines = []
     for item in late:
+        if item.get('to_verify'):
+            lines.append(f"ÉCARTS sur l'accusé archivé le {item['date'].strftime('%d/%m/%Y')} : {item['form']}, {item['label']}")
+            continue
         lines.append(f"EN RETARD depuis le {item['date'].strftime('%d/%m/%Y')} : {item['label']} ({item['form']})"
                      + (" — préparée, justificatif non archivé" if item.get('prepared') else ''))
     for left, item in sorted(due, key=lambda x: x[1]['date']):
@@ -502,13 +514,17 @@ def fiscal_deadlines(org, ctx):
         when = 'demain' if left == 1 else 'dans 7 jours'
         lines.append(f"{item['date'].strftime('%d/%m/%Y')} ({when}) : {item['label']} ({item['form']}){amount}")
     body = 'Rappel : ' + ' · '.join(lines) + '. Préparez vos déclarations dans ProfitOS, déposez-les sur impots.gouv.fr et archivez l\'accusé de réception.'
-    if late:
+    overdue_only = [x for x in late if not x.get('to_verify')]
+    checks = [x for x in late if x.get('to_verify')]
+    if overdue_only:
         body += (" Si la déclaration a bien été déposée, joignez son accusé dans ProfitOS ; sinon, déposez-la sans attendre. "
                  "Vérifiez aussi votre compte fiscal et votre messagerie sécurisée sur impots.gouv.fr : l'administration y signale "
                  "les déclarations rejetées ou manquantes.")
+    if checks:
+        body += (" Pour un accusé avec écarts : joignez le bon accusé, ou confirmez le dépôt dans ProfitOS en expliquant l'écart.")
+    title = ('Déclarations en retard' if overdue_only else 'Justificatifs à vérifier' if checks else 'Échéances fiscales à venir')
     _notify_owner(
-        org, (f"Déclarations en retard — {org['name']}" if late else f"Échéances fiscales à venir — {org['name']}"),
-        'Déclarations en retard' if late else 'Échéances fiscales à venir', body,
+        org, f"{title} — {org['name']}", title, body,
         'Ouvrir les déclarations fiscales', '/comptabilite/teledeclarations',
         "Vous recevez ce rappel car la comptabilité est activée pour votre organisation.")
     return f'{len(due) + len(late)} rappel(s)'

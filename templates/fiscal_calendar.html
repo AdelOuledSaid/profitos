@@ -10,6 +10,17 @@
   <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a>
 </div>
 
+{% if to_verify %}
+<section class="purchase-panel" style="margin-bottom:14px;">
+  <h2>Justificatifs à vérifier</h2>
+  <p class="purchase-muted">Dépôts déclarés dont l'accusé n'est pas confirmé : joignez le bon accusé ou confirmez le dépôt après vérification.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
+    {% for r in to_verify %}<tr><td>{{ r.form }}</td><td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
+      <td><span class="purchase-status {{ 'overdue' if r.status == 'to_verify' else '' }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+      <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_detail', decl_id=r.id) }}">Vérifier</a></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endif %}
 {% if overdue %}
 <section class="purchase-panel" style="margin-bottom:14px;border-color:#f59e0b;">
   <h2>⚠ Déclarations en retard</h2>

@@ -246,6 +246,16 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
     return sorted(items, key=lambda x: x['date'])
 
 
+def receipts_to_verify(conn, entity_id=None):
+    """Dépôts déclarés par l'entreprise dont l'accusé n'est pas confirmé : écarts détectés
+    (to_verify) ou accusé illisible automatiquement (declared)."""
+    ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    return conn.execute(
+        f"""SELECT * FROM teledeclarations WHERE {ef} AND mode='manual' AND status IN ('to_verify','declared','filed')
+            ORDER BY CASE status WHEN 'to_verify' THEN 0 ELSE 1 END, filed_at""", ep).fetchall()
+
+
 def _has_entries(conn, entity_id, start, end):
     ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
     ep = (entity_id,) if entity_id else ()

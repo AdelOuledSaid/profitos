@@ -18,13 +18,21 @@
 {% if row.mode == 'manual' %}
 <section class="purchase-panel" style="margin-bottom:14px;">
   <h2>Dépôt par vos soins</h2>
-  {% set filed = row.status == 'filed' %}
+  {% set filed = row.status in ('declared', 'to_verify', 'confirmed', 'filed') %}
+  {% set confirmed = row.status == 'confirmed' %}
   <ol class="filing-steps">
     <li class="is-done"><strong>Calculée</strong> par ProfitOS depuis votre comptabilité.</li>
     <li class="is-done"><strong>Préparée</strong> : <a class="link" href="{{ url_for('teledeclaration_pdf', decl_id=row.id) }}">récapitulatif PDF</a> avec les cases à remplir.</li>
     <li class="{{ 'is-done' if filed else 'is-current' }}"><strong>Déposée</strong> {% if payload.filing == 'efi' %}sur impots.gouv.fr{% else %}par votre expert-comptable ou partenaire EDI{% endif %}{% if filed %} le {{ row.filed_at|fr_date }}{% endif %}.</li>
-    <li class="{{ 'is-done' if filed else '' }}"><strong>Justificatif archivé</strong>{% if filed %} : <a class="link" href="{{ url_for('teledeclaration_receipt', decl_id=row.id) }}">{{ row.receipt_name }}</a>{% else %} dans ProfitOS.{% endif %}</li>
+    <li class="{{ 'is-done' if confirmed else ('is-current' if filed else '') }}"><strong>{{ 'Dépôt confirmé' if confirmed else ('Justificatif à vérifier' if row.status == 'to_verify' else 'Justificatif archivé et vérifié') }}</strong>{% if filed %} : <a class="link" href="{{ url_for('teledeclaration_receipt', decl_id=row.id) }}">{{ row.receipt_name }}</a>{% else %} dans ProfitOS.{% endif %}</li>
   </ol>
+  <div class="purchase-table-wrap" style="margin-bottom:10px;"><table class="purchase-table"><tbody>
+    <tr><td>{{ '●' if row.status in ('declared', 'filed') else '○' }} <strong>Dépôt déclaré</strong></td><td class="purchase-muted">Vous indiquez avoir déposé ; l'accusé est archivé mais n'a pas pu être lu automatiquement.</td></tr>
+    <tr><td>{{ '●' if row.status == 'to_verify' else '○' }} <strong>Justificatif à vérifier</strong></td><td class="purchase-muted">L'accusé archivé ne correspond pas entièrement à la déclaration préparée.</td></tr>
+    <tr><td>{{ '●' if confirmed else '○' }} <strong>Dépôt confirmé</strong></td><td class="purchase-muted">L'accusé officiel correspond à la déclaration (contrôle automatique), ou a été vérifié et confirmé par un utilisateur habilité.</td></tr>
+  </tbody></table></div>
+  <p class="purchase-muted" style="font-size:12px;">Aucun de ces statuts ne signifie que l'administration a accepté la déclaration : seul un accusé EDI transmis par un partenaire peut le constater. Un rejet éventuel vous est signalé dans votre espace professionnel.</p>
+  {% if receipt_check and receipt_check.manual_confirmation %}<p class="purchase-muted" style="font-size:12px;">Confirmé manuellement par {{ receipt_check.manual_confirmation.by }} le {{ receipt_check.manual_confirmation.at|fr_datetime_paris }}{% if receipt_check.manual_confirmation.note %} : « {{ receipt_check.manual_confirmation.note }} »{% endif %}.</p>{% endif %}
   {% if filed and receipt_check %}
   <div class="flash" role="{{ 'alert' if receipt_check.status == 'ecarts' else 'status' }}">
     {% if receipt_check.status == 'concordant' %}✓ Justificatif concordant : l'accusé joint correspond à la déclaration préparée.
@@ -50,6 +58,15 @@
     </div>
     <button type="submit" class="purchase-primary-btn primary">{{ 'Remplacer le justificatif' if filed else 'Enregistrer le dépôt' }}</button>
   </form>
+  {% if row.status in ('declared', 'to_verify', 'filed') %}
+  <form method="post" action="{{ url_for('teledeclaration_confirm', decl_id=row.id) }}" class="stack" style="margin-top:14px;border-top:1px solid var(--border,#294064);padding-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <strong>Confirmer le dépôt après vérification</strong>
+    <label class="check"><input type="checkbox" name="verified" value="1" required> J'ai vérifié que l'accusé archivé correspond à cette déclaration (entreprise, formulaire, période et montant).</label>
+    <label>{{ 'Explication des écarts (obligatoire)' if row.status == 'to_verify' else 'Commentaire (facultatif)' }}<input name="note" maxlength="300" {{ 'required minlength=10' if row.status == 'to_verify' }}></label>
+    <button type="submit" class="purchase-primary-btn secondary">Confirmer le dépôt</button>
+  </form>
+  {% endif %}
   {% endif %}
 </section>
 {% endif %}

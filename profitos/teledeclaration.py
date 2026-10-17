@@ -45,13 +45,19 @@ TYPES = {
 
 STATUS_LABELS = {
     'prepared': 'Préparée — à déposer sur impots.gouv.fr',
-    'filed': 'Déposée — justificatif archivé',
+    # Dépôt fait par l'entreprise sur impots.gouv.fr (aucune de ces étapes ne vaut
+    # acceptation par l'administration, que seul un accusé EDI peut constater) :
+    'declared': 'Dépôt déclaré — justificatif non vérifié',
+    'to_verify': 'Justificatif à vérifier — écarts détectés',
+    'confirmed': 'Dépôt confirmé par l\'accusé officiel',
+    'filed': 'Dépôt déclaré — justificatif non vérifié',  # ancien statut, assimilé à « déclaré »
     'deposited': 'Déposée chez le partenaire EDI',
     'acknowledged': "Accusé de réception de l'administration",
     'accepted': 'Acceptée',
     'rejected': 'Rejetée',
 }
-ACTIVE_STATUSES = ('deposited', 'acknowledged', 'accepted', 'filed')
+MANUAL_FILED_STATUSES = ('declared', 'to_verify', 'confirmed', 'filed')
+ACTIVE_STATUSES = ('deposited', 'acknowledged', 'accepted') + MANUAL_FILED_STATUSES
 
 
 class TeledeclarationError(ValueError):
@@ -397,7 +403,7 @@ def active_declaration(conn, entity_id, decl_type, period_start, period_end, due
         df, dp = ' AND due_date=?', (str(due_date)[:10],)
     return conn.execute(
         f"""SELECT * FROM teledeclarations WHERE {ef} AND decl_type=? AND period_start=? AND period_end=?{df}
-            AND status IN ('deposited','acknowledged','accepted','filed') ORDER BY id DESC LIMIT 1""",
+            AND status IN ('deposited','acknowledged','accepted','declared','to_verify','confirmed','filed') ORDER BY id DESC LIMIT 1""",
         (*ep, decl_type, str(period_start)[:10], str(period_end)[:10], *dp)).fetchone()
 
 
@@ -580,10 +586,39 @@ def check_receipt(filename, data):
     return ext
 
 
+def filing_status(check):
+    """Statut d'un dépôt fait par l'entreprise selon le contrôle de l'accusé joint :
+    concordant → confirmed ; écarts → to_verify ; illisible ou absent → declared."""
+    return {'concordant': 'confirmed', 'ecarts': 'to_verify'}.get((check or {}).get('status'), 'declared')
+
+
+def confirm_filing(conn, row, user, note=''):
+    """Confirmation manuelle d'un dépôt après vérification de l'accusé par un utilisateur
+    habilité (accusé illisible automatiquement, ou écarts expliqués). Une justification est
+    exigée quand des écarts ont été détectés. La confirmation est tracée."""
+    if row['mode'] != 'manual' or row['status'] not in ('declared', 'to_verify', 'filed'):
+        raise TeledeclarationError("Ce dépôt n'est pas en attente de vérification.")
+    if not row['receipt_stored']:
+        raise TeledeclarationError("Aucun justificatif archivé : joignez d'abord l'accusé de réception.")
+    note = (note or '').strip()[:300]
+    if row['status'] == 'to_verify' and len(note) < 10:
+        raise TeledeclarationError("Expliquez pourquoi les écarts détectés sont sans conséquence (10 caractères au moins).")
+    now = _now()
+    check = json.loads(row['receipt_check'] or '{}') if row['receipt_check'] else {}
+    check['manual_confirmation'] = {'by': user, 'at': now, 'note': note, 'previous_status': row['status']}
+    history = json.loads(row['history_json'] or '[]')
+    history.append({'at': now, 'status': 'confirmed',
+                    'message': f"Accusé vérifié et dépôt confirmé manuellement par {user or 'un utilisateur'}"
+                               + (f" : {note}" if note else '')})
+    conn.execute("UPDATE teledeclarations SET status='confirmed',receipt_check=?,history_json=?,updated_at=? WHERE id=?",
+                 (json.dumps(check, ensure_ascii=False), json.dumps(history, ensure_ascii=False), now, row['id']))
+    conn.commit()
+
+
 def record_filing(conn, row, stored_name, original_name, filed_on, reference=None, user=None, check=None):
     """Enregistre le dépôt fait par l'entreprise : le statut « déposée » n'est attribué
     qu'avec un justificatif officiel archivé."""
-    if row['mode'] != 'manual' or row['status'] not in ('prepared', 'filed'):
+    if row['mode'] != 'manual' or row['status'] not in ('prepared',) + MANUAL_FILED_STATUSES:
         raise TeledeclarationError("Cette déclaration n'est pas à déposer par vos soins.")
     filed_on = date.fromisoformat(str(filed_on)[:10])
     from profitos.accounting import paris_today
@@ -596,12 +631,13 @@ def record_filing(conn, row, stored_name, original_name, filed_on, reference=Non
     history = json.loads(row['history_json'] or '[]')
     verdict = {'concordant': 'justificatif concordant', 'ecarts': 'écarts à vérifier',
                'non_verifiable': 'vérification automatique impossible'}.get((check or {}).get('status'), '')
-    history.append({'at': now, 'status': 'filed',
+    status = filing_status(check)
+    history.append({'at': now, 'status': status,
                     'message': f"Déposée sur impots.gouv.fr le {filed_on.strftime('%d/%m/%Y')} — justificatif archivé"
                                + (f" (réf. {reference})" if reference else '') + (f" — {verdict}" if verdict else '')})
-    conn.execute("""UPDATE teledeclarations SET status='filed',receipt_stored=?,receipt_name=?,filed_at=?,filed_by=?,
+    conn.execute("""UPDATE teledeclarations SET status=?,receipt_stored=?,receipt_name=?,filed_at=?,filed_by=?,
                     ack_number=?,ack_at=?,updated_at=?,history_json=?,receipt_check=? WHERE id=?""",
-                 (stored_name, original_name, filed_on.isoformat(), user, (reference or '')[:80] or None,
+                 (status, stored_name, original_name, filed_on.isoformat(), user, (reference or '')[:80] or None,
                   filed_on.isoformat(), now, json.dumps(history, ensure_ascii=False),
                   json.dumps(check, ensure_ascii=False) if check else None, row['id']))
     conn.commit()

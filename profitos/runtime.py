@@ -2665,6 +2665,16 @@ def _migrate_tenant_schema(org_id=None):
             c.rollback()
             _migration_warn(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
     try:
+        # Dépôts faits par l'entreprise : l'ancien statut unique « filed » est réparti selon le
+        # contrôle de l'accusé (concordant → confirmed, écarts → to_verify, sinon declared).
+        c.execute("UPDATE teledeclarations SET status='confirmed' WHERE status='filed' AND receipt_check LIKE ?", ('%"status": "concordant"%',))
+        c.execute("UPDATE teledeclarations SET status='to_verify' WHERE status='filed' AND receipt_check LIKE ?", ('%"status": "ecarts"%',))
+        c.execute("UPDATE teledeclarations SET status='declared' WHERE status='filed'")
+        c.commit()
+    except Exception as e:
+        c.rollback()
+        _migration_warn(f"[ProfitOS] ATTENTION : reprise des statuts de dépôt ignorée ({e})")
+    try:
         # fiscal_year porte la série : '<type>:<année>' (invoice:2026, credit:2026, delivery:2026).
         c.execute("""CREATE TABLE IF NOT EXISTS invoice_number_sequences(
             entity_key INTEGER NOT NULL DEFAULT 0,
@@ -3673,6 +3683,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-17','title':"Dépôts : statuts distincts « dépôt déclaré », « justificatif à vérifier » et « dépôt confirmé », confirmation manuelle tracée"},
     {'date':'2026-10-17','title':"Accusés de dépôt contrôlés automatiquement (SIREN, formulaire, période, montant) et relances des déclarations en retard"},
     {'date':'2026-10-17','title':"Déclarations fiscales : récapitulatif PDF, dépôt par vous sur impots.gouv.fr et archivage de l'accusé de réception"},
     {'date':'2026-10-16','title':"CFE (échéances, rappels, écriture), DECLOYER jointe à la liasse, IFU 2561 des dividendes"},

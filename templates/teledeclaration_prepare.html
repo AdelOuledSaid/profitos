@@ -50,7 +50,7 @@
     <input type="hidden" name="au" value="{{ end.isoformat() }}"><input type="hidden" name="regime" value="{{ regime }}">
     {% if p.due_date %}<input type="hidden" name="echeance" value="{{ p.due_date }}">{% endif %}
     {% if decl_type in ('IS_2571', 'TVA_3514') %}<label>Montant de l'acompte (€)<input name="acompte" inputmode="decimal" value="{{ acompte or (p.payment.amount if p.payment else '') }}"></label>{% endif %}
-    {% if existing and existing.status in ('accepted', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
+    {% if existing and existing.status in ('accepted', 'declared', 'to_verify', 'confirmed', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
     <label class="check"><input type="checkbox" name="certify" value="1" required> Je certifie l'exactitude des informations déclarées et je suis habilité(e) à déposer cette déclaration pour l'entreprise.</label>
     <button type="submit" class="purchase-primary-btn primary">Déposer la déclaration</button>
   </form>
@@ -70,7 +70,7 @@
     <input type="hidden" name="au" value="{{ end.isoformat() }}"><input type="hidden" name="regime" value="{{ regime }}">
     {% if p.due_date %}<input type="hidden" name="echeance" value="{{ p.due_date }}">{% endif %}
     {% if decl_type in ('IS_2571', 'TVA_3514') %}<label>Montant de l'acompte (€)<input name="acompte" inputmode="decimal" value="{{ acompte or (p.payment.amount if p.payment else '') }}"></label>{% endif %}
-    {% if existing and existing.status in ('accepted', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
+    {% if existing and existing.status in ('accepted', 'declared', 'to_verify', 'confirmed', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
     <button type="submit" class="purchase-primary-btn primary">Préparer ma déclaration</button>
   </form>
   {% if simulation %}
@@ -81,7 +81,7 @@
     <input type="hidden" name="au" value="{{ end.isoformat() }}"><input type="hidden" name="regime" value="{{ regime }}">
     {% if p.due_date %}<input type="hidden" name="echeance" value="{{ p.due_date }}">{% endif %}
     {% if decl_type in ('IS_2571', 'TVA_3514') %}<label>Montant de l'acompte (€)<input name="acompte" inputmode="decimal" value="{{ acompte or (p.payment.amount if p.payment else '') }}"></label>{% endif %}
-    {% if existing and existing.status in ('accepted', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
+    {% if existing and existing.status in ('accepted', 'declared', 'to_verify', 'confirmed', 'filed') %}<label class="check"><input type="checkbox" name="corrective" value="1"> Déclaration rectificative (remplace la déclaration déposée)</label>{% endif %}
     <label class="check"><input type="checkbox" name="certify" value="1" required> Je certifie l'exactitude des informations déclarées.</label>
     <button type="submit" class="purchase-primary-btn secondary">Déposer en mode simulation</button>
   </form></details>

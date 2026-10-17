@@ -108,7 +108,7 @@ def test_prepare_update_file_and_lock(app):
         T.record_filing(c, row, 'x.pdf', 'ar.pdf', '2099-01-01')
     T.record_filing(c, row, 'x.pdf', 'ar.pdf', '2026-05-02', 'AR-1', 'a@x.fr')
     row = c.execute('SELECT * FROM teledeclarations WHERE id=?', (d1,)).fetchone()
-    assert (row['status'], row['filed_at'], row['ack_number'], row['receipt_name']) == ('filed', '2026-05-02', 'AR-1', 'ar.pdf')
+    assert (row['status'], row['filed_at'], row['ack_number'], row['receipt_name']) == ('declared', '2026-05-02', 'AR-1', 'ar.pdf')
     assert T.active_declaration(c, None, 'TVA_CA12', '2025-01-01', '2025-12-31')['id'] == d1
     with pytest.raises(T.TeledeclarationError):
         T.prepare_manual(c, built, None)
@@ -144,9 +144,9 @@ def test_full_flow_pages_pdf_and_receipt(app):
     post(cl, f'/comptabilite/teledeclarations/{decl}/justificatif',
          {'receipt': (io.BytesIO(PDF), 'accuse.pdf'), 'filed_on': '2026-05-02', 'reference': 'AR-42'},
          content_type='multipart/form-data')
-    assert any('Dépôt enregistré' in m for m in flashes(cl))
+    assert any('Dépôt déclaré' in m for m in flashes(cl))
     page = cl.get(f'/comptabilite/teledeclarations/{decl}').get_data(as_text=True)
-    assert 'justificatif archivé' in page and 'accuse.pdf' in page and 'AR-42' in page
+    assert 'Dépôt déclaré — justificatif non vérifié' in page and 'accuse.pdf' in page and 'AR-42' in page
     dl = cl.get(f'/comptabilite/teledeclarations/{decl}/justificatif')
     assert dl.status_code == 200 and dl.data == PDF and 'accuse.pdf' in dl.headers['Content-Disposition']
     # Une seule pièce archivée, et remplacement possible.

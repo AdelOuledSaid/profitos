@@ -78,6 +78,7 @@ def register(app):
         today = paris_today()
         deadlines = A.upcoming_deadlines(c, eid, today, horizon_days=90)
         overdue = A.overdue_declarations(c, eid, today)
+        to_verify = A.receipts_to_verify(c, eid)
         current = L.fiscal_year_for(c, today, eid)
         closed = L.fiscal_year_for(c, current['start'] - timedelta(days=1), eid)
         controls = A.precontrols(c, closed['start'], closed['end'], eid, today=today)
@@ -93,7 +94,7 @@ def register(app):
             runs = {}
         finally:
             ac.close()
-        return render_template('fiscal_calendar.html', deadlines=deadlines, overdue=overdue, controls=controls, closed=closed,
+        return render_template('fiscal_calendar.html', deadlines=deadlines, overdue=overdue, to_verify=to_verify, controls=controls, closed=closed,
                                jobs=AUTOMATIC_JOBS, runs=runs, today=today)
 
 
