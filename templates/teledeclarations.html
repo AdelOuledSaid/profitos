@@ -4,15 +4,21 @@
 <div class="purchase-toolbar">
   <div>
     <div class="purchase-eyebrow">FISCALITÉ</div>
-    <h1 class="purchase-title">Télédéclarations</h1>
-    <p class="purchase-subtitle">Préparez, contrôlez et déposez vos déclarations de TVA, liasse fiscale, impôt sur les sociétés et CVAE par l'intermédiaire d'un partenaire EDI agréé, puis suivez les accusés de réception.</p>
+    <h1 class="purchase-title">Déclarations fiscales</h1>
+    <p class="purchase-subtitle">ProfitOS calcule et prépare vos déclarations de TVA, de résultat, d'impôt sur les sociétés et d'honoraires à partir de votre comptabilité, puis suit leur dépôt et archive les accusés de réception.</p>
   </div>
 </div>
 
 {% if partner %}
 <div class="flash" role="status">Partenaire EDI connecté : les déclarations déposées sont réellement transmises à l'administration fiscale.</div>
 {% else %}
-<div class="flash" role="status">Mode simulation : aucun partenaire EDI n'est encore connecté. Vous pouvez préparer et contrôler vos déclarations et tester le parcours complet ; rien n'est transmis à l'administration.</div>
+<ol class="filing-steps">
+  <li><strong>ProfitOS calcule</strong> la TVA, les résultats fiscaux et les données déclaratives.</li>
+  <li><strong>ProfitOS prépare</strong> le récapitulatif, les contrôles et le PDF avec les cases à remplir.</li>
+  <li><strong>Vous déposez sur impots.gouv.fr</strong> : saisie ou vérification des montants et validation officielle.</li>
+  <li><strong>Retour dans ProfitOS</strong> : archivage de l'accusé de réception et suivi du dépôt.</li>
+</ol>
+<div class="flash" role="status">ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. La liasse du régime normal (2050) et la CVAE (1330) ne se déposent pas sur impots.gouv.fr (EDI obligatoire) : transmettez-les par votre expert-comptable.</div>
 {% endif %}
 
 <p class="purchase-muted">Régime de TVA : <strong>{{ {'ca3_mensuelle': 'CA3 mensuelle', 'ca3_trimestrielle': 'CA3 trimestrielle', 'ca12': 'CA12 annuelle', 'franchise': 'franchise en base'}.get(vat_filing, vat_filing) }}</strong> · Paiement : <strong>{{ 'mandat de prélèvement enregistré' if mandate_ok else 'aucun mandat enregistré' }}</strong> — <a class="link" href="{{ url_for('fiscal_profile') }}">modifier dans le profil fiscal</a>.</p>
@@ -23,7 +29,7 @@
     <tbody>
     {% for c in candidates %}
       <tr><td><strong>{{ c.title }}</strong><br><span class="purchase-muted">{{ c.meta.label }}</span></td>
-        <td>{{ c.meta.form }} <span class="purchase-muted">({{ c.meta.channel }})</span></td>
+        <td>{{ c.meta.form }} <span class="purchase-muted">({{ c.meta.channel if partner else ('impots.gouv.fr' if c.channel == 'efi' else 'EDI obligatoire') }})</span></td>
         <td>{{ c.start|fr_date }} → {{ c.end|fr_date }}</td>
         <td>{% if c.existing %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=c.existing.id) }}">{{ teledeclaration_status_label(c.existing.status) }}</a>{% else %}<span class="purchase-muted">Non déposée</span>{% endif %}</td>
         <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=c.type, du=c.start.isoformat(), au=c.end.isoformat()) }}">Préparer</a></td></tr>
@@ -49,22 +55,22 @@
 </section>
 
 <section class="purchase-panel" style="margin-top:14px;">
-  <h2>Historique des dépôts</h2>
+  <h2>Suivi des déclarations</h2>
   {% if rows %}
   <div class="purchase-table-wrap"><table class="purchase-table">
-    <thead><tr><th>Déposée le</th><th>Formulaire</th><th>Période</th><th>Mode</th><th>Statut</th><th class="num">Paiement</th></tr></thead>
+    <thead><tr><th>Date</th><th>Formulaire</th><th>Période</th><th>Mode</th><th>Statut</th><th class="num">Paiement</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr><td><a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=r.id) }}">{{ r.submitted_at|fr_datetime_paris if r.submitted_at else '—' }}</a></td>
         <td>{{ r.form }}{% if r.corrective %} <span class="purchase-status">Rectificative</span>{% endif %}</td>
         <td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
-        <td>{{ 'Réelle' if r.mode=='production' else 'Simulation' }}</td>
-        <td><span class="purchase-status {{ 'paid' if r.status=='accepted' else ('overdue' if r.status=='rejected' else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+        <td>{{ {'production': 'Partenaire EDI', 'manual': 'Par vous', 'simulation': 'Simulation'}.get(r.mode, r.mode) }}</td>
+        <td><span class="purchase-status {{ 'paid' if r.status in ('accepted', 'filed') else ('overdue' if r.status=='rejected' else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
         <td class="num">{{ (r.payment_amount|fr_number(0) ~ ' €') if r.payment_amount else '—' }}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>
-  {% else %}<p class="purchase-muted">Aucune déclaration déposée pour l'instant.</p>{% endif %}
+  {% else %}<p class="purchase-muted">Aucune déclaration préparée ou déposée pour l'instant.</p>{% endif %}
 </section>
 </div>
 {% endblock %}

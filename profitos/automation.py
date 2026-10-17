@@ -222,6 +222,10 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
             items.append({'date': r['deadline'], 'label': f"Prélèvements sur les dividendes de {m.strftime('%m/%Y')} (à déclarer en ligne)",
                           'form': '2777', 'type': None, 'amount': r['total'], 'deposited': None,
                           'link': ('rcm_2777_page', {'mois': m.strftime('%Y-%m')})})
+    from profitos.teledeclaration import prepared_declaration
+    for it in items:
+        if it.get('type') and not it.get('deposited'):
+            it['prepared'] = prepared_declaration(conn, entity_id, it['type'], it['start'], it['end'], it.get('due_date'))
     # IFU des dividendes de l'année écoulée
     ifu = TD.ifu_2561(conn, y, entity_id, profile)
     if ifu['total'] and today <= ifu['deadline'] <= limit:

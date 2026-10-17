@@ -25,6 +25,7 @@ CATEGORIES = {
     'purchase_documents',   # factures fournisseurs (upload, boîte mail, WeInvoice, cloud)
     'expense_receipts',     # justificatifs de notes de frais
     'cabinet_documents',    # documents du portail cabinet
+    'declaration_receipts', # justificatifs de dépôt des déclarations fiscales
 }
 
 _SAFE_PART = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$')

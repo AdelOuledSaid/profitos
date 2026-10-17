@@ -422,7 +422,7 @@ La TVA sur encaissements (prestations de services) est gérée : elle devient ex
 ### TVA
 
 - **TVA** : récapitulatif de la TVA collectée par taux et de la TVA déductible sur une période.
-- **Déclaration CA3** : les cases du formulaire 3310-CA3 préremplies à partir des écritures (base HT et TVA par taux, TVA déductible sur immobilisations et sur autres biens et services, crédit antérieur, TVA nette due ou crédit à reporter). Vous reportez les montants sur impots.gouv.fr ou les transmettez à votre expert-comptable, ou les télédéclarez depuis la page Télédéclarations.
+- **Déclaration CA3** : les cases du formulaire 3310-CA3 préremplies à partir des écritures (base HT et TVA par taux, TVA déductible sur immobilisations et sur autres biens et services, crédit antérieur, TVA nette due ou crédit à reporter). Vous reportez les montants sur impots.gouv.fr ou les transmettez à votre expert-comptable, ou préparez leur dépôt depuis la page Déclarations fiscales.
 - **Liquider** passe l'écriture de liquidation de la période (TVA à décaisser ou crédit à reporter), une seule fois par période.
 - **TVA annuelle CA12** (régime simplifié) : les cases du formulaire 3517-S de l'exercice — base et taxe par taux, TVA déductible, crédit antérieur, acomptes payés (compte 44581, ou montant saisi dans les paramètres de l'impôt sur les sociétés), solde dû ou crédit — avec la date limite de dépôt et les deux acomptes de l'exercice suivant (55 % en juillet, 40 % en décembre ; aucun acompte si la base est inférieure à 1 000 €).
 
@@ -448,28 +448,29 @@ La TVA sur encaissements (prestations de services) est gérée : elle devient ex
 
 Ces calculs sont des aides à la préparation : ils doivent être validés par votre expert-comptable.
 
-### Télédéclarations
+### Déclarations fiscales
 
-Menu **Comptabilité → Télédéclarations**. ProfitOS prépare vos déclarations à partir de la comptabilité, les contrôle, puis les dépose par l'intermédiaire d'un partenaire EDI agréé par l'administration fiscale :
+Menu **Comptabilité → Déclarations fiscales**. ProfitOS calcule et prépare vos déclarations à partir de la comptabilité ; **vous les déposez vous-même** sur impots.gouv.fr (espace professionnel), puis vous archivez l'accusé de réception dans ProfitOS.
 
-| Déclaration | Formulaire | Canal |
+1. **ProfitOS calcule** la TVA, les résultats fiscaux et les données déclaratives.
+2. **ProfitOS prépare** : contrôles (SIREN, bilan équilibré, période terminée…), puis **Préparer ma déclaration** fige le contenu et produit un **récapitulatif PDF** avec les cases et montants à reporter.
+3. **Vous déposez sur impots.gouv.fr** (bouton **Accéder à impots.gouv.fr**) : saisie ou vérification des montants, validation officielle et paiement en ligne.
+4. **Retour dans ProfitOS** : joignez le justificatif de dépôt (PDF ou image de l'accusé de réception), sa date et son numéro. La déclaration passe alors à « Déposée — justificatif archivé » et l'échéance correspondante est marquée comme faite.
+
+ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. Préparer à nouveau une déclaration non encore déposée met à jour son récapitulatif ; une fois déposée, seule une déclaration rectificative peut être préparée.
+
+| Déclaration | Formulaire | Dépôt sur impots.gouv.fr |
 | --- | --- | --- |
-| TVA (régime normal) | 3310-CA3 | EDI-TVA |
-| TVA annuelle (régime simplifié) | 3517-S CA12 | EDI-TVA |
-| Acompte de TVA (régime simplifié) | 3514 | EDI-Paiement |
-| Liasse fiscale | 2065 + 2033 ou 2050 à 2059 | EDI-TDFC |
-| Solde d'impôt sur les sociétés | 2572 | EDI-Paiement |
-| Acompte d'impôt sur les sociétés | 2571 | EDI-Paiement |
-| Valeur ajoutée (CVAE) | 1330-CVAE | EDI-TDFC |
-| Honoraires versés | DAS2 | EDI-TDFC |
+| TVA (régime normal) | 3310-CA3 | Oui |
+| TVA annuelle (régime simplifié) | 3517-S CA12 | Oui |
+| Acompte de TVA (régime simplifié) | 3514 | Oui |
+| Acompte et solde d'impôt sur les sociétés | 2571 / 2572 | Oui |
+| Résultat et liasse du régime simplifié | 2065 + 2033 | Oui, dans les cas éligibles |
+| Honoraires versés | DAS2 | Oui |
+| Liasse du régime normal | 2065 + 2050 à 2059 | Non : EDI obligatoire |
+| Valeur ajoutée (CVAE) | 1330-CVAE | Non : EDI obligatoire |
 
-1. **Préparer** : ProfitOS affiche le contenu case par case et ses contrôles. Les anomalies bloquantes (SIREN manquant, bilan déséquilibré, période non terminée) empêchent le dépôt ; les avertissements (TVA non liquidée…) le permettent.
-2. **Déposer** : réservé au propriétaire, à un administrateur ou au comptable, après certification. Le contenu est figé (empreinte SHA-256) ; une seule déclaration active par période, et une déclaration rectificative une fois la première acceptée.
-3. **Suivre** : statut « déposée », puis « accusé de réception » (avec son numéro), puis « acceptée » ou « rejetée » avec les motifs.
-
-Les déclarations proposées suivent votre régime de TVA (CA3 mensuelle ou trimestrielle, CA12, franchise). Chaque acompte (IS ou TVA) se dépose pour son échéance : plusieurs acomptes peuvent être déposés sur le même exercice de référence.
-
-Tant qu'aucun partenaire EDI n'est connecté, les dépôts se font en **mode simulation** : vous testez tout le parcours, mais rien n'est transmis à l'administration.
+Pour la liasse du régime normal et la CVAE, transmettez le récapitulatif à votre expert-comptable (ou à votre partenaire EDI), puis archivez dans ProfitOS l'accusé de réception qu'il vous remet. Le jour où un partenaire EDI est connecté à ProfitOS, les déclarations peuvent aussi être transmises directement.
 
 ### Profil fiscal et paiement en ligne
 
@@ -479,11 +480,11 @@ Menu **Comptabilité → Profil fiscal** :
 - **Page de garde 2065** : activité, signataire et sa qualité, expert-comptable, conseil, groupe fiscal, PME innovante.
 - **Composition du capital (2059-F)** et **filiales (2059-G)** : associés et sociétés détenues à 10 % ou plus.
 - **Date de création** (pour la CFE) et **locaux professionnels** loués (pour la DECLOYER).
-- **Mandat de prélèvement** (propriétaire ou administrateur) : IBAN, BIC, titulaire, référence unique du mandat (RUM), date de signature, transmission à la banque. Une fois le mandat complet, le paiement (TVA, IS) est joint à la télédéclaration par prélèvement (EDI-Paiement) ; sans mandat, le montant est affiché et vous payez depuis votre espace professionnel. L'IBAN n'est jamais réaffiché en entier. Le paiement n'est réellement transmis qu'une fois le partenaire EDI activé.
+- **Mandat de prélèvement** (propriétaire ou administrateur) : IBAN, BIC, titulaire, référence unique du mandat (RUM), date de signature, transmission à la banque. Une fois le mandat complet et un partenaire EDI connecté, le paiement (TVA, IS) peut être joint à la déclaration par prélèvement (EDI-Paiement) ; sinon, vous payez en ligne lors du dépôt sur impots.gouv.fr. L'IBAN n'est jamais réaffiché en entier. Le paiement n'est réellement transmis qu'une fois le partenaire EDI activé.
 
 ### DAS2 et dividendes
 
-- **DAS2** (menu Comptabilité → DAS2) : ProfitOS reprend les honoraires, frais d'actes, commissions, droits d'auteur, redevances et jetons de présence comptabilisés dans l'année, TVA comprise, regroupés par bénéficiaire. Ceux qui ont reçu plus de 1 200 € sont cochés d'office. Complétez le SIRET, l'adresse et la profession (repris de la fiche fournisseur quand elle existe) et corrigez le montant si un paiement a eu lieu une autre année : la DAS2 porte sur les sommes **versées** dans l'année civile. Date limite : celle de la liasse pour une clôture au 31 décembre. Dépôt depuis les Télédéclarations, export Excel possible.
+- **DAS2** (menu Comptabilité → DAS2) : ProfitOS reprend les honoraires, frais d'actes, commissions, droits d'auteur, redevances et jetons de présence comptabilisés dans l'année, TVA comprise, regroupés par bénéficiaire. Ceux qui ont reçu plus de 1 200 € sont cochés d'office. Complétez le SIRET, l'adresse et la profession (repris de la fiche fournisseur quand elle existe) et corrigez le montant si un paiement a eu lieu une autre année : la DAS2 porte sur les sommes **versées** dans l'année civile. Date limite : celle de la liasse pour une clôture au 31 décembre. Dépôt préparé depuis la page Déclarations fiscales, export Excel possible.
 - **Dividendes (2777)** : pour chaque mois où des dividendes ont été payés (débit du compte 457), ProfitOS calcule le prélèvement forfaitaire non libératoire de 12,8 % et les prélèvements sociaux (18,6 % en 2026) dus sur la part versée aux associés personnes physiques, selon la composition du capital du profil fiscal ; vous pouvez saisir la part et les montants versés à des associés dispensés. Le résultat est comparé aux retenues comptabilisées au compte 442. La déclaration se fait et se paie en ligne sur impots.gouv.fr au plus tard le 15 du mois suivant ; le rappel apparaît dans les échéances fiscales.
 
 ### IFU, CFE et DECLOYER

@@ -8,6 +8,14 @@ from profitos import ledger as L
 from profitos import teledeclaration as T
 
 SUBMIT_ROLES = ('OWNER', 'ADMIN', 'COMPTABLE')
+RECEIPT_CATEGORY = 'declaration_receipts'
+
+
+def _simulation_allowed():
+    """Sans partenaire EDI, le dépôt simulé ne sert qu'aux tests et au développement :
+    en production, l'entreprise prépare sa déclaration et la dépose sur impots.gouv.fr."""
+    import os
+    return os.environ.get('PROFITOS_ENV', 'production') == 'development' or os.environ.get('EDI_SIMULATION_ENABLED') == '1'
 
 
 def _eid():
@@ -89,7 +97,7 @@ def register(app):
         c.close()
         active = {(r['decl_type'], r['period_start'], r['period_end']): r for r in rows if r['status'] in T.ACTIVE_STATUSES}
         inst_active = {(r['decl_type'], r['due_date']): r for r in reversed(rows)
-                       if r['status'] in T.ACTIVE_STATUSES and r['decl_type'] in T.INSTALMENT_TYPES
+                       if (r['status'] in T.ACTIVE_STATUSES or r['status'] == 'prepared') and r['decl_type'] in T.INSTALMENT_TYPES
                        and r['period_end'] == closed['end'].isoformat()}
         vat_filing = profile_vat
         vat_candidates = {
@@ -106,9 +114,12 @@ def register(app):
             {'type': 'DAS2', 'title': f"Honoraires versés en {paris_today().year - 1}",
              'start': date(paris_today().year - 1, 1, 1), 'end': date(paris_today().year - 1, 12, 31)},
         ]
+        prepared = {(r['decl_type'], r['period_start'], r['period_end']): r for r in reversed(rows) if r['status'] == 'prepared'}
         for cand in candidates:
             cand['meta'] = T.TYPES[cand['type']]
-            cand['existing'] = active.get((cand['type'], cand['start'].isoformat(), cand['end'].isoformat()))
+            key = (cand['type'], cand['start'].isoformat(), cand['end'].isoformat())
+            cand['existing'] = active.get(key) or prepared.get(key)
+            cand['channel'] = T.filing_channel(cand['type'], profile.get('tax_regime') or 'normal')
         return render_template('teledeclarations.html', rows=rows, candidates=candidates, instalments=instalments,
                                vat_instalments=vat_instalments, inst_active=inst_active, vat_filing=profile_vat, mandate_ok=CT.mandate_ready(profile),
                                closed=closed, partner=T.partner_configured(), types=T.TYPES,
@@ -130,9 +141,12 @@ def register(app):
             flash(f"Préparation impossible : {exc}")
             return redirect(url_for('teledeclarations'))
         existing = T.active_declaration(c, eid, decl_type, start, end, built['payload'].get('due_date'))
+        prepared = T.prepared_declaration(c, eid, decl_type, start, end, built['payload'].get('due_date'))
         c.close()
         return render_template('teledeclaration_prepare.html', built=built, decl_type=decl_type, start=start, end=end,
-                               regime=regime, existing=existing, partner=T.partner_configured(),
+                               regime=regime, existing=existing, prepared=prepared, partner=T.partner_configured(),
+                               channel=T.filing_channel(decl_type, regime), guide=T.efi_guide(decl_type, regime),
+                               simulation=_simulation_allowed(),
                                can_submit=current_role() in SUBMIT_ROLES, acompte=request.args.get('acompte') or '')
 
     @app.post('/comptabilite/teledeclarations/deposer')
@@ -149,6 +163,9 @@ def register(app):
             return redirect(back)
         if not request.form.get('certify'):
             flash("Cochez la certification avant de déposer la déclaration.")
+            return redirect(back)
+        if not T.partner_configured() and not _simulation_allowed():
+            flash("Aucun partenaire EDI n'est connecté : préparez la déclaration puis déposez-la sur impots.gouv.fr.")
             return redirect(back)
         eid = _eid()
         c = cx()
@@ -192,7 +209,115 @@ def register(app):
         payload = json.loads(row['payload_json'] or '{}')
         return render_template('teledeclaration_detail.html', row=row, payload=payload,
                                history=json.loads(row['history_json'] or '[]'),
-                               reasons=json.loads(row['rejection_json'] or '[]'), types=T.TYPES)
+                               reasons=json.loads(row['rejection_json'] or '[]'), types=T.TYPES,
+                               guide=T.efi_guide(row['decl_type'], payload.get('regime') or 'normal'),
+                               impots_url=T.IMPOTS_GOUV_URL, can_submit=current_role() in SUBMIT_ROLES,
+                               today=paris_today().isoformat())
+
+    @app.post('/comptabilite/teledeclarations/preparer-depot')
+    @login_required
+    def teledeclaration_prepare_manual():
+        decl_type = request.form.get('type') or ''
+        if decl_type not in T.TYPES:
+            abort(404)
+        back = url_for('teledeclaration_prepare', type=decl_type, du=request.form.get('du'), au=request.form.get('au'),
+                       regime=request.form.get('regime'), acompte=request.form.get('acompte') or None,
+                       echeance=request.form.get('echeance') or None)
+        if current_role() not in SUBMIT_ROLES:
+            flash("Seuls le propriétaire, un administrateur ou le comptable peuvent préparer une déclaration.")
+            return redirect(back)
+        eid = _eid()
+        c = cx()
+        try:
+            start, end = _period_from_args(c, eid, decl_type, request.form)
+            built, regime = _build(c, eid, decl_type, start, end, request.form)
+            decl_id = T.prepare_manual(c, built, eid, current_user()['email'], regime=regime,
+                                       corrective=bool(request.form.get('corrective')))
+        except (T.TeledeclarationError, ValueError) as exc:
+            c.close()
+            flash(str(exc) if isinstance(exc, T.TeledeclarationError) else f"Préparation impossible : {exc}")
+            return redirect(back)
+        c.close()
+        log_activity('DECLARATION_PREPARED', f"{T.TYPES[decl_type]['form']} du {start.isoformat()} au {end.isoformat()} préparée")
+        flash("Déclaration préparée : téléchargez le récapitulatif, déposez-la sur impots.gouv.fr puis archivez ici le justificatif.")
+        return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+
+    @app.route('/comptabilite/teledeclarations/<int:decl_id>/recapitulatif.pdf')
+    @login_required
+    def teledeclaration_pdf(decl_id):
+        from profitos.declaration_pdf import render_declaration_pdf
+        eid = _eid()
+        c = cx()
+        row = _row_or_404(c, decl_id, eid)
+        c.close()
+        payload = json.loads(row['payload_json'] or '{}')
+        meta = T.TYPES.get(row['decl_type'], {'label': row['form']})
+        data = render_declaration_pdf(row, payload, meta, T.efi_guide(row['decl_type'], payload.get('regime') or 'normal'),
+                                      T.IMPOTS_GOUV_URL)
+        if data is None:
+            flash("Génération du PDF indisponible sur ce serveur.")
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+        return Response(data, mimetype='application/pdf', headers={
+            'Content-Disposition': f'attachment; filename="recapitulatif-{row["form"].split()[0].lower()}-{row["period_end"]}.pdf"'})
+
+    @app.post('/comptabilite/teledeclarations/<int:decl_id>/justificatif')
+    @login_required
+    def teledeclaration_receipt_upload(decl_id):
+        import uuid
+        from profitos import storage as _st
+        eid = _eid()
+        if current_role() not in SUBMIT_ROLES:
+            flash("Seuls le propriétaire, un administrateur ou le comptable peuvent enregistrer un dépôt.")
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+        c = cx()
+        row = _row_or_404(c, decl_id, eid)
+        upload = request.files.get('receipt')
+        stored = None
+        try:
+            if not upload or not upload.filename:
+                raise T.TeledeclarationError("Joignez le justificatif de dépôt (accusé de réception d'impots.gouv.fr).")
+            data = upload.read(T.MAX_RECEIPT_BYTES + 1)
+            ext = T.check_receipt(upload.filename, data)
+            filed_on = (request.form.get('filed_on') or '').strip()
+            if not filed_on:
+                raise T.TeledeclarationError("Indiquez la date du dépôt.")
+            stored = uuid.uuid4().hex + ext
+            _st.write_bytes(RECEIPT_CATEGORY, session['org_id'], stored, data)
+            T.record_filing(c, row, stored, secure_filename(upload.filename)[:200] or 'justificatif' + ext, filed_on,
+                            (request.form.get('reference') or '').strip()[:80] or None, current_user()['email'])
+            if row['receipt_stored'] and row['receipt_stored'] != stored:
+                _st.delete(RECEIPT_CATEGORY, session['org_id'], row['receipt_stored'])
+        except (T.TeledeclarationError, ValueError) as exc:
+            if stored:
+                _st.delete(RECEIPT_CATEGORY, session['org_id'], stored)
+            c.close()
+            flash(str(exc) if isinstance(exc, T.TeledeclarationError) else "Date de dépôt invalide.")
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+        c.close()
+        log_activity('DECLARATION_FILED', f"{row['form']} du {row['period_start']} au {row['period_end']} : justificatif archivé")
+        log_security_event('DECLARATION_FILED', 'SUCCESS', target=f"{row['decl_type']}:{row['period_end']}")
+        flash("Dépôt enregistré : le justificatif est archivé et l'échéance est marquée comme déposée.")
+        return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
+
+    @app.route('/comptabilite/teledeclarations/<int:decl_id>/justificatif')
+    @login_required
+    def teledeclaration_receipt(decl_id):
+        from profitos import storage as _st
+        eid = _eid()
+        c = cx()
+        row = _row_or_404(c, decl_id, eid)
+        c.close()
+        if not row['receipt_stored']:
+            abort(404)
+        try:
+            data = _st.read_bytes(RECEIPT_CATEGORY, session['org_id'], row['receipt_stored'])
+        except (OSError, ValueError):
+            abort(404)
+        ext = row['receipt_stored'].rsplit('.', 1)[-1].lower()
+        mime = {'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}.get(ext, 'application/octet-stream')
+        return Response(data, mimetype=mime, headers={
+            'Content-Disposition': f'attachment; filename="{row["receipt_name"] or "justificatif." + ext}"',
+            'X-Content-Type-Options': 'nosniff'})
 
     @app.post('/comptabilite/teledeclarations/<int:decl_id>/actualiser')
     @login_required

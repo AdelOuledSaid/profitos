@@ -97,7 +97,7 @@ def test_submit_requires_certification_and_role(app):
 def test_pages_render(app):
     client, _org = _setup(app)
     html = client.get('/comptabilite/teledeclarations').get_data(as_text=True)
-    assert 'Mode simulation' in html and 'Préparer' in html
+    assert "n'effectue pas lui-même la transmission" in html and 'Préparer' in html
     for q in ('type=TVA_CA3&du=2025-03-01&au=2025-03-31', 'type=LIASSE&du=2025-01-01&au=2025-12-31',
               'type=LIASSE&du=2025-01-01&au=2025-12-31&regime=simplifie', 'type=IS_2572&du=2025-01-01&au=2025-12-31',
               'type=IS_2571&du=2025-01-01&au=2025-12-31', 'type=CVAE_1330&du=2025-01-01&au=2025-12-31'):

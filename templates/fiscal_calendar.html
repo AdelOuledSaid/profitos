@@ -7,7 +7,7 @@
     <h1 class="purchase-title">Échéances fiscales et contrôles</h1>
     <p class="purchase-subtitle">Vos prochaines échéances (90 jours), les contrôles à faire avant la liasse et l'activité des automatisations. Le propriétaire reçoit un rappel par e-mail 7 jours puis la veille de chaque échéance non déposée.</p>
   </div>
-  <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Télédéclarations</a>
+  <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a>
 </div>
 
 <section class="purchase-panel">
@@ -21,6 +21,7 @@
         <td>{{ d.label }}</td><td>{{ d.form }}</td>
         <td class="num">{{ (d.amount|fr_number(0) ~ ' €') if d.amount else '—' }}</td>
         <td>{% if d.deposited %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.deposited.id) }}">{{ teledeclaration_status_label(d.deposited.status) }}</a>
+            {% elif d.prepared %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.prepared.id) }}">Préparée — à déposer</a>
             {% elif d.type %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=d.type, du=d.start.isoformat(), au=d.end.isoformat(), echeance=d.due_date.isoformat() if d.due_date else None, acompte=d.amount if d.due_date and d.type == 'TVA_3514' else None) }}">Préparer</a>
             {% elif d.link %}<a class="purchase-nav-btn" href="{{ url_for(d.link[0], **d.link[1]) }}">Ouvrir</a>{% endif %}</td></tr>
     {% endfor %}

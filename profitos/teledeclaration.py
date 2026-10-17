@@ -43,12 +43,14 @@ TYPES = {
 }
 
 STATUS_LABELS = {
+    'prepared': 'Préparée — à déposer sur impots.gouv.fr',
+    'filed': 'Déposée — justificatif archivé',
     'deposited': 'Déposée chez le partenaire EDI',
     'acknowledged': "Accusé de réception de l'administration",
     'accepted': 'Acceptée',
     'rejected': 'Rejetée',
 }
-ACTIVE_STATUSES = ('deposited', 'acknowledged', 'accepted')
+ACTIVE_STATUSES = ('deposited', 'acknowledged', 'accepted', 'filed')
 
 
 class TeledeclarationError(ValueError):
@@ -394,7 +396,7 @@ def active_declaration(conn, entity_id, decl_type, period_start, period_end, due
         df, dp = ' AND due_date=?', (str(due_date)[:10],)
     return conn.execute(
         f"""SELECT * FROM teledeclarations WHERE {ef} AND decl_type=? AND period_start=? AND period_end=?{df}
-            AND status IN ('deposited','acknowledged','accepted') ORDER BY id DESC LIMIT 1""",
+            AND status IN ('deposited','acknowledged','accepted','filed') ORDER BY id DESC LIMIT 1""",
         (*ep, decl_type, str(period_start)[:10], str(period_end)[:10], *dp)).fetchone()
 
 
@@ -450,7 +452,7 @@ def submit_declaration(conn, built, entity_id=None, user=None, corrective=False,
 
 def refresh_status(conn, row, connector=None):
     """Interroge le partenaire et enregistre le nouveau statut (avec son historique)."""
-    if row['status'] in ('accepted', 'rejected'):
+    if row['status'] in ('accepted', 'rejected') or row['mode'] == 'manual':
         return row['status']
     connector = connector or (SimulationConnector() if row['mode'] == 'simulation' else get_connector())
     payload = json.loads(row['payload_json'] or '{}')
@@ -474,3 +476,128 @@ def refresh_status(conn, row, connector=None):
 def list_declarations(conn, entity_id=None, limit=50):
     ef, ep = _ef(entity_id)
     return conn.execute(f'SELECT * FROM teledeclarations WHERE {ef} ORDER BY id DESC LIMIT ?', (*ep, limit)).fetchall()
+
+
+# ------------------------------------------------------------- dépôt par l'entreprise (EFI)
+# Déclarations que l'entreprise peut saisir elle-même dans son espace professionnel sur
+# impots.gouv.fr (procédure EFI). La liasse du régime normal (2050 à 2059) et la
+# déclaration de valeur ajoutée 1330-CVAE ne s'y déposent pas : l'EDI est obligatoire.
+EFI_GUIDES = {
+    'TVA_CA3': "Espace professionnel → Déclarer → TVA : formulaire 3310-CA3 de la période, puis paiement en ligne.",
+    'TVA_CA12': "Espace professionnel → Déclarer → TVA : déclaration annuelle 3517-S CA12, puis paiement du solde.",
+    'TVA_3514': "Espace professionnel → Déclarer → TVA : avis d'acompte 3514 et paiement en ligne.",
+    'IS_2571': "Espace professionnel → Déclarer → Impôt sur les sociétés : relevé d'acompte 2571 et paiement en ligne.",
+    'IS_2572': "Espace professionnel → Déclarer → Impôt sur les sociétés : relevé de solde 2572 et paiement en ligne.",
+    'LIASSE': "Espace professionnel → Déclarer → Résultat : déclaration 2065 et annexes 2033-A à 2033-G.",
+    'DAS2': "Espace professionnel → Déclarer → Déclaration d'honoraires (DAS2) : un bénéficiaire par ligne.",
+}
+IMPOTS_GOUV_URL = 'https://www.impots.gouv.fr/accueil'
+RECEIPT_EXTENSIONS = {'.pdf': b'%PDF-', '.png': b'\x89PNG', '.jpg': b'\xff\xd8\xff', '.jpeg': b'\xff\xd8\xff'}
+MAX_RECEIPT_BYTES = 10 * 1024 * 1024
+
+
+def filing_channel(decl_type, regime='normal'):
+    """'efi' : déposable par l'entreprise sur impots.gouv.fr ; 'edi' : EDI obligatoire
+    (expert-comptable ou partenaire EDI)."""
+    if decl_type == 'CVAE_1330' or (decl_type == 'LIASSE' and regime != 'simplifie'):
+        return 'edi'
+    return 'efi'
+
+
+def efi_guide(decl_type, regime='normal'):
+    if filing_channel(decl_type, regime) == 'edi':
+        return ("Dépôt EDI obligatoire : cette déclaration ne peut pas être saisie sur impots.gouv.fr. "
+                "Transmettez le récapitulatif à votre expert-comptable ou à votre partenaire EDI, puis archivez ici "
+                "l'accusé de réception qu'il vous remet.")
+    return EFI_GUIDES.get(decl_type, "Espace professionnel → Déclarer.")
+
+
+def prepared_declaration(conn, entity_id, decl_type, period_start, period_end, due_date=None):
+    ef, ep = _ef(entity_id)
+    df, dp = ('', ())
+    if decl_type in INSTALMENT_TYPES and due_date:
+        df, dp = ' AND due_date=?', (str(due_date)[:10],)
+    return conn.execute(
+        f"""SELECT * FROM teledeclarations WHERE {ef} AND decl_type=? AND period_start=? AND period_end=?{df}
+            AND status='prepared' ORDER BY id DESC LIMIT 1""",
+        (*ep, decl_type, str(period_start)[:10], str(period_end)[:10], *dp)).fetchone()
+
+
+def prepare_manual(conn, built, entity_id=None, user=None, regime='normal', corrective=False):
+    """Fige le contenu contrôlé d'une déclaration que l'entreprise va déposer elle-même.
+    Une déclaration déjà préparée pour la même période est mise à jour ; une déclaration
+    déjà déposée bloque, sauf rectificative."""
+    if built['errors']:
+        raise TeledeclarationError('Préparation impossible : ' + ' '.join(built['errors']))
+    p_type = built['payload']['type']
+    p = dict(built['payload'], generated_at=_now(), filing=filing_channel(p_type, regime), regime=regime)
+    existing = active_declaration(conn, entity_id, p_type, p['period']['start'], p['period']['end'], p.get('due_date'))
+    if existing and not corrective:
+        raise TeledeclarationError("Une déclaration est déjà déposée pour cette période : cochez « déclaration "
+                                   "rectificative » pour en préparer une nouvelle.")
+    p['corrective'] = bool(corrective and existing)
+    digest = payload_hash(p)
+    now = _now()
+    prev = prepared_declaration(conn, entity_id, p_type, p['period']['start'], p['period']['end'], p.get('due_date'))
+    if prev:
+        history = json.loads(prev['history_json'] or '[]')
+        history.append({'at': now, 'status': 'prepared', 'message': 'Récapitulatif mis à jour'})
+        conn.execute("""UPDATE teledeclarations SET payload_json=?,payload_hash=?,payment_amount=?,corrective=?,replaces_id=?,
+                        submitted_by=?,submitted_at=?,updated_at=?,history_json=? WHERE id=?""",
+                     (json.dumps(p, ensure_ascii=False), digest, (p.get('payment') or {}).get('amount'), 1 if p['corrective'] else 0,
+                      existing['id'] if (existing and p['corrective']) else None, user, now, now,
+                      json.dumps(history, ensure_ascii=False), prev['id']))
+        conn.commit()
+        return prev['id']
+    conn.execute(
+        """INSERT INTO teledeclarations(entity_id,decl_type,form,channel,period_start,period_end,payload_json,payload_hash,
+               status,mode,provider,remote_id,corrective,replaces_id,payment_amount,submitted_by,submitted_at,updated_at,history_json,due_date)
+           VALUES(?,?,?,?,?,?,?,?,'prepared','manual',?,NULL,?,?,?,?,?,?,?,?)""",
+        (entity_id, p_type, p['form'], 'EFI (impots.gouv.fr)' if p['filing'] == 'efi' else p['channel'],
+         p['period']['start'], p['period']['end'], json.dumps(p, ensure_ascii=False), digest,
+         'impots.gouv.fr' if p['filing'] == 'efi' else 'expert-comptable / EDI',
+         1 if p['corrective'] else 0, existing['id'] if (existing and p['corrective']) else None,
+         (p.get('payment') or {}).get('amount'), user, now, now,
+         json.dumps([{'at': now, 'status': 'prepared', 'message': 'Récapitulatif préparé'}], ensure_ascii=False),
+         p.get('due_date')))
+    conn.commit()
+    return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+
+def check_receipt(filename, data):
+    """Contrôle du justificatif de dépôt : PDF ou image, 10 Mo au plus, contenu conforme."""
+    import os as _os
+    ext = _os.path.splitext(filename or '')[1].lower()
+    if ext not in RECEIPT_EXTENSIONS:
+        raise TeledeclarationError("Justificatif refusé : déposez un PDF ou une image (PNG, JPEG).")
+    if not data:
+        raise TeledeclarationError("Justificatif vide.")
+    if len(data) > MAX_RECEIPT_BYTES:
+        raise TeledeclarationError("Justificatif trop volumineux (10 Mo au plus).")
+    if not data.startswith(RECEIPT_EXTENSIONS[ext]):
+        raise TeledeclarationError("Le contenu du justificatif ne correspond pas à son format.")
+    return ext
+
+
+def record_filing(conn, row, stored_name, original_name, filed_on, reference=None, user=None):
+    """Enregistre le dépôt fait par l'entreprise : le statut « déposée » n'est attribué
+    qu'avec un justificatif officiel archivé."""
+    if row['mode'] != 'manual' or row['status'] not in ('prepared', 'filed'):
+        raise TeledeclarationError("Cette déclaration n'est pas à déposer par vos soins.")
+    filed_on = date.fromisoformat(str(filed_on)[:10])
+    from profitos.accounting import paris_today
+    if filed_on > paris_today():
+        raise TeledeclarationError("La date de dépôt ne peut pas être dans le futur.")
+    other = active_declaration(conn, row['entity_id'], row['decl_type'], row['period_start'], row['period_end'], row['due_date'])
+    if other and other['id'] != row['id'] and not row['corrective']:
+        raise TeledeclarationError("Une autre déclaration est déjà enregistrée comme déposée pour cette période.")
+    now = _now()
+    history = json.loads(row['history_json'] or '[]')
+    history.append({'at': now, 'status': 'filed',
+                    'message': f"Déposée sur impots.gouv.fr le {filed_on.strftime('%d/%m/%Y')} — justificatif archivé"
+                               + (f" (réf. {reference})" if reference else '')})
+    conn.execute("""UPDATE teledeclarations SET status='filed',receipt_stored=?,receipt_name=?,filed_at=?,filed_by=?,
+                    ack_number=?,ack_at=?,updated_at=?,history_json=? WHERE id=?""",
+                 (stored_name, original_name, filed_on.isoformat(), user, (reference or '')[:80] or None,
+                  filed_on.isoformat(), now, json.dumps(history, ensure_ascii=False), row['id']))
+    conn.commit()

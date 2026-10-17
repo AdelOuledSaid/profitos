@@ -444,3 +444,10 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .entry-lines input{width:100%;min-width:90px}.entry-lines input.num{text-align:right}.entry-gap{margin-left:10px;font-size:12px;font-weight:800}.entry-gap.ok{color:#3ddc84}.entry-gap.ko{color:#ff6e78}
 .seg-tabs{display:inline-flex;flex-direction:row;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid #294064;border-radius:999px;background:#0a0a0a}.seg-tabs a{padding:8px 16px;border-radius:999px;color:#bdd0ef;text-decoration:none;font-weight:800;font-size:14px}.seg-tabs a.is-active{background:#3ddc84;color:#04150c}
 .ca3-table td.num,.ca3-table th.num{text-align:right;white-space:nowrap}.ca3-box{width:56px;font-weight:900;color:#3ddc84}.ca3-total td{font-weight:900}.ca3-sub{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a0a0a0;margin:16px 0 6px}
+
+/* Parcours de dépôt d'une déclaration par l'entreprise (impots.gouv.fr) */
+.filing-steps{list-style:none;counter-reset:step;margin:0 0 12px;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.filing-steps li{counter-increment:step;position:relative;padding:10px 12px 10px 42px;border:1px solid var(--border,#294064);border-radius:10px;font-size:13px;line-height:1.4}
+.filing-steps li::before{content:counter(step);position:absolute;left:12px;top:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;background:#3ddc84;color:#04150c}
+.filing-steps li.is-done::before{content:"✓";background:#16a34a;color:#fff}
+.filing-steps li.is-current{border-color:#3ddc84}
