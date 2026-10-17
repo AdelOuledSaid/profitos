@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ÉQUIPE</div>
+    <h1 class="purchase-title">Accès par entité — {{ member.full_name or member.email }}</h1>
+    <p class="purchase-subtitle">Restreint les entités que cette personne peut voir et sélectionner. Par défaut, tout le monde a accès à tout.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('team') }}">← Équipe</a>
+</div>
+
+<section class="purchase-panel">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;margin-bottom:14px;">
+      <input type="radio" name="mode" value="unrestricted" {% if not restricted %}checked{% endif %} style="width:auto;">
+      Aucune restriction — accès à toutes les entités, y compris celles créées plus tard
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;margin-bottom:14px;">
+      <input type="radio" name="mode" value="restricted" {% if restricted %}checked{% endif %} style="width:auto;">
+      Restreindre à ces entités uniquement :
+    </label>
+    <div style="margin-left:28px;display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+      {% for e in entities %}
+      <label style="display:flex;align-items:center;gap:8px;flex-direction:row;">
+        <input type="checkbox" name="entity_id" value="{{ e.id or '' }}" {% if e.id in allowed_ids or (e.id is none and none in allowed_ids) %}checked{% endif %} style="width:auto;">
+        {{ e.name }}{% if e.id is none %} (société mère){% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+  </form>
+</section>
+</div>
+{% endblock %}

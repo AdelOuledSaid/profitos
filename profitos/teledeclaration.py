@@ -24,6 +24,7 @@ retenu sans toucher au reste du module.
 """
 import hashlib
 import json
+import re
 import os
 from datetime import date, datetime, timezone
 
@@ -579,7 +580,7 @@ def check_receipt(filename, data):
     return ext
 
 
-def record_filing(conn, row, stored_name, original_name, filed_on, reference=None, user=None):
+def record_filing(conn, row, stored_name, original_name, filed_on, reference=None, user=None, check=None):
     """Enregistre le dépôt fait par l'entreprise : le statut « déposée » n'est attribué
     qu'avec un justificatif officiel archivé."""
     if row['mode'] != 'manual' or row['status'] not in ('prepared', 'filed'):
@@ -593,11 +594,92 @@ def record_filing(conn, row, stored_name, original_name, filed_on, reference=Non
         raise TeledeclarationError("Une autre déclaration est déjà enregistrée comme déposée pour cette période.")
     now = _now()
     history = json.loads(row['history_json'] or '[]')
+    verdict = {'concordant': 'justificatif concordant', 'ecarts': 'écarts à vérifier',
+               'non_verifiable': 'vérification automatique impossible'}.get((check or {}).get('status'), '')
     history.append({'at': now, 'status': 'filed',
                     'message': f"Déposée sur impots.gouv.fr le {filed_on.strftime('%d/%m/%Y')} — justificatif archivé"
-                               + (f" (réf. {reference})" if reference else '')})
+                               + (f" (réf. {reference})" if reference else '') + (f" — {verdict}" if verdict else '')})
     conn.execute("""UPDATE teledeclarations SET status='filed',receipt_stored=?,receipt_name=?,filed_at=?,filed_by=?,
-                    ack_number=?,ack_at=?,updated_at=?,history_json=? WHERE id=?""",
+                    ack_number=?,ack_at=?,updated_at=?,history_json=?,receipt_check=? WHERE id=?""",
                  (stored_name, original_name, filed_on.isoformat(), user, (reference or '')[:80] or None,
-                  filed_on.isoformat(), now, json.dumps(history, ensure_ascii=False), row['id']))
+                  filed_on.isoformat(), now, json.dumps(history, ensure_ascii=False),
+                  json.dumps(check, ensure_ascii=False) if check else None, row['id']))
     conn.commit()
+
+
+# ------------------------------------------------------- contrôle automatique de l'accusé
+FORM_KEYWORDS = {
+    'TVA_CA3': ('3310', 'CA3'), 'TVA_CA12': ('3517', 'CA12'), 'TVA_3514': ('3514',),
+    'IS_2571': ('2571',), 'IS_2572': ('2572',), 'DAS2': ('DAS2', 'DAS 2', 'HONORAIRES'),
+    'CVAE_1330': ('1330',), 'LIASSE': ('2065', '2033', '2050'),
+}
+MONTHS_FR = ('janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre',
+             'novembre', 'decembre')
+MAX_RECEIPT_PAGES = 10
+
+
+def _receipt_text(data, ext):
+    """Texte d'un accusé PDF (pages limitées) ; None si illisible ou image."""
+    if ext != '.pdf':
+        return None
+    try:
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            return None
+        return '\n'.join((page.extract_text() or '') for page in reader.pages[:MAX_RECEIPT_PAGES])
+    except Exception:
+        return None
+
+
+def _norm(text):
+    import unicodedata
+    t = unicodedata.normalize('NFKD', text or '')
+    t = ''.join(ch for ch in t if not unicodedata.combining(ch)).lower()
+    return t.replace(' ', ' ').replace(' ', ' ')
+
+
+def analyze_receipt(data, ext, row, payload, text=None):
+    """Compare l'accusé joint à la déclaration préparée : SIREN, formulaire, période et
+    montant. Ne prouve pas l'acceptation par l'administration ; repère un mauvais fichier
+    ou une erreur de saisie. Statuts : concordant, ecarts, non_verifiable."""
+    text = text if text is not None else _receipt_text(data, ext)
+    if not text or len(text.strip()) < 20:
+        reason = ("image : lecture automatique impossible" if ext != '.pdf'
+                  else "PDF sans texte lisible (document scanné ou protégé)")
+        return {'status': 'non_verifiable', 'checks': [], 'reason': reason}
+    low = _norm(text)
+    digits_only = re.sub(r'[ .\-]', '', low)
+    checks = []
+    siren = ((payload.get('declarant') or {}).get('siren') or '')
+    if siren:
+        checks.append({'label': f'SIREN {siren}', 'ok': siren in digits_only})
+    keys = FORM_KEYWORDS.get(row['decl_type'], ())
+    if keys:
+        compact = low.replace(' ', '').upper()
+        checks.append({'label': f"Formulaire {row['form']}",
+                       'ok': any(k.replace(' ', '').upper() in compact for k in keys)})
+    start = date.fromisoformat(str(row['period_start'])[:10])
+    end = date.fromisoformat(str(row['period_end'])[:10])
+    if payload.get('due_date'):
+        due = date.fromisoformat(payload['due_date'])
+        candidates = {due.strftime('%d/%m/%Y'), due.isoformat(), f"{MONTHS_FR[due.month - 1]} {due.year}",
+                      due.strftime('%m/%Y'), end.strftime('%d/%m/%Y')}
+        label = f"Échéance du {due.strftime('%d/%m/%Y')}"
+    elif (end - start).days <= 92:
+        candidates = {end.strftime('%d/%m/%Y'), start.strftime('%d/%m/%Y'), end.isoformat(),
+                      f"{MONTHS_FR[end.month - 1]} {end.year}", end.strftime('%m/%Y'), end.strftime('%m-%Y')}
+        label = f"Période {start.strftime('%m/%Y') if start.month == end.month else start.strftime('%m') + ' à ' + end.strftime('%m/%Y')}"
+    else:
+        candidates = {end.strftime('%d/%m/%Y'), end.isoformat(), start.strftime('%d/%m/%Y'), end.strftime('%d%m%Y')}
+        label = f"Exercice clos le {end.strftime('%d/%m/%Y')}"
+    checks.append({'label': label, 'ok': any(c in low for c in candidates)})
+    amount = (payload.get('payment') or {}).get('amount')
+    if amount:
+        n = int(round(float(amount)))
+        variants = {str(n), f"{n:,}".replace(',', ' '), f"{n:,}".replace(',', '.')}
+        found = any(re.search(r'(?<![\d])' + re.escape(v) + r'(?:[,.]\d{2})?(?![\d])', low) for v in variants)
+        checks.append({'label': f"Montant de {f'{n:,}'.replace(',', ' ')} €", 'ok': found})
+    status = 'concordant' if all(c['ok'] for c in checks) else 'ecarts'
+    return {'status': status, 'checks': checks, 'reason': None}

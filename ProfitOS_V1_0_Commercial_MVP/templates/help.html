@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr"{% if auth_user %} data-theme="{{ auth_user.theme_preference or 'dark' }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Guide utilisateur · ProfitOS</title>
+  <meta name="description" content="Guide d'utilisation de ProfitOS : facturation, facture électronique, achats, banque, trésorerie, comptabilité.">
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('theme-light.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('help.css') }}">
+</head>
+<body class="help-body">
+<header class="help-top">
+  <a class="brand help-brand" href="{{ url_for('home') }}">Profit<span>OS</span></a>
+  <div class="help-top-actions" role="navigation" aria-label="Navigation">
+    <a class="help-hide-sm" href="{{ url_for('pricing') }}">Tarifs</a>
+    {% if auth_user %}<a class="button" href="{{ url_for('home') }}">Retour à mon espace</a>
+    {% else %}<a href="{{ url_for('login') }}">Se connecter</a><a class="button" href="{{ url_for('signup') }}">Essai gratuit</a>{% endif %}
+  </div>
+</header>
+
+<div class="help-layout">
+  <aside class="help-toc" aria-label="Sommaire">
+    <div class="help-toc-desktop"><div class="help-toc-title">Sommaire</div>{% include "help_toc.html" %}</div>
+    <details class="help-toc-mobile"><summary>Sommaire</summary>{% include "help_toc.html" %}</details>
+  </aside>
+  <main class="help-main" id="contenu">
+    <div class="help-eyebrow">CENTRE D'AIDE</div>
+    <h1>Guide utilisateur ProfitOS</h1>
+    <p class="help-lead">Comment utiliser ProfitOS au quotidien, module par module. Une question qui n'est pas traitée ici ? Écrivez-nous à <a href="mailto:{{ support_email() }}">{{ support_email() }}</a>.</p>
+    <article class="help-content">
+      {% include "help_content.html" %}
+    </article>
+    <p class="help-back"><a href="#contenu">↑ Revenir en haut</a></p>
+  </main>
+</div>
+</body>
+</html>

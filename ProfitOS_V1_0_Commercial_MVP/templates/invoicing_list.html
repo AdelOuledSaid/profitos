@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_quotes') }}">Devis</a>
+      <a class="purchase-nav-btn" href="{{ url_for('delivery_notes_list') }}">Bons de livraison</a>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_clients') }}">Clients</a>
+      <a class="purchase-nav-btn" href="{{ url_for('recurring_invoices') }}">Récurrentes</a>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_receivables') }}">Créances clients</a>
+      <a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">Achats & fournisseurs</a>
+    </div>
+    <div class="purchase-primary-actions">
+      <a class="purchase-primary-btn primary" href="{{ url_for('invoicing_new') }}">+ Nouvelle facture</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION</div>
+  <h1 class="purchase-title">Factures émises</h1>
+  <p class="purchase-subtitle">Créez, envoyez et suivez vos factures. Document non émis via une Plateforme Agréée DGFiP — voir la note en pied de facture.</p>
+
+  <div class="purchase-stats">
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 3v5a2 2 0 0 0 2 2h5"></path><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Brouillons</div><div class="purchase-stat-value">{{ totals.draft|fr_number(2) }}&nbsp;€</div></div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7z"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">À échoir</div><div class="purchase-stat-value">{{ totals.sent|fr_number(2) }}&nbsp;€</div>{% if totals.imported_due %}<div class="purchase-muted" style="font-size:12px;">dont {{ totals.imported_due|fr_number(2) }}&nbsp;€ de factures importées</div>{% endif %}</div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v6l4 2"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">En retard</div><div class="purchase-stat-value">{{ totals.overdue|fr_number(2) }}&nbsp;€</div>{% if totals.imported_overdue %}<div class="purchase-muted" style="font-size:12px;">dont {{ totals.imported_overdue|fr_number(2) }}&nbsp;€ de factures importées</div>{% endif %}</div>
+    </div>
+    <div class="purchase-stat">
+      <div class="purchase-stat-icon">
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>
+      </div>
+      <div><div class="purchase-stat-label">Payées</div><div class="purchase-stat-value">{{ totals.paid|fr_number(2) }}&nbsp;€</div></div>
+    </div>
+  </div>
+
+  <section class="purchase-panel">
+    <div class="purchase-panel-head"><h2>Factures</h2></div>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Facture</th><th>Client</th><th>Date</th><th>Montant</th><th>Statut</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          {% set st = display_statuses[r.id] %}
+          <tr>
+            <td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail',invoice_id=r.id) }}"><strong>{{ r|invoice_label }}</strong></a></td>
+            <td>{{ r.client_name }}</td>
+            <td>{{ r.issue_date|fr_date }}</td>
+            <td><strong>{{ r.total|fr_number(2) }}&nbsp;€</strong></td>
+            <td>
+              <span class="purchase-status {{ 'paid' if st=='paid' else ('overdue' if st=='overdue' else '') }}">
+                {{ st|invoice_status_label }}
+              </span>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="purchase-empty">Aucune facture pour l'instant.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="purchase-panel" style="margin-top:18px;">
+    <div class="purchase-panel-head">
+      <h2>Déclarations électroniques</h2>
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_electronic_diagnostic') }}">Diagnostic facturation électronique</a>
+    </div>
+    <p class="purchase-subtitle" style="margin:0 0 14px;">Dernières transmissions à la plateforme agréée. Suivez ici les transmissions réglementaires et leur état de traitement par la plateforme agréée.</p>
+    <div class="purchase-table-wrap">
+      <table class="purchase-table">
+        <thead><tr><th>Transmission</th><th>Flux</th><th>Date</th><th>Statut</th><th>Contrôle</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for t in ereporting_rows %}
+          {% set remote_status = t.flux_status or t.status %}
+          <tr>
+            <td><strong>{{ t.transmission_number }}</strong>{% if t.type_code == 'RE' %}<br><small>Rectificative</small>{% endif %}</td>
+            <td>{{ t.flow_type }}</td>
+            <td>{{ t.anchor_date|fr_date }}</td>
+            {% set reporting_status_labels = {'CREATED':'Créée','SUBMITTED':'Transmise','PENDING':'En cours de traitement','ACCEPTED':'Acceptée','REJECTED':'Rejetée','ERROR':'Erreur','300':'Acceptée','301':'Rejetée'} %}<td><span class="purchase-status {{ 'paid' if remote_status in ('ACCEPTED','accepted','300') else ('overdue' if remote_status in ('REJECTED','rejected','301','error','ERROR') else '') }}">{{ reporting_status_labels.get((remote_status or '')|upper, 'En cours de traitement') }}</span>{% if t.late_deposit %}<br><small>Dépôt tardif signalé</small>{% endif %}</td>
+            <td>
+              {% if t.rejection_motifs_json and t.rejection_motifs_json not in ('[]','null') %}<small>Motifs disponibles</small>
+              {% elif t.last_error %}<small>Erreur de synchronisation</small>
+              {% elif t.last_checked_at %}<small>Synchronisé</small>
+              {% else %}<small>En attente</small>{% endif %}
+            </td>
+            <td>
+              {% if t.provider_reference %}
+              <form method="post" action="{{ url_for('invoicing_ereporting_sync',transmission_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-nav-btn" type="submit">Synchroniser</button>
+              </form>
+              <form method="post" action="{{ url_for('invoicing_ereporting_proof',transmission_id=t.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="purchase-nav-btn" type="submit">Preuve JSON</button>
+              </form>
+              {% else %}<small>Non transmise</small>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="purchase-empty">Aucune déclaration électronique enregistrée.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{# Compatibilité tests historiques : Suivi e-reporting #}

@@ -1,0 +1,17 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">EVIDENCE MAP</div>
+<h1>Ce que ProfitOS peut réellement affirmer.</h1>
+<p class="muted">{{ project.title }}</p>
+<section class="panel">
+<div class="row"><div><strong>Claim</strong></div><div>Evidence</div><div>Status</div></div>
+{% for e in evidence %}
+<div class="row">
+<div><strong>{{ e.claim }}</strong></div>
+<div>{{ e.evidence }}</div>
+<div class="status">{{ e.status }}</div>
+</div>
+{% else %}<p class="muted">Company Knowledge ne contient pas encore assez d'éléments.</p>{% endfor %}
+</section>
+<div class="flash">Règle V0.6 : une affirmation sans preuve reste « DECLARED ». ProfitOS ne la transforme pas automatiquement en fait vérifié.</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">JOURNAL {{ journal.code }}</div>
+    <h1 class="purchase-title">{{ journal.label }}</h1>
+    <p class="purchase-subtitle">{{ pluralize(entries|length, 'écriture') }}.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('accounting_entry_new') }}">+ Saisir une écriture</a><a class="purchase-nav-btn" href="{{ url_for('accounting_journals_view') }}">← Journaux</a></div>
+</div>
+
+{% for e in entries %}
+<section class="purchase-panel" style="margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div><a class="link" href="{{ url_for('accounting_entry_detail', entry_id=e.id) }}"><strong>{{ e.piece_number }}</strong></a> · {{ e.entry_date|fr_date }} · {{ e.label }}</div>
+    {% if e.source_type %}<span class="purchase-muted" style="font-size:12px;">{{ e.source_type|label }} #{{ e.source_id }}</span>{% endif %}
+  </div>
+  <div class="purchase-table-wrap" style="margin-top:10px;">
+    <table class="purchase-table">
+      <thead><tr><th>Compte</th><th>Tiers</th><th>Libellé</th><th style="text-align:right;">Débit</th><th style="text-align:right;">Crédit</th><th>Tag analytique</th></tr></thead>
+      <tbody>
+      {% for l in entry_lines[e.id] %}
+        <tr>
+          <td><code>{{ l.account_code }}</code></td>
+          <td>{{ l.auxiliary_name or '' }}</td>
+          <td>{{ l.label or '' }}</td>
+          <td style="text-align:right;">{% if l.debit %}{{ l.debit|fr_number(2) }}&nbsp;€{% endif %}</td>
+          <td style="text-align:right;">{% if l.credit %}{{ l.credit|fr_number(2) }}&nbsp;€{% endif %}</td>
+          <td>
+            {% if all_tags %}
+            <form method="post" action="{{ url_for('analytical_tag_line',line_id=l.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="analytical_tag_id" data-auto-submit style="font-size:12px;padding:4px 6px;">
+                <option value="" {% if not l.analytical_tag_id %}selected{% endif %}>—</option>
+                {% for tg in all_tags %}<option value="{{ tg.id }}" {% if l.analytical_tag_id==tg.id %}selected{% endif %}>{{ tg.axis_name }} : {{ tg.name }}</option>{% endfor %}
+              </select>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="purchase-panel"><p class="purchase-empty">Aucune écriture dans ce journal pour l'instant.</p></section>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+  <div class="purchase-toolbar">
+    <div class="purchase-nav-actions">
+      <a class="purchase-nav-btn" href="{{ url_for('invoicing_quotes') }}">← Retour aux devis</a>
+    </div>
+  </div>
+
+  <div class="purchase-eyebrow">FACTURATION · DEVIS</div>
+  <h1 class="purchase-title">Nouveau devis</h1>
+
+  <section class="purchase-panel">
+    <form method="post" class="formgrid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+          Client
+        </h4>
+        <div class="formgrid">
+          <div class="wide">
+            <label>Client enregistré
+              <select id="saved-client">
+                <option value="">— Saisie manuelle —</option>
+                {% for c in clients %}<option value="{{ c.id }}" data-name="{{ c.name|e }}" data-email="{{ (c.email or '')|e }}" data-address="{{ (c.address or '')|e }}" data-siren="{{ (c.siren or '')|e }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+          <label>Nom du client<input id="invoice-client-name" name="client_name" required></label>
+          <label>E-mail du client<input id="invoice-client-email" name="client_email" type="email"></label>
+          <label class="wide">Adresse du client<textarea id="invoice-client-address" name="client_address" rows="3"></textarea></label>
+          <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres"></label>
+          <label>N° TVA intracommunautaire du client<input name="client_vat_number" maxlength="40"></label>
+          <label>Pays du client (ISO 2)<input name="counterparty_country" maxlength="2" placeholder="FR"></label>
+          <label>Nature de l'opération
+            <select name="operation_nature">
+              <option value="services">Prestation de services</option>
+              <option value="biens">Livraison de biens</option>
+              <option value="mixte">Mixte (biens + services)</option>
+            </select>
+          </label>
+          <label class="wide">Adresse de livraison (si différente)<textarea name="delivery_address" rows="2"></textarea></label>
+          <label>Valable jusqu'au<input name="valid_until" type="date"></label>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <h4>
+          <span class="purchase-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none"></circle><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"></path></svg></span>
+          Lignes du devis
+        </h4>
+        <div class="purchase-table-wrap">
+          <table class="purchase-table">
+            <thead><tr><th>Description</th><th>Nature</th><th>Quantité</th><th>Prix unitaire HT (€)</th><th>TVA (%)</th></tr></thead>
+            <tbody>
+            {% for i in range(1,9) %}
+              <tr>
+                <td><input name="label_{{ i }}" placeholder="Description"></td>
+                <td><select name="nature_{{ i }}"><option value="">Selon l'opération</option><option value="services">Service</option><option value="biens">Bien</option></select></td>
+                <td><input name="qty_{{ i }}" type="text" inputmode="decimal" value="1"></td>
+                <td><input name="price_{{ i }}" type="text" inputmode="decimal" placeholder="0,00"></td>
+                <td><input name="vat_{{ i }}" type="text" inputmode="decimal" value="20"></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="purchase-field-group wide" style="grid-column:1/-1;">
+        <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+      </div>
+
+      <div class="wide" style="margin-top:12px;grid-column:1/-1;">
+        <button type="submit" class="purchase-primary-btn primary">Créer le devis</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

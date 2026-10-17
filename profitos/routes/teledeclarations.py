@@ -212,6 +212,7 @@ def register(app):
                                reasons=json.loads(row['rejection_json'] or '[]'), types=T.TYPES,
                                guide=T.efi_guide(row['decl_type'], payload.get('regime') or 'normal'),
                                impots_url=T.IMPOTS_GOUV_URL, can_submit=current_role() in SUBMIT_ROLES,
+                               receipt_check=json.loads(row['receipt_check']) if row['receipt_check'] else None,
                                today=paris_today().isoformat())
 
     @app.post('/comptabilite/teledeclarations/preparer-depot')
@@ -281,10 +282,11 @@ def register(app):
             filed_on = (request.form.get('filed_on') or '').strip()
             if not filed_on:
                 raise T.TeledeclarationError("Indiquez la date du dépôt.")
+            check = T.analyze_receipt(data, ext, row, json.loads(row['payload_json'] or '{}'))
             stored = uuid.uuid4().hex + ext
             _st.write_bytes(RECEIPT_CATEGORY, session['org_id'], stored, data)
             T.record_filing(c, row, stored, secure_filename(upload.filename)[:200] or 'justificatif' + ext, filed_on,
-                            (request.form.get('reference') or '').strip()[:80] or None, current_user()['email'])
+                            (request.form.get('reference') or '').strip()[:80] or None, current_user()['email'], check=check)
             if row['receipt_stored'] and row['receipt_stored'] != stored:
                 _st.delete(RECEIPT_CATEGORY, session['org_id'], row['receipt_stored'])
         except (T.TeledeclarationError, ValueError) as exc:
@@ -297,6 +299,11 @@ def register(app):
         log_activity('DECLARATION_FILED', f"{row['form']} du {row['period_start']} au {row['period_end']} : justificatif archivé")
         log_security_event('DECLARATION_FILED', 'SUCCESS', target=f"{row['decl_type']}:{row['period_end']}")
         flash("Dépôt enregistré : le justificatif est archivé et l'échéance est marquée comme déposée.")
+        if check['status'] == 'ecarts':
+            flash("Attention : l'accusé ne correspond pas entièrement à la déclaration préparée ("
+                  + ', '.join(c_['label'] for c_ in check['checks'] if not c_['ok']) + "). Vérifiez le fichier joint.")
+        elif check['status'] == 'non_verifiable':
+            flash(f"Vérification automatique de l'accusé impossible ({check['reason']}) : contrôlez-le vous-même.")
         return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
 
     @app.route('/comptabilite/teledeclarations/<int:decl_id>/justificatif')

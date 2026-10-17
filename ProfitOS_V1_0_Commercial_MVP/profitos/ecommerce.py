@@ -1,0 +1,157 @@
+"""Import de commandes e-commerce — Shopify et WooCommerce.
+
+AVERTISSEMENT : construit à partir de la documentation publique de ces deux
+plateformes telle que je la connais, jamais vérifié contre leurs vrais
+serveurs (aucun accès réseau dans cet environnement). À valider avec une
+vraie boutique de test avant tout usage réel.
+
+Shopify : connexion via une « app personnalisée » créée par le marchand
+lui-même dans son admin Shopify (Paramètres > Apps > Développer des apps),
+qui donne un jeton d'accès Admin API — pas de flux OAuth public, plus
+simple et plus fiable pour un usage marchand-à-marchand comme celui-ci.
+
+WooCommerce : authentification par clé/secret consommateur (Consumer
+Key/Secret), générés depuis WooCommerce > Réglages > Avancé > REST API.
+"""
+import base64
+import ipaddress
+import re
+
+from profitos.crypto import decrypt_secret, encrypt_secret
+from profitos.safe_http import UnsafeDestination, safe_request
+
+SHOPIFY_API_VERSION = '2024-01'
+
+
+
+_HOST_RE = re.compile(r'^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$')
+
+
+def normalize_shop_domain(shop_domain, platform):
+    """Validate a merchant-supplied hostname before it is interpolated into an outbound URL."""
+    host = str(shop_domain or '').strip().lower().rstrip('.')
+    if not host or '://' in host or '/' in host or '@' in host or ':' in host:
+        raise ValueError("Domaine de boutique invalide.")
+    if not _HOST_RE.fullmatch(host):
+        raise ValueError("Domaine de boutique invalide.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Une adresse IP n'est pas acceptée comme domaine de boutique.")
+    if host == 'localhost' or host.endswith('.localhost'):
+        raise ValueError("Domaine de boutique invalide.")
+    if platform == 'shopify' and not host.endswith('.myshopify.com'):
+        raise ValueError("Le domaine Shopify doit se terminer par .myshopify.com.")
+    return host
+
+
+def is_connected(conn, platform):
+    row = conn.execute('SELECT 1 FROM ecommerce_connections WHERE platform=?', (platform,)).fetchone()
+    return row is not None
+
+
+def get_connection(conn, platform, org_id=None):
+    """Connexion de la plateforme, identifiants déchiffrés (les valeurs
+    historiques stockées en clair sont lues telles quelles)."""
+    row = conn.execute('SELECT * FROM ecommerce_connections WHERE platform=?', (platform,)).fetchone()
+    if not row:
+        return None
+    row = dict(row)
+    for key in ('credential_1', 'credential_2'):
+        row[key] = decrypt_secret(row.get(key), org_id)
+    return row
+
+
+def save_connection(conn, platform, shop_domain, credential_1, credential_2, connected_by, org_id=None):
+    """Enregistre la connexion ; le jeton et le secret sont chiffrés (AES-GCM,
+    clé dérivée par organisation — voir profitos/crypto.py)."""
+    from datetime import datetime
+    credential_1 = encrypt_secret(credential_1, org_id)
+    credential_2 = encrypt_secret(credential_2, org_id)
+    conn.execute(
+        """INSERT INTO ecommerce_connections(platform,shop_domain,credential_1,credential_2,connected_at,connected_by)
+           VALUES(?,?,?,?,?,?)
+           ON CONFLICT(platform) DO UPDATE SET
+             shop_domain=excluded.shop_domain,credential_1=excluded.credential_1,
+             credential_2=excluded.credential_2,connected_at=excluded.connected_at,connected_by=excluded.connected_by""",
+        (platform, shop_domain, credential_1, credential_2, datetime.utcnow().isoformat(), connected_by),
+    )
+    conn.commit()
+
+
+def fetch_shopify_orders(shop_domain, access_token, limit=20):
+    """Liste les commandes récentes (les plus récentes en premier). Renvoie
+    une liste normalisée, indépendante du format brut Shopify."""
+    shop_domain = normalize_shop_domain(shop_domain, 'shopify')
+    url = f"https://{shop_domain}/admin/api/{SHOPIFY_API_VERSION}/orders.json"
+    try:
+        resp = safe_request(
+            'GET', url, headers={'X-Shopify-Access-Token': access_token},
+            params={'status': 'any', 'limit': limit, 'order': 'created_at desc'},
+            timeout=20,
+        )
+    except UnsafeDestination as e:
+        raise ValueError(f"Boutique Shopify refusée : {e}") from e
+    except ConnectionError as e:
+        raise ValueError("Connexion à Shopify impossible.") from e
+    if resp.status_code != 200:
+        # Code HTTP uniquement : le corps de la réponse distante n'est jamais affiché.
+        raise ValueError(f"Appel Shopify échoué (HTTP {resp.status_code}).")
+    orders = resp.json().get('orders', [])
+    result = []
+    for o in orders:
+        customer = o.get('customer') or {}
+        name = ' '.join(filter(None, [customer.get('first_name'), customer.get('last_name')])) or o.get('email') or 'Client Shopify'
+        line_items = [
+            {'label': li.get('name', ''), 'qty': float(li.get('quantity') or 1), 'unit_price': float(li.get('price') or 0)}
+            for li in o.get('line_items', [])
+        ]
+        result.append({
+            'external_id': str(o.get('id')), 'order_number': o.get('name'),
+            'customer_name': name, 'customer_email': o.get('email') or customer.get('email'),
+            'total': float(o.get('total_price') or 0), 'currency': o.get('currency'),
+            'order_date': (o.get('created_at') or '')[:10], 'line_items': line_items,
+        })
+    return result
+
+
+def fetch_woocommerce_orders(shop_domain, consumer_key, consumer_secret, limit=20):
+    """Liste les commandes récentes via l'API REST WooCommerce (clé/secret
+    consommateur, authentification HTTP Basic)."""
+    shop_domain = normalize_shop_domain(shop_domain, 'woocommerce')
+    url = f"https://{shop_domain}/wp-json/wc/v3/orders"
+    auth_bytes = f"{consumer_key}:{consumer_secret}".encode('utf-8')
+    auth_header = 'Basic ' + base64.b64encode(auth_bytes).decode('ascii')
+    try:
+        # Domaine choisi par le marchand : résolution unique, adresses publiques
+        # uniquement, connexion à l'IP validée (anti-SSRF / DNS rebinding).
+        resp = safe_request(
+            'GET', url, headers={'Authorization': auth_header},
+            params={'per_page': limit, 'orderby': 'date', 'order': 'desc'},
+            timeout=20,
+        )
+    except UnsafeDestination as e:
+        raise ValueError(f"Boutique WooCommerce refusée : {e}") from e
+    except ConnectionError as e:
+        raise ValueError("Connexion à WooCommerce impossible.") from e
+    if resp.status_code != 200:
+        raise ValueError(f"Appel WooCommerce échoué (HTTP {resp.status_code}).")
+    orders = resp.json()
+    result = []
+    for o in orders:
+        billing = o.get('billing') or {}
+        name = ' '.join(filter(None, [billing.get('first_name'), billing.get('last_name')])) or billing.get('email') or 'Client WooCommerce'
+        line_items = [
+            {'label': li.get('name', ''), 'qty': float(li.get('quantity') or 1),
+             'unit_price': float(li.get('price') or 0)}
+            for li in o.get('line_items', [])
+        ]
+        result.append({
+            'external_id': str(o.get('id')), 'order_number': f"#{o.get('number', o.get('id'))}",
+            'customer_name': name, 'customer_email': billing.get('email'),
+            'total': float(o.get('total') or 0), 'currency': o.get('currency'),
+            'order_date': (o.get('date_created') or '')[:10], 'line_items': line_items,
+        })
+    return result

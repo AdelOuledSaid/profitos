@@ -1,0 +1,11 @@
+<section class="purchase-panel" id="decloyer" style="margin-top:14px;">
+  <h2>DECLOYER — loyers des locaux professionnels</h2>
+  {% for w in dl.warnings %}<div class="flash" role="status">⚠ {{ w }}</div>{% endfor %}
+  {% if dl.premises %}
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table">
+    <thead><tr><th>Identifiant du local</th><th>Adresse</th><th class="num">Loyer annuel HT hors charges</th></tr></thead>
+    <tbody>{% for p in dl.premises %}<tr><td class="ca3-box">{{ p.invariant or '—' }}</td><td>{{ p.address }}</td><td class="num">{{ p.rent|fr_number(0) }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucun local professionnel loué renseigné.{% if not dl.warnings %} Si l'entreprise n'occupe aucun local loué, il n'y a pas de DECLOYER.{% endif %}</p>{% endif %}
+  <p class="purchase-muted" style="font-size:12px;">Déclaration annuelle obligatoire pour les locaux loués au 1er janvier, déposée avec la liasse en EDI-TDFC. Les locaux se renseignent dans le <a class="link" href="{{ url_for('fiscal_profile') }}">profil fiscal</a>.</p>
+</section>

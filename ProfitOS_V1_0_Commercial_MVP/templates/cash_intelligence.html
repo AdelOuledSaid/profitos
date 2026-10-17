@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">TRÉSORERIE &amp; SCÉNARIOS</div>
+<h1 class="purchase-title">Anticiper votre trésorerie avant qu'elle devienne urgente.</h1>
+<p class="purchase-subtitle">Prévision 30 / 60 / 90 jours, scénarios prudent / probable / optimiste, plan de trésorerie mensuel et flux prévus.</p>
+<div class="cash-jump" role="navigation" aria-label="Sections de la page">
+  <a href="#cascade">Du solde à J+90</a><a href="#plan">Plan mensuel</a><a href="#flux">Flux prévus</a><a href="#encaissements">Encaissements</a><a href="#decaissements">Décaissements</a>
+  {% if cash.cash_balance is not none %}<a href="{{ url_for('cash_plan_export', format='xlsx') }}" class="cash-jump-export">Exporter le plan (Excel)</a>{% endif %}
+</div>
+
+<section class="purchase-panel cash-balance-card">
+  <div><div class="purchase-eyebrow" style="margin-bottom:6px;">SOLDE DE DÉPART</div><h2 style="color:#fff;">{% if cash.cash_balance is not none %}{{ cash.cash_balance|fr_number }}&nbsp;€{% else %}Solde bancaire requis{% endif %}</h2><p class="purchase-muted">{% if cash.cash_as_of %}Solde déclaré au {{ cash.cash_as_of|fr_date }}{% if cash.balance_age_days is not none and cash.balance_age_days > 0 %} (il y a {{ cash.balance_age_days }} jour{{ 's' if cash.balance_age_days > 1 }}){% endif %}.{% else %}Saisissez votre trésorerie actuelle pour activer les scénarios.{% endif %}</p>{% if cash.balance_stale %}<p class="purchase-alert-text cash-stale">⚠ Solde ancien : mettez-le à jour, toute la prévision part de ce montant.</p>{% endif %}</div>
+  <form method="post" class="cash-balance-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Trésorerie disponible (€)<input type="number" step="0.01" name="cash_balance" value="{{ ('%.2f'|format(cash.cash_balance)).rstrip('0').rstrip('.') if cash.cash_balance is not none else '' }}" required>{% if cash.cash_balance is not none %}<span class="lot-hint">Solde enregistré : {{ cash.cash_balance|fr_number(2) }}&nbsp;€</span>{% endif %}</label><button type="submit" class="purchase-primary-btn primary">Mettre à jour</button></form>
+</section>
+
+{% if cash.bank_balance and cash.bank_balance_newer %}
+<div class="cash-data-warning cash-bank-suggest"><span>Solde bancaire {{ 'plus récent ' if cash.cash_as_of else '' }}disponible : <strong>{{ cash.bank_balance.balance|fr_number(2) }}&nbsp;€</strong> au {{ cash.bank_balance.as_of|fr_date }} ({{ pluralize(cash.bank_balance.accounts, 'compte bancaire', 'comptes bancaires') }}).</span>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="bank_balance"><button type="submit" class="purchase-primary-btn primary">Utiliser ce solde</button></form></div>
+{% endif %}
+
+<div class="cash-alert {{ cash.alert_level|lower }}"><strong>{{ {'STABLE':'Stable','VIGILANCE':'Vigilance','ALERTE':'Alerte','INCOMPLET':'Données incomplètes'}.get(cash.alert_level, cash.alert_level) }}</strong><span>{{ cash.alert }}</span></div>
+
+<div class="purchase-stats cash-kpis">
+  {% for days in (30,60,90) %}
+  <div class="purchase-stat">
+    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></div>
+    <div><div class="purchase-stat-label">TRÉSORERIE PROJETÉE · {{ days }} J</div><div class="purchase-stat-value">{% if cash.cash_balance is not none %}{{ cash.horizons[days]|fr_number }}&nbsp;€{% else %}—{% endif %}</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">Scénario probable</div></div>
+  </div>
+  {% endfor %}
+  <div class="purchase-stat">
+    <div class="purchase-stat-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg></div>
+    <div><div class="purchase-stat-label">AUTONOMIE DE TRÉSORERIE</div><div class="purchase-stat-value">{% if cash.cash_balance is none %}—{% elif cash.runway %}{% if cash.runway.days >= 365 %}+ de 12 mois{% else %}{{ (cash.runway.days / 30)|round(1)|fr_number(1) }} mois{% endif %}{% elif cash.cash_balance <= 0 %}Épuisée{% else %}En hausse{% endif %}</div><div class="purchase-muted" style="font-size:12px;margin-top:4px;">{% if cash.runway %}Au rythme net prévu ({{ cash.runway.monthly_net|fr_signed }}&nbsp;€ / mois){% elif cash.cash_balance is not none and cash.cash_balance > 0 %}La trésorerie progresse sur 90 j{% else %}Scénario probable{% endif %}</div></div>
+  </div>
+</div>
+
+{% if cash.cash_balance is not none %}
+<section class="purchase-panel cash-chart-panel">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">SCÉNARIOS · 90 JOURS</div><h2 style="color:#fff;">Trois trajectoires pour décider avant la tension</h2>
+  <p class="purchase-muted">Les scénarios modifient uniquement le timing et la prudence des encaissements (factures, abonnements, encaissements prévus). Les décaissements sont les mêmes dans les trois.</p>
+  <div class="cash-legend"><span class="legend prudent">Prudent</span><span class="legend probable">Probable</span><span class="legend optimiste">Optimiste</span></div>
+  <div class="cash-chart-wrap">
+    <svg class="cash-chart" viewBox="0 0 920 240" role="img" aria-label="Courbes de trésorerie projetée sur 90 jours">
+      {% for t in cash.chart.ticks %}<line x1="{{ cash.chart.left }}" y1="{{ t.y }}" x2="902" y2="{{ t.y }}" class="chart-grid"/><text x="{{ cash.chart.left - 8 }}" y="{{ t.y + 4 }}" class="chart-label" text-anchor="end">{{ t.value|fr_number }}&nbsp;€</text>{% endfor %}
+      <line x1="{{ cash.chart.x30 }}" y1="18" x2="{{ cash.chart.x30 }}" y2="202" class="chart-grid"/><line x1="{{ cash.chart.x60 }}" y1="18" x2="{{ cash.chart.x60 }}" y2="202" class="chart-grid"/>
+      {% if cash.chart.threshold_y is not none %}<line x1="{{ cash.chart.left }}" y1="{{ cash.chart.threshold_y }}" x2="902" y2="{{ cash.chart.threshold_y }}" class="chart-threshold"/><text x="898" y="{{ cash.chart.threshold_y - 6 }}" class="chart-label chart-threshold-label" text-anchor="end">Seuil de sécurité {{ cash.safety_threshold|fr_number }}&nbsp;€</text>{% endif %}
+      {% if cash.chart.zero_y is not none %}<line x1="{{ cash.chart.left }}" y1="{{ cash.chart.zero_y }}" x2="902" y2="{{ cash.chart.zero_y }}" class="chart-zero"/>{% endif %}
+      <line x1="{{ cash.chart.left }}" y1="202" x2="902" y2="202" class="chart-axis"/><line x1="{{ cash.chart.left }}" y1="18" x2="{{ cash.chart.left }}" y2="202" class="chart-axis"/>
+      {% for curve in cash.curves %}<polyline class="cash-line {{ curve.mode }}" points="{{ curve.points }}" fill="none"/>{% endfor %}
+      <text x="{{ cash.chart.left }}" y="224" class="chart-label" text-anchor="start">Aujourd'hui</text><text x="{{ cash.chart.x30 }}" y="224" class="chart-label" text-anchor="middle">30 j</text><text x="{{ cash.chart.x60 }}" y="224" class="chart-label" text-anchor="middle">60 j</text><text x="902" y="224" class="chart-label" text-anchor="end">90 j</text>
+    </svg>
+  </div>
+  <div class="scenario-summary">{% for curve in cash.curves %}<div class="scenario-summary-card {{ curve.mode }}"><small>{{ curve.mode|upper }}</small><strong>{{ curve.minimum|fr_number }}&nbsp;€</strong><span>point bas · {% if curve.min_day == 0 %}aujourd'hui{% else %}J+{{ curve.min_day }}{% endif %}</span><b>{{ curve.end_90|fr_number }}&nbsp;€ à J+90</b><span class="scenario-rule">{{ curve.rule }}</span></div>{% endfor %}</div>
+  {% if cash.receivables_beyond %}<p class="purchase-muted" style="margin-top:12px;">{{ pluralize(cash.receivables_beyond|length, 'facture client attendue', 'factures clients attendues') }} après 90 jours ({{ cash.receivables_beyond_total|fr_number }}&nbsp;€) : non comptée{{ 's' if cash.receivables_beyond|length > 1 }} dans ces trajectoires.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if cash.breakdown %}
+{% set b = cash.breakdown %}
+<section class="purchase-panel" id="cascade" style="margin-top:20px;">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">DU SOLDE ACTUEL À J+90 · SCÉNARIO PROBABLE</div>
+  <h2 style="color:#fff;">D'où vient et où part votre trésorerie</h2>
+  <p class="purchase-muted">Chaque ligne est un total sur les 90 prochains jours. Le solde d'arrivée est celui de la courbe probable.</p>
+  <div class="cash-cascade">
+    <div class="cash-cascade-row is-total"><span>Solde de départ</span><div class="cash-cascade-bar"><i style="width:{{ b.start_pct }}%"></i></div><strong>{{ b.start|fr_number }}&nbsp;€</strong></div>
+    {% for r in b.rows %}
+    <div class="cash-cascade-row {{ 'is-in' if r.amount > 0 else 'is-out' }}"><span>{{ '+' if r.amount > 0 else '−' }} {{ r.label }}</span><div class="cash-cascade-bar"><i style="width:{{ r.pct }}%"></i></div><strong>{{ r.amount|fr_signed(0, true) }}&nbsp;€</strong></div>
+    {% endfor %}
+    <div class="cash-cascade-row is-total"><span>Solde à J+90</span><div class="cash-cascade-bar"><i style="width:{{ b.end_pct }}%"></i></div><strong>{{ b.end|fr_number }}&nbsp;€</strong></div>
+  </div>
+  {% if not cash.burn_included %}<p class="purchase-muted" style="margin-top:10px;">La dépense courante observée ({{ cash.monthly_burn|fr_number }}&nbsp;€ / mois) n'est pas comptée : vos charges récurrentes sont saisies en flux prévus.</p>
+  {% elif cash.monthly_burn %}<p class="purchase-muted" style="margin-top:10px;">Dépense courante observée : {{ cash.monthly_burn|fr_number }}&nbsp;€ / mois en moyenne sur les 90 derniers jours ({{ pluralize(cash.expense_rows, 'dépense') }}{% if not cash.burn_reliable %}, <span class="purchase-alert-text">fiabilité faible</span>{% endif %}).</p>{% endif %}
+</section>
+{% endif %}
+
+{% if cash.plan and cash.plan.months %}
+{% set plan = cash.plan %}
+<section class="purchase-panel" id="plan" style="margin-top:20px;">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+    <div><div class="purchase-eyebrow" style="margin-bottom:6px;">PLAN DE TRÉSORERIE MENSUEL</div>
+    <h2 style="color:#fff;">Mois par mois, scénario probable</h2></div>
+    <div style="display:flex;gap:8px;"><a class="purchase-nav-btn" href="{{ url_for('cash_plan_export', format='xlsx') }}">Excel</a><a class="purchase-nav-btn" href="{{ url_for('cash_plan_export', format='csv') }}">CSV</a></div>
+  </div>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table cash-plan-table">
+      <thead><tr><th></th>{% for m in plan.months %}<th>{{ m.label }}{% if m.partial %}<small>du {{ m.from|fr_date }} au {{ m.to|fr_date }}</small>{% endif %}</th>{% endfor %}</tr></thead>
+      <tbody>
+        <tr class="is-total"><td>Solde d'ouverture</td>{% for m in plan.months %}<td>{{ m.opening|fr_number }}&nbsp;€</td>{% endfor %}</tr>
+        {% for r in plan.rows %}<tr><td>{{ '+' if r.direction == 'in' else '−' }} {{ r.label }}</td>{% for m in plan.months %}{% set v = m.cats.get(r.category, 0) %}<td class="{{ 'is-in' if v > 0 else ('is-out' if v < 0 else '') }}">{% if v %}{{ v|fr_signed }}&nbsp;€{% else %}—{% endif %}</td>{% endfor %}</tr>{% endfor %}
+        <tr class="is-total"><td>Solde de clôture</td>{% for m in plan.months %}<td class="{{ 'purchase-alert-text' if m.closing < 0 }}">{{ m.closing|fr_number }}&nbsp;€</td>{% endfor %}</tr>
+        <tr><td>Point bas du mois</td>{% for m in plan.months %}<td class="{{ 'purchase-alert-text' if m.minimum < 0 or (cash.safety_threshold and m.minimum < cash.safety_threshold) }}">{{ m.minimum|fr_number }}&nbsp;€</td>{% endfor %}</tr>
+      </tbody>
+    </table>
+  </div>
+  {% if cash.realized %}
+  <h3 style="margin-top:22px;">Réalisé d'après vos relevés bancaires</h3>
+  <p class="purchase-muted">Pour comparer la prévision à ce qui s'est réellement passé sur vos comptes les derniers mois.</p>
+  <div class="purchase-table-wrap">
+    <table class="purchase-table cash-plan-table">
+      <thead><tr><th></th>{% for m in cash.realized %}<th>{{ m.month|fr_month }}{% if m.partial %}<small>mois en cours</small>{% endif %}</th>{% endfor %}</tr></thead>
+      <tbody>
+        <tr><td>+ Encaissements</td>{% for m in cash.realized %}<td class="is-in">{{ m['in']|fr_number }}&nbsp;€</td>{% endfor %}</tr>
+        <tr><td>− Décaissements</td>{% for m in cash.realized %}<td class="is-out">{{ (-m['out'])|fr_signed }}&nbsp;€</td>{% endfor %}</tr>
+        <tr class="is-total"><td>Variation nette</td>{% for m in cash.realized %}<td>{{ m.net|fr_signed(0, true) }}&nbsp;€</td>{% endfor %}</tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="purchase-panel" id="flux" style="margin-top:20px;">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">FLUX PRÉVUS</div>
+  <h2 style="color:#fff;">Ce que les factures ne disent pas</h2>
+  <p class="purchase-muted">Salaires, loyer, impôts, subvention attendue, apport… Ajoutez les flux connus pour une prévision complète. Les emprunts, le crédit-bail, les abonnements clients et la TVA sont repris automatiquement.</p>
+
+  {% if cash.suggestions %}
+  <div class="cash-suggestions">
+    <h3>Repérés sur vos relevés bancaires</h3>
+    <p class="purchase-muted">Ces opérations reviennent chaque mois avec un montant stable. Ajoutez-les en un clic ou masquez-les.</p>
+    {% for sg in cash.suggestions %}
+    <div class="cash-suggestion">
+      <div><strong>{{ sg.label }}</strong><small>{{ sg.occurrences }} fois · dernière le {{ sg.last_date|fr_date }} · prochaine estimée le {{ sg.next_date|fr_date }} · {{ planned_categories[sg.category][1] }}</small></div>
+      <strong class="{{ 'is-in' if sg.direction == 'in' else 'is-out' }}">{{ '+' if sg.direction == 'in' else '−' }}{{ sg.amount|fr_number(2) }}&nbsp;€ / mois</strong>
+      <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="accept_suggestion"><input type="hidden" name="anchor" value="#flux">
+        <input type="hidden" name="label" value="{{ sg.label }}"><input type="hidden" name="category" value="{{ sg.category }}"><input type="hidden" name="amount" value="{{ sg.amount }}">
+        <input type="hidden" name="start_date" value="{{ sg.next_date }}"><input type="hidden" name="frequency" value="monthly"><input type="hidden" name="suggestion_key" value="{{ sg.key }}">
+        <button type="submit" class="purchase-primary-btn primary">Ajouter</button></form>
+      <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="dismiss_suggestion"><input type="hidden" name="anchor" value="#flux">
+        <input type="hidden" name="suggestion_key" value="{{ sg.key }}"><input type="hidden" name="direction" value="{{ sg.direction }}">
+        <button type="submit" class="purchase-primary-btn secondary">Masquer</button></form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if cash.planned %}
+  <div class="purchase-table-wrap" style="margin-top:14px;">
+    <table class="purchase-table">
+      <thead><tr><th>Flux</th><th>Catégorie</th><th>Fréquence</th><th>À partir du</th><th style="text-align:right;">Montant</th><th></th></tr></thead>
+      <tbody>
+      {% for f in cash.planned %}
+        <tr><td><strong>{{ f.label }}</strong>{% if f.source == 'bank_detected' %}<br><span class="purchase-muted" style="font-size:12px;">repéré sur les relevés</span>{% endif %}</td>
+          <td>{{ planned_categories[f.category][1] if f.category in planned_categories else f.category }}</td>
+          <td>{{ frequencies.get(f.frequency, f.frequency) }}{% if f.end_date %}<br><span class="purchase-muted" style="font-size:12px;">jusqu'au {{ f.end_date|fr_date }}</span>{% endif %}</td>
+          <td>{{ f.start_date|fr_date }}</td>
+          <td style="text-align:right;" class="{{ 'is-in' if f.direction == 'in' else 'is-out' }}"><strong>{{ '+' if f.direction == 'in' else '−' }}{{ f.amount|fr_number(2) }}&nbsp;€</strong></td>
+          <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete_flow"><input type="hidden" name="anchor" value="#flux"><input type="hidden" name="flow_id" value="{{ f.id }}"><button type="submit" class="purchase-primary-btn secondary" style="padding:6px 12px;font-size:12px;">Retirer</button></form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <form method="post" class="cash-flow-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="add_flow"><input type="hidden" name="anchor" value="#flux">
+    <label>Libellé<input name="label" maxlength="120" placeholder="ex. Salaires octobre, Loyer bureau" required></label>
+    <label>Catégorie<select name="category" required>
+      <optgroup label="Décaissements">{% for k, v in planned_categories.items() if v[0] == 'out' %}<option value="{{ k }}">{{ v[1] }}</option>{% endfor %}</optgroup>
+      <optgroup label="Encaissements">{% for k, v in planned_categories.items() if v[0] == 'in' %}<option value="{{ k }}">{{ v[1] }}</option>{% endfor %}</optgroup>
+    </select></label>
+    <label>Montant (€)<input name="amount" inputmode="decimal" placeholder="ex. 3 200,00" required></label>
+    <label>Fréquence<select name="frequency">{% for k, v in frequencies.items() %}<option value="{{ k }}" {% if k == 'monthly' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label>Première échéance<input type="date" name="start_date" value="{{ today }}" required></label>
+    <label>Fin (facultatif)<input type="date" name="end_date"></label>
+    <button type="submit" class="purchase-primary-btn primary">Ajouter le flux</button>
+  </form>
+
+  <form method="post" class="cash-settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="settings"><input type="hidden" name="anchor" value="#flux">
+    <label>Seuil de sécurité (€)<input name="safety_threshold" inputmode="decimal" value="{{ cash.safety_threshold|fr_number(0) if cash.safety_threshold else '' }}" placeholder="ex. 10 000"><span class="lot-hint">Alerte dès que la trésorerie prévue passe dessous.</span></label>
+    <label class="decision-check"><input type="checkbox" name="include_observed_burn" value="1" {% if cash.burn_included %}checked{% endif %}> Compter la dépense courante observée ({{ cash.monthly_burn|fr_number }}&nbsp;€ / mois)</label>
+    <button type="submit" class="purchase-primary-btn secondary">Enregistrer les réglages</button>
+    <p class="lot-hint" style="grid-column:1/-1;margin:0;">Si vos dépenses importées contiennent déjà les charges saisies en flux prévus (salaires, loyer…), décochez la dépense courante pour ne pas les compter deux fois.</p>
+  </form>
+</section>
+
+{% if cash.cash_balance is not none and cash.top_receivable %}
+<section class="purchase-panel scenario-panel" style="margin-top:20px;">
+  <div class="purchase-eyebrow" style="margin-bottom:6px;">SIMULATION D'ENCAISSEMENT</div><h2 style="color:#fff;">Quand {{ cash.top_receivable.customer }} paiera-t-il ?</h2>
+  <p class="purchase-muted">Facture #{{ cash.top_receivable.invoice_number }} · {{ cash.top_receivable.amount|fr_number }}&nbsp;€ restant dus · échéance {{ cash.top_receivable.due_date|fr_date }}. Testez le timing sans modifier la facture ; les autres factures suivent le scénario probable.</p>
+  <form method="get" class="whatif-form"><label>Date d'encaissement simulée<select name="payment_delay" required><option value="" disabled {% if not custom %}selected{% endif %}>Choisir une date…</option><option value="today" {% if custom and custom.choice=='today' %}selected{% endif %}>Aujourd'hui</option><option value="7" {% if custom and custom.choice=='7' %}selected{% endif %}>Sous 7 jours</option><option value="30" {% if custom and custom.choice=='30' %}selected{% endif %}>Sous 30 jours</option><option value="60" {% if custom and custom.choice=='60' %}selected{% endif %}>Sous 60 jours</option><option value="never" {% if custom and custom.choice=='never' %}selected{% endif %}>Pas d'encaissement sur 90 jours</option></select></label><button type="submit" class="purchase-primary-btn primary">Simuler</button></form>
+  {% if custom %}<div class="whatif-result"><div><small>SCÉNARIO TESTÉ</small><strong>{{ custom.label }}</strong></div><div><small>POINT BAS</small><strong>{{ custom.minimum|fr_number }}&nbsp;€</strong><span>{% if custom.min_day == 0 %}aujourd'hui{% else %}à J+{{ custom.min_day }}{% endif %}</span></div><div><small>TRÉSORERIE À 90 J</small><strong>{{ custom.end_90|fr_number }}&nbsp;€</strong></div></div>{% else %}<p class="purchase-muted" style="margin:14px 0 0;">Trésorerie selon la date de paiement de cette facture (le point bas peut être identique si votre solde est au plus bas avant l'encaissement) :</p><div class="scenario-grid">{% for s in cash.scenarios %}<div><small>PAIEMENT SOUS {{ s.delay }} JOURS</small><strong>{{ s.day30|fr_signed }}&nbsp;€</strong><span>trésorerie à J+30 · {{ s.day60|fr_signed }}&nbsp;€ à J+60</span><span>point bas {{ s.minimum|fr_signed }}&nbsp;€{% if s.min_day %} (J+{{ s.min_day }}){% endif %} · {{ s.end_90|fr_signed }}&nbsp;€ à J+90</span></div>{% endfor %}</div>{% endif %}
+</section>
+{% endif %}
+
+<section class="purchase-panel" id="encaissements" style="margin-top:20px"><div class="purchase-eyebrow" style="margin-bottom:6px;">ENCAISSEMENTS MODÉLISÉS</div><h2 style="color:#fff;">Ce qui alimente la prévision</h2>
+  {% if cash.suspicious_receivables %}<div class="cash-data-warning">⚠ {{ pluralize(cash.suspicious_receivables|length, 'facture client a', 'factures clients ont') }} une échéance à plus d'un an ({% for r in cash.suspicious_receivables[:5] %}#{{ r.invoice_number }} au {{ r.due_date|fr_date }}{% if not loop.last %}, {% endif %}{% endfor %}{% if cash.suspicious_receivables|length > 5 %}…{% endif %}) : vérifiez la date saisie, il s'agit souvent d'une erreur d'année.</div>{% endif %}
+  {% for r in cash.receivables_in_horizon[:8] %}<div class="brain-row"><div><strong>{{ r.customer }} · #{{ r.invoice_number }}</strong>{% if r.source == 'imported_invoice' %} <span class="purchase-muted" style="font-size:12px;">· importée</span>{% endif %}<small>{% if r.days_overdue > 0 %}<span class="purchase-alert-text">En retard de {{ r.days_overdue }} j</span> (échéance {{ r.due_date|fr_date }}) · encaissement estimé le {{ r.expected_date|fr_date }}{% else %}Encaissement attendu le {{ r.expected_date|fr_date }}{% if r.payment_habit and r.payment_habit.delay %} · <span title="Moyenne sur ses {{ r.payment_habit.count }} dernières factures réglées">ce client paie en moyenne {{ r.payment_habit.delay|abs }} j {{ 'après' if r.payment_habit.delay > 0 else 'avant' }} l'échéance</span>{% endif %}{% endif %}</small></div><div><strong>{{ r.expected_amount|fr_number }}&nbsp;€</strong><small>restant dû</small></div></div>{% else %}<p class="purchase-empty">{{ 'Aucune créance comptée dans la prévision.' if (cash.held_receivables or cash.receivables_beyond) else 'Aucune créance ouverte.' }}</p>{% endfor %}
+  {% if cash.receivables_in_horizon|length > 8 %}<p class="purchase-muted">+ {{ pluralize(cash.receivables_in_horizon|length - 8, 'autre facture comptée', 'autres factures comptées') }}.</p>{% endif %}
+  {% if cash.receivables_beyond %}<div class="brain-row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px;"><div><strong>{{ pluralize(cash.receivables_beyond|length, 'facture attendue après 90 jours, non comptée', 'factures attendues après 90 jours, non comptées') }}</strong><small>{% for r in cash.receivables_beyond[:5] %}#{{ r.invoice_number }} ({{ r.expected_date|fr_date }}){% if not loop.last %}, {% endif %}{% endfor %}{% if cash.receivables_beyond|length > 5 %}…{% endif %}</small></div><div><strong>{{ cash.receivables_beyond_total|fr_number }}&nbsp;€</strong><small>hors horizon</small></div></div>{% endif %}
+  {% if cash.inflows %}<h3 style="margin-top:18px;">Autres encaissements prévus</h3>
+  {% for f in cash.inflows[:10] %}<div class="brain-row"><div><strong>{{ f.label }}</strong><small>Attendu le {{ f.date|fr_date }}</small></div><div><strong>{{ f.amount|fr_number }}&nbsp;€</strong><small>{{ 'abonnement' if f.cat == 'recurring_sales' else 'flux prévu' }}</small></div></div>{% endfor %}
+  {% if cash.inflows|length > 10 %}<p class="purchase-muted">+ {{ pluralize(cash.inflows|length - 10, 'autre encaissement', 'autres encaissements') }}.</p>{% endif %}{% endif %}
+  {% if cash.held_receivables %}<div class="brain-row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:10px;padding-top:10px;"><div><strong class="purchase-alert-text">⚠ {{ pluralize(cash.held_receivables|length, 'créance retenue, non comptée', 'créances retenues, non comptées') }}</strong><small>{% for h in cash.held_receivables[:5] %}#{{ h.invoice_number }} ({{ h.reason }}){% if not loop.last %}, {% endif %}{% endfor %} · refusées, en litige, suspendues ou rejetées : régularisez-les avant de compter dessus</small></div><div><strong>{{ cash.held_receivables_total|fr_number }}&nbsp;€</strong><small>exclus de la prévision</small></div></div>{% endif %}
+</section>
+<section class="purchase-panel" id="decaissements" style="margin-top:20px"><div class="purchase-eyebrow" style="margin-bottom:6px;">DÉCAISSEMENTS FOURNISSEURS</div><h2 style="color:#fff;">Échéances réellement restant à payer</h2>
+  {% if cash.overdue_payables_count %}<div class="cash-data-warning">⚠ {{ pluralize(cash.overdue_payables_count, 'facture fournisseur échue non réglée', 'factures fournisseurs échues non réglées') }} · {{ cash.overdue_payables_total|fr_number }}&nbsp;€ comptés dès J+1 dans la prévision.</div>{% endif %}
+  {% for r in cash.supplier_payables[:8] %}<div class="brain-row"><div><strong>{{ r.vendor }} · {{ r.description }}</strong><small>{% if r.overdue_days > 0 %}<span class="purchase-alert-text">En retard de {{ r.overdue_days }} j</span> · échéance {{ r.date|fr_date }}{% else %}Échéance {{ r.date|fr_date }}{% endif %}{% if not r.in_horizon %} · après 90 j, non comptée{% endif %}{% if r.paid %} · paiement partiel déjà déduit ({{ r.paid|fr_number }}&nbsp;€){% endif %}</small></div><div><strong>{{ r.amount|fr_number }}&nbsp;€</strong><small>restant à payer</small></div></div>{% else %}<p class="purchase-empty">Aucune dette fournisseur ouverte.</p>{% endfor %}
+  {% if cash.supplier_payables|length > 8 %}<p class="purchase-muted">+ {{ pluralize(cash.supplier_payables|length - 8, 'autre échéance', 'autres échéances') }}.</p>{% endif %}
+  {% if cash.other_outflows %}<h3 style="margin-top:18px;">Emprunts, crédit-bail, TVA et flux prévus</h3>
+  {% for o in cash.other_outflows[:12] %}<div class="brain-row"><div><strong>{{ o.description }}</strong><small>{{ o.category }} · {% if o.overdue %}<span class="purchase-alert-text">échéance dépassée, comptée dès J+1</span>{% else %}le {{ o.date|fr_date }}{% endif %}</small></div><div><strong>{{ o.amount|fr_number }}&nbsp;€</strong><small>à payer</small></div></div>{% endfor %}
+  {% if cash.other_outflows|length > 12 %}<p class="purchase-muted">+ {{ pluralize(cash.other_outflows|length - 12, 'autre décaissement', 'autres décaissements') }}.</p>{% endif %}{% endif %}
+</section>
+<section class="purchase-panel brain-gaps" style="margin-top:20px"><div class="purchase-eyebrow" style="margin-bottom:6px;color:#ffc149;">MÉTHODE & LIMITES</div><h2 style="color:#fff;">Une prévision explicable</h2><p>{{ cash.method_note }}</p><div class="bullet warntext">⚠ Les dépenses futures non encore enregistrées ne sont pas inventées : ajoutez-les en flux prévus (salaires, loyer, impôts…) ou validez celles repérées sur vos relevés.</div><div class="bullet warntext">⚠ La TVA est estimée d'après les écritures comptables du mois écoulé et du mois en cours (paiement retenu le 15, déclaration mensuelle) ; sans comptabilité tenue dans ProfitOS, elle n'est pas comptée.</div><div class="bullet warntext">⚠ Le solde de départ est celui que vous déclarez, ou celui de vos comptes bancaires synchronisés ou importés quand vous le reprenez.</div></section>
+</div>
+{% endblock %}

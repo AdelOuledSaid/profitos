@@ -1,0 +1,51 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="headerflex">
+<div>
+<div class="eyebrow green">PARTNER DISCOVERY</div>
+<h1>Trouver les partenaires manquants.</h1>
+<p class="muted">{{ project.title }}</p>
+</div>
+<a class="button secondary" href="{{ url_for('partners') }}">Partner Network</a>
+</div>
+
+{% if needs %}
+<div class="partnerbanner"><strong>Needs détectés</strong><span>{{ needs|join(' · ') }}</span></div>
+{% endif %}
+
+<section class="panel">
+<h2>Recherche publique d'entreprises</h2>
+<p class="muted">Source : API Recherche d'Entreprises. Utilise une compétence manquante comme requête.</p>
+<form method="post" class="formgrid">
+<label class="wide">Besoin
+<select name="need">
+{% for n in needs %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+<option value="">— saisir manuellement ci-dessous si aucun besoin —</option>
+</select>
+</label>
+<label>Département<input name="department" placeholder="Ex. 14"></label>
+<div><button>Lancer la recherche</button></div>
+</form>
+</section>
+
+<section class="panel">
+<h2>Discovery Shortlist</h2>
+{% for d in saved %}
+<div class="discoveryrow">
+<div>
+<div class="match">{{ d.discovery_score }}/100 DISCOVERY MATCH</div>
+<h3>{{ d.company_name }}</h3>
+<p class="muted">{{ d.city }} · {{ d.department }} · {{ d.activity_label or d.naf_code }}</p>
+<div class="chips"><span class="chip good">{{ d.matched_need }}</span><span class="chip">{{ d.status }}</span></div>
+<p class="muted">{{ d.rationale }}</p>
+{% if d.source_url %}<a class="link" href="{{ d.source_url }}" target="_blank">Voir la fiche publique →</a>{% endif %}
+</div>
+<div class="discoveryactions">
+<form method="post" action="{{ url_for('discovery_shortlist',discovery_id=d.id) }}"><button class="secondary">Shortlist</button></form>
+<a class="button" href="{{ url_for('outreach_agent',discovery_id=d.id) }}">Outreach</a>
+<form method="post" action="{{ url_for('discovery_convert_to_partner',discovery_id=d.id) }}"><button class="secondary">Convertir en partenaire</button></form>
+</div>
+</div>
+{% else %}<p class="muted">Aucune entreprise découverte pour ce projet.</p>{% endfor %}
+</section>
+{% endblock %}

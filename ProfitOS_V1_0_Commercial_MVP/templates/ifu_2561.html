@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">DÉCLARATIONS DE TIERS</div>
+    <h1 class="purchase-title">Imprimé fiscal unique (IFU 2561) — dividendes {{ year }}</h1>
+    <p class="purchase-subtitle">Récapitulatif annuel des dividendes payés à chaque associé, à transmettre à l'administration et aux associés au plus tard le {{ d.deadline|fr_date }}.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('ifu_page', annee=year, format='xlsx') }}">Exporter Excel</a>
+    <a class="purchase-nav-btn" href="{{ url_for('rcm_2777_page') }}">Déclarations 2777</a>
+  </div>
+</div>
+
+<nav class="seg-tabs" aria-label="Année" style="margin-bottom:14px;">
+  {% for y in years %}<a href="{{ url_for('ifu_page', annee=y) }}" class="{{ 'is-active' if y == year else '' }}">{{ y }}</a>{% endfor %}
+</nav>
+
+{% for i in d.issues %}<div class="flash" role="alert">⚠ {{ i }}</div>{% endfor %}
+
+<section class="purchase-panel">
+  <h2>Associés bénéficiaires</h2>
+  {% if d.rows %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ year }}">
+    <div class="purchase-table-wrap"><table class="purchase-table">
+      <thead><tr><th>Associé</th><th>Adresse</th><th class="num">Dividendes bruts</th><th class="num">2DC</th><th class="num">2CK</th><th class="num">2BH</th><th class="num">Prélèvements sociaux</th><th>Dispensé du 12,8 %</th></tr></thead>
+      <tbody>
+      {% for b in d.rows %}
+      <tr><td><strong>{{ b.name }}</strong><br><span class="purchase-muted" style="font-size:12px;">{{ 'Personne morale' if b.kind == 'PM' else 'Personne physique' }}{% if b.birth_date %} · né(e) le {{ b.birth_date|fr_date }}{% endif %}</span></td>
+        <td>{{ b.address or '—' }}</td><td class="num">{{ b.gross|fr_number(2) }}</td>
+        <td class="num">{{ b.box_2DC|fr_number(2) }}</td><td class="num">{{ b.box_2CK|fr_number(2) }}</td><td class="num">{{ b.box_2BH|fr_number(2) }}</td>
+        <td class="num">{{ b.ps|fr_number(2) }}</td>
+        <td>{% if b.kind != 'PM' %}<input type="checkbox" name="dispensed" value="{{ b.key }}" {{ 'checked' if b.dispensed }} aria-label="{{ b.name }} dispensé">{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div><button type="submit" class="purchase-primary-btn secondary">Enregistrer</button></div>
+  </form>
+  <p class="purchase-muted" style="font-size:12px;">Cases de la déclaration de revenus de l'associé : 2DC revenus distribués éligibles à l'abattement de 40 %, 2CK prélèvement forfaitaire non libératoire de 12,8 % retenu (crédit d'impôt), 2BH revenus déjà soumis aux prélèvements sociaux avec CSG déductible. Les paiements sont attribués selon le nom porté sur l'écriture du compte 457, sinon au prorata du capital détenu. L'IFU se dépose en ligne (espace professionnel) ou par échange de fichiers.</p>
+  {% else %}
+  <p class="purchase-muted">Aucun dividende payé en {{ year }} (aucun débit du compte 457){% if d.unallocated %}, ou montants non attribuables{% endif %}.</p>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

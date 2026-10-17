@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CABINET</div>
+    <h1 class="purchase-title">Saisir du temps</h1>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('cabinet_portfolio') }}">← Portefeuille</a>
+</div>
+
+<section class="purchase-panel" style="max-width:480px;">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Client
+      <select name="organization_id">
+        {% for o in orgs %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Date<input type="date" name="entry_date" value="{{ today }}"></label>
+    <label>Durée (minutes)<input type="number" name="duration_minutes" min="1" required></label>
+    <label class="wide">Description<input name="description" placeholder="ex: Révision TVA du mois"></label>
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;"><input type="checkbox" name="billable" checked style="width:auto;"> Facturable</label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Enregistrer</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

@@ -25,6 +25,15 @@
     <li class="{{ 'is-done' if filed else 'is-current' }}"><strong>Déposée</strong> {% if payload.filing == 'efi' %}sur impots.gouv.fr{% else %}par votre expert-comptable ou partenaire EDI{% endif %}{% if filed %} le {{ row.filed_at|fr_date }}{% endif %}.</li>
     <li class="{{ 'is-done' if filed else '' }}"><strong>Justificatif archivé</strong>{% if filed %} : <a class="link" href="{{ url_for('teledeclaration_receipt', decl_id=row.id) }}">{{ row.receipt_name }}</a>{% else %} dans ProfitOS.{% endif %}</li>
   </ol>
+  {% if filed and receipt_check %}
+  <div class="flash" role="{{ 'alert' if receipt_check.status == 'ecarts' else 'status' }}">
+    {% if receipt_check.status == 'concordant' %}✓ Justificatif concordant : l'accusé joint correspond à la déclaration préparée.
+    {% elif receipt_check.status == 'ecarts' %}⚠ Écarts entre l'accusé joint et la déclaration préparée : vérifiez le fichier ou les montants saisis sur impots.gouv.fr.
+    {% else %}ℹ Vérification automatique impossible ({{ receipt_check.reason }}) : contrôlez l'accusé vous-même.{% endif %}
+    {% if receipt_check.checks %}<ul style="margin:6px 0 0;padding-left:18px;">{% for c in receipt_check.checks %}<li>{{ '✓' if c.ok else '✗' }} {{ c.label }}{% if not c.ok %} — non retrouvé dans l'accusé{% endif %}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  <p class="purchase-muted" style="font-size:12px;">Ce contrôle compare l'accusé à la déclaration préparée ; il ne confirme pas l'acceptation par l'administration. En cas de rejet ou d'anomalie, l'administration vous informe dans votre espace professionnel (messagerie sécurisée, compte fiscal).</p>
+  {% endif %}
   <div class="flash" role="status">{{ guide }}</div>
   <p class="purchase-muted" style="font-size:12px;">ProfitOS n'effectue pas lui-même la transmission. Le dépôt n'est confirmé qu'après l'archivage du justificatif officiel (accusé de réception).</p>
   <div class="actionbuttons" style="margin:10px 0;">

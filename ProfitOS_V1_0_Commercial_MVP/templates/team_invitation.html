@@ -1,0 +1,19 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invitation · ProfitOS</title><link rel="stylesheet" href="{{ asset_url('style.css') }}"></head><body class="authpage"><div class="authcard"><div class="brand">Profit<span>OS</span></div><div class="eyebrow">INVITATION</div><h1>Rejoindre « {{ org.name }} »</h1>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+<p class="muted">Invitation pour <strong>{{ inv.email }}</strong> avec le rôle « {{ role_label }} ». Valable jusqu'au {{ inv.expires_at|fr_date }}.</p>
+{% if me %}
+  {% if me.email|lower == inv.email|lower %}
+  <form method="post" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="accept"><button>Accepter l'invitation</button></form>
+  {% else %}
+  <p class="muted">Vous êtes connecté avec une autre adresse ({{ me.email }}). Déconnectez-vous puis connectez-vous avec {{ inv.email }} pour accepter.</p>
+  {% endif %}
+{% elif invited_user %}
+  <p class="muted">Un compte existe déjà pour cette adresse : connectez-vous pour accepter l'invitation.</p>
+  <p><a class="link" href="{{ url_for('login', next=url_for('team_invitation', token=token)) }}">Me connecter</a></p>
+{% else %}
+  <form method="post" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
+    <label>Nom complet<input name="full_name" required></label>
+    <label>Mot de passe (12 caractères minimum)<input name="password" type="password" minlength="12" autocomplete="new-password" required></label>
+    <label>Confirmer le mot de passe<input name="password_confirm" type="password" minlength="12" autocomplete="new-password" required></label>
+    <button>Créer mon compte et rejoindre l'équipe</button></form>
+{% endif %}
+<p class="muted">Vous ne connaissez pas cette organisation ? Ignorez simplement cette invitation.</p></div></body></html>

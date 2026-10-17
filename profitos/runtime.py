@@ -2649,7 +2649,7 @@ def _migrate_tenant_schema(org_id=None):
            ('fixed_assets', 'disposal_entry_id', 'INTEGER'), ('fixed_assets', 'disposal_date', 'TEXT'),
            ('teledeclarations', 'due_date', 'TEXT'), ('teledeclarations', 'receipt_stored', 'TEXT'),
            ('teledeclarations', 'receipt_name', 'TEXT'), ('teledeclarations', 'filed_at', 'TEXT'),
-           ('teledeclarations', 'filed_by', 'TEXT')]
+           ('teledeclarations', 'filed_by', 'TEXT'), ('teledeclarations', 'receipt_check', 'TEXT')]
         + [('invoicing_clients', 'country', 'TEXT'), ('invoicing_clients', 'is_public', 'TEXT'),
            ('accounting_entries', 'piece_ref', 'TEXT'), ('accounting_entry_lines', 'lettrage_date', 'TEXT'),
            ('accounting_entry_lines', 'vat_rate', 'REAL'), ('accounting_entry_lines', 'vat_base', 'REAL')]
@@ -3673,6 +3673,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-17','title':"Accusés de dépôt contrôlés automatiquement (SIREN, formulaire, période, montant) et relances des déclarations en retard"},
     {'date':'2026-10-17','title':"Déclarations fiscales : récapitulatif PDF, dépôt par vous sur impots.gouv.fr et archivage de l'accusé de réception"},
     {'date':'2026-10-16','title':"CFE (échéances, rappels, écriture), DECLOYER jointe à la liasse, IFU 2561 des dividendes"},
     {'date':'2026-10-16','title':"Régime simplifié : annexes 2033-C à 2033-G et page de garde 2065 ; DAS2 des honoraires versés ; prélèvements sur dividendes (2777)"},

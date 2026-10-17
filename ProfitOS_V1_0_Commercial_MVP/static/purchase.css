@@ -1,0 +1,453 @@
+/* Achats & fournisseurs — extrait des balises <style> inline (bloquées par la CSP :
+   style-src-elem 'self' n'autorise pas les <style> en dur dans le HTML). */
+
+.purchase-page{
+  max-width:1480px;
+  margin:0 auto;
+  padding:34px 28px 50px;
+}
+.purchase-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:24px;
+  margin-bottom:24px;
+}
+.purchase-nav-actions,
+.purchase-primary-actions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.purchase-nav-btn,
+.purchase-primary-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:46px;
+  padding:0 18px;
+  border-radius:999px;
+  text-decoration:none !important;
+  font-weight:800;
+  border:1px solid rgba(255,255,255,.12);
+  transition:.18s ease;
+}
+.purchase-nav-btn{
+  color:#45e993 !important;
+  background:rgba(57,229,140,.055);
+  border-color:rgba(57,229,140,.38);
+}
+.purchase-nav-btn:hover{
+  background:rgba(57,229,140,.12);
+  border-color:#39e58c;
+  transform:translateY(-1px);
+}
+.purchase-primary-btn.secondary{
+  color:#fff !important;
+  background:#151515;
+}
+.purchase-primary-btn.primary{
+  color:#06110b !important;
+  background:#39e58c;
+  border-color:#39e58c;
+}
+.purchase-primary-btn:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.05);
+}
+.purchase-icon{
+  width:20px;
+  height:20px;
+  display:inline-flex;
+}
+.purchase-icon svg{
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.purchase-eyebrow{
+  margin-top:12px;
+  color:#39e58c;
+  font-size:13px;
+  font-weight:900;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.purchase-title{
+  margin:8px 0 4px;
+  font-size:48px;
+  line-height:1.05;
+  color:#fff;
+  letter-spacing:-.03em;
+}
+.purchase-subtitle{
+  margin:0;
+  color:#83c6ff;
+  font-size:18px;
+}
+
+.purchase-stats{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:16px;
+  margin:28px 0 24px;
+}
+.purchase-stat{
+  min-height:118px;
+  padding:22px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.11);
+  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.018));
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+.purchase-stat-icon{
+  width:42px;
+  height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 42px;
+  color:#39e58c;
+}
+.purchase-stat-icon svg{
+  width:34px;
+  height:34px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.purchase-stat-label{
+  color:#aaa;
+  font-size:15px;
+}
+.purchase-stat-value{
+  color:#fff;
+  margin-top:4px;
+  font-size:clamp(18px,1.7vw,24px);
+  font-variant-numeric:tabular-nums;
+  font-weight:900;
+}
+
+.purchase-panel{
+  margin-top:20px;
+  padding:26px 28px 18px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:22px;
+  background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.012));
+}
+.purchase-panel-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:20px;
+}
+.purchase-panel h2{
+  margin:0;
+  color:#fff;
+  font-size:24px;
+}
+.purchase-table-wrap{
+  overflow-x:auto;
+}
+.purchase-table{
+  width:100%;
+  border-collapse:collapse;
+}
+.purchase-table th{
+  padding:14px 12px;
+  border-top:1px solid rgba(255,255,255,.08);
+  border-bottom:1px solid rgba(255,255,255,.08);
+  color:#aaa;
+  font-size:12px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  text-align:left;
+  white-space:nowrap;
+}
+.purchase-table td{
+  padding:18px 12px;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  color:#eee;
+  vertical-align:middle;
+}
+.purchase-supplier{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.purchase-avatar{
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#f59a23;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+}
+.purchase-link{
+  color:#fff !important;
+  font-weight:800;
+  text-decoration:none !important;
+}
+.purchase-link:hover{
+  color:#39e58c !important;
+}
+.purchase-muted{
+  color:#8f8f8f;
+  font-size:13px;
+  margin-top:3px;
+}
+.purchase-status{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  background:#202020;
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+}
+.purchase-status.paid{
+  background:rgba(57,229,140,.12);
+  color:#67f0aa;
+}
+.purchase-status.overdue{
+  background:rgba(255,94,94,.12);
+  color:#ff8b8b;
+}
+.purchase-empty{
+  padding:34px 10px;
+  text-align:center;
+  color:#888;
+}
+.purchase-pagination{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:8px;
+  padding-top:18px;
+}
+.purchase-page-btn{
+  min-width:38px;
+  height:38px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.1);
+  background:#171717;
+  color:#ddd;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-decoration:none !important;
+}
+.purchase-page-btn.current{
+  background:#39e58c;
+  color:#07110c;
+  font-weight:900;
+}
+
+.purchase-detail-link{
+  color:#39e58c !important;
+  font-weight:700;
+  text-decoration:none;
+}
+.purchase-detail-link:hover,
+.purchase-detail-link:focus{
+  color:#ffffff !important;
+  text-decoration:underline;
+}
+
+@media (max-width:1150px){
+  .purchase-stats{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .purchase-toolbar{flex-direction:column;}
+}
+@media (max-width:680px){
+  .purchase-page{padding:22px 16px 40px;}
+  .purchase-title{font-size:36px;}
+  .purchase-stats{grid-template-columns:1fr;}
+  .purchase-primary-actions,
+  .purchase-nav-actions{width:100%;}
+  .purchase-primary-btn,
+  .purchase-nav-btn{flex:1 1 auto;}
+}
+
+/* Zone d'import de facture (purchase_new.html) — le champ fichier natif ne se
+   restylise pas complètement, mais on l'habille pour qu'il ne jure plus avec
+   le thème sombre. */
+.purchase-dropzone{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  text-align:center;
+  padding:36px 24px;
+  border:1.5px dashed rgba(57,229,140,.35);
+  border-radius:18px;
+  background:rgba(57,229,140,.03);
+  transition:.18s ease;
+}
+.purchase-dropzone:has(input:focus-visible){
+  border-color:#39e58c;
+  background:rgba(57,229,140,.06);
+}
+.purchase-dropzone .purchase-icon{
+  width:40px;
+  height:40px;
+  color:#39e58c;
+}
+.purchase-dropzone .purchase-icon svg{
+  width:40px;
+  height:40px;
+}
+.purchase-dropzone input[type="file"]{
+  color:#cfcfcf;
+  font-size:14px;
+  max-width:100%;
+}
+.purchase-dropzone input[type="file"]::file-selector-button{
+  border:1px solid rgba(57,229,140,.4);
+  border-radius:999px;
+  padding:10px 18px;
+  margin-right:14px;
+  background:rgba(57,229,140,.1);
+  color:#45e993;
+  font-weight:800;
+  cursor:pointer;
+  transition:.18s ease;
+}
+.purchase-dropzone input[type="file"]::file-selector-button:hover{
+  background:rgba(57,229,140,.18);
+  border-color:#39e58c;
+}
+.purchase-detected-banner{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  padding:18px 20px;
+  border-radius:16px;
+  border:1px solid rgba(57,229,140,.35);
+  background:rgba(57,229,140,.07);
+  margin-bottom:20px;
+}
+.purchase-detected-banner .purchase-icon{
+  color:#39e58c;
+  flex-shrink:0;
+  margin-top:2px;
+}
+.purchase-field-group h4{
+  margin:0 0 14px;
+  font-size:13px;
+  font-weight:900;
+  letter-spacing:.06em;
+  color:#8fa0a8;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.purchase-field-group h4 .purchase-icon{
+  width:16px;
+  height:16px;
+  color:#39e58c;
+}
+.purchase-field-group h4 .purchase-icon svg{
+  width:16px;
+  height:16px;
+}
+.purchase-field-group + .purchase-field-group{
+  margin-top:26px;
+  padding-top:22px;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+.purchase-total-line{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:16px 20px;
+  margin:22px 0;
+  border-radius:14px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.08);
+}
+.purchase-total-line strong{
+  font-size:24px;
+  color:#fff;
+}
+.purchase-strong-heading{
+  color:#fff;
+}
+.purchase-status-warn{
+  background:rgba(255,193,73,.15);
+  color:#ffc149;
+}
+.purchase-alert-text{
+  color:#ff8b8b;
+}
+.purchase-label-muted{
+  font-size:12px;
+  color:#aaa;
+}
+.purchase-ok-text{
+  color:#3ddc84;
+}
+
+/* Finition : boutons et montants sur une seule ligne */
+.purchase-primary-btn,.purchase-nav-btn{white-space:nowrap}
+.purchase-stat-value{white-space:nowrap}
+@media(max-width:760px){.purchase-primary-btn,.purchase-nav-btn{white-space:normal}}
+/* Les grilles d'indicateurs forcées à 4 colonnes en style inline repassent à 2 puis 1 colonne. */
+@media(max-width:1050px){.purchase-stats[style*="grid-template-columns"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:600px){.purchase-stats[style*="grid-template-columns"]{grid-template-columns:1fr!important}
+  .purchase-total-line{flex-wrap:wrap;gap:6px 16px}
+  .purchase-total-line strong{white-space:nowrap}}
+
+/* --- v43x : finitions d'interface (lot E) --------------------------------------------- */
+/* Sous-titres en texte atténué, jamais en bleu « lien ». */
+.purchase-subtitle{color:#a7b4c8}
+/* Indicateurs : colonnes automatiques, un montant long ne chevauche plus l'icône. */
+.purchase-stats{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.purchase-stat{min-width:0}
+.purchase-stat>div:last-child{min-width:0}
+/* Boutons : texte centré verticalement, primaire jamais plus petit que secondaire. */
+.purchase-nav-btn,.purchase-primary-btn,.button-link{line-height:1.2;vertical-align:middle;box-sizing:border-box}
+button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
+/* Action irréversible : bouton « danger ». */
+.purchase-danger-btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 18px;border-radius:999px;
+  font-weight:800;text-decoration:none!important;color:#ff8b8b!important;background:rgba(255,110,120,.08);border:1px solid rgba(255,110,120,.55);cursor:pointer;font-size:inherit}
+.purchase-danger-btn:hover{background:rgba(255,110,120,.16);border-color:#ff6e78}
+/* Lien d'évitement (accessibilité clavier). */
+.skip-link{position:absolute;left:12px;top:-60px;z-index:200;padding:10px 16px;border-radius:10px;background:#39e58c;color:#06110b!important;font-weight:800;text-decoration:none}
+.skip-link:focus{top:12px}
+/* Formulaires génériques : libellé au-dessus du champ, jamais collé. */
+.lot-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 18px;align-items:end}
+.lot-form label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#aab6c8}
+.lot-form input,.lot-form select,.lot-form textarea{width:100%;min-width:0;box-sizing:border-box}
+.lot-form .lot-form-actions{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap}
+.lot-hint{font-size:12px;color:#8fa0b8;margin-top:4px;font-weight:400}
+.purchase-table-wrap{overflow-x:auto;max-width:100%}
+.purchase-error{border:1px solid rgba(255,110,120,.55);background:rgba(255,110,120,.08);color:#ffb3b8;border-radius:12px;padding:12px 16px;margin:12px 0}
+.flash.flash-error{border-color:rgba(255,110,120,.55);background:rgba(255,110,120,.1);color:#ffb3b8}
+@media(max-width:680px){.purchase-page{padding:22px 16px 40px}.twocol{grid-template-columns:1fr!important}}
+.ledger-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:14px}.ledger-filters label{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:13px;min-width:140px;flex:1}.ledger-filters button{flex:0 0 auto}.ledger-table td,.ledger-table th{white-space:nowrap}.ledger-table td:nth-child(4){white-space:normal}.ledger-report td{font-style:italic;opacity:.85}
+.entry-lines input{width:100%;min-width:90px}.entry-lines input.num{text-align:right}.entry-gap{margin-left:10px;font-size:12px;font-weight:800}.entry-gap.ok{color:#3ddc84}.entry-gap.ko{color:#ff6e78}
+.seg-tabs{display:inline-flex;flex-direction:row;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid #294064;border-radius:999px;background:#0a0a0a}.seg-tabs a{padding:8px 16px;border-radius:999px;color:#bdd0ef;text-decoration:none;font-weight:800;font-size:14px}.seg-tabs a.is-active{background:#3ddc84;color:#04150c}
+.ca3-table td.num,.ca3-table th.num{text-align:right;white-space:nowrap}.ca3-box{width:56px;font-weight:900;color:#3ddc84}.ca3-total td{font-weight:900}.ca3-sub{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a0a0a0;margin:16px 0 6px}
+
+/* Parcours de dépôt d'une déclaration par l'entreprise (impots.gouv.fr) */
+.filing-steps{list-style:none;counter-reset:step;margin:0 0 12px;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.filing-steps li{counter-increment:step;position:relative;padding:10px 12px 10px 42px;border:1px solid var(--border,#294064);border-radius:10px;font-size:13px;line-height:1.4}
+.filing-steps li::before{content:counter(step);position:absolute;left:12px;top:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;background:#3ddc84;color:#04150c}
+.filing-steps li.is-done::before{content:"✓";background:#16a34a;color:#fff}
+.filing-steps li.is-current{border-color:#3ddc84}

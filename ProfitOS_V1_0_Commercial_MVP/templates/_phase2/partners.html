@@ -1,0 +1,35 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow">PARTNER NETWORK</div>
+<h1>Répertoire de partenaires.</h1>
+<p class="muted">ProfitOS compare ces capacités aux gaps détectés par Bid Intelligence.</p>
+
+<section class="panel">
+<h2>Ajouter un partenaire</h2>
+<form method="post" action="{{ url_for('partner_add') }}" class="formgrid">
+<label>Entreprise<input name="company_name" required></label>
+<label>Contact<input name="contact_name"></label>
+<label>Email<input name="email" type="email"></label>
+<label>Téléphone<input name="phone"></label>
+<label>Ville<input name="city"></label>
+<label>Départements<input name="departments" placeholder="14, 50, 61"></label>
+<label class="wide">Activités<input name="activities" placeholder="CVC, plomberie, électricité..."></label>
+<label class="wide">Certifications<input name="certifications" placeholder="RGE, Qualibat, Qualifelec..."></label>
+<label class="wide">Références<textarea name="references_summary" rows="3"></textarea></label>
+<label class="wide">Capacité / notes<textarea name="capacity_notes" rows="3"></textarea></label>
+<label>Trust Score<input name="trust_score" type="number" min="0" max="100" value="60"></label>
+<div class="wide"><button>Ajouter le partenaire</button></div>
+</form>
+</section>
+
+<section class="panel">
+<h2>Partenaires enregistrés</h2>
+{% for p in partners %}
+<div class="partnerrow">
+<div><strong>{{ p.company_name }}</strong><small>{{ p.city }} · {{ p.activities }}</small></div>
+<div>{{ p.certifications or "—" }}</div>
+<div class="score">{{ p.trust_score }}/100</div>
+</div>
+{% else %}<p class="muted">Aucun partenaire enregistré.</p>{% endfor %}
+</section>
+{% endblock %}

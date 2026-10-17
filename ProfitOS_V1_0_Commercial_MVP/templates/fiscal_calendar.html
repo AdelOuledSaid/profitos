@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FISCALITÉ · AUTOMATISATIONS</div>
+    <h1 class="purchase-title">Échéances fiscales et contrôles</h1>
+    <p class="purchase-subtitle">Vos prochaines échéances (90 jours), les contrôles à faire avant la liasse et l'activité des automatisations. Le propriétaire reçoit un rappel par e-mail 7 jours puis la veille de chaque échéance non déposée.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a>
+</div>
+
+{% if overdue %}
+<section class="purchase-panel" style="margin-bottom:14px;border-color:#f59e0b;">
+  <h2>⚠ Déclarations en retard</h2>
+  <p class="purchase-muted">Échéance passée sans dépôt enregistré. Si la déclaration a bien été déposée, joignez son accusé de réception ; sinon, déposez-la sans attendre. Vérifiez aussi votre compte fiscal et votre messagerie sécurisée sur impots.gouv.fr, où l'administration signale les déclarations rejetées ou manquantes.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Échéance</th><th>Déclaration</th><th>Formulaire</th><th>Retard</th><th></th></tr></thead>
+    <tbody>
+    {% for d in overdue %}
+      <tr><td>{{ d.date|fr_date }}</td><td>{{ d.label }}</td><td>{{ d.form }}</td><td>{{ d.days_late }} j</td>
+        <td>{% if d.prepared %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_detail', decl_id=d.prepared.id) }}">Joindre l'accusé</a>
+            {% else %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=d.type, du=d.start.isoformat(), au=d.end.isoformat(), echeance=d.due_date.isoformat() if d.due_date else None) }}">Préparer</a>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+<section class="purchase-panel">
+  <h2>Prochaines échéances</h2>
+  {% if deadlines %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Date</th><th>Échéance</th><th>Formulaire</th><th class="num">Montant estimé</th><th>Dépôt</th></tr></thead>
+    <tbody>
+    {% for d in deadlines %}
+      <tr><td>{{ d.date|fr_date }}<br><span class="purchase-muted">{% set left = (d.date - today).days %}{{ 'aujourd\'hui' if left == 0 else ('dépassée' if left < 0 else 'dans ' ~ left ~ ' j') }}</span></td>
+        <td>{{ d.label }}</td><td>{{ d.form }}</td>
+        <td class="num">{{ (d.amount|fr_number(0) ~ ' €') if d.amount else '—' }}</td>
+        <td>{% if d.deposited %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.deposited.id) }}">{{ teledeclaration_status_label(d.deposited.status) }}</a>
+            {% elif d.prepared %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.prepared.id) }}">Préparée — à déposer</a>
+            {% elif d.type %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=d.type, du=d.start.isoformat(), au=d.end.isoformat(), echeance=d.due_date.isoformat() if d.due_date else None, acompte=d.amount if d.due_date and d.type == 'TVA_3514' else None) }}">Préparer</a>
+            {% elif d.link %}<a class="purchase-nav-btn" href="{{ url_for(d.link[0], **d.link[1]) }}">Ouvrir</a>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucune échéance fiscale dans les 90 prochains jours.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Contrôles avant liasse — exercice clos le {{ closed.end|fr_date }}</h2>
+  {% if controls %}
+  <ul style="padding-left:18px;">
+    {% for x in controls %}<li><strong>{{ '⚠' if x.level == 'warning' else 'ℹ' }} {{ x.label }}</strong>{% if x.detail %} <span class="purchase-muted">— {{ x.detail }}</span>{% endif %}</li>{% endfor %}
+  </ul>
+  {% else %}<p>✓ Aucune anomalie détectée.</p>{% endif %}
+  <p class="purchase-muted" style="font-size:12px;">Complément des diagnostics de la <a class="link" href="{{ url_for('reviews_list') }}">révision comptable</a> (comptes d'attente, lettrage, justificatifs, amortissements).</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Automatisations</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Automatisation</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th></tr></thead>
+    <tbody>
+    {% for name, label, when in jobs %}{% set r = runs.get(name) %}
+      <tr><td>{{ label }}</td><td>{{ when }}</td><td>{{ r.finished_at|fr_datetime_paris if r and r.finished_at else '—' }}</td>
+        <td>{% if r %}{{ {'success': 'Réussi', 'skipped': 'Sans objet', 'failed': 'Échec', 'running': 'En cours'}.get(r.status, r.status) }}{% if r.detail %} <span class="purchase-muted">· {{ r.detail }}</span>{% endif %}{% else %}<span class="purchase-muted">Pas encore exécutée</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="purchase-muted" style="font-size:12px;">Écritures récurrentes : <a class="link" href="{{ url_for('recurring_entries') }}">gérer les modèles</a>.</p>
+</section>
+</div>
+{% endblock %}

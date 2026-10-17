@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FACTURATION</div>
+    <h1 class="purchase-title">Bons de livraison</h1>
+  </div>
+  <a class="purchase-primary-btn primary" href="{{ url_for('delivery_note_new') }}">+ Nouveau bon de livraison</a>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>N°</th><th>Client</th><th>Date</th><th>Statut</th><th>Facturé</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><a class="purchase-detail-link" href="{{ url_for('delivery_note_detail',delivery_id=r.id) }}"><strong>{{ r.delivery_number }}</strong></a></td>
+          <td>{{ r.client_name }}</td>
+          <td>{{ r.delivery_date|fr_date }}</td>
+          <td><span class="purchase-status {{ 'paid' if r.status=='delivered' else '' }}">{{ 'Livré' if r.status=='delivered' else 'Brouillon' }}</span></td>
+          <td>{{ 'Oui' if r.linked_invoice_id else 'Non' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="purchase-empty">Aucun bon de livraison.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

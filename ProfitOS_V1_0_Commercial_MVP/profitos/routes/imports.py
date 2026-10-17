@@ -1,0 +1,1036 @@
+from profitos.runtime import *
+from profitos.accounting import paris_today as _paris_today
+from profitos.plan_usage import quota_state, record_usage
+from profitos.feature_access import requires_paid_plan
+import base64
+import io
+from pypdf.errors import PyPdfError
+from profitos.document_extraction import PdfTextUnavailable, is_pdf_text_unavailable
+
+# Formats de données acceptés par les imports financiers.
+# Déclarés localement pour éviter qu'une ancienne constante runtime bloque les PDF.
+FINANCIAL_IMPORT_EXTENSIONS={'.csv','.xlsx','.xls','.pdf'}
+
+
+
+def _pdf_money_value(raw):
+    """Convertit un montant FR/EN extrait d'un PDF en float, sans inventer de valeur."""
+    if raw is None:
+        return None
+    v=str(raw).replace('\u00a0',' ').replace('€','').strip()
+    v=re.sub(r'[^0-9,\.\- ]','',v).replace(' ','')
+    if not v:
+        return None
+    if ',' in v and '.' in v:
+        # 1.234,56 ou 1,234.56
+        if v.rfind(',') > v.rfind('.'):
+            v=v.replace('.','').replace(',','.')
+        else:
+            v=v.replace(',','')
+    elif ',' in v:
+        v=v.replace(',','.')
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def _pdf_first(patterns, text, flags=re.I|re.M):
+    for pat in patterns:
+        m=re.search(pat,text,flags)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _pdf_text(path, max_pages=20):
+    """Extrait la couche texte native ; le flux appelant bascule vers la vision si elle est absente."""
+    reader=PdfReader(str(path))
+    pages=[]
+    for page in reader.pages[:max_pages]:
+        try:
+            pages.append(page.extract_text() or '')
+        except Exception:
+            pages.append('')
+    text='\n'.join(pages).strip()
+    if len(text)<20:
+        raise PdfTextUnavailable("PDF sans couche texte exploitable.")
+    return text
+
+
+def _ai_extract_pdf_fields(path, prompt, required_fields):
+    """Repli IA (API Claude, vision) pour un PDF scanné sans texte exploitable —
+    utilisé par les imports factures/dépenses quand _pdf_text échoue. Retourne un
+    dict correspondant au schéma demandé dans le prompt. Lève ValueError si la clé
+    API n'est pas configurée, si l'appel échoue, ou si des champs requis manquent
+    dans la réponse — jamais de valeur inventée."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError(
+            "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
+            "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
+        )
+    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
+    file_bytes = path.read_bytes()
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    headers = {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+    payload = {
+        'model': ANTHROPIC_MODEL,
+        'max_tokens': 1024,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
+                {'type': 'text', 'text': prompt},
+            ],
+        }],
+    }
+    try:
+        resp = requests.post('https://api.anthropic.com/v1/messages', json=payload, headers=headers, timeout=45)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API d'extraction impossible : {e}") from e
+    if resp.status_code != 200:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise ValueError(f"L'extraction par IA a échoué ({resp.status_code}) — détail : {detail}")
+    try:
+        data = resp.json()
+        text_out = ''.join(b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text').strip()
+        text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
+        parsed = json.loads(text_out)
+    except (ValueError, KeyError, AttributeError) as e:
+        raise ValueError("Réponse d'extraction IA illisible — réessayez ou utilisez un PDF texte.") from e
+    missing = [f for f in required_fields if not parsed.get(f)]
+    if missing:
+        raise ValueError("Champs non détectés par l'IA : " + ", ".join(missing) + ".")
+    return parsed
+
+
+def _classify_expense_document(text, vendor=''):
+    """Classe un document de dépense à partir de marqueurs explicites, sans IA externe."""
+    hay=norm((vendor or '')+' '+text)
+    rules=[
+        ('Cotisations sociales - URSSAF', [r'\burssaf\b', r'cotisations? sociales?', r'declaration sociale nominative', r'\bdsn\b']),
+        ('TVA', [r'\btva\b', r'taxe sur la valeur ajoutee', r'ca3', r'ca12']),
+        ('Impôts et taxes', [r'dgfip', r'impots?\.gouv', r'impot sur les societes', r'\bis\b', r'\bcfe\b', r'cotisation fonciere', r'taxe sur les salaires']),
+        ('Salaires et paie', [r'bulletin de paie', r'fiche de paie', r'salaire net', r'net a payer avant impot']),
+        ('Assurance', [r'assurance', r'assureur', r'prime d.assurance']),
+        ('Énergie', [r'electricite', r'energie', r'\bedf\b', r'engie', r'gaz naturel']),
+        ('Télécom / Internet', [r'telecom', r'internet', r'orange', r'sfr', r'bouygues telecom', r'free pro']),
+        ('Loyer / Immobilier', [r'loyer', r'avis d.echeance', r'bail']),
+        ('Banque / Frais financiers', [r'frais bancaires?', r'commission bancaire', r'agios']),
+        ('Logiciels / Abonnements', [r'abonnement', r'licence logiciel', r'saas']),
+    ]
+    for category,patterns in rules:
+        if any(re.search(pat,hay,re.I) for pat in patterns):
+            return category
+    return 'Facture fournisseur'
+
+
+def _extract_expense_pdf(path):
+    """Extrait une dépense depuis un PDF : texte natif en priorité (gratuit), repli
+    IA (API Claude, vision) pour les PDF scannés sans texte exploitable."""
+    try:
+        text=_pdf_text(path, max_pages=20)
+    except (ValueError,PyPdfError) as text_err:
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
+            raise
+        prompt=(
+            "Tu analyses un document de dépense (facture fournisseur, avis URSSAF, "
+            "TVA, impôts, paie...) fourni en pièce jointe. Réponds UNIQUEMENT avec "
+            "un objet JSON, sans texte avant ou après, exactement sous cette forme :\n"
+            '{"vendor": "nom du fournisseur ou organisme", "amount": nombre_TTC, '
+            '"date": "AAAA-MM-JJ (échéance si présente, sinon émission)", '
+            '"description": "description courte"}\n'
+            "Si un champ est illisible ou absent, mets une chaîne vide. N'invente "
+            "jamais une valeur que tu ne peux pas lire réellement sur le document."
+        )
+        parsed=_ai_extract_pdf_fields(path,prompt,['vendor','amount','date'])
+        try:
+            amount=float(parsed.get('amount'))
+        except (TypeError,ValueError):
+            raise ValueError("Montant détecté par l'IA illisible. Vérifiez le document.")
+        try:
+            expense_date=date.fromisoformat(parsed.get('date'))
+        except (TypeError,ValueError):
+            raise ValueError("Date détectée par l'IA dans un format inattendu.")
+        vendor=parsed.get('vendor')
+        desc=parsed.get('description') or f'Dépense importée ({vendor})'
+        category=_classify_expense_document(vendor+' '+desc,vendor)
+        return {'vendor':vendor,'description':desc,'amount':amount,'date':expense_date.isoformat(),'category':category}
+
+    amount_raw=_pdf_first([
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|montant\s*du|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:solde\s*(?:à|a)\s*payer|total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
+    ], text)
+    amount=_pdf_money_value(amount_raw)
+
+    date_raw=_pdf_first([
+        r'(?:date\s+limite\s+de\s+paiement|date\s+d[’\']?échéance|échéance|echeance|date\s+de\s+prélèvement|date\s+de\s+prelevement)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    expense_date=parse_date(date_raw) if date_raw else None
+
+    # Organismes publics / sociaux : on privilégie le nom officiel plutôt qu'une ligne d'en-tête arbitraire.
+    ntext=norm(text)
+    if re.search(r'\burssaf\b',ntext):
+        vendor='URSSAF'
+    elif re.search(r'dgfip|impots?\.gouv|direction generale des finances publiques',ntext):
+        vendor='DGFiP / Impôts'
+    else:
+        vendor=_pdf_first([
+            r'(?:fournisseur|supplier|vendor|créancier|creancier|organisme)\s*[:\-]\s*([^\n]{2,120})',
+            r'(?:émis\s+par|emis\s+par|issued\s+by)\s*[:\-]\s*([^\n]{2,120})',
+        ], text)
+
+    if not vendor:
+        for line in [x.strip() for x in text.splitlines()[:20] if x.strip()]:
+            if len(line)<2 or len(line)>120: continue
+            if re.search(r'^(facture|invoice|reçu|recu|receipt|date|n[°o]|total|client|bill\s*to|avis|déclaration|declaration)\b', line, re.I): continue
+            if re.fullmatch(r'[0-9\s.,€+\-/]+', line): continue
+            vendor=line; break
+
+    category=_classify_expense_document(text,vendor)
+    num=_pdf_first([
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'(?:référence|reference)\s*[:\-]\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+    ], text)
+    if category=='Cotisations sociales - URSSAF': desc='Cotisations sociales URSSAF'
+    elif category=='TVA': desc='TVA'
+    elif category=='Impôts et taxes': desc='Impôts et taxes'
+    elif num: desc=f'Facture {num}'
+    else: desc='Dépense importée depuis PDF'
+
+    missing=[]
+    if not vendor: missing.append('fournisseur / organisme')
+    if amount is None or amount<=0: missing.append('montant à payer')
+    if not expense_date: missing.append('date / échéance')
+    if missing:
+        raise ValueError('Champs non détectés dans le PDF : '+', '.join(missing)+'. Vérifiez que ces informations sont écrites explicitement dans le document.')
+
+    return {'vendor':vendor,'description':desc,'amount':amount,'date':expense_date.isoformat(),'category':category}
+
+
+def _ai_extract_bank_statement_rows(path):
+    """Repli IA (API Claude, vision) pour un relevé bancaire scanné sans texte
+    exploitable — retourne une liste de {date, description, amount}, filtrée aux
+    lignes réellement lisibles plutôt que d'inventer des transactions manquantes."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError(
+            "Ce PDF n'a pas de texte exploitable et l'extraction par IA n'est pas "
+            "configurée côté serveur. Utilisez un PDF texte ou le CSV/XLSX."
+        )
+    from profitos.plan_usage import consume_ai_extraction_quota; consume_ai_extraction_quota()  # quota IA mensuel de la formule (ValueError si atteint)
+    file_bytes = path.read_bytes()
+    b64 = base64.b64encode(file_bytes).decode('utf-8')
+    prompt = (
+        "Tu analyses un relevé bancaire fourni en pièce jointe. Réponds UNIQUEMENT "
+        "avec un tableau JSON, sans texte avant ou après, où chaque élément "
+        "correspond à une ligne d'opération réellement lisible :\n"
+        '[{"date": "AAAA-MM-JJ", "description": "libellé de l\'opération", '
+        '"amount": nombre}, ...]\n'
+        "N'inclus que les opérations créditrices (encaissements) avec un montant "
+        "positif. Ignore les lignes illisibles ou ambiguës plutôt que d'inventer "
+        "une valeur. Si aucune ligne n'est exploitable, réponds []."
+    )
+    headers = {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+    }
+    payload = {
+        'model': ANTHROPIC_MODEL,
+        'max_tokens': 4096,
+        'messages': [{
+            'role': 'user',
+            'content': [
+                {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': b64}},
+                {'type': 'text', 'text': prompt},
+            ],
+        }],
+    }
+    try:
+        resp = requests.post('https://api.anthropic.com/v1/messages', json=payload, headers=headers, timeout=60)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API d'extraction impossible : {e}") from e
+    if resp.status_code != 200:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:300]
+        raise ValueError(f"L'extraction par IA a échoué ({resp.status_code}) — détail : {detail}")
+    try:
+        data = resp.json()
+        text_out = ''.join(b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text').strip()
+        text_out = re.sub(r'^```(?:json)?\s*|\s*```$', '', text_out)
+        parsed = json.loads(text_out)
+    except (ValueError, KeyError, AttributeError) as e:
+        raise ValueError("Réponse d'extraction IA illisible — réessayez ou utilisez un PDF texte.") from e
+    if not isinstance(parsed, list):
+        raise ValueError("Réponse d'extraction IA dans un format inattendu.")
+    rows = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        try:
+            d = date.fromisoformat(item.get('date'))
+            amount = float(item.get('amount'))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        desc = (item.get('description') or 'Opération bancaire')[:240]
+        rows.append({'date': d.isoformat(), 'description': desc, 'amount': amount})
+    if not rows:
+        raise ValueError("Aucune ligne bancaire exploitable détectée par l'IA dans ce document.")
+    return rows
+
+
+def _extract_bank_statement_pdf(path):
+    """Extrait des lignes de relevé : texte natif en priorité (gratuit), repli IA
+    (API Claude, vision) pour les PDF scannés sans texte exploitable.
+
+    Le parseur texte reste volontairement conservateur : une ligne doit contenir une
+    date et un montant.
+    """
+    try:
+        text=_pdf_text(path, max_pages=40)
+    except (ValueError,PyPdfError) as text_err:
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
+            raise
+        rows=_ai_extract_bank_statement_rows(path)
+        unique=[]; seen=set()
+        for row in rows:
+            key=(row['date'],row['description'],round(float(row['amount']),2))
+            if key in seen: continue
+            seen.add(key); unique.append(row)
+        return pd.DataFrame(unique)
+
+    rows=[]
+    date_pat=re.compile(r'(?<!\d)([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2}|(?:20)\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)(?!\d)')
+    amount_pat=re.compile(r'(?<!\d)([-+]?\s*\d{1,3}(?:[ .]\d{3})*(?:,\d{2}|\.\d{2})|[-+]?\s*\d+(?:,\d{2}|\.\d{2}))(?:\s*€)?(?!\d)')
+
+    for raw_line in text.splitlines():
+        line=' '.join(raw_line.split())
+        if len(line)<6:
+            continue
+        dm=date_pat.search(line)
+        if not dm:
+            continue
+        amounts=list(amount_pat.finditer(line))
+        if not amounts:
+            continue
+        # La dernière valeur monétaire de la ligne correspond le plus souvent à la colonne montant/crédit.
+        am=amounts[-1]
+        amount=_pdf_money_value(am.group(1))
+        if amount is None:
+            continue
+        d=parse_date(dm.group(1))
+        if not d:
+            continue
+        desc=(line[dm.end():am.start()].strip(' -–—;:') or 'Opération bancaire')[:240]
+        rows.append({'date':d.isoformat(),'description':desc,'amount':amount})
+
+    # Élimine les doublons exacts éventuellement créés par les en-têtes/pieds répétés.
+    unique=[]; seen=set()
+    for row in rows:
+        key=(row['date'],row['description'],round(float(row['amount']),2))
+        if key in seen:
+            continue
+        seen.add(key); unique.append(row)
+    if not unique:
+        raise ValueError("Aucune ligne bancaire exploitable détectée dans ce PDF. Vérifiez qu'il contient du texte et des lignes avec date + montant.")
+    return pd.DataFrame(unique)
+
+
+def _extract_invoice_pdf(path):
+    """Extraction d'une facture PDF : texte natif en priorité (gratuit), repli IA
+    (API Claude, vision) pour les PDF scannés sans texte exploitable."""
+    try:
+        text=_pdf_text(path, max_pages=12)
+    except (ValueError,PyPdfError) as text_err:
+        if not is_pdf_text_unavailable(text_err) and not isinstance(text_err, PyPdfError):
+            raise
+        prompt=(
+            "Tu analyses une facture client fournie en pièce jointe. Réponds "
+            "UNIQUEMENT avec un objet JSON, sans texte avant ou après, exactement "
+            "sous cette forme :\n"
+            '{"invoice_number": "...", "customer": "...", "amount": nombre_TTC, '
+            '"issue_date": "AAAA-MM-JJ ou vide", "due_date": "AAAA-MM-JJ", '
+            '"customer_email": "... ou vide", "customer_phone": "... ou vide"}\n'
+            "Si un champ est illisible ou absent, mets une chaîne vide. N'invente "
+            "jamais une valeur que tu ne peux pas lire réellement sur le document."
+        )
+        parsed=_ai_extract_pdf_fields(path,prompt,['invoice_number','customer','amount','due_date'])
+        try:
+            amount=float(parsed.get('amount'))
+        except (TypeError,ValueError):
+            raise ValueError("Montant détecté par l'IA illisible. Vérifiez le document.")
+        try:
+            due=date.fromisoformat(parsed.get('due_date'))
+        except (TypeError,ValueError):
+            raise ValueError("Date d'échéance détectée par l'IA dans un format inattendu.")
+        issue_raw=(parsed.get('issue_date') or '').strip()
+        try:
+            issue=date.fromisoformat(issue_raw) if issue_raw else None
+        except ValueError:
+            issue=None
+        return {
+            'invoice_number':parsed.get('invoice_number'),
+            'customer':parsed.get('customer'),
+            'amount':amount,
+            'paid_amount':0.0,
+            'issue_date':issue.isoformat() if issue else '',
+            'due_date':due.isoformat(),
+            'status':'unpaid',
+            'type':'STANDARD',
+            'retention_release_date':'',
+            'customer_email':parsed.get('customer_email') or '',
+            'customer_phone':parsed.get('customer_phone') or '',
+        }
+
+    # Numéro : les formats usuels FACTURE N°, Invoice #, ou le numéro juste sous le titre FACTURE.
+    num=_pdf_first([
+        r'(?:facture|invoice)\s*(?:n(?:°|o)?|num(?:e|é)ro|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+        r'\bFACTURE\s*\n\s*([A-Z0-9][A-Z0-9._\-/]{2,})',
+    ], text)
+
+    # Total TTC / net à payer / amount due. On privilégie les libellés explicites.
+    amount_raw=_pdf_first([
+        r'(?:total\s*ttc|net\s*(?:à|a)\s*payer|montant\s*(?:à|a)\s*payer|amount\s*due|total\s*due)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€?)',
+        r'(?:total)\s*[:\-]?\s*([0-9][0-9\s.,]*\s*€)',
+    ], text)
+    amount=_pdf_money_value(amount_raw)
+
+    issue_raw=_pdf_first([
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?émission|date\s+facture|invoice\s+date|date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    due_raw=_pdf_first([
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*([0-3]?\d[\/\-.][01]?\d[\/\-.](?:20)?\d{2})',
+        r'(?:date\s+d[’\']?échéance|échéance|echeance|due\s+date)\s*[:\-]?\s*((?:20)?\d{2}[\/\-.][01]?\d[\/\-.][0-3]?\d)',
+    ], text)
+    issue=parse_date(issue_raw) if issue_raw else None
+    due=parse_date(due_raw) if due_raw else None
+
+    # Client : section CLIENT/FACTURÉ À/BILL TO, première ligne utile qui suit.
+    customer=None
+    cm=re.search(r'(?:^|\n)\s*(?:CLIENT|FACTUR(?:É|E)\s*(?:À|A)|BILL\s*TO)\s*\n([^\n]+)',text,re.I)
+    if cm:
+        candidate=cm.group(1).strip(' :-')
+        if candidate and not re.search(r'^(date|facture|invoice|adresse|email|téléphone|telephone)$',candidate,re.I):
+            customer=candidate
+    if not customer:
+        customer=_pdf_first([
+            r'(?:client|customer)\s*[:\-]\s*([^\n]{2,120})',
+            r'(?:factur(?:é|e)\s*(?:à|a)|bill\s*to)\s*[:\-]\s*([^\n]{2,120})',
+        ], text)
+
+    email=_pdf_first([r'([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})'],text,re.I)
+    phone=_pdf_first([r'(?<!\d)((?:\+33|0)\s*[1-9](?:[ .-]*\d{2}){4})(?!\d)'],text,re.I)
+
+    missing=[]
+    if not num: missing.append('numéro de facture')
+    if not customer: missing.append('client')
+    if amount is None or amount<=0: missing.append('montant TTC')
+    if not due: missing.append('échéance')
+    if missing:
+        raise ValueError('Champs non détectés dans le PDF : '+', '.join(missing)+'. Vérifiez que ces informations sont écrites explicitement dans le document.')
+
+    return {
+        'invoice_number':num,
+        'customer':customer,
+        'amount':amount,
+        'paid_amount':0.0,
+        'issue_date':issue.isoformat() if issue else '',
+        'due_date':due.isoformat(),
+        'status':'unpaid',
+        'type':'STANDARD',
+        'retention_release_date':'',
+        'customer_email':email or '',
+        'customer_phone':phone or '',
+    }
+
+
+def read_csv_any(path):
+    """Lit un CSV quel que soit le logiciel d'origine : séparateur « ; » (Excel en
+    français), « , » ou tabulation, encodage UTF-8 ou Windows-1252, virgule décimale.
+    pd.read_csv() seul refusait les exports Excel français (« Colonnes manquantes »)."""
+    raw=Path(path).read_bytes()
+    for enc in ('utf-8-sig','cp1252'):
+        try:
+            text=raw.decode(enc); break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("Encodage du fichier CSV non reconnu (enregistrez-le en UTF-8).")
+    first=next((ln for ln in text.splitlines() if ln.strip()),'')
+    sep=max((';',',','\t','|'),key=first.count)
+    if not first.count(sep):
+        sep=','
+    # Avec « ; », la virgule est le séparateur décimal (convention française) ; les
+    # montants avec espaces (« 1 234,56 ») restent du texte et sont convertis par money().
+    return pd.read_csv(io.StringIO(text),sep=sep,decimal=',' if sep==';' else '.')
+
+
+def _load_invoice_uploads(files):
+    """Retourne un DataFrame uniforme pour CSV/XLSX ou un lot de PDF texte."""
+    files=[f for f in files if f and f.filename]
+    if not files:
+        raise ValueError('Aucun fichier sélectionné.')
+    exts={Path(secure_filename(f.filename)).suffix.lower() for f in files}
+    if '.pdf' in exts:
+        if exts != {'.pdf'}:
+            raise ValueError('Sélectionnez soit un CSV/XLSX, soit uniquement des PDF dans le même import.')
+        rows=[]
+        errors=[]
+        for f in files:
+            path=None
+            try:
+                path,_=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
+                rows.append(_extract_invoice_pdf(path))
+            except Exception as exc:
+                errors.append(f"{secure_filename(f.filename)} : {exc}")
+            finally:
+                if path: cleanup_upload(path)
+        if errors:
+            preview=' | '.join(errors[:5])
+            extra=f" (+{pluralize(len(errors)-5, 'autre', 'autres')})" if len(errors)>5 else ''
+            raise ValueError('Import PDF interrompu : '+preview+extra)
+        if not rows:
+            raise ValueError('Aucune facture PDF exploitable.')
+        return pd.DataFrame(rows)
+
+    if len(files)!=1:
+        raise ValueError('Pour CSV/XLSX, sélectionnez un seul fichier.')
+    path=None
+    try:
+        path,_=save_upload(files[0],'imports',FINANCIAL_IMPORT_EXTENSIONS)
+        ext=path.suffix.lower()
+        if ext in ('.xlsx','.xls'):
+            return pd.read_excel(path)
+        if ext=='.csv':
+            return read_csv_any(path)
+        raise ValueError('Format de facture non pris en charge.')
+    finally:
+        if path: cleanup_upload(path)
+
+# Modèles d'import téléchargeables : en-têtes reconnus par les imports ci-dessous,
+# format Excel français (« ; », virgule décimale, dates jj/mm/aaaa). Lignes d'exemple
+# fictives, à remplacer par les données réelles.
+IMPORT_TEMPLATES={
+    'invoices':('modele-import-factures-clients.csv',
+                ['Numéro','Client','Montant TTC','Montant payé','Date facture','Échéance','Email client','Téléphone'],
+                [['FA-2026-001','Client Exemple SARL','1 200,00','0','15/09/2026','15/10/2026','compta@example.com',''],
+                 ['FA-2026-002','Autre Client SAS','540,50','200,00','01/10/2026','31/10/2026','','']]),
+    'expenses':('modele-import-depenses.csv',
+                ['Fournisseur','Description','Montant','Date','Catégorie'],
+                [['Fournisseur Exemple','Abonnement logiciel','29,00','05/10/2026','Logiciels'],
+                 ['Loueur Exemple','Loyer octobre','850,00','01/10/2026','Loyer']]),
+    'bank-statement':('modele-import-releve-bancaire.csv',
+                      ['Date','Libellé','Montant','Solde'],
+                      [['02/10/2026','VIR CLIENT EXEMPLE SARL FA-2026-001','1 200,00','5 430,00'],
+                       ['03/10/2026','PRLV LOGICIEL','-29,00','5 401,00']]),
+}
+
+
+def import_template_csv(kind):
+    filename,headers,rows=IMPORT_TEMPLATES[kind]
+    lines=[';'.join(headers)]+[';'.join(r) for r in rows]
+    return filename,('\r\n'.join(lines)+'\r\n').encode('utf-8-sig')
+
+
+def register(app):
+    @app.route('/import/modele/<kind>.csv')
+    @login_required
+    def import_template(kind):
+        if kind not in IMPORT_TEMPLATES: abort(404)
+        filename,data=import_template_csv(kind)
+        return Response(data,mimetype='text/csv; charset=utf-8',
+                        headers={'Content-Disposition':f'attachment; filename="{filename}"'})
+
+    @app.route('/upload/bank-statement',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def upload_bank_statement():
+        """Rapprochement bancaire : propose des correspondances entre les lignes créditrices
+        d'un relevé bancaire et les factures impayées. Ne marque JAMAIS rien comme payé
+        automatiquement — l'utilisateur doit valider chaque correspondance sur l'écran suivant."""
+        if request.method=='POST':
+            f=request.files.get('file')
+            if not f:
+                flash('Aucun fichier sélectionné.'); return redirect(request.url)
+            path=None
+            try:
+                path,_=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
+                ext=path.suffix.lower()
+                if ext in ('.xlsx','.xls'):
+                    df=pd.read_excel(path)
+                elif ext=='.csv':
+                    df=read_csv_any(path)
+                elif ext=='.pdf':
+                    df=_extract_bank_statement_pdf(path)
+                else:
+                    raise ValueError('Format de relevé non pris en charge.')
+            except Exception as e:
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+            finally:
+                if path: cleanup_upload(path)
+            aliases={'date':['date','date operation',"date d'opération","date de l'operation",'date comptable','date valeur'],
+                     'desc':['description','libelle','libellé','libelle operation','libellé opération','intitule','intitulé','détail','detail','nature'],
+                     'amount':['amount','montant','montant eur','montant (eur)','montant en euros','valeur'],
+                     'debit':['debit','débit','montant debit','montant débit','débit eur','debit eur','sortie','sorties'],
+                     'credit':['credit','crédit','montant credit','montant crédit','crédit eur','credit eur','entrée','entrées','entree','entrees'],
+                     'balance':['balance','solde','solde bancaire','running balance','account balance']}
+            m=map_cols(df,aliases)
+            if 'date' not in m or not ({'amount','debit','credit'} & set(m)):
+                missing=[k for k in ('date',) if k not in m]+([] if ({'amount','debit','credit'} & set(m)) else ['montant (ou colonnes Débit / Crédit)'])
+                flash('Colonnes manquantes dans le relevé : '+', '.join(missing)); return redirect(request.url)
+
+            def row_amount(row):
+                """Montant signé : colonne Montant, sinon Crédit − Débit (relevés à deux
+                colonnes, débit noté positif ou négatif selon la banque)."""
+                if 'amount' in m:
+                    return parse_amount(row[m['amount']])
+                credit=parse_amount(row[m['credit']]) if 'credit' in m else None
+                debit=parse_amount(row[m['debit']]) if 'debit' in m else None
+                if credit is None and debit is None:
+                    return None
+                return round(abs(credit or 0)-abs(debit or 0),2)
+
+            from profitos.entities import current_entity_id
+            eid=current_entity_id()
+            c=cx()
+            unpaid=c.execute("SELECT id,invoice_number,customer,MAX(amount-paid_amount,0) outstanding FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND entity_id IS ?",(eid,)).fetchall()
+            c.close()
+
+            proposals=[]; bank_lines=[]
+            for _,row in df.iterrows():
+                bank_amount=row_amount(row)
+                if bank_amount is None: continue
+                bank_desc=str(row[m['desc']]) if 'desc' in m and not pd.isna(row[m['desc']]) else ''
+                d=parse_date(row[m['date']])
+                bank_lines.append((d.isoformat() if d else None,bank_desc,bank_amount))
+                bank_date=d.isoformat() if d else str(row[m['date']])[:10]
+                if bank_amount<=0: continue  # rapprochement « factures importées » : encaissements seulement
+                candidates=[inv for inv in unpaid if abs(inv['outstanding']-bank_amount)<0.01]
+                match=None
+                if len(candidates)==1:
+                    match=candidates[0]
+                elif len(candidates)>1:
+                    # Montant identique sur plusieurs factures : on tente de désambiguïser
+                    # via le nom du client ou le n° de facture mentionné dans le libellé.
+                    for cand in candidates:
+                        if norm(cand['customer']) in norm(bank_desc) or norm(cand['invoice_number']) in norm(bank_desc):
+                            match=cand; break
+                proposals.append({'bank_date':bank_date,'bank_desc':bank_desc,'bank_amount':bank_amount,
+                    'match':match,'ambiguous':len(candidates)>1 and match is None,'candidates':candidates})
+
+            # Si le relevé fournit explicitement un solde après opération, on persiste
+            # le dernier solde daté. On ne tente jamais de reconstruire un solde à partir
+            # des seuls mouvements : cela éviterait d'inventer un point de départ.
+            imported_balance=None; imported_balance_date=None
+            if 'balance' in m:
+                balance_rows=[]
+                for _,row in df.iterrows():
+                    bal=parse_amount(row[m['balance']])
+                    d=parse_date(row[m['date']])
+                    if bal is not None and d:
+                        balance_rows.append((d,bal))
+                if balance_rows:
+                    # Dernier solde de la date la plus récente (ordre du fichier conservé
+                    # pour plusieurs opérations le même jour).
+                    last_day=max(d for d,_ in balance_rows)
+                    imported_balance_date=last_day
+                    imported_balance=[b for d,b in balance_rows if d==last_day][-1 if balance_rows[0][0]<=balance_rows[-1][0] else 0]
+                    c=cx()
+                    from profitos.entities import set_cash_balance
+                    set_cash_balance(c,eid,imported_balance,imported_balance_date.isoformat(),now())
+                    c.close()
+                    log_activity('CASH_BALANCE_IMPORT','Solde bancaire mis à jour depuis un relevé importé')
+
+            # Les opérations du relevé rejoignent le module Banque (compte « relevé
+            # importé ») : rapprochement factures clients / fournisseurs, catégorisation
+            # comptable et état de rapprochement, sans connexion bancaire.
+            from profitos.bank_import import store_statement_lines
+            from profitos.routes.bank_sync import apply_categorization_rule
+            c=cx()
+            try:
+                _acct,added,already=store_statement_lines(
+                    c,eid,request.form.get('bank_account_name') or 'Compte importé',bank_lines,
+                    imported_balance,imported_balance_date.isoformat() if imported_balance_date else None,
+                    categorize=apply_categorization_rule)
+            finally:
+                c.close()
+            log_activity('BANK_STATEMENT_IMPORT',f'{added} opération(s) bancaire(s) importée(s), {already} déjà présente(s)')
+            flash(f"{pluralize(added, 'opération ajoutée', 'opérations ajoutées')} au module Banque"
+                  + (f" ({pluralize(already, 'déjà importée', 'déjà importées')}, ignorée{'s' if already>1 else ''})" if already else '')
+                  + " : rapprochez-les de vos factures depuis la page Banques.")
+
+            matched_count=sum(1 for p in proposals if p['match'])
+            if imported_balance is not None:
+                flash(f'Solde bancaire détecté dans le relevé : {fr_number(imported_balance,2)} € au {imported_balance_date.isoformat()}.')
+            return render_template('bank_reconciliation.html',proposals=proposals,matched_count=matched_count,total_rows=len(proposals))
+
+        from profitos.entities import current_entity_id
+        c=cx()
+        try:
+            import_accounts=c.execute("SELECT name FROM bank_accounts WHERE provider='import' AND entity_id IS ? ORDER BY last_synced_at DESC",(current_entity_id(),)).fetchall()
+        finally:
+            c.close()
+        return render_template('upload.html',title='Importer un relevé bancaire',kind='bank-statement',import_accounts=import_accounts)
+
+    @app.route('/reconcile/confirm',methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def reconcile_confirm():
+        invoice_ids=request.form.getlist('confirm_invoice_id')
+        if not invoice_ids:
+            flash('Aucune correspondance sélectionnée.'); return redirect(url_for('upload_bank_statement'))
+        count=0
+        for iid in invoice_ids:
+            try: iid=int(iid)
+            except ValueError: continue
+            c=cx()
+            
+            from profitos.entities import current_entity_id
+            eid=current_entity_id()
+            row=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(iid,eid)).fetchone()
+            if not row or norm(row['status'] or '')=='paid': c.close(); continue
+            old=row['status']
+            c.execute("UPDATE invoices SET status='paid' WHERE id=? AND entity_id IS ?",(iid,eid))
+            c.commit(); c.close()  # commité avant log_status_change : évite un verrou SQLite
+                                     # entre cette connexion et celle ouverte par log_status_change.
+            count+=1
+            log_status_change('INVOICE',iid,'RECOVER',old,'paid',note='Rapprochement bancaire')
+        log_activity('BANK_RECONCILIATION',f'{count} facture(s) rapprochée(s) et marquée(s) payée(s)')
+        flash(f"{pluralize(count, 'facture marquée comme payée', 'factures marquées comme payées')} suite au rapprochement bancaire.")
+        return redirect(url_for('recover'))
+
+    @app.route('/upload/invoices',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def upload_invoices():
+        if request.method=='POST':
+            org=current_org()
+            quota=quota_state('imports_per_month',organization_id=org['id'],plan=org['plan'])
+            if not quota['allowed']:
+                flash(
+                    f"Quota mensuel d'imports atteint pour la formule {org['plan']} "
+                    f"({quota['used']}/{quota['limit']}). Passez à une formule supérieure."
+                )
+                return redirect(request.url)
+
+            files=request.files.getlist('file')
+            if not files or not any(f and f.filename for f in files): return redirect(request.url)
+            try:
+                df=_load_invoice_uploads(files)
+            except Exception as e:
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+
+            aliases={'num':['invoice_number','invoice','number','numero','numéro','n° facture','facture'],'customer':['customer','client','customer_name','nom client'],'amount':['amount','montant','montant ttc','total'],'paid':['paid_amount','montant payé','montant paye'],'issue':['issue_date','date facture','date'],'due':['due_date','échéance','echeance',"date d'échéance"],'status':['status','statut','etat','état'],'itype':['type','nature','kind'],'release':['retention_release_date','date liberation','date de liberation','date de levée','date de levee','date liberation retenue'],'email':['customer_email','email','email client','courriel','mail client'],'phone':['customer_phone','telephone','téléphone','phone','mobile','portable']}
+            m=map_cols(df,aliases)
+            missing=[k for k in ('num','customer','amount','due') if k not in m]
+            if missing:
+                flash('Colonnes manquantes : '+', '.join(missing))
+                return redirect(request.url)
+
+            RETENTION_KEYWORDS=('retenue','retention','garantie')
+            c=cx()
+            from profitos.entities import resolve_entity
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+            try:
+                target_entity=resolve_entity(c,entity_id)
+            except ValueError:
+                c.close()
+                flash("Entité sélectionnée introuvable.")
+                return redirect(request.url)
+            entity_filter='entity_id=?' if entity_id else 'entity_id IS NULL'
+            entity_params=(entity_id,) if entity_id else ()
+            previous_rows={r['invoice_number']:{'amount':r['amount'],'customer':r['customer']}
+                for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
+            # Ne remplace que les factures de CETTE entité — importer pour une filiale
+            # ne doit jamais effacer les données déjà importées pour une autre.
+            c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=_paris_today(); signals=0; retentions=0
+            # Nettoie les liens publics devenus orphelins (leur facture a été supprimée
+            # ci-dessus), sans jamais toucher aux tokens des factures d'autres entités
+            # qui, elles, existent toujours.
+            ac_clean=auth_cx()
+            still_existing_ids={r['id'] for r in c.execute('SELECT id FROM invoices').fetchall()}
+            org_tokens=ac_clean.execute('SELECT token,invoice_local_id FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)).fetchall()
+            for tok in org_tokens:
+                if tok['invoice_local_id'] not in still_existing_ids:
+                    ac_clean.execute('DELETE FROM public_invoice_tokens WHERE token=?',(tok['token'],))
+            ac_clean.commit(); ac_clean.close()
+            for _,r in df.iterrows():
+                amount=parse_amount(r[m['amount']])
+                if amount is None: continue
+                paid=money(r[m['paid']]) if 'paid' in m else 0
+                issue=parse_date(r[m['issue']]) if 'issue' in m else None
+                status=str(r[m['status']]) if 'status' in m else ('paid' if paid>=amount else 'unpaid')
+                itype_raw=norm(str(r[m['itype']])) if 'itype' in m and str(r[m['itype']]).strip().lower()!='nan' else ''
+                is_retention=any(k in itype_raw for k in RETENTION_KEYWORDS)
+                release=parse_date(r[m['release']]) if 'release' in m else None
+                due=parse_date(r[m['due']])
+                if is_retention:
+                    kind='RETENTION'; ref_date=release or due
+                    days=max(0,(today-ref_date).days) if ref_date and ref_date<=today else 0
+                    retentions+=1
+                else:
+                    kind='STANDARD'; ref_date=due
+                    days=max(0,(today-due).days) if due else 0
+                score=invoice_score(amount,days,paid) if norm(status)!='paid' and days>0 else 0
+                signals+=score>0
+                email_val=str(r[m['email']]).strip() if 'email' in m and str(r[m['email']]).strip().lower()!='nan' else None
+                phone_val=str(r[m['phone']]).strip() if 'phone' in m and str(r[m['phone']]).strip().lower()!='nan' else None
+                c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone,entity_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val,entity_id))
+                local_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                token=register_public_invoice_token(org['id'],local_id)
+                c.execute('UPDATE invoices SET public_token=? WHERE id=?',(token,local_id))
+            c.commit()
+
+            snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
+            today_iso=today.isoformat()
+            # Historique DSO isolé par entité. entity_key évite les particularités
+            # SQL des contraintes UNIQUE contenant NULL pour la société mère.
+            entity_key=str(entity_id) if entity_id else '__ROOT__'
+            c.execute('''INSERT INTO dso_entity_snapshots(
+                           snapshot_date,entity_key,entity_id,avg_days_overdue,
+                           total_outstanding,invoice_count,created_at)
+                         VALUES(?,?,?,?,?,?,?)
+                         ON CONFLICT(snapshot_date,entity_key) DO UPDATE SET
+                           entity_id=excluded.entity_id,
+                           avg_days_overdue=excluded.avg_days_overdue,
+                           total_outstanding=excluded.total_outstanding,
+                           invoice_count=excluded.invoice_count,
+                           created_at=excluded.created_at''',
+                (today_iso,entity_key,entity_id,snap['avg_d'] or 0,
+                 snap['total'] or 0,snap['n'] or 0,now()))
+            # Compatibilité avec l'historique racine existant pendant la transition.
+            if not entity_id:
+                c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
+                             VALUES(?,?,?,?,?)
+                             ON CONFLICT(snapshot_date) DO UPDATE SET
+                               avg_days_overdue=excluded.avg_days_overdue,
+                               total_outstanding=excluded.total_outstanding,
+                               invoice_count=excluded.invoice_count,
+                               created_at=excluded.created_at''',
+                    (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
+            c.commit()
+
+            urgent=c.execute(f"SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 AND {entity_filter}",entity_params).fetchone()
+            overdue_rows=c.execute(f"SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchall()
+
+            # Détection d'anomalies par rapport à l'import précédent : facture disparue,
+            # ou montant qui a significativement changé pour le même numéro de facture.
+            anomalies=[]
+            if previous_rows:
+                current_numbers={r['invoice_number'] for r in c.execute(f'SELECT invoice_number FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
+                for num,old in previous_rows.items():
+                    if num not in current_numbers:
+                        anomalies.append(f"Facture #{num} ({old['customer']}, {fr_number(old['amount'])} €) présente à l'import précédent a disparu de ce nouvel import.")
+                for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall():
+                    old=previous_rows.get(r['invoice_number'])
+                    if old and old['amount'] and abs(r['amount']-old['amount'])/old['amount']>0.2:
+                        anomalies.append(f"Facture #{r['invoice_number']} ({r['customer']}) : montant passé de {fr_number(old['amount'])} € à {fr_number(r['amount'])} €.")
+            c.close()
+            if anomalies:
+                ac_log=auth_cx()
+                for a in anomalies[:20]:
+                    ac_log.execute('INSERT INTO activity_log(organization_id,user_id,event_type,description,created_at) VALUES(?,?,?,?,?)',
+                        (org['id'],session.get('user_id'),'IMPORT_ANOMALY',a,now()))
+                ac_log.commit(); ac_log.close()
+
+            # Alimente les signaux partagés inter-organisations (anonymisés) : risque
+            # acheteur croisé et benchmark sectoriel DSO. Best-effort, ne bloque jamais l'upload.
+            try:
+                sync_buyer_signals(org['id'],[dict(r) for r in overdue_rows])
+                sync_sector_dso(org['id'],snap['avg_d'] or 0)
+            except Exception:
+                pass
+
+            record_usage('imports_per_month',organization_id=org['id'])
+
+            if urgent['n']:
+                notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
+            msg=f"Factures analysées · {pluralize(signals, 'créance à relancer détectée', 'créances à relancer détectées')}."
+            if retentions: msg+=f" Dont {pluralize(retentions, 'retenue de garantie détectée', 'retenues de garantie détectées')}."
+            flash(msg)
+            if anomalies:
+                flash(f"⚠ {pluralize(len(anomalies), 'anomalie détectée', 'anomalies détectées')} par rapport à l'import précédent : voir Paramètres → Journal d'activité pour le détail.")
+            return redirect(url_for('recover'))
+
+        return render_template('upload.html',title='Importer les factures',kind='invoices')
+
+    RENEWABLE_CATEGORIES={
+      'assurance':['assurance','insurance','décennale','decennale','responsabilite civile','responsabilité civile'],
+      'energie':['energie','énergie','electricite','électricité','gaz','edf','engie','total energies'],
+      'telecom':['telecom','téléphonie','telephonie','internet','fibre','abonnement mobile'],
+      'logiciel':['logiciel','saas','abonnement logiciel','licence'],
+    }
+
+    def detect_duplicates(clean):
+        out=[]
+        counter=Counter((norm(v),round(a,2),d.isoformat() if d else '') for v,a,d,cat in clean)
+        for (v,a,d),n in counter.items():
+            if n>1:
+                out.append(dict(title=f'Doublon potentiel — {v.title()}',value=a*(n-1),score=90,
+                    details=f"{n} dépenses identiques détectées le {fr_date(d) if d else 'même jour'} : {fr_number(a*(n-1),2)} € à récupérer une seule fois si le doublon est confirmé.",
+                    reasons=['même fournisseur, montant et date'],warnings=['montant ponctuel, non annualisé','vérification humaine requise']))
+        return out
+
+    def detect_price_increases(clean):
+        out=[]
+        monthly=defaultdict(lambda:defaultdict(float))
+        for v,a,d,cat in clean:
+            if d:monthly[v][d.strftime('%Y-%m')]+=a
+        for v,vals in monthly.items():
+            ms=sorted(vals)
+            if len(ms)>=2 and vals[ms[-2]]>0 and vals[ms[-1]]>vals[ms[-2]]*1.2:
+                prev,curr=vals[ms[-2]],vals[ms[-1]]
+                out.append(dict(title=f'Hausse fournisseur — {v}',value=(curr-prev)*12,score=75,
+                    details=f'{fr_number(prev)} € → {fr_number(curr)} € entre les deux derniers mois. Hausse annualisée estimée : {fr_number((curr-prev)*12)} € si le nouveau tarif se maintient 12 mois.',
+                    reasons=['hausse mensuelle supérieure à 20\u00a0%'],warnings=['hausse annualisée estimée : projection sur 12 mois, pas une économie certaine']))
+        return out
+
+    def detect_stale_contracts(clean):
+        out=[]; today=paris_today()
+        by_vendor_cat=defaultdict(list)
+        for v,a,d,cat in clean:
+            fam=next((fam for fam,kws in RENEWABLE_CATEGORIES.items() if any(k in norm(cat) or k in norm(v) for k in kws)),None)
+            if fam and d:by_vendor_cat[(fam,norm(v))].append((d,a))
+        for (fam,v),rows in by_vendor_cat.items():
+            rows.sort(); last_date,last_amount=rows[-1]; gap_days=(today-last_date).days
+            if gap_days>=330 and len(rows)>=1:
+                out.append(dict(title=f'Contrat à vérifier — {v.title()} ({fam})',value=round(last_amount,0),score=70,
+                    details=f'Dernière dépense {fam} détectée il y a {gap_days} jours (le {fr_date(last_date.isoformat())}). Montant indiqué : dernière échéance, à renégocier.',
+                    reasons=[f'catégorie {fam} récurrente sans dépense récente'],
+                    warnings=['obtenir 3 devis avant renouvellement automatique']))
+        return out
+
+    NON_OPTIMIZABLE_EXPENSE_MARKERS=(
+        'urssaf','cotisations sociales','tva','impots et taxes','impôts et taxes',
+        'salaires et paie','salaire','paie'
+    )
+
+    def _save_optimizable_expense(row):
+        """Évite de présenter les obligations légales/sociales comme des économies négociables.
+
+        Les doublons restent contrôlés séparément : un double prélèvement URSSAF/TVA peut
+        réellement mériter une vérification, mais on ne génère ni hausse fournisseur ni
+        renouvellement de contrat sur ces catégories.
+        """
+        v,a,d,cat=row
+        text=norm(f'{cat or ""} {v or ""}')
+        return not any(marker in text for marker in NON_OPTIMIZABLE_EXPENSE_MARKERS)
+
+    def run_save_engine(clean):
+        optimizable=[row for row in clean if _save_optimizable_expense(row)]
+        return detect_duplicates(clean)+detect_price_increases(optimizable)+detect_stale_contracts(optimizable)
+
+    @app.route('/upload/expenses',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('uploads')
+    def upload_expenses():
+        if request.method=='POST':
+            org=current_org()
+            quota=quota_state('imports_per_month',organization_id=org['id'],plan=org['plan'])
+            if not quota['allowed']:
+                flash(
+                    f"Quota mensuel d'imports atteint pour la formule {org['plan']} "
+                    f"({quota['used']}/{quota['limit']}). Passez à une formule supérieure."
+                )
+                return redirect(request.url)
+
+            f=request.files.get('file')
+            if not f:return redirect(request.url)
+            path=None
+            try:
+                path, original_name=save_upload(f,'imports',FINANCIAL_IMPORT_EXTENSIONS)
+                ext=path.suffix.lower()
+                if ext in ('.xlsx','.xls'):
+                    df=pd.read_excel(path)
+                elif ext=='.csv':
+                    df=read_csv_any(path)
+                elif ext=='.pdf':
+                    df=pd.DataFrame([_extract_expense_pdf(path)])
+                else:
+                    raise ValueError('Format de dépense non pris en charge.')
+            except Exception as e:
+                flash(f'Import refusé : {e}'); return redirect(request.url)
+            finally:
+                if path: cleanup_upload(path)
+
+            aliases={'vendor':['vendor','supplier','fournisseur'],'desc':['description','libelle','libellé'],'amount':['amount','montant','total'],'date':['date','expense_date','date dépense','date depense'],'cat':['category','categorie','catégorie']}
+            m=map_cols(df,aliases)
+            missing=[k for k in ('vendor','amount','date') if k not in m]
+            if missing:
+                flash('Colonnes manquantes : '+', '.join(missing))
+                return redirect(request.url)
+
+            c=cx()
+            from profitos.entities import resolve_entity
+            entity_id_raw=request.form.get('entity_id')
+            entity_id=int(entity_id_raw) if entity_id_raw and entity_id_raw.isdigit() else None
+            try:
+                resolve_entity(c,entity_id)
+            except ValueError:
+                c.close()
+                flash("Entité sélectionnée introuvable.")
+                return redirect(request.url)
+            entity_filter='entity_id=?' if entity_id else 'entity_id IS NULL'
+            entity_params=(entity_id,) if entity_id else ()
+            # Imports cumulatifs : conserver les dépenses existantes et éviter
+            # de réinsérer un doublon strict lors d'un nouvel import. Le doublon
+            # est aussi vérifié dans le périmètre de CETTE entité uniquement.
+            for _,r in df.iterrows():
+                a=parse_amount(r[m['amount']])
+                if a is None: continue
+                d=parse_date(r[m['date']]); v=str(r[m['vendor']]).strip(); desc=str(r[m['desc']]) if 'desc' in m else ''; cat=str(r[m['cat']]) if 'cat' in m else ''
+                d_iso=d.isoformat() if d else None
+                exists=c.execute(
+                    f'''SELECT 1 FROM expenses
+                       WHERE COALESCE(vendor,'')=? AND COALESCE(description,'')=?
+                         AND amount=? AND COALESCE(expense_date,'')=COALESCE(?, '')
+                         AND COALESCE(category,'')=? AND {entity_filter} LIMIT 1''',
+                    (v,desc,a,d_iso,cat,*entity_params)
+                ).fetchone()
+                if not exists:
+                    c.execute('INSERT INTO expenses(vendor,description,amount,expense_date,category,entity_id) VALUES(?,?,?,?,?,?)',(v,desc,a,d_iso,cat,entity_id))
+
+            # SAVE est recalculé sur tout l'historique conservé — de CETTE entité
+            # uniquement, pour ne jamais effacer ni mélanger les opportunités
+            # d'une autre entité.
+            c.execute(f"DELETE FROM opportunities WHERE type='SAVE' AND {entity_filter}",entity_params)
+            clean=[]
+            for er in c.execute(f'SELECT vendor,amount,expense_date,category FROM expenses WHERE {entity_filter}',entity_params).fetchall():
+                clean.append((er['vendor'],float(er['amount'] or 0),parse_date(er['expense_date']),er['category'] or ''))
+
+            for opp in run_save_engine(clean):
+                c.execute("INSERT INTO opportunities(type,title,value,score,details,source,reasons,warnings,status,created_at,entity_id) VALUES('SAVE',?,?,?,?,?,?,?,'OPEN',?,?)",
+                    (opp['title'],opp['value'],opp['score'],opp['details'],'Expense Engine',
+                     json.dumps(opp['reasons'],ensure_ascii=False),json.dumps(opp['warnings'],ensure_ascii=False),now(),entity_id))
+            c.commit(); c.close()
+
+            record_usage('imports_per_month',organization_id=org['id'])
+
+            flash('Dépenses analysées.')
+            return redirect(url_for('save'))
+
+        return render_template('upload.html',title='Importer les dépenses',kind='expenses')

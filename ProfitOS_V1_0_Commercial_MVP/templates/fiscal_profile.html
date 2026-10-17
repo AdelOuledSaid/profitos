@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FISCALITÉ</div>
+    <h1 class="purchase-title">Profil fiscal</h1>
+    <p class="purchase-subtitle">Régimes d'imposition, renseignements de la page de garde 2065, composition du capital (2059-F), filiales (2059-G) et mandat de prélèvement pour le paiement en ligne des impôts.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a>
+</div>
+
+<form method="post" class="stack">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<section class="purchase-panel">
+  <h2>Régimes</h2>
+  <div class="twocol">
+    <label>Régime d'imposition des bénéfices
+      <select name="tax_regime">
+        <option value="normal" {{ 'selected' if p.tax_regime=='normal' }}>Réel normal (liasse 2050 à 2059)</option>
+        <option value="simplifie" {{ 'selected' if p.tax_regime=='simplifie' }}>Réel simplifié (liasse 2033)</option>
+      </select></label>
+    <label>Régime de TVA
+      <select name="vat_filing">{% for k, v in vat_filings.items() %}<option value="{{ k }}" {{ 'selected' if p.vat_filing==k }}>{{ v }}</option>{% endfor %}</select></label>
+  </div>
+  <p class="purchase-muted" style="font-size:12px;">Le régime de TVA détermine les déclarations proposées (CA3 ou CA12) et l'échéancier des rappels.</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Renseignements de la page de garde (2065)</h2>
+  <div class="twocol">
+    <label>Activité exercée<input name="activite" maxlength="200" value="{{ p.activite }}"></label>
+    <label>Adresse électronique de l'entreprise<input name="mel" type="email" maxlength="120" value="{{ p.mel }}"></label>
+    <label>Signataire de la déclaration<input name="signataire" maxlength="120" value="{{ p.signataire }}"></label>
+    <label>Qualité du signataire<input name="signataire_qualite" maxlength="80" placeholder="Président, gérant…" value="{{ p.signataire_qualite }}"></label>
+    <label>Expert-comptable (nom, adresse)<input name="expert_comptable" maxlength="200" value="{{ p.expert_comptable }}"></label>
+    <label>Téléphone de l'expert-comptable<input name="expert_comptable_tel" maxlength="30" value="{{ p.expert_comptable_tel }}"></label>
+    <label>Conseil, avocat ou centre de gestion agréé<input name="conseil" maxlength="200" value="{{ p.conseil }}"></label>
+    <label>Date de création de l'entreprise<input name="date_creation" type="date" value="{{ p.date_creation }}"></label>
+    <label>SIREN de la société mère (groupe fiscal)<input name="societe_mere_siren" inputmode="numeric" maxlength="11" value="{{ p.societe_mere_siren }}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="groupe" value="1" {{ 'checked' if p.groupe }}> La société est membre d'un groupe fiscal (intégration fiscale)</label>
+  <label class="check"><input type="checkbox" name="pme_innovante" value="1" {{ 'checked' if p.pme_innovante }}> Jeune entreprise innovante ou PME innovante</label>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Composition du capital (2059-F)</h2>
+  <p class="purchase-muted" style="font-size:12px;">Associés détenant au moins 10 % du capital. Laissez le nom vide pour supprimer une ligne.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Type</th><th>Nom ou dénomination</th><th>Prénom</th><th>SIREN</th><th class="num">% détenu</th><th class="num">Nombre de parts</th><th>Adresse</th><th>Code postal</th><th>Ville</th><th>Pays</th><th>Né(e) le</th></tr></thead>
+    <tbody>
+    {% for i in range(1, 9) %}{% set r = p.shareholders[i-1] if p.shareholders|length >= i else {} %}
+    <tr>
+      <td><select name="sh_kind_{{ i }}" aria-label="Type d'associé {{ i }}"><option value="PM" {{ 'selected' if r.kind=='PM' }}>Personne morale</option><option value="PP" {{ 'selected' if r.kind=='PP' }}>Personne physique</option></select></td>
+      <td><input name="sh_name_{{ i }}" maxlength="120" value="{{ r.name or '' }}" aria-label="Nom de l'associé {{ i }}"></td>
+      <td><input name="sh_first_name_{{ i }}" maxlength="80" value="{{ r.first_name or '' }}" aria-label="Prénom"></td>
+      <td><input name="sh_siren_{{ i }}" inputmode="numeric" maxlength="11" value="{{ r.siren or '' }}" aria-label="SIREN"></td>
+      <td><input name="sh_pct_{{ i }}" inputmode="decimal" size="5" value="{{ r.pct if r.pct is not none else '' }}" aria-label="Pourcentage"></td>
+      <td><input name="sh_shares_{{ i }}" inputmode="decimal" size="7" value="{{ r.shares if r.shares is not none else '' }}" aria-label="Nombre de parts"></td>
+      <td><input name="sh_address_{{ i }}" maxlength="160" value="{{ r.address or '' }}" aria-label="Adresse"></td>
+      <td><input name="sh_postal_code_{{ i }}" maxlength="10" size="6" value="{{ r.postal_code or '' }}" aria-label="Code postal"></td>
+      <td><input name="sh_city_{{ i }}" maxlength="80" value="{{ r.city or '' }}" aria-label="Ville"></td>
+      <td><input name="sh_country_{{ i }}" maxlength="40" size="8" value="{{ r.country or '' }}" aria-label="Pays"></td>
+      <td><input name="sh_birth_date_{{ i }}" type="date" value="{{ r.birth_date or '' }}" aria-label="Date de naissance"></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Filiales et participations (2059-G)</h2>
+  <p class="purchase-muted" style="font-size:12px;">Sociétés dont l'entreprise détient au moins 10 % du capital.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Forme</th><th>Dénomination</th><th>SIREN</th><th class="num">% détenu</th><th>Adresse</th><th>Code postal</th><th>Ville</th><th>Pays</th></tr></thead>
+    <tbody>
+    {% for i in range(1, 7) %}{% set r = p.subsidiaries[i-1] if p.subsidiaries|length >= i else {} %}
+    <tr>
+      <td><input name="sub_legal_form_{{ i }}" maxlength="20" size="6" value="{{ r.legal_form or '' }}" aria-label="Forme juridique {{ i }}"></td>
+      <td><input name="sub_name_{{ i }}" maxlength="120" value="{{ r.name or '' }}" aria-label="Dénomination de la filiale {{ i }}"></td>
+      <td><input name="sub_siren_{{ i }}" inputmode="numeric" maxlength="11" value="{{ r.siren or '' }}" aria-label="SIREN"></td>
+      <td><input name="sub_pct_{{ i }}" inputmode="decimal" size="5" value="{{ r.pct if r.pct is not none else '' }}" aria-label="Pourcentage"></td>
+      <td><input name="sub_address_{{ i }}" maxlength="160" value="{{ r.address or '' }}" aria-label="Adresse"></td>
+      <td><input name="sub_postal_code_{{ i }}" maxlength="10" size="6" value="{{ r.postal_code or '' }}" aria-label="Code postal"></td>
+      <td><input name="sub_city_{{ i }}" maxlength="80" value="{{ r.city or '' }}" aria-label="Ville"></td>
+      <td><input name="sub_country_{{ i }}" maxlength="40" size="8" value="{{ r.country or '' }}" aria-label="Pays"></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Locaux professionnels (DECLOYER)</h2>
+  <p class="purchase-muted" style="font-size:12px;">Locaux loués et occupés par l'entreprise au 1er janvier. Le loyer annuel, hors taxes et hors charges, est déclaré chaque année avec la liasse (DECLOYER). L'identifiant du local figure sur l'avis de CFE ou dans la liste des locaux de votre espace professionnel.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Identifiant du local</th><th>Adresse</th><th class="num">Loyer annuel HT hors charges (€)</th></tr></thead>
+    <tbody>
+    {% for i in range(1, 6) %}{% set r = p.premises[i-1] if p.premises|length >= i else {} %}
+    <tr>
+      <td><input name="loc_invariant_{{ i }}" maxlength="20" size="14" value="{{ r.invariant or '' }}" aria-label="Identifiant du local {{ i }}"></td>
+      <td><input name="loc_address_{{ i }}" maxlength="200" value="{{ r.address or '' }}" aria-label="Adresse du local {{ i }}"></td>
+      <td><input name="loc_rent_{{ i }}" inputmode="decimal" size="10" value="{{ r.rent|fr_number(2) if r.rent else '' }}" aria-label="Loyer annuel"></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Paiement en ligne des impôts (EDI-Paiement)</h2>
+  {% if mandate_ok %}<div class="flash" role="status">✓ Mandat complet : les paiements d'IS, de CVAE et de TVA seront joints aux déclarations (compte {{ masked }}).</div>
+  {% else %}<p class="purchase-muted">Sans mandat complet, les montants à payer sont affichés et vous les réglez depuis votre espace professionnel sur impots.gouv.fr.</p>{% endif %}
+  {% if can_mandate %}
+  <p class="purchase-muted" style="font-size:12px;">Le mandat de prélèvement SEPA interentreprises (B2B) est signé auprès de l'administration, puis transmis à votre banque. Renseignez ses références ici ; le paiement n'est réellement transmis qu'une fois le partenaire EDI activé.</p>
+  <div class="twocol">
+    <label>IBAN du compte prélevé<input name="mandate_iban" autocomplete="off" maxlength="42" placeholder="{{ masked or 'FR76 …' }}" value=""></label>
+    <label>BIC<input name="mandate_bic" maxlength="11" value="{{ p.mandate.bic }}"></label>
+    <label>Titulaire du compte<input name="mandate_holder" maxlength="120" value="{{ p.mandate.holder }}"></label>
+    <label>Référence unique du mandat (RUM)<input name="mandate_rum" maxlength="35" value="{{ p.mandate.rum }}"></label>
+    <label>Date de signature<input name="mandate_signed_at" type="date" value="{{ p.mandate.signed_at }}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="mandate_bank_confirmed" value="1" {{ 'checked' if p.mandate.bank_confirmed }}> Le mandat a été transmis à ma banque</label>
+  <p class="purchase-muted" style="font-size:12px;">{% if masked %}IBAN enregistré : {{ masked }}. Laissez le champ vide pour le conserver.</p><label class="check"><input type="checkbox" name="mandate_clear" value="1"> Supprimer le mandat enregistré</label><p>{% else %}Aucun IBAN enregistré.{% endif %}</p>
+  {% else %}
+  <p class="purchase-muted">Seuls le propriétaire ou un administrateur peuvent modifier le mandat de prélèvement.{% if masked %} Compte enregistré : {{ masked }}.{% endif %}</p>
+  {% endif %}
+</section>
+
+<div style="margin-top:14px;"><button type="submit" class="purchase-primary-btn primary">Enregistrer le profil fiscal</button></div>
+</form>
+</div>
+{% endblock %}

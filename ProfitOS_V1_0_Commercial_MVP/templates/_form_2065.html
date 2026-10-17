@@ -1,0 +1,22 @@
+<section class="purchase-panel" id="f2065" style="margin-top:14px;">
+  <h2>2065 — Déclaration de résultats (page de garde)</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table ca3-table"><tbody>
+    <tr><td>Dénomination</td><td>{{ f2065.denomination or '—' }}</td></tr>
+    <tr><td>SIRET</td><td>{{ f2065.siret or '—' }}</td></tr>
+    <tr><td>Adresse</td><td>{{ f2065.adresse or '—' }}</td></tr>
+    <tr><td>Exercice</td><td>du {{ f2065.exercice_debut|fr_date }} au {{ f2065.exercice_fin|fr_date }}</td></tr>
+    <tr><td>Régime d'imposition</td><td>{{ f2065.regime }}</td></tr>
+    <tr><td>Activité exercée</td><td>{{ f2065.activite or '—' }}</td></tr>
+    <tr><td>Membre d'un groupe fiscal</td><td>{{ 'Oui' ~ (' — société mère ' ~ f2065.societe_mere_siren if f2065.societe_mere_siren else '') if f2065.groupe else 'Non' }}</td></tr>
+    <tr><td>Jeune entreprise ou PME innovante</td><td>{{ 'Oui' if f2065.pme_innovante else 'Non' }}</td></tr>
+    <tr class="ca3-total"><td>{{ 'Bénéfice fiscal' if f2065.benefice else 'Déficit fiscal' }}</td><td class="num">{{ (f2065.benefice or f2065.deficit)|fr_number(0) }} €</td></tr>
+    <tr><td>dont imposable au taux normal de 25 %</td><td class="num">{{ f2065.benefice_taux_normal|fr_number(0) }} €</td></tr>
+    <tr><td>dont imposable au taux réduit de 15 %</td><td class="num">{{ f2065.benefice_taux_15|fr_number(0) }} €</td></tr>
+    <tr><td>Comptabilité tenue au moyen d'un système informatisé</td><td>Oui — {{ f2065.logiciel }}</td></tr>
+    <tr><td>Expert-comptable</td><td>{{ f2065.expert_comptable or '—' }}{% if f2065.expert_comptable_tel %} · {{ f2065.expert_comptable_tel }}{% endif %}</td></tr>
+    <tr><td>Conseil ou centre de gestion</td><td>{{ f2065.conseil or '—' }}</td></tr>
+    <tr><td>Signataire</td><td>{{ f2065.signataire or '—' }}{% if f2065.signataire_qualite %} ({{ f2065.signataire_qualite }}){% endif %}</td></tr>
+    <tr><td>Adresse électronique</td><td>{{ f2065.mel or '—' }}</td></tr>
+  </tbody></table></div>
+  <p class="purchase-muted" style="font-size:12px;">Les renseignements se complètent dans le <a class="link" href="{{ url_for('fiscal_profile') }}">profil fiscal</a>.</p>
+</section>

@@ -8,7 +8,7 @@ from profitos import automation as A
 
 AUTOMATIC_JOBS = [
     ('recurring_entries', 'Écritures récurrentes', 'Chaque jour à 5 h'),
-    ('fiscal_deadlines', 'Rappels des échéances fiscales', 'Chaque jour à 8 h, 7 jours et la veille'),
+    ('fiscal_deadlines', 'Rappels des échéances fiscales', 'Chaque jour à 8 h : 7 jours et la veille, puis relance hebdomadaire sans justificatif'),
     ('teledeclaration_status', 'Suivi des télédéclarations', 'Toutes les heures'),
     ('recurring_invoices', 'Factures récurrentes (brouillons)', 'Chaque jour à 6 h'),
     ('bank_sync', 'Synchronisation bancaire', 'Chaque jour à 5 h'),
@@ -77,6 +77,7 @@ def register(app):
         c = cx()
         today = paris_today()
         deadlines = A.upcoming_deadlines(c, eid, today, horizon_days=90)
+        overdue = A.overdue_declarations(c, eid, today)
         current = L.fiscal_year_for(c, today, eid)
         closed = L.fiscal_year_for(c, current['start'] - timedelta(days=1), eid)
         controls = A.precontrols(c, closed['start'], closed['end'], eid, today=today)
@@ -92,7 +93,7 @@ def register(app):
             runs = {}
         finally:
             ac.close()
-        return render_template('fiscal_calendar.html', deadlines=deadlines, controls=controls, closed=closed,
+        return render_template('fiscal_calendar.html', deadlines=deadlines, overdue=overdue, controls=controls, closed=closed,
                                jobs=AUTOMATIC_JOBS, runs=runs, today=today)
 
 

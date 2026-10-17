@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">MON COMPTE</div>
+<h1 class="purchase-title">Activer la double authentification</h1>
+<section class="purchase-panel">
+  <ol>
+    <li>Ouvrez votre application d'authentification (Google Authenticator, Microsoft Authenticator, 1Password, Aegis…).</li>
+    <li>Ajoutez un compte en saisissant manuellement cette clé :
+      <p style="font-family:monospace;font-size:18px;letter-spacing:1px;color:#fff;">{{ secret_grouped }}</p>
+      ou, si votre application le permet, en collant ce lien :
+      <p style="font-family:monospace;word-break:break-all;font-size:12px;">{{ otpauth_uri }}</p>
+    </li>
+    <li>Saisissez le code à 6 chiffres affiché pour confirmer.</li>
+  </ol>
+  <form method="post" class="stack" style="max-width:320px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Code à 6 chiffres<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+    <button class="purchase-primary-btn primary">Activer</button>
+  </form>
+</section>
+</div>
+{% endblock %}

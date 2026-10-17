@@ -469,7 +469,7 @@ def recurring_entries(org, ctx):
 
 
 @job('fiscal_deadlines', 'daily', hour=8,
-     description="Rappelle au propriétaire les échéances fiscales à 7 jours et à la veille (TVA, IS, liasse, CVAE).")
+     description="Rappelle au propriétaire les échéances fiscales à 7 jours et à la veille, puis relance le lendemain et chaque semaine tant qu'aucun justificatif de dépôt n'est archivé.")
 def fiscal_deadlines(org, ctx):
     _require_paid(org, 'accounting_core')
     from profitos.runtime import tenant_cx_direct, fr_number
@@ -477,28 +477,41 @@ def fiscal_deadlines(org, ctx):
     from profitos.accounting import paris_today
     today = paris_today()
     c = tenant_cx_direct(org['id'])
-    due = []
+    from profitos.automation import overdue_declarations
+    due, late = [], []
     try:
         for eid in _entity_ids(c):
             for item in upcoming_deadlines(c, eid, today, horizon_days=8):
                 left = (item['date'] - today).days
                 if left in (7, 1) and not item.get('deposited'):
                     due.append((left, item))
+            # Échéance passée sans justificatif : le lendemain, puis chaque semaine.
+            for item in overdue_declarations(c, eid, today):
+                if item['days_late'] == 1 or item['days_late'] % 7 == 0:
+                    late.append(item)
     finally:
         c.close()
-    if not due:
+    if not due and not late:
         return '0 rappel'
     lines = []
+    for item in late:
+        lines.append(f"EN RETARD depuis le {item['date'].strftime('%d/%m/%Y')} : {item['label']} ({item['form']})"
+                     + (" — préparée, justificatif non archivé" if item.get('prepared') else ''))
     for left, item in sorted(due, key=lambda x: x[1]['date']):
         amount = f" — environ {fr_number(item['amount'], 0)} €" if item.get('amount') else ''
         when = 'demain' if left == 1 else 'dans 7 jours'
         lines.append(f"{item['date'].strftime('%d/%m/%Y')} ({when}) : {item['label']} ({item['form']}){amount}")
+    body = 'Rappel : ' + ' · '.join(lines) + '. Préparez vos déclarations dans ProfitOS, déposez-les sur impots.gouv.fr et archivez l\'accusé de réception.'
+    if late:
+        body += (" Si la déclaration a bien été déposée, joignez son accusé dans ProfitOS ; sinon, déposez-la sans attendre. "
+                 "Vérifiez aussi votre compte fiscal et votre messagerie sécurisée sur impots.gouv.fr : l'administration y signale "
+                 "les déclarations rejetées ou manquantes.")
     _notify_owner(
-        org, f"Échéances fiscales à venir — {org['name']}", 'Échéances fiscales à venir',
-        'Rappel : ' + ' · '.join(lines) + '. Préparez et déposez vos déclarations depuis ProfitOS.',
-        'Ouvrir les télédéclarations', '/comptabilite/teledeclarations',
+        org, (f"Déclarations en retard — {org['name']}" if late else f"Échéances fiscales à venir — {org['name']}"),
+        'Déclarations en retard' if late else 'Échéances fiscales à venir', body,
+        'Ouvrir les déclarations fiscales', '/comptabilite/teledeclarations',
         "Vous recevez ce rappel car la comptabilité est activée pour votre organisation.")
-    return f'{len(due)} rappel(s)'
+    return f'{len(due) + len(late)} rappel(s)'
 
 
 @job('teledeclaration_status', 'hourly',

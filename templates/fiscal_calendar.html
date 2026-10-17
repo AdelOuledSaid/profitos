@@ -10,6 +10,22 @@
   <a class="purchase-nav-btn" href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a>
 </div>
 
+{% if overdue %}
+<section class="purchase-panel" style="margin-bottom:14px;border-color:#f59e0b;">
+  <h2>⚠ Déclarations en retard</h2>
+  <p class="purchase-muted">Échéance passée sans dépôt enregistré. Si la déclaration a bien été déposée, joignez son accusé de réception ; sinon, déposez-la sans attendre. Vérifiez aussi votre compte fiscal et votre messagerie sécurisée sur impots.gouv.fr, où l'administration signale les déclarations rejetées ou manquantes.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Échéance</th><th>Déclaration</th><th>Formulaire</th><th>Retard</th><th></th></tr></thead>
+    <tbody>
+    {% for d in overdue %}
+      <tr><td>{{ d.date|fr_date }}</td><td>{{ d.label }}</td><td>{{ d.form }}</td><td>{{ d.days_late }} j</td>
+        <td>{% if d.prepared %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_detail', decl_id=d.prepared.id) }}">Joindre l'accusé</a>
+            {% else %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=d.type, du=d.start.isoformat(), au=d.end.isoformat(), echeance=d.due_date.isoformat() if d.due_date else None) }}">Préparer</a>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
 <section class="purchase-panel">
   <h2>Prochaines échéances</h2>
   {% if deadlines %}

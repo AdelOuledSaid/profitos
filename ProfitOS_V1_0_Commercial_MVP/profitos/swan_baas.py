@@ -1,0 +1,662 @@
+"""Compte Pro / cartes — intégration Swan (Banking-as-a-Service).
+
+AVERTISSEMENT IMPORTANT : ce module est construit à partir de la
+documentation publique officielle de Swan (docs.swan.io), consultée pour
+cette tâche précise, mais je n'ai aucun accès réseau dans cet environnement
+pour l'exécuter contre leurs vrais serveurs. Structurellement correct à ma
+connaissance (authentification OAuth2, forme des requêtes GraphQL), mais
+jamais vérifié en conditions réelles. À tester en sandbox Swan avant tout
+usage réel — ce que je ne peux pas faire moi-même ici.
+
+Différences structurelles importantes par rapport aux autres intégrations
+de cette session (Dropbox/Google Drive, en REST) :
+  - Swan expose une API GraphQL unique (pas de collection d'endpoints REST).
+  - Deux environnements totalement séparés (sandbox / live) : jetons,
+    identifiants et données ne se transposent jamais de l'un à l'autre.
+  - Toute mutation sensible (émettre une carte, ouvrir un compte, lancer un
+    virement) renvoie un CONSENTEMENT — une URL hébergée par Swan que
+    l'utilisateur humain doit approuver avant que l'opération s'exécute
+    réellement. Ce module ne fait jamais l'hypothèse qu'une mutation a
+    réussi tant que ce consentement n'a pas été validé.
+
+Ce module reste volontairement conservateur : il peut lister les comptes
+existants (lecture), et DEMANDER l'ouverture d'un compte ou l'émission
+d'une carte (ce qui renvoie un lien de consentement à faire approuver par
+un humain) — jamais une opération qui déplacerait réellement de l'argent
+sans validation explicite Swan elle-même.
+
+Configuration requise (variables d'environnement) :
+  SWAN_CLIENT_ID, SWAN_CLIENT_SECRET, SWAN_ENVIRONMENT (sandbox|live,
+  défaut sandbox)
+"""
+import os
+import secrets
+from urllib.parse import urlencode
+
+import requests
+
+TOKEN_URL = 'https://oauth.swan.io/oauth2/token'
+
+GRAPHQL_URLS = {
+    'sandbox': 'https://api.swan.io/sandbox-partner/graphql',
+    'live': 'https://api.swan.io/live-partner/graphql',
+}
+
+
+def is_configured():
+    return bool(os.environ.get('SWAN_CLIENT_ID') and os.environ.get('SWAN_CLIENT_SECRET'))
+
+
+def feature_enabled():
+    """« Compte Pro » visible et utilisable uniquement si Swan est configuré ET
+    explicitement activé (SWAN_ENABLED=1). Sinon le menu est masqué et les routes
+    répondent 404."""
+    return is_configured() and (os.environ.get('SWAN_ENABLED') or '').strip() == '1'
+
+
+def write_operations_enabled():
+    # Les mutations compte/carte de cette base n'ont pas encore été validées
+    # contre un projet Swan Sandbox. Fail-closed jusqu'à validation explicite.
+    return (os.environ.get('SWAN_ENABLE_ACCOUNT_CARD_REQUESTS') or '').strip().lower() in ('1','true','yes','on')
+
+
+def current_environment():
+    env = (os.environ.get('SWAN_ENVIRONMENT') or os.environ.get('SWAN_ENV') or 'sandbox').strip().lower()
+    return env if env in ('sandbox', 'live') else 'sandbox'
+
+
+def get_server_token():
+    """Jeton serveur-à-serveur (client credentials) — pour les opérations
+    portées par l'organisation elle-même, pas au nom d'un utilisateur final.
+    Lève ValueError avec un message clair en cas d'échec."""
+    client_id = os.environ.get('SWAN_CLIENT_ID')
+    client_secret = os.environ.get('SWAN_CLIENT_SECRET')
+    try:
+        resp = requests.post(
+            TOKEN_URL,
+            data={'grant_type': 'client_credentials', 'client_id': client_id, 'client_secret': client_secret},
+            timeout=20,
+        )
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion au serveur Swan impossible : {e}") from e
+    if resp.status_code != 200:
+        raise ValueError(f"Échec de l'authentification Swan ({resp.status_code}) : {resp.text[:200]}")
+    payload = resp.json()
+    token = payload.get('access_token')
+    if not token:
+        raise ValueError("Swan n'a renvoyé aucun jeton d'accès.")
+    return token
+
+
+def graphql_query(token, query, variables=None, environment=None, user_id=None):
+    """Exécute une requête ou mutation GraphQL contre l'API partenaire Swan.
+    Lève ValueError en cas d'erreur réseau, HTTP, ou d'erreurs GraphQL
+    renvoyées dans le corps de la réponse (jamais ignorées silencieusement)."""
+    env = environment or current_environment()
+    url = (os.environ.get('SWAN_GRAPHQL_URL') or '').strip() or GRAPHQL_URLS[env]
+    try:
+        resp = requests.post(
+            url,
+            headers={**{'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}, **({'x-swan-user-id': str(user_id)} if user_id else {})},
+            json={'query': query, 'variables': variables or {}},
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion à l'API Swan impossible : {e}") from e
+    if resp.status_code != 200:
+        raise ValueError(f"Appel Swan échoué ({resp.status_code}) : {resp.text[:300]}")
+    payload = resp.json()
+    if payload.get('errors'):
+        messages = '; '.join(e.get('message', str(e)) for e in payload['errors'])
+        raise ValueError(f"Erreur GraphQL Swan : {messages}")
+    return payload.get('data', {})
+
+
+
+def swan_oauth_redirect_uri():
+    return (os.environ.get('SWAN_OAUTH_REDIRECT_URI') or '').strip()
+
+
+def build_user_authorization_url(state):
+    """Construit l'URL OAuth Swan pour lier explicitement un utilisateur final."""
+    redirect_uri = swan_oauth_redirect_uri()
+    client_id = (os.environ.get('SWAN_CLIENT_ID') or '').strip()
+    if not client_id or not redirect_uri:
+        raise ValueError("SWAN_CLIENT_ID et SWAN_OAUTH_REDIRECT_URI sont requis pour connecter l'utilisateur Swan.")
+    params = {
+        'response_type': 'code',
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': 'openid offline',
+        'state': state,
+    }
+    return 'https://oauth.swan.io/oauth2/auth?' + urlencode(params)
+
+
+def exchange_user_authorization_code(code):
+    redirect_uri = swan_oauth_redirect_uri()
+    try:
+        resp = requests.post(TOKEN_URL, data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'client_id': os.environ.get('SWAN_CLIENT_ID'),
+            'client_secret': os.environ.get('SWAN_CLIENT_SECRET'),
+            'redirect_uri': redirect_uri,
+        }, timeout=20)
+    except requests.RequestException as e:
+        raise ValueError(f"Connexion OAuth Swan impossible : {e}") from e
+    if resp.status_code != 200:
+        raise ValueError(f"Échange du code OAuth Swan refusé ({resp.status_code}) : {resp.text[:200]}")
+    payload = resp.json()
+    if not payload.get('access_token'):
+        raise ValueError("Swan n'a renvoyé aucun jeton utilisateur.")
+    return payload
+
+
+def current_swan_user_id(user_token, environment=None):
+    data = graphql_query(user_token, 'query ProfitOSCurrentSwanUser { user { id } }', environment=environment)
+    user_id = ((data.get('user') or {}).get('id') or '').strip()
+    if not user_id:
+        raise ValueError("Impossible d'identifier l'utilisateur Swan connecté.")
+    return user_id
+
+
+def initiate_sepa_credit_transfer_sandbox(project_token, user_id, account_id, beneficiary_name, iban, amount, consent_redirect_url, idempotency_key=None):
+    """Initie un SCT unique en Sandbox en impersonant un utilisateur déjà lié au projet.
+
+    Swan conserve le consentement/SCA : cette fonction renvoie l'URL de consentement
+    et ne considère jamais le paiement comme exécuté avant validation Swan.
+    """
+    if current_environment() != 'sandbox':
+        raise ValueError("Les virements ProfitOS sont bloqués hors Swan Sandbox.")
+    import re
+    beneficiary_name = (beneficiary_name or '').strip()
+    iban = re.sub(r'\s+', '', (iban or '')).upper()
+    from profitos.invoice_amounts import parse_number
+    value = parse_number(amount, None) if not isinstance(amount, (int, float)) else float(amount)
+    if value is None:
+        raise ValueError("Montant de virement invalide.")
+    if not beneficiary_name or len(beneficiary_name) > 70:
+        raise ValueError("Le nom du bénéficiaire est obligatoire (70 caractères maximum).")
+    if not re.fullmatch(r'[A-Z]{2}[0-9A-Z]{13,32}', iban):
+        raise ValueError("IBAN bénéficiaire invalide.")
+    if value <= 0 or value > 100000:
+        raise ValueError("Le montant doit être supérieur à 0 et inférieur ou égal à 100 000 EUR.")
+    mutation = """
+    mutation ProfitOSInitiateSepa($input: InitiateCreditTransfersInput!) {
+      initiateCreditTransfers(input: $input) {
+        __typename
+        ... on InitiateCreditTransfersSuccessPayload {
+          payment {
+            id
+            createdAt
+            statusInfo {
+              status
+              ... on PaymentConsentPending {
+                consent { consentUrl }
+              }
+            }
+          }
+        }
+        ... on ValidationRejection { message fields { code message path } }
+        ... on ForbiddenRejection { message }
+        ... on AccountNotFoundRejection { message }
+        ... on InternalErrorRejection { message }
+      }
+    }
+    """
+    variables = {'input': {
+        'idempotencyKey': idempotency_key or secrets.token_hex(16),
+        'consentRedirectUrl': consent_redirect_url,
+        'accountId': account_id,
+        'creditTransfers': {
+            'amount': {'value': f'{value:.2f}', 'currency': 'EUR'},
+            'sepaBeneficiary': {'iban': iban, 'name': beneficiary_name, 'save': False},
+            'mode': 'Regular',
+        },
+    }}
+    data = graphql_query(project_token, mutation, variables, environment='sandbox', user_id=user_id)
+    result = data.get('initiateCreditTransfers') or {}
+    if result.get('__typename') != 'InitiateCreditTransfersSuccessPayload':
+        raise ValueError(result.get('message') or f"Virement Swan refusé ({result.get('__typename') or 'réponse inconnue'}).")
+    payment = result.get('payment') or {}
+    status_info = payment.get('statusInfo') or {}
+    consent = status_info.get('consent') or {}
+    return {'payment_id': payment.get('id'), 'status': status_info.get('status'), 'consent_url': consent.get('consentUrl')}
+
+
+def list_accounts(token, environment=None):
+    """Liste les comptes Swan avec IBAN, soldes et dernières transactions.
+
+    Lecture seule avec un project access token. Les transactions sont limitées
+    aux 10 plus récentes par compte pour garder la page légère.
+    """
+    # GraphQL field shape: statusInfo { status }
+    query = """
+    query ProfitOSListAccounts {
+      accounts {
+        edges {
+          node {
+            id
+            IBAN
+            name
+            statusInfo {
+              status
+            }
+            balances {
+              available { value currency }
+              booked { value currency }
+              pending { value currency }
+              reserved { value currency }
+            }
+            transactions(first: 10) {
+              edges {
+                node {
+                  id
+                  type
+                  label
+                  reference
+                  side
+                  createdAt
+                  updatedAt
+                  amount { value currency }
+                  statusInfo {
+                    status
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, query, environment=environment)
+    edges = (data.get('accounts') or {}).get('edges') or []
+    accounts = []
+    for edge in edges:
+        node = dict(edge.get('node') or {})
+        node['status'] = (node.get('statusInfo') or {}).get('status')
+        balances = node.get('balances') or {}
+        node['available_balance'] = balances.get('available') or {}
+        node['booked_balance'] = balances.get('booked') or {}
+        tx_edges = ((node.get('transactions') or {}).get('edges') or [])
+        transactions = []
+        for tx_edge in tx_edges:
+            tx = dict(tx_edge.get('node') or {})
+            tx['status'] = (tx.get('statusInfo') or {}).get('status')
+            transactions.append(tx)
+        node['recent_transactions'] = transactions
+        accounts.append(node)
+    return accounts
+
+
+
+def company_registry_data_fr(registration_number):
+    """Read-only French RNE prefill using the concrete CompanyInfo object returned by Swan."""
+    siren = ''.join(ch for ch in str(registration_number or '') if ch.isdigit())
+    if len(siren) != 9:
+        raise ValueError("Le SIREN doit contenir exactement 9 chiffres.")
+
+    token = get_server_token()
+    variables = {"input": {"registrationNumber": siren, "residencyAddressCountry": "FRA"}}
+
+    # Swan Sandbox currently returns CompanyInfo directly on success.
+    # Probe first so a rejection can be handled without hard-coding rejection type names.
+    probe = """
+    query ProfitOSCompanyRegistryProbe($input: CompanyInfoRegistryDataInput!) {
+      companyInfoRegistryData(input: $input) {
+        __typename
+      }
+    }
+    """
+    probe_data = graphql_query(token, probe, variables)
+    payload = probe_data.get("companyInfoRegistryData") or {}
+    payload_type = payload.get("__typename")
+    if not payload_type:
+        raise ValueError("Swan n'a retourné aucun type de réponse pour la recherche RNE.")
+    if payload_type != "CompanyInfo":
+        raise ValueError(
+            "Entreprise non trouvée ou réponse Swan non exploitable "
+            f"(type: {payload_type})."
+        )
+
+    # Query fields directly on CompanyInfo. Keep this first production read
+    # deliberately minimal; representatives/UBOs are handled during onboarding.
+    query = """
+    query ProfitOSCompanyRegistry($input: CompanyInfoRegistryDataInput!) {
+      companyInfoRegistryData(input: $input) {
+        ... on CompanyInfo {
+          name
+          legalFormCode
+          registrationDate
+          address {
+            addressLine1
+            city
+            postalCode
+            country
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, query, variables)
+    info = data.get("companyInfoRegistryData") or {}
+    if info.get("__typename") and info.get("__typename") != "CompanyInfo":
+        raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
+    if not info.get("name"):
+        raise ValueError("Swan n'a retourné aucune information RNE exploitable.")
+    info["legalForm"] = info.get("legalFormCode")
+    return info
+
+
+
+def request_new_account(token, name, environment=None):
+    """Demande l'ouverture d'un nouveau compte. Renvoie {account_id,
+    consent_url} — le compte n'est PAS actif tant que le consentement
+    renvoyé n'a pas été approuvé par un humain sur l'URL Swan fournie.
+    Structure de mutation non vérifiée contre l'API réelle — à valider en
+    sandbox avant tout usage."""
+    mutation = """
+    mutation ProfitOSCreateAccount($name: String!) {
+      createAccount(input: { name: $name }) {
+        ... on CreateAccountSuccessPayload {
+          account { id name status }
+          consent { id consentUrl }
+        }
+        ... on Error {
+          message
+        }
+      }
+    }
+    """
+    data = graphql_query(token, mutation, variables={'name': name}, environment=environment)
+    result = data.get('createAccount') or {}
+    if 'message' in result:
+        raise ValueError(f"Swan a refusé la demande de compte : {result['message']}")
+    account = result.get('account') or {}
+    consent = result.get('consent') or {}
+    return {
+        'account_id': account.get('id'),
+        'status': account.get('status'),
+        'consent_url': consent.get('consentUrl'),
+    }
+
+
+def company_onboarding_v2_preflight():
+    """Validate Swan's current v2 company-onboarding schema without creating anything."""
+    token = get_server_token()
+    query = """
+    query ProfitOSCompanyOnboardingV2Preflight {
+      mutationType: __type(name: "Mutation") {
+        fields { name }
+      }
+      createInput: __type(name: "CreateCompanyAccountHolderOnboardingInput") {
+        inputFields { name }
+      }
+      companyInput: __type(name: "CompanyInfoInput") {
+        inputFields { name }
+      }
+    }
+    """
+    data = graphql_query(token, query)
+    mutation_names = {
+        f.get("name") for f in ((data.get("mutationType") or {}).get("fields") or [])
+    }
+    create_fields = {
+        f.get("name") for f in ((data.get("createInput") or {}).get("inputFields") or [])
+    }
+    company_fields = {
+        f.get("name") for f in ((data.get("companyInput") or {}).get("inputFields") or [])
+    }
+    required_mutation = "createCompanyAccountHolderOnboarding"
+    required_create = {"accountInfo", "accountAdmin", "company"}
+    required_company = {
+        "name", "registrationNumber", "legalFormCode",
+        "businessActivity", "businessActivityDescription",
+        "monthlyPaymentVolume", "regulatoryClassification",
+        "relatedIndividuals",
+    }
+    missing = []
+    if required_mutation not in mutation_names:
+        missing.append(required_mutation)
+    missing += sorted(required_create - create_fields)
+    missing += sorted(required_company - company_fields)
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "mutation": required_mutation,
+        "create_fields": sorted(x for x in create_fields if x),
+        "company_fields": sorted(x for x in company_fields if x),
+    }
+
+
+def create_company_onboarding_v2_sandbox(input_data):
+    """Create one Swan v2 company onboarding in Sandbox.
+
+    This is deliberately sandbox-only. It creates an onboarding record/link,
+    not a live production bank account. Completion/verification remains on Swan.
+    """
+    if current_environment() != "sandbox":
+        raise ValueError("Création d'onboarding bloquée hors Sandbox.")
+    if not isinstance(input_data, dict):
+        raise ValueError("Données d'onboarding invalides.")
+
+    token = get_server_token()
+    mutation = """
+    mutation ProfitOSCreateCompanyOnboardingV2($input: CreateCompanyAccountHolderOnboardingInput!) {
+      createCompanyAccountHolderOnboarding(input: $input) {
+        __typename
+        ... on CreateCompanyAccountHolderOnboardingSuccessPayload {
+          onboarding {
+            id
+            onboardingUrl
+            statusInfo {
+              status
+              ... on OnboardingInvalidStatusInfo {
+                errors { field errors }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, mutation, {"input": input_data}, environment="sandbox")
+    result = data.get("createCompanyAccountHolderOnboarding") or {}
+    typename = result.get("__typename") or ""
+    onboarding = result.get("onboarding") or {}
+    if typename != "CreateCompanyAccountHolderOnboardingSuccessPayload":
+        raise ValueError(f"Swan a refusé l'onboarding (type: {typename or 'inconnu'}).")
+    if not onboarding.get("id"):
+        raise ValueError("Swan n'a renvoyé aucun identifiant d'onboarding.")
+    status_info = onboarding.get("statusInfo") or {}
+    return {
+        "id": onboarding.get("id"),
+        "onboarding_url": onboarding.get("onboardingUrl"),
+        "status": status_info.get("status"),
+        "errors": status_info.get("errors") or [],
+    }
+
+
+def create_individual_onboarding_v2_sandbox(input_data):
+    """Create a Swan individual onboarding using the current API, Sandbox only."""
+    if current_environment() != "sandbox":
+        raise ValueError("Création d'onboarding individuel bloquée hors Sandbox.")
+    if not isinstance(input_data, dict):
+        raise ValueError("Données d'onboarding individuel invalides.")
+
+    token = get_server_token()
+    mutation = """
+    mutation ProfitOSCreateIndividualOnboardingV2($input: CreateIndividualAccountHolderOnboardingInput!) {
+      createIndividualAccountHolderOnboarding(input: $input) {
+        __typename
+        ... on CreateIndividualAccountHolderOnboardingSuccessPayload {
+          onboarding {
+            id
+            onboardingUrl
+            statusInfo {
+              status
+              ... on OnboardingInvalidStatusInfo {
+                errors { field errors }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = graphql_query(token, mutation, {"input": input_data}, environment="sandbox")
+    result = data.get("createIndividualAccountHolderOnboarding") or {}
+    typename = result.get("__typename") or ""
+    onboarding = result.get("onboarding") or {}
+    if typename != "CreateIndividualAccountHolderOnboardingSuccessPayload":
+        raise ValueError(f"Swan a refusé l'onboarding individuel (type: {typename or 'inconnu'}).")
+    if not onboarding.get("id"):
+        raise ValueError("Swan n'a renvoyé aucun identifiant d'onboarding individuel.")
+    status_info = onboarding.get("statusInfo") or {}
+    return {
+        "id": onboarding.get("id"),
+        "onboarding_url": onboarding.get("onboardingUrl"),
+        "status": status_info.get("status"),
+        "errors": status_info.get("errors") or [],
+        "kind": "individual",
+    }
+
+
+def request_card(token, swan_account_id, holder_name, environment=None):
+    """Demande l'émission d'une carte pour un compte existant. Renvoie
+    {card_id, consent_url} — la carte n'est PAS active tant que le
+    consentement n'a pas été approuvé. Structure de mutation non vérifiée
+    contre l'API réelle — à valider en sandbox avant tout usage."""
+    mutation = """
+    mutation ProfitOSAddCard($accountId: ID!, $holderName: String!) {
+      addCards(input: { accountId: $accountId, cards: [{ cardholderName: $holderName }] }) {
+        ... on AddCardsSuccessPayload {
+          cards { id status }
+          consent { id consentUrl }
+        }
+        ... on Error {
+          message
+        }
+      }
+    }
+    """
+    data = graphql_query(
+        token, mutation,
+        variables={'accountId': swan_account_id, 'holderName': holder_name},
+        environment=environment,
+    )
+    result = data.get('addCards') or {}
+    if 'message' in result:
+        raise ValueError(f"Swan a refusé la demande de carte : {result['message']}")
+    cards = result.get('cards') or []
+    consent = result.get('consent') or {}
+    return {
+        'card_id': cards[0]['id'] if cards else None,
+        'status': cards[0]['status'] if cards else None,
+        'consent_url': consent.get('consentUrl'),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Rattachement des comptes Swan aux organisations ProfitOS.
+#
+# Un projet Swan (SWAN_CLIENT_ID) contient les comptes de TOUS les clients
+# ProfitOS : sans rattachement explicite, chaque organisation verrait — et pourrait
+# débiter — les comptes des autres. Un compte n'est visible et utilisable que s'il
+# a été rattaché à l'organisation lors de SON parcours (demande de compte ou
+# onboarding créé depuis cette organisation).
+# ---------------------------------------------------------------------------
+
+def _auth():
+    from profitos.runtime import auth_cx
+    return auth_cx()
+
+
+def _now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def bind_account(org_id, account_id, entity_id=None):
+    """Rattache un compte Swan à une organisation. Refuse un compte déjà rattaché
+    à une AUTRE organisation (ValueError)."""
+    account_id = str(account_id or '').strip()
+    if not account_id:
+        return False
+    c = _auth()
+    try:
+        row = c.execute('SELECT organization_id FROM swan_account_bindings WHERE swan_account_id=?', (account_id,)).fetchone()
+        if row and int(row['organization_id']) != int(org_id):
+            raise ValueError("Ce compte Swan est rattaché à une autre organisation.")
+        if not row:
+            c.execute('INSERT INTO swan_account_bindings(swan_account_id,organization_id,entity_id,environment,created_at) '
+                      'VALUES(?,?,?,?,?)', (account_id, int(org_id), entity_id, current_environment(), _now_iso()))
+            c.commit()
+        return True
+    finally:
+        c.close()
+
+
+def bind_onboarding(org_id, onboarding_id, entity_id=None):
+    onboarding_id = str(onboarding_id or '').strip()
+    if not onboarding_id:
+        return False
+    c = _auth()
+    try:
+        if not c.execute('SELECT 1 FROM swan_onboarding_bindings WHERE onboarding_id=?', (onboarding_id,)).fetchone():
+            c.execute('INSERT INTO swan_onboarding_bindings(onboarding_id,organization_id,entity_id,environment,created_at) '
+                      'VALUES(?,?,?,?,?)', (onboarding_id, int(org_id), entity_id, current_environment(), _now_iso()))
+            c.commit()
+        return True
+    finally:
+        c.close()
+
+
+def bound_account_ids(org_id):
+    c = _auth()
+    try:
+        return {r['swan_account_id'] for r in c.execute(
+            'SELECT swan_account_id FROM swan_account_bindings WHERE organization_id=?', (int(org_id),)).fetchall()}
+    finally:
+        c.close()
+
+
+def organization_for_resource(resource_id):
+    """Organisation propriétaire d'un compte ou d'un onboarding Swan (webhooks)."""
+    resource_id = str(resource_id or '').strip()
+    if not resource_id:
+        return None
+    c = _auth()
+    try:
+        for table, col in (('swan_account_bindings', 'swan_account_id'), ('swan_onboarding_bindings', 'onboarding_id')):
+            row = c.execute(f'SELECT organization_id FROM {table} WHERE {col}=?', (resource_id,)).fetchone()
+            if row:
+                return int(row['organization_id'])
+        return None
+    finally:
+        c.close()
+
+
+def sync_onboarding_accounts(token, org_id):
+    """Pour chaque onboarding créé par l'organisation, rattache le compte ouvert à
+    l'issue de l'onboarding (lecture seule côté Swan ; structure GraphQL à valider
+    en Sandbox). Ne lève jamais : renvoie le nombre de comptes rattachés."""
+    c = _auth()
+    try:
+        rows = c.execute('SELECT onboarding_id,entity_id FROM swan_onboarding_bindings WHERE organization_id=?',
+                         (int(org_id),)).fetchall()
+    finally:
+        c.close()
+    bound = 0
+    query = 'query ProfitOSOnboardingAccount($id: ID!) { onboarding(id: $id) { account { id } } }'
+    for row in rows:
+        try:
+            data = graphql_query(token, query, {'id': row['onboarding_id']})
+            account_id = (((data.get('onboarding') or {}).get('account') or {}).get('id') or '').strip()
+            if account_id and bind_account(org_id, account_id, row['entity_id']):
+                bound += 1
+        except Exception:
+            continue
+    return bound

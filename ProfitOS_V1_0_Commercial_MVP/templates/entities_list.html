@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">MULTI-ENTITÉS</div>
+    <h1 class="purchase-title">Entités du groupe</h1>
+    <p class="purchase-subtitle">Chaque filiale a sa propre numérotation de factures/achats, son propre numéro de TVA et sa propre comptabilité.</p>
+  </div>
+  <div class="purchase-primary-actions">
+    <a class="purchase-nav-btn" href="{{ url_for('entities_consolidated') }}">Vue consolidée</a>
+    <a class="purchase-primary-btn primary" href="{{ url_for('entity_new') }}">+ Nouvelle filiale</a>
+  </div>
+</div>
+
+<section class="purchase-panel">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Nom</th><th>SIRET</th><th>N° TVA</th><th></th></tr></thead>
+      <tbody>
+      {% for e in entities %}
+        <tr>
+          <td><strong>{{ e.name }}</strong>{% if e.id is none %} <span class="purchase-status">Société mère</span>{% endif %}</td>
+          <td>{{ e.siret or '—' }}</td>
+          <td>{{ e.vat_number or '—' }}</td>
+          <td>
+            {% if e.id is none %}
+            <a class="purchase-detail-link" href="{{ url_for('company') }}">Modifier →</a>
+            {% else %}
+            <a class="purchase-detail-link" href="{{ url_for('entity_detail',entity_id=e.id) }}">Modifier →</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+{% endblock %}

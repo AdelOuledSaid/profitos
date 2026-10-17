@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">TVA</div>
+    <h1 class="purchase-title">Déclaration CA3 pré-remplie</h1>
+    <p class="purchase-subtitle">Période du {{ date_from|fr_date }} au {{ date_to|fr_date }}. Reportez ces montants case par case dans votre espace professionnel sur impots.gouv.fr, ou transmettez-les à votre expert-comptable.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('vat_summary', date_from=date_from, date_to=date_to) }}">← Synthèse TVA</a>
+</div>
+
+<form method="get" class="purchase-panel ledger-filters">
+  <label>Du<input type="date" name="date_from" value="{{ date_from }}"></label>
+  <label>Au<input type="date" name="date_to" value="{{ date_to }}"></label>
+  <button type="submit" class="purchase-primary-btn secondary">Calculer</button>
+</form>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2 style="color:#fff;margin-top:0;">A — Montant des opérations réalisées</h2>
+  <table class="purchase-table ca3-table"><tbody>
+    <tr><td class="ca3-box">01</td><td>Ventes, prestations de services (base HT des opérations taxées)</td><td class="num">{{ f.l01|fr_number(0) }}&nbsp;€</td></tr>
+  </tbody></table>
+  <p class="purchase-muted" style="font-size:12px;">Les opérations non taxées (exportations, livraisons intracommunautaires, autoliquidation…) ne sont pas encore ventilées automatiquement : complétez les cases 04 à 06 si vous en réalisez.</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2 style="color:#fff;margin-top:0;">B — Décompte de la TVA à payer</h2>
+  <h3 class="ca3-sub">TVA brute</h3>
+  <table class="purchase-table ca3-table">
+    <thead><tr><th>Case</th><th>Taux</th><th class="num">Base HT</th><th class="num">TVA due</th></tr></thead>
+    <tbody>
+    {% for r in f.rates %}<tr><td class="ca3-box">{{ r.line }}</td><td>{{ r.label }}</td><td class="num">{% if r.rate is not none %}{{ r.base|fr_number(0) }}&nbsp;€{% endif %}</td><td class="num">{{ r.vat|fr_number(0) }}&nbsp;€</td></tr>
+    {% else %}<tr><td colspan="4" class="purchase-empty">Aucune TVA collectée exigible sur la période.</td></tr>{% endfor %}
+    <tr class="ca3-total"><td class="ca3-box">16</td><td colspan="2">Total de la TVA brute due</td><td class="num">{{ f.l16|fr_number(0) }}&nbsp;€</td></tr>
+    </tbody>
+  </table>
+  <h3 class="ca3-sub">TVA déductible</h3>
+  <table class="purchase-table ca3-table"><tbody>
+    <tr><td class="ca3-box">19</td><td>Biens constituant des immobilisations (compte 44562)</td><td class="num">{{ f.l19|fr_number(0) }}&nbsp;€</td></tr>
+    <tr><td class="ca3-box">20</td><td>Autres biens et services (compte 44566)</td><td class="num">{{ f.l20|fr_number(0) }}&nbsp;€</td></tr>
+    <tr><td class="ca3-box">22</td><td>Report du crédit de la déclaration précédente (compte 44567)</td><td class="num">{{ f.l22|fr_number(0) }}&nbsp;€</td></tr>
+    <tr class="ca3-total"><td class="ca3-box">23</td><td>Total de la TVA déductible</td><td class="num">{{ f.l23|fr_number(0) }}&nbsp;€</td></tr>
+  </tbody></table>
+  <h3 class="ca3-sub">Résultat</h3>
+  <table class="purchase-table ca3-table"><tbody>
+    {% if f.l28 %}
+    <tr class="ca3-total"><td class="ca3-box">28</td><td>TVA nette due (16 − 23)</td><td class="num">{{ f.l28|fr_number(0) }}&nbsp;€</td></tr>
+    <tr class="ca3-total"><td class="ca3-box">32</td><td>Total à payer</td><td class="num">{{ f.l32|fr_number(0) }}&nbsp;€</td></tr>
+    {% elif f.l25 %}
+    <tr class="ca3-total"><td class="ca3-box">25</td><td>Crédit de TVA (23 − 16)</td><td class="num">{{ f.l25|fr_number(0) }}&nbsp;€</td></tr>
+    <tr><td class="ca3-box">27</td><td>Crédit à reporter (si aucun remboursement n'est demandé)</td><td class="num">{{ f.l27|fr_number(0) }}&nbsp;€</td></tr>
+    {% else %}
+    <tr><td class="ca3-box">—</td><td>Ni TVA à payer ni crédit sur la période.</td><td class="num">0&nbsp;€</td></tr>
+    {% endif %}
+  </tbody></table>
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Montants arrondis à l'euro comme sur le formulaire. Calcul à partir des écritures de la période ; les montants exacts au centime sont repris dans l'écriture de liquidation.</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2 style="color:#fff;margin-top:0;">Écriture de liquidation</h2>
+  {% if f.liquidated %}
+    <p>✓ La TVA de cette période est déjà liquidée.</p>
+  {% else %}
+    <p class="purchase-muted">Solde les comptes de TVA de la période au {{ date_to|fr_date }} : la TVA collectée et la TVA déductible sont virées en {{ '44551 « TVA à décaisser »' if f.l28 else '44567 « Crédit de TVA à reporter »' }}. Le paiement à la DGFiP se rapproche ensuite du compte 44551.</p>
+    <form method="post" action="{{ url_for('accounting_ca3_liquidate') }}" data-confirm="Générer l'écriture de liquidation de TVA de cette période ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">
+      <button type="submit" class="purchase-primary-btn primary">Générer l'écriture de liquidation</button>
+    </form>
+  {% endif %}
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">ProfitOS prépare la déclaration mais ne la transmet pas à l'administration : la télétransmission (EDI-TVA) passe par votre espace professionnel ou un partenaire EDI. Régime simplifié (CA12) : les totaux sont les mêmes, à reporter dans les cases correspondantes du formulaire annuel.</p>
+</section>
+</div>
+{% endblock %}

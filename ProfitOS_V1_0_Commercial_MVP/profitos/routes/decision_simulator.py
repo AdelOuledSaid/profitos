@@ -1,0 +1,678 @@
+from profitos.runtime import *
+from profitos.feature_access import requires_paid_plan, requires_feature
+from .cash_intelligence import build_cash_intelligence
+from profitos.accounting import paris_today
+
+
+def _num(value, default=0.0):
+    """Montant positif saisi à la française (« 12 500,50 », « 12 500 € ») ou défaut."""
+    if value is None or str(value).strip()=='':
+        return default
+    parsed=parse_amount(value)
+    return default if parsed is None else max(0.0, parsed)
+
+
+def _day(value, default=0):
+    try:
+        return max(0, min(90, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _flag(value, default=False):
+    if value is None:
+        return bool(default)
+    return str(value).strip().lower() in {'1','true','yes','on','oui'}
+
+
+def _request_flag(name, default=False):
+    """Lit un booléen de formulaire GET de façon robuste.
+
+    Le template envoie toujours une valeur explicite 0, puis 1 si la case
+    est cochée. En cas de valeurs multiples, la dernière valeur reflète
+    donc l'état réel de la case.
+    """
+    values = request.args.getlist(name)
+    if not values:
+        return bool(default)
+    return _flag(values[-1], default)
+
+
+def _vat(value, default=20.0):
+    allowed={0.0,2.1,5.5,10.0,20.0}
+    v=_num(value,None) if value not in (None,'') else None
+    return v if v in allowed else default
+
+
+def _bounded_int(value, default, lo, hi):
+    try:
+        return max(lo, min(hi, int(str(value).strip())))
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
+def _installment_count(value, default=1):
+    try:
+        return max(1, min(4, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _inflow_is_available(day, inflow_day):
+    """Convention prudente de disponibilité des encaissements.
+
+    Un encaissement annoncé à J+n n'est considéré comme disponible pour
+    financer une décision qu'à partir de J+(n+1). Cela évite d'utiliser, le
+    même jour, une recette qui pourrait n'être créditée qu'après un paiement
+    fournisseur ou un prélèvement.
+    """
+    return int(day) > int(inflow_day)
+
+
+def _vat_recovery_day(pay_day, today=None):
+    """Jour (depuis aujourd'hui) où la TVA d'un paiement à J+pay_day est récupérée :
+    elle vient en déduction de la déclaration du mois du paiement, payée le 15 du
+    mois suivant (déclaration mensuelle). None au-delà de l'horizon de 90 jours."""
+    from datetime import date as _date, timedelta as _td
+    today=today or paris_today()
+    paid=today+_td(days=int(pay_day))
+    nxt=_date(paid.year+(paid.month==12), paid.month%12+1, 15)
+    offset=(nxt-today).days
+    return offset if offset<=90 else None
+
+
+def _extra_impact(day, kind, payments, decision_day, vat_rate=0.0, monthly_revenue=0.0, today=None):
+    """Effets ajoutés au moteur historique : TVA du décaissement (payée avec lui, récupérée
+    le 15 du mois suivant) et recette mensuelle (à partir d'un mois après la décision,
+    le temps de facturer et d'être payé)."""
+    impact=0.0
+    rate=0.0 if kind=='hire' else max(0.0,float(vat_rate or 0.0))
+    if rate:
+        for pay in payments:
+            vat=round(pay['amount']*rate/100.0,2)
+            if day>=pay['day']:
+                impact-=vat
+            back=_vat_recovery_day(pay['day'],today)
+            if back is not None and day>=back:
+                impact+=vat
+    if monthly_revenue:
+        start=decision_day+30
+        if day>start:
+            impact+=monthly_revenue*((day-start)/30.0)
+    return impact
+
+
+def _simulate_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
+                       expected_inflow=0.0, inflow_day=60, vat_rate=0.0, monthly_revenue=0.0, today=None):
+    baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
+    if not baseline:
+        return None
+    values=list(baseline['values'])
+    adjusted=[]
+    for day,base in enumerate(values):
+        impact=0.0
+        if kind in ('investment','expense','market') and day>=decision_day:
+            impact-=amount
+        if kind=='hire':
+            if day>=decision_day:
+                impact-=amount
+                impact-=monthly_cost*((day-decision_day)/30.0)
+        elif monthly_cost and day>=decision_day:
+            impact-=monthly_cost*((day-decision_day)/30.0)
+        if expected_inflow and _inflow_is_available(day, inflow_day):
+            impact+=expected_inflow
+        impact+=_extra_impact(day,kind,[{'day':decision_day,'amount':amount}],decision_day,vat_rate,monthly_revenue,today)
+        adjusted.append(round(base+impact,2))
+    minimum=min(adjusted); min_day=adjusted.index(minimum); end_90=adjusted[-1]
+    baseline_min=baseline['minimum']
+    deterioration=round(minimum-baseline_min,2)
+    financing_gap=round(max(0.0,-minimum),2)
+    if minimum < 0:
+        level='RISQUÉ'; tone='danger'
+        recommendation=(f"Décision non soutenable avec les données actuelles : il manque au moins "
+                        f"{fr_number(financing_gap)} € pour éviter une trésorerie négative.")
+    elif minimum < max(cash['monthly_burn']*0.5, 1000):
+        level='VIGILANCE'; tone='warning'
+        recommendation="Décision possible mais avec une marge de sécurité faible. Sécurisez un encaissement ou un financement avant engagement."
+    else:
+        level='SOUTENABLE'; tone='good'
+        recommendation="La décision reste soutenable sur l'horizon de 90 jours avec les données actuellement connues."
+    return {
+        'kind':kind,'amount':amount,'decision_day':decision_day,'monthly_cost':monthly_cost,
+        'expected_inflow':expected_inflow,'inflow_day':inflow_day,'values':adjusted,
+        'minimum':round(minimum,2),'min_day':min_day,'end_90':round(end_90,2),
+        'baseline_min':round(baseline_min,2),'baseline_end_90':round(baseline['end_90'],2),
+        'deterioration':deterioration,'financing_gap':financing_gap,'level':level,
+        'tone':tone,'recommendation':recommendation,'vat_rate':0.0 if kind=='hire' else vat_rate,
+        'vat_amount':0.0 if kind=='hire' else round(amount*float(vat_rate or 0)/100.0,2),
+        'vat_back_day':None if kind=='hire' or not vat_rate else _vat_recovery_day(decision_day,today),
+        'monthly_revenue':monthly_revenue,
+    }
+
+
+def _build_payment_schedule(amount, decision_day, installments):
+    """Construit l'échéancier exact utilisé par la simulation.
+
+    Les montants sont répartis en centimes entiers afin que la somme des
+    échéances soit toujours exactement égale au montant de la décision.
+    La cadence historique du moteur est conservée : une échéance tous les
+    30 jours, avec un horizon plafonné à J+90.
+    """
+    installments=max(1, min(4, int(installments or 1)))
+    total_cents=max(0, int(round(float(amount or 0.0) * 100)))
+    base_cents=total_cents // installments
+    remainder=total_cents % installments
+
+    schedule=[]
+    for i in range(installments):
+        cents=base_cents + (1 if i < remainder else 0)
+        schedule.append({
+            'day':min(90, int(decision_day) + 30*i),
+            'amount':round(cents / 100.0, 2),
+        })
+    return schedule
+
+
+def _simulate_strategy(cash, kind, amount, decision_day=0, monthly_cost=0.0,
+                       expected_inflow=0.0, inflow_day=60, installments=1, vat_rate=0.0, monthly_revenue=0.0, today=None):
+    baseline=next((x for x in cash.get('curves', []) if x['mode']=='probable'), None)
+    if not baseline:
+        return None
+    values=list(baseline['values'])
+    installments=max(1, min(4, int(installments or 1)))
+
+    if kind in ('investment','expense','market'):
+        payment_schedule=_build_payment_schedule(amount, decision_day, installments)
+    else:
+        payment_schedule=[{
+            'day':int(decision_day),
+            'amount':round(float(amount or 0.0),2),
+        }]
+
+    payment_days=[item['day'] for item in payment_schedule]
+    adjusted=[]
+    for day,base in enumerate(values):
+        impact=0.0
+        if kind in ('investment','expense','market'):
+            for installment in payment_schedule:
+                if day>=installment['day']:
+                    impact-=installment['amount']
+        elif kind=='hire':
+            if day>=decision_day:
+                impact-=amount
+                impact-=monthly_cost*((day-decision_day)/30.0)
+        if kind!='hire' and monthly_cost and day>=decision_day:
+            impact-=monthly_cost*((day-decision_day)/30.0)
+        if expected_inflow and _inflow_is_available(day, inflow_day):
+            impact+=expected_inflow
+        impact+=_extra_impact(day,kind,payment_schedule,decision_day,vat_rate,monthly_revenue,today)
+        adjusted.append(round(base+impact,2))
+
+    return {
+        'values':adjusted,
+        'minimum':round(min(adjusted),2),
+        'min_day':adjusted.index(min(adjusted)),
+        'end_90':round(adjusted[-1],2),
+        'installments':installments,
+        'payment_days':payment_days,
+        'payment_schedule':payment_schedule,
+        'payment_total':round(sum(x['amount'] for x in payment_schedule),2),
+    }
+
+
+def _strategy_label(best, financing=0.0, kind='investment'):
+    day=best['decision_day']
+    installments=best['installments']
+    if kind=='hire':
+        parts=["embaucher maintenant" if day==0 else f"reporter l'embauche à J+{day}"]
+    elif kind=='market':
+        parts=["lancer le marché maintenant" if day==0 else f"reporter le lancement du marché à J+{day}"]
+        if installments>1:
+            parts.append(f"fractionner le coût de démarrage en {installments} fois")
+    elif kind=='expense':
+        parts=["engager la dépense maintenant" if day==0 else f"reporter la dépense à J+{day}"]
+        if installments>1:
+            parts.append(f"payer en {installments} fois")
+    else:
+        parts=["acheter maintenant" if day==0 else f"reporter l'achat à J+{day}"]
+        if installments>1:
+            parts.append(f"payer en {installments} fois")
+    if financing > 0:
+        parts.append(f"sécuriser {fr_number(financing)} € de financement")
+    return ", ".join(parts[:-1]) + (" et " + parts[-1] if len(parts)>1 else parts[0])
+
+
+def _plan_reason(plan, reserve, max_financing, deadline, kind='investment', constraints=None):
+    reasons=[]
+    if plan['financing']==0:
+        reasons.append("aucun financement supplémentaire")
+    else:
+        reasons.append(f"{fr_number(plan['financing'])} € de financement")
+    reasons.append(f"un point bas de {fr_number(plan['minimum_after_financing'])} € après financement")
+    reasons.append(f"une décision à J+{plan['decision_day']}")
+    if kind!='hire' and plan['installments']>1:
+        reasons.append(f"un paiement en {plan['installments']} fois")
+    text="Ce plan combine " + ", ".join(reasons[:-1]) + " et " + reasons[-1] + "."
+    if max_financing is not None:
+        if plan['financing'] <= max_financing + 0.01:
+            text += f" Il respecte le plafond de financement de {fr_number(max_financing)} €."
+        else:
+            text += f" Il dépasse le plafond de financement de {fr_number(max_financing)} € de {fr_number(plan['financing']-max_financing)} €."
+    if deadline is not None:
+        text += f" Il respecte aussi l'échéance maximale J+{deadline}."
+    text += f" Réserve cible : {fr_number(reserve)} €."
+    if constraints:
+        uses_delay = plan['decision_day'] > constraints['original_day']
+        uses_installments = plan['installments'] > 1
+        if uses_delay and uses_installments:
+            text += (f" Cette alternative suppose que le report à J+{plan['decision_day']} et le paiement en "
+                     f"{plan['installments']} fois soient effectivement acceptés et confirmés avec le fournisseur ou le partenaire.")
+        elif uses_delay:
+            text += (f" Cette alternative suppose que le report à J+{plan['decision_day']} soit effectivement accepté "
+                     "et confirmé avec le fournisseur ou le partenaire.")
+        elif uses_installments:
+            text += (f" Cette alternative suppose que le paiement en {plan['installments']} fois soit effectivement accepté "
+                     "et confirmé avec le fournisseur ou le partenaire.")
+    return text
+
+
+def _optimize_decision(cash, kind, amount, decision_day=0, monthly_cost=0.0,
+                       expected_inflow=0.0, inflow_day=60, reserve=5000.0,
+                       max_financing=None, deadline=90, allow_delay=True,
+                       max_delay=90, allow_installments=True, max_installments=4,
+                       allow_financing=True, vat_rate=0.0, monthly_revenue=0.0):
+    """Optimize only inside explicitly allowed business constraints.
+
+    The public route passes the user's actual negotiation constraints. Defaults
+    remain permissive for backward-compatible internal calls and historical
+    tests.  Legacy search marker kept for regression compatibility:
+    list(range(decision_day,91,5))
+    """
+    reserve=max(0.0, float(reserve or 0.0))
+    deadline=max(decision_day, min(90, int(deadline if deadline is not None else 90)))
+    max_delay=max(0, min(90, int(max_delay if max_delay is not None else 0)))
+    max_installments=max(1, min(4, int(max_installments if max_installments is not None else 1)))
+    allow_delay=bool(allow_delay)
+    allow_installments=bool(allow_installments) and kind!='hire'
+    allow_financing=bool(allow_financing)
+    if not allow_financing:
+        max_financing=0.0
+    elif max_financing is not None:
+        max_financing=max(0.0,float(max_financing))
+
+    latest_day=min(deadline, decision_day + max_delay) if allow_delay else decision_day
+    if allow_delay:
+        # Search every calendar day so the recommended date is the earliest
+        # genuinely feasible date, not merely the first point on a 5-day grid.
+        delays=list(range(decision_day, latest_day+1))
+    else:
+        delays=[decision_day]
+
+    installment_options=list(range(1,max_installments+1)) if allow_installments else [1]
+    if kind=='hire':
+        installment_options=[1]
+
+    candidates=[]
+    for day in delays:
+        for installments in installment_options:
+            result=_simulate_strategy(cash,kind,amount,day,monthly_cost,expected_inflow,inflow_day,installments,
+                                      vat_rate=vat_rate,monthly_revenue=monthly_revenue)
+            if not result:
+                continue
+            financing=round(max(0.0,reserve-result['minimum']),2)
+            minimum_before=round(result['minimum'],2)
+            minimum_after=round(minimum_before+financing,2)
+            end_90_before=round(result['end_90'],2)
+            end_90_after=round(end_90_before+financing,2)
+            candidates.append({'decision_day':day,'installments':installments,
+                'minimum':minimum_before,'minimum_before_financing':minimum_before,
+                'minimum_after_financing':minimum_after,'min_day':result['min_day'],
+                'end_90':end_90_before,'end_90_before_financing':end_90_before,
+                'end_90_after_financing':end_90_after,'financing':financing,
+                'payment_days':result['payment_days'],
+                'payment_schedule':result.get('payment_schedule',[]),
+                'payment_total':result.get('payment_total',round(amount,2))})
+    if not candidates:
+        return None
+
+    feasible=[c for c in candidates
+              if allow_financing or c['financing']<=0.01
+              if (max_financing is None or c['financing']<=max_financing+0.01)
+              if c['minimum_after_financing']+0.01>=reserve
+              if c['decision_day']<=deadline]
+    constraints_met=bool(feasible)
+    pool=feasible or candidates
+    ranked_all=sorted(pool,key=lambda x:(x['financing'],x['decision_day'],x['installments'],-x['minimum']))
+
+    # Collapse financially equivalent plans. If several dates produce the same
+    # financing need, minimum cash and installment count, keep the earliest one.
+    ranked=[]
+    seen=set()
+    equivalent_dates={}
+    for c in ranked_all:
+        key=(round(c['financing'],2),round(c['minimum'],2),c['installments'],round(c['end_90'],2))
+        if key in seen:
+            equivalent_dates.setdefault(key,[]).append(c['decision_day'])
+            continue
+        seen.add(key)
+        ranked.append(c)
+        equivalent_dates.setdefault(key,[c['decision_day']])
+
+    best=dict(ranked[0])
+    best['score']=(best['financing'],best['decision_day'],best['installments'])
+    constraints={
+        'original_day':decision_day,'allow_delay':allow_delay,'max_delay':max_delay,
+        'allow_installments':allow_installments,'max_installments':max_installments,
+        'allow_financing':allow_financing,
+    }
+    label=_strategy_label(best,best['financing'],kind)
+    uses_delay = best['decision_day'] > decision_day
+    uses_installments = best['installments'] > 1
+    requires_negotiation = uses_delay or uses_installments
+    if uses_delay and uses_installments:
+        negotiation_message = (f"Cette solution nécessite un report à J+{best['decision_day']} et un paiement en "
+                               f"{best['installments']} fois. Ces conditions doivent être confirmées avec le fournisseur ou le partenaire.")
+    elif uses_delay:
+        negotiation_message = (f"Cette solution nécessite de reporter la décision à J+{best['decision_day']}. "
+                               "Ce report doit être confirmé avec le fournisseur ou le partenaire.")
+    elif uses_installments:
+        negotiation_message = (f"Cette solution nécessite un paiement en {best['installments']} fois. "
+                               "Ce fractionnement doit être confirmé avec le fournisseur ou le partenaire.")
+    else:
+        negotiation_message = ""
+    if constraints_met:
+        explanation=_plan_reason(best,reserve,max_financing,deadline,kind,constraints)
+        eq_key=(round(best['financing'],2),round(best['minimum'],2),best['installments'],round(best['end_90'],2))
+        eq_dates=sorted(set(equivalent_dates.get(eq_key,[])))
+        if len(eq_dates)>1:
+            explanation += (f" Plusieurs dates testées donnent le même résultat financier ; "
+                            f"J+{best['decision_day']} est retenu car c'est la date la plus proche.")
+        explanation += (f" Point bas avant financement : {fr_number(best['minimum_before_financing'])} €. "
+                        f"Après apport du financement de {fr_number(best['financing'])} €, "
+                        f"le point bas financé est {fr_number(best['minimum_after_financing'])} €, "
+                        f"donc la réserve cible de {fr_number(reserve)} € est respectée.")
+    else:
+        accepted_cap=max_financing if max_financing is not None else (0.0 if not allow_financing else best['financing'])
+        gap=round(max(0.0,best['financing']-accepted_cap),2)
+        explanation=(f"Aucun plan compatible avec vos contraintes. Le meilleur besoin de financement trouvé est "
+                     f"{fr_number(best['financing'])} €, pour un plafond accepté de {fr_number(accepted_cap)} €. "
+                     f"Écart : {fr_number(gap)} €. Aucune solution soutenable trouvée sans modifier une contrainte réelle. "
+                     f"Vous pouvez réduire le montant de la décision ou réexaminer explicitement les leviers de report, "
+                     f"fractionnement ou financement.")
+
+    debt_free=[c for c in candidates if c['financing']==0 and c['minimum']+0.01>=reserve]
+    if debt_free:
+        nf=min(debt_free,key=lambda x:(x['decision_day'],x['installments'],-x['minimum']))
+        no_financing={**nf,'available':True,'label':_strategy_label(nf,0,kind),
+            'explanation':f"Cette option ne nécessite aucun financement et conserve au moins {fr_number(nf['minimum'])} € de trésorerie."}
+    else:
+        closest=max(candidates,key=lambda x:x['minimum'])
+        no_financing={'available':False,'label':f"Aucune solution sans financement avant J+{deadline}",
+            'explanation':(f"Avec les encaissements connus et les contraintes autorisées, la trajectoire la plus favorable atteint {fr_number(closest['minimum'])} €. "
+                           f"Il manque {fr_number(max(0.0,reserve-closest['minimum']))} € pour préserver {fr_number(reserve)} € de réserve."),
+            'decision_day':closest['decision_day'],'installments':closest['installments'],
+            'minimum':closest['minimum'],'financing':closest['financing']}
+
+    top3=[]
+    for i,c in enumerate(ranked[:3],1):
+        item=dict(c)
+        item['rank']=i
+        item['reason']=_plan_reason(c,reserve,max_financing,deadline,kind,constraints)
+        top3.append(item)
+    accepted_cap=max_financing if max_financing is not None else (0.0 if not allow_financing else best['financing'])
+    return {'reserve':reserve,'max_financing':max_financing,'deadline':deadline,'constraints_met':constraints_met,
+        'best':best,'label':label,'explanation':explanation,'alternatives':ranked[:5],
+        'top3':top3,'no_financing':no_financing,'requires_negotiation':requires_negotiation,
+        'uses_delay':uses_delay,'uses_installments':uses_installments,'negotiation_message':negotiation_message,
+        'constraint_gap': round(max(0.0,best['financing']-accepted_cap),2) if not constraints_met else 0.0,
+        'allow_delay':allow_delay,'max_delay':max_delay,'allow_installments':allow_installments,
+        'max_installments':max_installments,'allow_financing':allow_financing,'kind':kind}
+
+
+def _build_constraint_resolutions(cash, kind, amount, optimizer, decision_day=0, monthly_cost=0.0,
+                                  expected_inflow=0.0, inflow_day=60, allow_delay=True,
+                                  max_delay=90, allow_installments=True, max_installments=4,
+                                  allow_financing=True, vat_rate=0.0, monthly_revenue=0.0):
+    """Return only resolution strategies revalidated by the real optimizer.
+
+    Every displayed strategy is replayed through ``_optimize_decision`` and is
+    kept only when all constraints are actually met. No future revenue is added.
+    """
+    if not optimizer or optimizer.get('constraints_met'):
+        return []
+    cap=optimizer.get('max_financing')
+    if cap is None:
+        return []
+    reserve=optimizer['reserve']; deadline=optimizer['deadline']
+
+    def verify(target_amount, target_cap):
+        result=_optimize_decision(
+            cash, kind, max(0.0,target_amount), decision_day, monthly_cost,
+            expected_inflow, inflow_day, reserve, max(0.0,target_cap), deadline,
+            allow_delay, max_delay, allow_installments, max_installments, allow_financing,
+            vat_rate=vat_rate, monthly_revenue=monthly_revenue)
+        if not result or not result.get('constraints_met'):
+            return None
+        best=result['best']
+        if best['minimum_after_financing'] + 0.01 < reserve:
+            return None
+        if best['financing'] > target_cap + 0.01 or best['decision_day'] > deadline:
+            return None
+        return result
+
+    resolutions=[]
+    # 1) Increase financing ceiling only when external financing is an allowed lever.
+    hi=max(cap, optimizer['best']['financing']); lo=cap
+    verified=verify(amount,hi) if allow_financing else None
+    if verified:
+        for _ in range(28):
+            mid=(lo+hi)/2.0
+            if verify(amount,mid): hi=mid
+            else: lo=mid
+        target_cap=round(hi+0.01,2); checked=verify(amount,target_cap) or verified
+        extra=round(max(0.0,target_cap-cap),2)
+        resolutions.append({'rank':1,'kind':'financing','title':'Augmenter le financement disponible',
+            'headline':f"Porter le plafond de financement à {fr_number(target_cap)} €",
+            'effort':extra,'target_amount':amount,'target_max_financing':target_cap,
+            'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
+            'explanation':f"Solution vérifiée par le simulateur : plafond augmenté de {fr_number(extra)} € ; la réserve cible de {fr_number(reserve)} € est respectée après financement."})
+
+    if kind in ('investment','expense','market') and amount > 0:
+        # 2) Reduce amount while keeping the existing financing ceiling.
+        lo=0.0; hi=amount
+        if verify(lo,cap):
+            for _ in range(30):
+                mid=(lo+hi)/2.0
+                if verify(mid,cap): lo=mid
+                else: hi=mid
+            target_amount=max(0.0,round(lo-0.01,2)); checked=verify(target_amount,cap) or verify(lo,cap)
+            reduction=round(max(0.0,amount-target_amount),2)
+            resolutions.append({'rank':len(resolutions)+1,'kind':'amount','title':'Réduire le montant de la décision',
+                'headline':f"Ramener le décaissement initial à environ {fr_number(target_amount)} €",
+                'effort':reduction,'target_amount':target_amount,'target_max_financing':cap,
+                'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
+                'explanation':f"Solution vérifiée : réduire la décision d’environ {fr_number(reduction)} € permet de respecter le plafond de {fr_number(cap)} € et la réserve cible de {fr_number(reserve)} €."})
+
+        # 3) Search a genuinely feasible mixed compromise instead of splitting the old gap 50/50.
+        best_mix=None
+        base_gap=max(1.0,optimizer['best']['financing']-cap)
+        for i in range(1,40):
+            reduction=base_gap*i/40.0
+            target_amount=max(0.0,amount-reduction)
+            # Find minimum cap required for this reduced amount.
+            low=cap; high=max(cap,optimizer['best']['financing'])
+            if not verify(target_amount,high):
+                continue
+            for _ in range(22):
+                mid=(low+high)/2.0
+                if verify(target_amount,mid): high=mid
+                else: low=mid
+            target_cap=round(high+0.01,2); checked=verify(target_amount,target_cap)
+            if not checked: continue
+            extra=max(0.0,target_cap-cap)
+            # Prefer balanced controllable effort, then lower total effort.
+            score=(abs(extra-reduction),extra+reduction)
+            if best_mix is None or score < best_mix[0]:
+                best_mix=(score,target_amount,target_cap,reduction,extra,checked)
+        if best_mix:
+            _,target_amount,target_cap,reduction,extra,checked=best_mix
+            resolutions.append({'rank':len(resolutions)+1,'kind':'mixed','title':'Partager l’effort',
+                'headline':f"Augmenter le plafond de financement de {fr_number(extra)} € et réduire la décision de {fr_number(reduction)} €",
+                'effort':round(extra+reduction,2),'target_amount':round(target_amount,2),'target_max_financing':round(target_cap,2),
+                'verified':True,'verified_minimum':checked['best']['minimum_after_financing'],'verified_financing':checked['best']['financing'],
+                'explanation':f"Combinaison vérifiée par le simulateur : nouveau plafond {fr_number(target_cap)} €, décision environ {fr_number(target_amount)} €. La réserve cible de {fr_number(reserve)} € est respectée après financement."})
+    return resolutions[:3]
+
+def loan_payment(principal, annual_rate, months):
+    """Mensualité constante d'un prêt amortissable (taux annuel en %)."""
+    principal=float(principal or 0); months=max(1,int(months or 1)); r=float(annual_rate or 0)/1200.0
+    if principal<=0:
+        return 0.0
+    if r<=0:
+        return round(principal/months,2)
+    return round(principal*r/(1-(1+r)**(-months)),2)
+
+
+def _financing_cost(financing, annual_rate, months):
+    if not financing or financing<=0:
+        return None
+    m=loan_payment(financing,annual_rate,months)
+    return {'principal':round(financing,2),'rate':annual_rate,'months':int(months),'monthly':m,
+            'interest':round(m*int(months)-financing,2),'total':round(m*int(months),2)}
+
+
+def _profitability(kind, amount, monthly_cost, monthly_revenue, expected_inflow, horizon_months,
+                   financing_cost=None):
+    """Rentabilité au-delà de 90 jours, sur l'horizon choisi (montants hors TVA : la TVA
+    du décaissement est récupérée). Retour sur investissement = mois nécessaires pour que
+    les gains nets mensuels remboursent le décaissement net de l'encaissement ponctuel."""
+    n=max(1,int(horizon_months or 36))
+    net_monthly=round(float(monthly_revenue or 0)-float(monthly_cost or 0),2)
+    upfront=round(float(amount or 0)-float(expected_inflow or 0),2)
+    interest=financing_cost['interest']*min(1.0,n/financing_cost['months']) if financing_cost else 0.0
+    total=round(net_monthly*n-upfront-interest,2)
+    if upfront<=0:
+        payback=0.0
+    elif net_monthly>0:
+        payback=round(upfront/net_monthly,1)
+    else:
+        payback=None
+    invested=max(float(amount or 0),0.01)
+    roi=round(total*100/invested,1) if float(amount or 0)>0 else None
+    if not monthly_revenue and not expected_inflow:
+        verdict='Aucune recette associée : cette décision est un coût. Sa justification est opérationnelle (obligation, remplacement, confort), pas financière.'
+    elif payback is None:
+        verdict=f"Les recettes mensuelles ne couvrent pas les coûts mensuels : la décision ne se rembourse pas, elle coûte {fr_number(-net_monthly)} € de plus chaque mois."
+    elif payback<=n:
+        verdict=f"La décision se rembourse en {fr_number(payback,1)} mois, puis rapporte {fr_number(net_monthly)} € nets par mois."
+    else:
+        verdict=f"Retour sur investissement en {fr_number(payback,1)} mois : au-delà de l'horizon de {n} mois retenu."
+    return {'horizon':n,'net_monthly':net_monthly,'upfront':upfront,'total':total,'payback':payback,
+            'roi':roi,'interest':round(interest,2),'verdict':verdict,
+            'positive':total>0}
+
+
+def _impact_chart(baseline, decision_values, optimized_values=None, reserve=None):
+    """Courbes avant / après décision (et plan optimisé) sur une échelle commune."""
+    from profitos.routes.cash_intelligence import _chart_scale, _curve_points
+    series=[{'values':baseline}, {'values':decision_values}]
+    if optimized_values:
+        series.append({'values':optimized_values})
+    extra=[{'values':[reserve]}] if reserve else []
+    lo,hi=_chart_scale(series+extra+[{'values':[0.0]}])
+    left=74
+    pts=[_curve_points(x['values'],lo=lo,hi=hi,left=left) for x in series]
+    y=lambda v: round(18+184*(hi-v)/max(hi-lo,1.0),1)
+    ticks=[{'y':round(18+184*i/4,1),'value':round(hi-(hi-lo)*i/4,-1) if abs(hi-lo)>200 else round(hi-(hi-lo)*i/4,2)} for i in range(5)]
+    return {'baseline':pts[0],'decision':pts[1],'optimized':pts[2] if optimized_values else None,
+            'zero_y':y(0) if lo<0<hi else None,'reserve_y':y(reserve) if reserve and lo<reserve<hi else None,
+            'ticks':ticks,'left':left,'x30':round(left+(920-left-18)*30/90,1),'x60':round(left+(920-left-18)*60/90,1)}
+
+
+def _cfo_answer(question, simulation):
+    q=(question or '').strip()
+    if not q or not simulation or not simulation.get('optimizer'): return None
+    o=simulation['optimizer']; b=o['best']; low=q.lower()
+    if not o.get('constraints_met'):
+        return f"Aucune solution soutenable trouvée sous les contraintes saisies. {o['explanation']}"
+    if any(w in low for w in ('sans financement','sans emprunt','zéro dette','zero dette')):
+        nf=o['no_financing']
+        return nf['explanation'] if not nf['available'] else f"Oui. Plan sans financement : {nf['label']}. {nf['explanation']}"
+    if any(w in low for w in ('pourquoi','why','j+','date')):
+        return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({fr_number(b['financing'])} €), puis le délai et la complexité. Point bas avant financement : {fr_number(b['minimum_before_financing'])} € ; après financement : {fr_number(b['minimum_after_financing'])} €."
+    if any(w in low for w in ('financement','emprunt','dette')):
+        return f"Le plan recommandé nécessite {fr_number(b['financing'])} € de financement pour préserver {fr_number(o['reserve'])} € de réserve."
+    return f"Plan recommandé : {o['label']}. Point bas après financement {fr_number(b['minimum_after_financing'])} €, trésorerie J+90 après financement {fr_number(b['end_90_after_financing'])} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
+
+def register(app):
+    @app.route('/decision-simulator')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @requires_feature('advanced_ai')
+    def decision_simulator():
+        cash=build_cash_intelligence()
+        kind=(request.args.get('kind') or 'investment').strip().lower()
+        if kind not in {'investment','hire','expense','market'}:
+            kind='investment'
+        submitted=request.args.get('simulate')=='1'
+        simulation=None
+        inputs={
+            'kind':kind,
+            'amount':_num(request.args.get('amount')),
+            'decision_day':_day(request.args.get('decision_day'),0),
+            'monthly_cost':_num(request.args.get('monthly_cost')),
+            'expected_inflow':_num(request.args.get('expected_inflow')),
+            'inflow_day':_day(request.args.get('inflow_day'),60),
+            'reserve':_num(request.args.get('reserve'),5000.0),
+            'max_financing': (_num(request.args.get('max_financing')) if request.args.get('max_financing') not in (None,'') else None),
+            'deadline': _day(request.args.get('deadline'),90),
+            'allow_delay': _request_flag('allow_delay', False),
+            'max_delay': _day(request.args.get('max_delay'),0),
+            'allow_installments': _request_flag('allow_installments', False),
+            'max_installments': _installment_count(request.args.get('max_installments'),1),
+            'allow_financing': _request_flag('allow_financing', False),
+            # TVA du décaissement : 20 % proposés par défaut sur un formulaire vierge ; un
+            # formulaire envoyé sans le champ (ancien lien) garde l'ancien calcul sans TVA.
+            'vat_rate': _vat(request.args.get('vat_rate'), 0.0 if submitted else 20.0),
+            'monthly_revenue':_num(request.args.get('monthly_revenue')),
+            'horizon_months': _bounded_int(request.args.get('horizon_months'), 36, 6, 120),
+            'loan_rate': min(20.0, _num(request.args.get('loan_rate'), 4.5)),
+            'loan_months': _bounded_int(request.args.get('loan_months'), 48, 6, 120),
+        }
+        if submitted and cash['cash_balance'] is not None:
+            sim_args={k:v for k,v in inputs.items() if k not in ('reserve','max_financing','deadline','allow_delay','max_delay','allow_installments','max_installments','allow_financing','horizon_months','loan_rate','loan_months')}
+            simulation=_simulate_decision(cash, **sim_args)
+            simulation['optimizer']=_optimize_decision(
+                cash, reserve=inputs['reserve'], max_financing=inputs['max_financing'], deadline=inputs['deadline'],
+                allow_delay=inputs['allow_delay'], max_delay=inputs['max_delay'],
+                allow_installments=inputs['allow_installments'], max_installments=inputs['max_installments'],
+                allow_financing=inputs['allow_financing'], **sim_args)
+            simulation['resolutions']=_build_constraint_resolutions(
+                cash, kind, inputs['amount'], simulation['optimizer'], inputs['decision_day'], inputs['monthly_cost'],
+                inputs['expected_inflow'], inputs['inflow_day'], inputs['allow_delay'], inputs['max_delay'],
+                inputs['allow_installments'], inputs['max_installments'], inputs['allow_financing'],
+                vat_rate=inputs['vat_rate'], monthly_revenue=inputs['monthly_revenue'])
+            simulation['cfo_answer']=_cfo_answer(request.args.get('cfo_question'), simulation)
+            opt=simulation['optimizer']
+            # Coût du financement recommandé et rentabilité au-delà de 90 jours.
+            simulation['financing_cost']=_financing_cost(opt['best']['financing'] if opt else 0, inputs['loan_rate'], inputs['loan_months'])
+            simulation['profitability']=_profitability(kind, inputs['amount'], inputs['monthly_cost'], inputs['monthly_revenue'],
+                                                       inputs['expected_inflow'], inputs['horizon_months'], simulation['financing_cost'])
+            # Test de résistance : la même décision si les clients paient en retard (scénario prudent).
+            prudent=next((x for x in cash.get('curves',[]) if x['mode']=='prudent'),None)
+            if prudent:
+                stressed=_simulate_decision({**cash,'curves':[{**prudent,'mode':'probable'}]}, **sim_args)
+                simulation['stress']={'minimum':stressed['minimum'],'min_day':stressed['min_day'],'gap':stressed['financing_gap'],
+                                      'level':stressed['level'],'tone':stressed['tone']}
+            baseline=next((x for x in cash.get('curves',[]) if x['mode']=='probable'),None)
+            optimized=None
+            if opt and (opt['best']['decision_day']!=inputs['decision_day'] or opt['best']['installments']>1):
+                optimized=_simulate_strategy(cash,kind,inputs['amount'],opt['best']['decision_day'],inputs['monthly_cost'],
+                                             inputs['expected_inflow'],inputs['inflow_day'],opt['best']['installments'],
+                                             vat_rate=inputs['vat_rate'],monthly_revenue=inputs['monthly_revenue'])['values']
+            simulation['chart']=_impact_chart(baseline['values'],simulation['values'],optimized,inputs['reserve'])
+            log_activity('DECISION_SIMULATION', f"Simulation {kind} · {inputs['amount']:.2f} EUR")
+        else:
+            log_activity('DECISION_SIMULATOR_VIEW','Consultation du simulateur de décision')
+        return render_template('decision_simulator.html',cash=cash,simulation=simulation,inputs=inputs,cfo_question=request.args.get('cfo_question',''))

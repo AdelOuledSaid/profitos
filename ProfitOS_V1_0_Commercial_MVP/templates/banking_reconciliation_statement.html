@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+{% set r = report %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">BANQUE</div>
+    <h1 class="purchase-title">État de rapprochement bancaire</h1>
+    <p class="purchase-subtitle">Compte {{ r.ledger_code }} au {{ r.as_of|fr_date }}. Solde du relevé comparé au solde comptable, avec les opérations qui expliquent l'écart.</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('banking') }}">← Banques</a>
+    <button type="button" class="purchase-nav-btn" data-print>Imprimer</button>
+  </div>
+</div>
+
+<form method="get" class="purchase-panel ledger-filters">
+  <label>Compte comptable
+    <select name="compte">
+      {% for l in codes %}<option value="{{ l.code }}" {% if l.code == r.ledger_code %}selected{% endif %}>{{ l.code }} — {{ l.label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Date<input type="date" name="date" value="{{ r.as_of }}"></label>
+  <label>Solde du relevé (facultatif)<input name="solde" value="{{ raw_balance }}" inputmode="decimal" placeholder="{{ r.computed_bank_balance|fr_number(2) if r.computed_bank_balance is not none else 'ex. 12 345,67' }}"></label>
+  <button type="submit" class="purchase-primary-btn secondary">Afficher</button>
+</form>
+
+{% if not r.accounts %}
+<div class="flash" role="status" style="margin-top:14px;">Aucun compte bancaire n'est rattaché au compte {{ r.ledger_code }}. Connectez votre banque ou importez un relevé depuis la page Banques.</div>
+{% elif r.reconciled %}
+<div class="flash" role="status" style="margin-top:14px;">✓ Rapproché : le solde du relevé correspond au solde comptable corrigé des opérations non comptabilisées.</div>
+{% elif r.missing_opening %}
+<div class="flash" role="status" style="margin-top:14px;">⚠ Écart de {{ r.gap|fr_number(2) }}&nbsp;€ : c'est le solde de votre banque avant le premier mouvement importé. Le solde d'ouverture du compte {{ r.ledger_code }} manque en comptabilité : reprenez votre balance d'ouverture (<a class="link" href="{{ url_for('accounting_fec_import') }}">Reprise de comptabilité</a>) ou passez une écriture d'à-nouveau.</div>
+{% elif r.gap is not none %}
+<div class="flash" role="status" style="margin-top:14px;">⚠ Écart de {{ r.gap|fr_number(2) }}&nbsp;€ entre la banque et la comptabilité. Les écritures sans mouvement bancaire ci-dessous l'expliquent en général (chèque non encaissé, règlement saisi à la main, erreur de montant).</div>
+{% else %}
+<div class="flash" role="status" style="margin-top:14px;">Solde bancaire inconnu à cette date : saisissez le solde de votre relevé pour calculer l'écart.</div>
+{% endif %}
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <div class="purchase-table-wrap">
+    <table class="purchase-table ledger-table">
+      <tbody>
+        <tr><td>Solde du relevé bancaire{% if not r.statement_balance_given and r.bank_balance is not none %} <span class="purchase-muted">(dernier solde connu ramené à la date)</span>{% endif %}</td>
+            <td style="text-align:right;"><strong>{{ r.bank_balance|fr_number(2) ~ ' €' if r.bank_balance is not none else '—' }}</strong></td></tr>
+        <tr><td>Solde comptable du compte {{ r.ledger_code }}</td><td style="text-align:right;">{{ r.ledger_balance|fr_number(2) }}&nbsp;€</td></tr>
+        <tr><td>+ Opérations bancaires non comptabilisées ({{ r.unbooked|length }})</td><td style="text-align:right;">{{ r.unbooked_total|fr_number(2) }}&nbsp;€</td></tr>
+        <tr><td><strong>= Solde comptable rapproché</strong></td><td style="text-align:right;"><strong>{{ r.adjusted_ledger|fr_number(2) }}&nbsp;€</strong></td></tr>
+        <tr><td><strong>Écart (banque − comptabilité)</strong></td><td style="text-align:right;"><strong>{{ r.gap|fr_number(2) ~ ' €' if r.gap is not none else '—' }}</strong></td></tr>
+        {% if r.unmatched %}
+        <tr><td>Écritures {{ r.ledger_code }} sans mouvement bancaire ({{ r.unmatched|length }})</td><td style="text-align:right;">{{ r.unmatched_total|fr_number(2) }}&nbsp;€</td></tr>
+        <tr><td>Écart restant après ces écritures</td><td style="text-align:right;">{{ r.unexplained|fr_number(2) ~ ' €' if r.unexplained is not none else '—' }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if r.accounts %}<p class="purchase-muted" style="font-size:12px;margin-top:8px;">Comptes bancaires inclus : {% for a in r.accounts %}{{ a.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Opérations bancaires non comptabilisées</h2>
+  <p class="purchase-muted">Présentes sur le relevé mais pas encore rapprochées d'une facture ni catégorisées. Traitez-les depuis la page Banques.</p>
+  {% if r.unbooked %}
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Libellé</th><th>Compte</th><th style="text-align:right;">Montant</th><th style="text-align:right;">Non comptabilisé</th></tr></thead>
+      <tbody>
+      {% for u in r.unbooked %}
+        <tr><td>{{ u.date|fr_date }}</td><td>{{ u.label or '—' }}{% if u.ignored %} <span class="purchase-status">Ignorée</span>{% endif %}</td><td>{{ u.account }}</td>
+            <td style="text-align:right;">{{ u.amount|fr_number(2) }}&nbsp;€</td><td style="text-align:right;"><strong>{{ u.remaining|fr_number(2) }}&nbsp;€</strong></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p>Aucune.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Écritures {{ r.ledger_code }} sans mouvement bancaire</h2>
+  <p class="purchase-muted">Passées en comptabilité mais rattachées à aucune opération du relevé (règlement marqué payé à la main, chèque émis non encore débité…).{% if r.older_unmatched %} {{ pluralize(r.older_unmatched, 'écriture antérieure', 'écritures antérieures') }} au premier mouvement bancaire importé {{ 'n\'est' if r.older_unmatched == 1 else 'ne sont' }} pas listée{{ 's' if r.older_unmatched > 1 else '' }}.{% endif %}</p>
+  {% if r.unmatched %}
+  <div class="purchase-table-wrap">
+    <table class="purchase-table">
+      <thead><tr><th>Date</th><th>Pièce</th><th>Libellé</th><th style="text-align:right;">Montant</th><th></th></tr></thead>
+      <tbody>
+      {% for u in r.unmatched %}
+        <tr><td>{{ u.date|fr_date }}</td><td>{{ u.journal }} {{ u.number }}</td><td>{{ u.label }}</td>
+            <td style="text-align:right;">{{ u.amount|fr_number(2) }}&nbsp;€</td>
+            <td><a href="{{ url_for('accounting_entry_detail', entry_id=u.entry_id) }}">Voir</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p>Aucune.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">MULTI-ENTITÉS</div>
+    <h1 class="purchase-title">Nouvelle filiale</h1>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('entities_list') }}">← Entités</a>
+</div>
+
+<section class="purchase-panel">
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="wide">Nom de l'entité<input name="name" required></label>
+    <label>SIRET<input name="siret"></label>
+    <label>N° TVA intracommunautaire<input name="vat_number" placeholder="FR12345678900"></label>
+    <label class="wide">Adresse<input name="address"></label>
+    <label>Code postal<input name="postal_code"></label>
+    <label>IBAN<input name="iban" placeholder="FR76 1234 5678 ..."></label>
+    <label>BIC<input name="bic"></label>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer l'entité</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

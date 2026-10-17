@@ -1,0 +1,67 @@
+# ProfitOS V1.3.6 — Production Monitoring & Backup Readiness
+
+## Monitoring
+Nouveau endpoint :
+`GET /ops/health`
+
+Il expose uniquement des états non sensibles :
+- version ;
+- PostgreSQL configuré / disponible ;
+- Redis configuré ;
+- Email configuré.
+
+Aucune URL de connexion, clé API ou credential n'est retourné.
+
+Sans authentification, la réponse se limite à `status`, `service` et `version`.
+Le détail `dependencies` n'est renvoyé qu'avec le jeton d'exploitation :
+définir `OPS_HEALTH_TOKEN` (valeur longue et aléatoire) dans Render, puis
+`curl -H "X-Ops-Token: $OPS_HEALTH_TOKEN" https://app.profitos.fr/ops/health`.
+
+Chaque réponse contient :
+- `X-Request-ID`
+- `X-Response-Time-Ms`
+
+Les requêtes >= 1500 ms et les réponses HTTP 5xx génèrent un log structuré `OPS`
+dans Render, corrélable avec le `request_id`.
+
+## Suivi des erreurs et disponibilité
+- **Sentry** (optionnel) : définir `SENTRY_DSN` (web et cron). Données personnelles exclues
+  (`send_default_pii=False`, emails masqués, cookies / corps / chaîne de requête filtrés).
+- **Journal d'accès gunicorn** (`gunicorn.conf.py`) : chemin sans chaîne de requête,
+  segments de type jeton masqués, Referer non journalisé.
+- **Sonde externe** : vérifier `https://app.profitos.fr/readyz` chaque minute (UptimeRobot,
+  Better Stack…) avec alerte ; Render utilise aussi `/readyz` comme health check.
+- **Événements OPS** à surveiller dans les logs : `HTTP_5XX`, `SLOW_REQUEST`,
+  `JOB_ORG_FAILED`, `JOB_FAILED`, `EMAIL_SEND_FAILED`, `EMAIL_SIMULATED`,
+  `RETENTION_PURGE_UNAVAILABLE`.
+
+## Sauvegarde automatique (à jour)
+La tâche planifiée `backup` (2 h, Paris) exécute `scripts/backup.py` : dump PostgreSQL +
+archive des documents, chiffrés, envoyés sur S3 ou conservés sur le disque persistant.
+Procédure de restauration et exercice : `RESTORE.md`. Les sections ci-dessous décrivent
+l'ancien script manuel, conservé pour dépannage.
+
+## Sauvegarde PostgreSQL manuelle (historique)
+Script :
+`python scripts/backup_postgres.py`
+
+Il utilise `pg_dump` en format custom et crée :
+`backups/profitos_YYYYMMDDTHHMMSSZ.dump`
+
+Le dossier `backups/` et les fichiers `.dump` sont exclus de Git.
+
+## Vérification d'une sauvegarde
+`python scripts/check_backup.py backups/<fichier.dump>`
+
+Le script utilise `pg_restore --list` pour vérifier que l'archive est lisible.
+
+## Recommandation production
+Une sauvegarde n'est réellement validée qu'après un test de restauration sur une
+base séparée. Ne jamais restaurer un test sur la base de production active.
+
+## Tests après déploiement
+1. `curl https://app.profitos.fr/healthz`
+2. `curl -H "X-Ops-Token: $OPS_HEALTH_TOKEN" https://app.profitos.fr/ops/health`
+3. `curl -I https://app.profitos.fr/login` et vérifier `X-Response-Time-Ms`
+4. vérifier l'absence de 5xx dans les logs Render
+5. créer une sauvegarde locale et la vérifier avec `check_backup.py`

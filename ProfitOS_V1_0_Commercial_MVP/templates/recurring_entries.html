@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ · AUTOMATISATIONS</div>
+    <h1 class="purchase-title">Écritures récurrentes</h1>
+    <p class="purchase-subtitle">Loyers, abonnements, dotations mensuelles, quotes-parts de charges : ProfitOS passe ces écritures automatiquement à chaque échéance, une seule fois par date.</p>
+  </div>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="run">
+    <button type="submit" class="purchase-nav-btn">Passer les échéances dues maintenant</button></form>
+</div>
+
+<section class="purchase-panel">
+  <h2>Modèles</h2>
+  {% if rows %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Libellé</th><th>Journal</th><th>Fréquence</th><th class="num">Montant</th><th>Prochaine échéance</th><th>État</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><strong>{{ r.label }}</strong><br><span class="purchase-muted">{% for l in r.lines %}{{ l.account_code }} {{ 'D' if l.debit else 'C' }} {{ (l.debit or l.credit)|fr_number(2) }}{% if not loop.last %} · {% endif %}{% endfor %}</span></td>
+        <td>{{ r.journal_code }}</td><td>{{ r.frequency_label }}</td><td class="num">{{ r.amount|fr_number(2) }}&nbsp;€</td>
+        <td>{{ r.next_date|fr_date if r.active else '—' }}{% if r.end_date %}<br><span class="purchase-muted">jusqu'au {{ r.end_date|fr_date }}</span>{% endif %}</td>
+        <td><span class="purchase-status {{ 'paid' if r.active else '' }}">{{ 'Active' if r.active else 'Arrêtée' }}</span></td>
+        <td>{% if r.active %}<form method="post" data-confirm="Arrêter cette écriture récurrente ? Les écritures déjà passées sont conservées."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="deactivate"><input type="hidden" name="template_id" value="{{ r.id }}"><button type="submit" class="purchase-nav-btn">Arrêter</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucune écriture récurrente pour l'instant.</p>{% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Nouvelle écriture récurrente</h2>
+  <form method="post" class="formgrid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
+    <label class="wide">Libellé<input name="label" required maxlength="120" placeholder="ex. Loyer du local — SCI Martin"></label>
+    <label>Journal<select name="journal_code">{% for j in journals %}<option value="{{ j.code }}" {% if j.code=='OD' %}selected{% endif %}>{{ j.code }} — {{ j.label }}</option>{% endfor %}</select></label>
+    <label>Fréquence<select name="frequency">{% for code, f in frequencies.items() %}<option value="{{ code }}">{{ f[0] }}</option>{% endfor %}</select></label>
+    <label>Première échéance<input type="date" name="start_date" value="{{ today }}" required></label>
+    <label>Dernière échéance (facultative)<input type="date" name="end_date"></label>
+    <div class="wide">
+      <div class="purchase-table-wrap"><table class="purchase-table">
+        <thead><tr><th>Compte</th><th>Libellé de ligne</th><th class="num">Débit</th><th class="num">Crédit</th></tr></thead>
+        <tbody>
+        {% for i in range(1, 5) %}
+          <tr><td><input name="account_{{ i }}" placeholder="{{ ['613200','445660','401000',''][i-1] }}" style="width:110px;" aria-label="Compte ligne {{ i }}"></td>
+            <td><input name="label_{{ i }}" aria-label="Libellé ligne {{ i }}"></td>
+            <td><input name="debit_{{ i }}" inputmode="decimal" style="width:110px;" aria-label="Débit ligne {{ i }}"></td>
+            <td><input name="credit_{{ i }}" inputmode="decimal" style="width:110px;" aria-label="Crédit ligne {{ i }}"></td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <p class="purchase-muted" style="font-size:12px;">Exemple : loyer 1 000 € HT — 613200 au débit 1 000, 445660 au débit 200, 401000 au crédit 1 200.</p>
+    </div>
+    <div class="wide"><button type="submit" class="purchase-primary-btn primary">Enregistrer</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

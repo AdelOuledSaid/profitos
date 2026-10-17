@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COMPTABILITÉ</div>
+    <h1 class="purchase-title">Reprendre votre comptabilité existante</h1>
+    <p class="purchase-subtitle">Importez le FEC (fichier des écritures comptables) exporté de votre ancien logiciel ou fourni par votre expert-comptable : tous les logiciels comptables français savent le produire.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('accounting_trial_balance') }}">Balance</a>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="purchase-panel stack" style="max-width:760px;" data-confirm="Lancer l'import ? Les écritures seront ajoutées à votre comptabilité.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Fichier FEC (.txt ou .csv)<input type="file" name="fec" accept=".txt,.csv,.tsv" required></label>
+  <fieldset class="stack" style="border:0;padding:0;margin:0;">
+    <legend style="font-weight:700;margin-bottom:6px;">Que reprendre ?</legend>
+    <label class="check"><input type="radio" name="mode" value="soldes" checked> <span><strong>Les soldes d'ouverture</strong> — une écriture d'à-nouveaux reprend le solde de chaque compte de bilan (clients et fournisseurs tiers par tiers) ; le résultat est porté en 120000 / 129000. À choisir si vous démarrez ProfitOS au début d'un exercice.</span></label>
+    <label class="check"><input type="radio" name="mode" value="ecritures"> <span><strong>Toutes les écritures</strong> — chaque écriture du fichier est reprise dans son journal. À choisir si vous changez de logiciel en cours d'exercice.</span></label>
+  </fieldset>
+  <label>Date des à-nouveaux <span class="purchase-muted">(soldes d'ouverture uniquement — par défaut le lendemain de la dernière écriture du fichier)</span><input type="date" name="opening_date"></label>
+  <button type="submit" class="purchase-primary-btn primary">Importer</button>
+  <p class="purchase-muted" style="font-size:12px;margin:0;">Contrôles : en-tête FEC, comptes des classes 1 à 8, chaque écriture équilibrée, aucune date dans une période clôturée. À la moindre erreur, rien n'est importé. Les comptes et journaux absents de votre plan sont créés. Un même fichier ne peut pas être importé deux fois.</p>
+</form>
+
+{% if batches %}
+<section class="purchase-panel" style="margin-top:18px;">
+  <h2 style="color:#fff;margin-top:0;">Imports réalisés</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Date</th><th>Fichier</th><th>Type</th><th style="text-align:right;">Écritures</th><th style="text-align:right;">Lignes lues</th><th>Par</th></tr></thead>
+    <tbody>{% for b in batches %}<tr><td>{{ b.imported_at|fr_date(True) }}</td><td>{{ b.filename }}</td><td>{{ "Soldes d'ouverture" if b.mode=='soldes' else 'Écritures' }}</td><td style="text-align:right;">{{ b.entries_count }}</td><td style="text-align:right;">{{ b.lines_count }}</td><td>{{ b.imported_by or '' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

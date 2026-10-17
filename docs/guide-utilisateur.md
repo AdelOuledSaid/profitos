@@ -457,6 +457,10 @@ Menu **Comptabilité → Déclarations fiscales**. ProfitOS calcule et prépare 
 3. **Vous déposez sur impots.gouv.fr** (bouton **Accéder à impots.gouv.fr**) : saisie ou vérification des montants, validation officielle et paiement en ligne.
 4. **Retour dans ProfitOS** : joignez le justificatif de dépôt (PDF ou image de l'accusé de réception), sa date et son numéro. La déclaration passe alors à « Déposée — justificatif archivé » et l'échéance correspondante est marquée comme faite.
 
+**Contrôle de l'accusé** : à l'archivage, ProfitOS lit l'accusé (PDF) et vérifie qu'il porte le bon SIREN, le bon formulaire, la bonne période et le bon montant. Il affiche « justificatif concordant » ou la liste des écarts (mauvais fichier, période ou montant différents). Une image ou un PDF scanné ne peut pas être lu automatiquement : contrôlez-le vous-même. Ce contrôle ne confirme pas l'acceptation par l'administration, que ProfitOS ne peut pas interroger pour un dépôt fait sur impots.gouv.fr : un rejet ou une anomalie vous est signalé dans votre espace professionnel (messagerie sécurisée, compte fiscal).
+
+**Relances** : si une échéance passe sans justificatif archivé, la déclaration apparaît dans « Déclarations en retard » (Échéances fiscales) et le propriétaire est relancé par e-mail le lendemain, puis chaque semaine pendant neuf semaines, avec le rappel de vérifier le compte fiscal. Les déclarations sans montant ni préparation (TVA à néant, acompte nul) ne sont pas relancées.
+
 ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. Préparer à nouveau une déclaration non encore déposée met à jour son récapitulatif ; une fois déposée, seule une déclaration rectificative peut être préparée.
 
 | Déclaration | Formulaire | Dépôt sur impots.gouv.fr |
@@ -495,7 +499,7 @@ Menu **Comptabilité → Profil fiscal** :
 
 ### Échéances fiscales et automatisations
 
-- **Échéances fiscales** (menu Comptabilité) : les 90 prochains jours — TVA selon votre régime (CA3, ou CA12 et ses acomptes), acomptes et solde d'IS, liasse, CVAE, DAS2, prélèvements sur dividendes, IFU, CFE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail **7 jours puis la veille** de chaque échéance non encore déposée.
+- **Échéances fiscales** (menu Comptabilité) : les 90 prochains jours — TVA selon votre régime (CA3, ou CA12 et ses acomptes), acomptes et solde d'IS, liasse, CVAE, DAS2, prélèvements sur dividendes, IFU, CFE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail **7 jours puis la veille** de chaque échéance non encore déposée, puis une relance le lendemain et chaque semaine tant qu'aucun justificatif n'est archivé.
 - **Contrôles avant liasse** : IS non comptabilisé, TVA non liquidée, comptes de charges ou de produits de sens anormal, capital non repris, comptes d'attente, exercice non clôturé. Ils s'affichent aussi sur la liasse et lors de la préparation de sa télédéclaration.
 - **Écritures récurrentes** : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : ProfitOS passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.
 - **Suivi des télédéclarations** : avec un partenaire EDI connecté, les statuts sont actualisés toutes les heures et le propriétaire est prévenu en cas de rejet.

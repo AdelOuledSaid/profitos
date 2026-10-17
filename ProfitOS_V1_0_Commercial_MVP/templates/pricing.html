@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tarifs · ProfitOS</title>
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('billing-v178.css') }}">
+</head>
+<body>
+<div class="pricing-public">
+  <header class="pricing-top">
+    <div class="brand">Profit<span>OS</span></div>
+    <div class="pricing-top-actions">
+      <a class="secondary button" href="{{ url_for('help_center') }}">Guide</a>
+      <a class="secondary button" href="{{ url_for('login') }}">Se connecter</a>
+      <a class="button" href="{{ url_for('signup') }}">Essayer gratuitement</a>
+    </div>
+  </header>
+
+  <section class="pricing-hero">
+    <div class="eyebrow green">TARIFS PROFITOS</div>
+    <h1>Un pilotage financier complet, adapté à la taille de votre entreprise.</h1>
+    <p>Commencez avec le cœur de ProfitOS : facturation, achats, cash, impayés et économies. Passez à Pro, Business ou Multi-sociétés lorsque vos volumes, vos équipes ou vos besoins d'automatisation augmentent.</p>
+    <div class="billing-pills"><span class="billing-pill"><strong>✓</strong> 14 jours d'essai gratuit avec toutes les fonctions Pro</span><span class="billing-pill"><strong>✓</strong> Sans carte bancaire</span><span class="billing-pill"><strong>✓</strong> Mensuel sans engagement</span><span class="billing-pill"><strong>✓</strong> Annuel : 2 mois offerts</span></div>
+    <nav class="billing-period" aria-label="Périodicité de paiement" style="margin:22px auto 0;">
+      <a href="{{ url_for('pricing') }}" class="{{ 'is-active' if period=='month' else '' }}"{% if period=='month' %} aria-current="true"{% endif %}>Mensuel <small>sans engagement</small></a>
+      <a href="{{ url_for('pricing', periode='annuel') }}" class="{{ 'is-active' if period=='year' else '' }}"{% if period=='year' %} aria-current="true"{% endif %}>Annuel <small>2 mois offerts</small></a>
+    </nav>
+  </section>
+
+  <div class="billing-plan-grid four-up">
+    {% for key,plan in plans.items() %}
+    {% set recommended = key=='PRO' %}
+    <article class="billing-plan {% if recommended %}is-pro{% endif %}">
+      {% if recommended %}<div class="billing-badge">RECOMMANDÉ</div>{% endif %}
+      <div class="billing-plan-head">
+        <div class="billing-plan-code">{{ key }}</div><h2>{{ plan.name }}</h2>
+        {% if period=='year' %}
+        <div class="billing-price">{{ plan.price_year_eur|fr_number }}&nbsp;€ <small>HT / an</small></div>
+        <p class="billing-tax-note">Soit {{ (plan.price_year_eur / 12)|fr_number(2) }}&nbsp;€ HT / mois : 2 mois offerts. Payé d'avance, engagement 12 mois. TVA 20 % en sus.</p>
+        {% else %}
+        <div class="billing-price">{{ plan.price_eur }}&nbsp;€ <small>HT / mois</small></div>
+        <p class="billing-tax-note">Sans engagement. TVA 20 % en sus, soit {{ (plan.price_eur * 1.2)|fr_number(2) }}&nbsp;€ TTC / mois<br>Ou {{ plan.price_year_eur|fr_number }}&nbsp;€ HT / an en annuel : 2 mois offerts</p>
+        {% endif %}
+        {% if key=='STARTER' %}<p class="billing-for">Facturation, achats et gestion essentielle pour indépendants et micro-entreprises.</p>{% elif key=='PRO' %}<p class="billing-for">Comptabilité, TVA, banque et trésorerie pour les TPE.</p>{% elif key=='BUSINESS' %}<p class="billing-for">Pilotage avancé et intelligence financière pour les PME.</p>{% else %}<p class="billing-for">Plusieurs sociétés : groupes, holdings et cabinets.</p>{% endif %}
+      </div>
+      <div class="billing-feature-group"><div class="billing-feature-title">INCLUS</div>
+        <div class="billing-feature"><span class="tick">✓</span><span>Facturation, devis, achats, notes de frais, relances et économies</span></div>
+        {% for feature,label in FEATURE_LABELS.items() %}
+        {% if plan_limits[key][feature] %}<div class="billing-feature"><span class="tick">✓</span><span>{{ label }}</span></div>{% else %}<div class="billing-feature off"><span class="tick">—</span><span>{{ label }}</span></div>{% endif %}
+        {% endfor %}
+      </div>
+      <div class="billing-feature-group"><div class="billing-feature-title">CAPACITÉ</div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[key].team_members }} utilisateurs</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{{ pluralize(plan_limits[key].organizations, 'organisation') }}</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[key].imports_per_month %}{{ plan_limits[key].imports_per_month }} imports / mois{% else %}Imports illimités{% endif %}</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{% if plan_limits[key].reports_per_month %}{{ plan_limits[key].reports_per_month }} rapports / mois{% else %}Rapports illimités{% endif %}</span></div>
+        <div class="billing-feature"><span class="tick">✓</span><span>{{ plan_limits[key].ai_extractions_per_month|fr_number }} extractions IA de documents / mois</span></div>
+      </div>
+      <a class="button {% if not recommended %}secondary{% endif %}" href="{{ url_for('signup') }}" style="text-align:center;margin-top:auto;">Essayer gratuitement</a>
+    </article>
+    {% endfor %}
+  </div>
+  <p class="billing-tax-note" style="text-align:center;margin-top:14px;">Prix hors taxes. TVA 20 % en sus (autoliquidation pour les entreprises de l'UE hors France disposant d'un numéro de TVA valide). L'essai gratuit donne accès à toutes les fonctions de la formule Pro pendant 14 jours.</p>
+
+  <section class="billing-section"><div class="eyebrow">COMPARAISON</div><h2>Les différences essentielles</h2><div class="billing-matrix"><table><thead><tr><th>Fonction</th>{% for key in ('STARTER','PRO','BUSINESS','MULTI') %}<th>{{ plans[key].name }}<br>{{ plans[key].price_eur }} € HT</th>{% endfor %}</tr></thead><tbody>
+  <tr><td>Facturation, achats et gestion</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td><td class="billing-yes">✓</td></tr>
+  {% for feature,label in FEATURE_LABELS.items() %}
+  <tr><td>{{ label }}</td>{% for key in ('STARTER','PRO','BUSINESS','MULTI') %}{% if plan_limits[key][feature] %}<td class="billing-yes">✓</td>{% else %}<td class="billing-no">—</td>{% endif %}{% endfor %}</tr>
+  {% endfor %}
+  <tr><td>Utilisateurs</td><td>2</td><td>5</td><td>20</td><td>100</td></tr>
+  <tr><td>Organisations</td><td>1</td><td>1</td><td>1</td><td>25</td></tr>
+  <tr><td>Extractions IA de documents / mois</td>{% for key in ('STARTER','PRO','BUSINESS','MULTI') %}<td>{{ plan_limits[key].ai_extractions_per_month|fr_number }}</td>{% endfor %}</tr>
+  </tbody></table></div><p class="billing-tax-note">Analyse financière avancée = diagnostic financier, trésorerie &amp; scénarios et simulateur de décision, calculés par des règles d'analyse explicites (pas d'IA générative). Multi-sociétés : jusqu'à 25 organisations rattachées au même abonnement.</p></section>
+
+  <section class="pricing-cta"><h2>Vous préférez voir ProfitOS sur un cas concret ?</h2><p>Réservez une démonstration personnalisée ou commencez directement votre essai gratuit.</p><a class="button" href="{{ url_for('request_demo') }}">Demander une démo</a></section>
+  <p class="muted" style="margin-top:34px;text-align:center;"><a class="link" href="{{ url_for('home') }}">← Retour à ProfitOS</a></p>
+</div>
+</body></html>

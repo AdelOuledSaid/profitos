@@ -1,0 +1,233 @@
+# ProfitOS — Blueprint Render (production). Procédure : DEPLOIEMENT_PRODUCTION.md
+#
+# Les noms de plans ci-dessous sont à confirmer dans le tableau de bord Render
+# (grille tarifaire en vigueur) avant la synchronisation du Blueprint.
+#
+# Variables partagées web + cron : groupe « profitos-shared ». Les secrets
+# (sync: false) sont saisis dans le tableau de bord, service par service.
+
+envVarGroups:
+  - name: profitos-shared
+    envVars:
+      - key: PROFITOS_ENV
+        value: production
+      # Partagée web + cron : les liens signés (désinscription du rapport
+      # hebdomadaire) sont générés par le cron et vérifiés par le web.
+      - key: PROFITOS_SECRET_KEY
+        generateValue: true
+      - key: APP_BASE_URL
+        value: https://app.profitos.fr
+      - key: RESEND_FROM_EMAIL
+        value: ProfitOS <noreply@profitos.fr>
+      # Jeton du déclenchement interne des tâches « disque » (cron -> web).
+      - key: JOBS_TRIGGER_TOKEN
+        generateValue: true
+      - key: PG_POOL_MAX
+        value: 10
+      # Chiffrement des identifiants d'intégration (32 caractères minimum).
+      - key: PROFITOS_DATA_KEY
+        generateValue: true
+      # Pré-lancement (société pas encore immatriculée) : 1 = site visible, inscriptions
+      # limitées à PRELAUNCH_ALLOWED_EMAILS, paiement fermé. Mettre 0 au lancement.
+      - key: PROFITOS_PRELAUNCH
+        sync: false
+      - key: PRELAUNCH_ALLOWED_EMAILS
+        sync: false
+      # Identité légale de l'éditeur (mentions légales, CGV) : obligatoire,
+      # le déploiement est refusé tant qu'elle n'est pas renseignée.
+      - key: LEGAL_COMPANY_NAME
+        sync: false
+      - key: LEGAL_FORM
+        sync: false
+      - key: LEGAL_SHARE_CAPITAL
+        sync: false
+      - key: LEGAL_SIREN
+        sync: false
+      - key: LEGAL_RCS_CITY
+        sync: false
+      - key: LEGAL_VAT_NUMBER
+        sync: false
+      - key: LEGAL_ADDRESS
+        sync: false
+      - key: LEGAL_PUBLICATION_DIRECTOR
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      - key: LEGAL_PRIVACY_EMAIL
+        sync: false
+
+services:
+  - type: web
+    name: profitos
+    runtime: python
+    # Plan payant obligatoire : le disque persistant n'existe pas en plan free.
+    plan: starter
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # Migrations + vérifications (disque, email, secrets) AVANT la bascule :
+    # un échec bloque le déploiement et l'ancienne version reste en ligne.
+    preDeployCommand: python scripts/cloud_preflight.py --init-tenants
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --bind 0.0.0.0:$PORT wsgi:app
+    healthCheckPath: /readyz
+    # Déploie seulement quand la CI GitHub (.github/workflows/tests.yml) est verte.
+    autoDeployTrigger: checksPass
+    # Documents clients (factures d'achat, justificatifs, documents cabinet).
+    # Un disque limite le service à UNE instance et désactive les déploiements
+    # sans interruption (quelques secondes de coupure à chaque déploiement).
+    disk:
+      name: profitos-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - fromGroup: profitos-shared
+      - key: PROFITOS_UPLOAD_DIR
+        value: /var/data/uploads
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: BACKUP_PASSPHRASE
+        sync: false
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: BACKUP_S3_REGION
+        sync: false
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: 15
+      - key: SESSION_HOURS
+        value: 12
+      - key: RESEND_API_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: profitos-rate-limit
+          property: connectionString
+      - key: DATABASE_URL
+        fromDatabase:
+          name: profitos-db
+          property: connectionString
+      # Stripe — obligatoire en production (cloud_preflight.py échoue sinon).
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_PRICE_STARTER_ID
+        sync: false
+      - key: STRIPE_PRICE_PRO_ID
+        sync: false
+      - key: STRIPE_PRICE_BUSINESS_ID
+        sync: false
+      - key: STRIPE_PRICE_MULTI_ID
+        sync: false
+      # Tarifs annuels (2 mois offerts) : facultatifs, l'option annuelle n'apparaît que s'ils sont définis.
+      - key: STRIPE_PRICE_STARTER_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_PRO_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_BUSINESS_YEARLY_ID
+        sync: false
+      - key: STRIPE_PRICE_MULTI_YEARLY_ID
+        sync: false
+      - key: STRIPE_AUTOMATIC_TAX
+        value: 1
+      - key: PROFITOS_PAST_DUE_GRACE_DAYS
+        value: 7
+      # Lecture automatique des factures (facultatif : sans clé, saisie manuelle).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      # Connexion bancaire Powens (facultatif).
+      - key: POWENS_DOMAIN
+        sync: false
+      - key: POWENS_CLIENT_ID
+        sync: false
+      - key: POWENS_CLIENT_SECRET
+        sync: false
+      - key: POWENS_REDIRECT_URI
+        value: https://app.profitos.fr/banking/callback
+      # Facturation électronique WeInvoice (sandbox tant que WEINVOICE_ENV != production).
+      - key: WEINVOICE_ENV
+        value: sandbox
+      - key: WEINVOICE_CLIENT_ID
+        sync: false
+      - key: WEINVOICE_CLIENT_SECRET
+        sync: false
+      - key: WEINVOICE_INVOICE_CLIENT_ID
+        sync: false
+      - key: WEINVOICE_INVOICE_CLIENT_SECRET
+        sync: false
+      - key: WEINVOICE_WEBHOOK_SECRET
+        sync: false
+      - key: WEINVOICE_INVOICE_WEBHOOK_SECRET
+        sync: false
+      # Télédéclarations (partenaire EDI agréé DGFiP). Mode simulation tant que
+      # EDI_PARTNER_ENABLED n'est pas à 1.
+      - key: EDI_PARTNER_ENABLED
+        value: "0"
+      - key: EDI_PARTNER_API_URL
+        sync: false
+      - key: EDI_PARTNER_API_KEY
+        sync: false
+      - key: OPS_HEALTH_TOKEN
+        generateValue: true
+      - key: DEMO_NOTIFY_EMAIL
+        sync: false
+
+  # Tâches planifiées : un seul cron horaire, le registre profitos/jobs.py
+  # décide à l'heure de Paris ce qui est dû (rapport hebdo lundi 7 h, factures
+  # récurrentes 6 h, réception e-factures toutes les heures, etc.).
+  # Les tâches qui écrivent des documents sont exécutées par le service web
+  # (seul à monter le disque) via POST /api/v1/internal/jobs/<nom>.
+  - type: cron
+    name: profitos-jobs
+    runtime: python
+    plan: starter
+    region: frankfurt
+    schedule: "5 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run_job.py --due
+    envVars:
+      - fromGroup: profitos-shared
+      - key: RESEND_API_KEY
+        sync: false
+      - key: POWENS_DOMAIN
+        sync: false
+      - key: POWENS_CLIENT_ID
+        sync: false
+      - key: POWENS_CLIENT_SECRET
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: profitos-db
+          property: connectionString
+
+  - type: keyvalue
+    name: profitos-rate-limit
+    # Pré-lancement : plan free (les compteurs de limitation de débit repartent à zéro
+    # à chaque redémarrage, sans conséquence sans clients). Au lancement : plan payant.
+    plan: free
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+
+databases:
+  - name: profitos-db
+    databaseName: profitos
+    user: profitos
+    # Plans Render Postgres actuels : basic-256mb, basic-1gb, basic-4gb, pro-…
+    # (à confirmer dans le tableau de bord). basic-1gb : PITR inclus sur les
+    # plans payants — à vérifier/activer (RESTORE.md).
+    plan: basic-256mb
+    region: frankfurt

@@ -1,0 +1,29 @@
+{
+  "appId": "fr.profitos.app",
+  "appName": "ProfitOS",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.profitos.fr",
+    "cleartext": false,
+    "allowNavigation": [
+      "*.powens.com",
+      "*.weinvoice.fr",
+      "*.swan.io",
+      "*.gocardless.com",
+      "*.dropbox.com",
+      "accounts.google.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#081020",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#081020"
+    }
+  }
+}

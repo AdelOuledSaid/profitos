@@ -246,6 +246,39 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
     return sorted(items, key=lambda x: x['date'])
 
 
+def _has_entries(conn, entity_id, start, end):
+    ef = 'entity_id=?' if entity_id else 'entity_id IS NULL'
+    ep = (entity_id,) if entity_id else ()
+    return bool(conn.execute(f"SELECT 1 FROM accounting_entries WHERE {ef} AND journal_code<>'AN' AND entry_date BETWEEN ? AND ? LIMIT 1",
+                             (*ep, str(start)[:10], str(end)[:10])).fetchone())
+
+
+def overdue_declarations(conn, entity_id=None, today=None, lookback_days=63):
+    """Déclarations dont l'échéance est passée sans dépôt enregistré (justificatif archivé
+    ou accusé du partenaire EDI), sur les neuf dernières semaines."""
+    today = _d(today) if today else None
+    if today is None:
+        from profitos.accounting import paris_today
+        today = paris_today()
+    start = today - timedelta(days=lookback_days)
+    seen, out = set(), []
+    for it in upcoming_deadlines(conn, entity_id, start, horizon_days=lookback_days):
+        if not it.get('type') or it['date'] >= today or it.get('deposited'):
+            continue
+        # Pas de relance pour une déclaration sans montant ni préparation (TVA à néant, acompte
+        # nul) : ProfitOS ne peut pas savoir si elle a été déposée hors de l'application.
+        if not it.get('amount') and not it.get('prepared') and it['type'] not in ('LIASSE', 'TVA_CA12'):
+            continue
+        if it['type'] in ('LIASSE', 'TVA_CA12') and not it.get('prepared') and not _has_entries(conn, entity_id, it['start'], it['end']):
+            continue
+        key = (it['type'], str(it.get('start')), str(it.get('end')), str(it.get('due_date')))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(dict(it, days_late=(today - it['date']).days))
+    return sorted(out, key=lambda x: x['date'])
+
+
 # ----------------------------------------------------------------- contrôles avant liasse
 def precontrols(conn, fy_start, fy_end, entity_id=None, today=None):
     from profitos.liasse_normal import _balances

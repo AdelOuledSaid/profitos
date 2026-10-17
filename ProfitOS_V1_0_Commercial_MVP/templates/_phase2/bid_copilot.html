@@ -1,0 +1,21 @@
+
+{% extends "base.html" %}{% block content %}
+<div class="eyebrow green">BID COPILOT</div>
+<h1>Transformer ce marché en dossier de réponse.</h1>
+<p class="muted">{{ opp.title }}</p>
+<section class="panel narrow">
+<h2>Importer le DCE / RC / CCTP / CCAP</h2>
+<p class="muted">PDF, DOCX ou TXT. ProfitOS extrait les exigences et prépare le plan de réponse.</p>
+<form method="post" enctype="multipart/form-data" class="stack">
+<input type="file" name="file" accept=".pdf,.docx,.txt,.md" required>
+<button>Analyser et créer le Bid Project</button>
+</form>
+</section>
+{% if project %}
+<section class="panel">
+<h2>Dernier projet</h2>
+<p><strong>{{ project.go_no_go }} — {{ project.bid_score }}/100</strong></p>
+<a class="button secondary" href="{{ url_for('bid_project',project_id=project.id) }}">Ouvrir le projet</a>
+</section>
+{% endif %}
+{% endblock %}

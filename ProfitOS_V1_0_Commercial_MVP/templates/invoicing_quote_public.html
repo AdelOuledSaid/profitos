@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ q.quote_number }} — Devis</title>
+  <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('theme-light.css') }}">
+  <meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+<main>
+<div style="max-width:900px;margin:40px auto;padding:20px;">
+<div class="eyebrow green">DEVIS</div>
+<h1>{{ q.quote_number }}</h1>
+<p class="muted">{{ company.name if company else '' }} · {{ q.client_name }} · {{ q.issue_date|fr_date }}</p>
+<section class="panel">
+{% for it in items %}
+<div class="simpleline"><span>{{ it.label }} · {{ it.qty|fr_qty }} × {{ it.unit_price|fr_price }}&nbsp;€ · TVA {{ it.vat_rate|fr_rate }}</span><span>{{ it.line_total|fr_number(2) }}&nbsp;€</span></div>
+{% endfor %}
+<div class="simpleline"><span>Sous-total HT</span><span>{{ q.subtotal|fr_number(2) }}&nbsp;€</span></div>
+<div class="simpleline"><span>TVA</span><span>{{ q.vat_amount|fr_number(2) }}&nbsp;€</span></div>
+<div class="simpleline"><strong>Total TTC</strong><strong>{{ q.total|fr_number(2) }}&nbsp;€</strong></div>
+{% if q.notes %}<p>{{ q.notes }}</p>{% endif %}
+</section>
+<p><a class="button secondary" href="{{ url_for('public_quote_pdf',token=token) }}">Voir le PDF</a></p>
+{% if q.status=='sent' %}
+<div class="actionbuttons">
+<form method="post" action="{{ url_for('public_quote_accept',token=token) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Accepter le devis</button></form>
+<form method="post" action="{{ url_for('public_quote_refuse',token=token) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Refuser le devis</button></form>
+</div>
+{% elif q.status=='accepted' %}
+<div class="flash">Devis accepté. Merci, votre réponse a bien été enregistrée.</div>
+{% elif q.status=='refused' %}
+<div class="flash">Devis refusé. Votre réponse a bien été enregistrée.</div>
+{% elif q.status=='converted' %}
+<div class="flash">Ce devis a été accepté et transformé en facture.</div>
+{% endif %}
+<p class="muted">Statut : {{ status_label }}</p>
+</div>
+</main>
+</body>
+</html>
