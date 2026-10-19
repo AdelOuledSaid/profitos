@@ -7,13 +7,13 @@ Document de référence unique. Les anciens fichiers (`CLOUD_DEPLOYMENT.md`,
 
 | Service Render | Rôle | Plan (à confirmer dans le tableau de bord) |
 |---|---|---|
-| `profitos` (web) | Flask + gunicorn (2 workers × 4 threads), disque `profitos-data` monté sur `/var/data` | `starter` (payant : requis pour le disque) |
+| `profitos` (web) | Flask + gunicorn (1 worker × 4 threads), disque `profitos-data` monté sur `/var/data` | `starter` (payant : requis pour le disque) |
 | `profitos-jobs` (cron, `5 * * * *`) | `python scripts/run_job.py --due` : tâches planifiées | `starter` |
 | `profitos-rate-limit` (Key Value) | compteurs de rate limiting | `starter` |
 | `profitos-db` (PostgreSQL) | base auth (`public`) + un schéma `org_N` par client | `basic-1gb` |
 
 Le disque persistant (`/var/data/uploads` : factures d'achat, justificatifs, documents
-cabinet ; `/var/data/backups` : sauvegardes locales) a deux conséquences Render :
+cabinet, pièces comptables, accusés de dépôt des déclarations fiscales ; `/var/data/backups` : sauvegardes locales) a deux conséquences Render :
 **une seule instance** du service web, et **pas de déploiement sans interruption**
 (quelques secondes de coupure à chaque déploiement). Évolution prévue : stockage objet S3
 (le code passe déjà par `profitos/storage.py`, point d'extension unique), qui lèvera ces
@@ -71,10 +71,13 @@ schéma ne coûte qu'une requête par organisation. `--force-migrate` rejoue tou
 | `backup` | 2 h | sauvegarde chiffrée base + documents |
 | `dso_snapshots` | 3 h | ancienneté des impayés + historique DSO |
 | `bank_sync` | 5 h | synchronisation Powens |
+| `recurring_entries` | 5 h | écritures comptables récurrentes échues (loyers, abonnements…) |
 | `recurring_invoices` | 6 h | factures récurrentes générées **en brouillon** + email au propriétaire |
 | `boamp_refresh` | 6 h | appels d'offres BOAMP (GROW) |
 | `weekly_reports` | lundi 7 h | rapport hebdomadaire (désactivable par utilisateur) |
 | `weekly_accountant_export` | lundi 8 h | lien d'export au comptable si activé |
+| `fiscal_deadlines` | 8 h | rappels des échéances fiscales à 7 jours et la veille ; relance le lendemain puis chaque semaine des déclarations en retard et des accusés avec écarts |
+| `teledeclaration_status` | toutes les heures | statut des déclarations transmises par le partenaire EDI (uniquement si `EDI_PARTNER_ENABLED=1`) ; alerte en cas de rejet |
 | `trial_reminders` | 9 h | fin d'essai J-3 / J0, échec de paiement |
 | `retention_purge` | dimanche 4 h | purges RGPD (si les fonctions de purge sont présentes) |
 
@@ -139,6 +142,14 @@ sans clé secrète, secret de webhook et au moins un tarif) : `STRIPE_SECRET_KEY
 `SWAN_ENVIRONMENT`, `SWAN_CLIENT_ID`, `SWAN_CLIENT_SECRET`, `SWAN_GRAPHQL_URL`,
 `SWAN_OAUTH_REDIRECT_URI`, `SWAN_WEBHOOK_SECRET`, `SWAN_ENABLE_ACCOUNT_CARD_REQUESTS`.
 
+**Déclarations fiscales** : `EDI_PARTNER_ENABLED` (0 par défaut : les déclarations sont
+préparées dans ProfitOS et déposées par l'entreprise sur impots.gouv.fr), `EDI_PARTNER_API_URL`
+(https obligatoire), `EDI_PARTNER_API_KEY` ; `EDI_SIMULATION_ENABLED=1` réactive le dépôt EDI
+simulé (tests uniquement, jamais en production réelle).
+`FISCAL_DECLARATIONS_ENABLED` (0 par défaut : préparation des déclarations fermée aux clients
+tant que les calculs ne sont pas validés, voir `docs/validation-fiscale.md`) et
+`FISCAL_DECLARATIONS_PILOT_ORGS` (identifiants d'organisations pilotes, séparés par des virgules).
+
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,
 `SUPPLIER_INBOX_DOMAIN`, `SUPPLIER_INBOX_WEBHOOK_ENABLED`, `SUPPLIER_INBOX_WEBHOOK_SECRET`.
@@ -151,5 +162,8 @@ sans clé secrète, secret de webhook et au moins un tarif) : `STRIPE_SECRET_KEY
 - import d'une facture d'achat PDF, puis redéploiement : le PDF est toujours téléchargeable
 - `python scripts/run_job.py --list` puis `python scripts/run_job.py weekly_reports --org <id> --force`
 - logs Render : pas de 5xx, pas de `JOB_ORG_FAILED`, pas d'`EMAIL_SIMULATED`
+- comptabilité : préparer une déclaration (Comptabilité → Déclarations fiscales), télécharger
+  son récapitulatif PDF, joindre un accusé de test, puis redéployer : l'accusé est toujours
+  téléchargeable
 - sauvegarde de la nuit présente (bucket ou `/var/data/backups`), exercice de restauration
   trimestriel (`RESTORE.md`)

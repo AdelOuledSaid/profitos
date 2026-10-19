@@ -16,7 +16,7 @@
   <p class="purchase-muted">Dépôts déclarés dont l'accusé n'est pas confirmé : joignez le bon accusé ou confirmez le dépôt après vérification.</p>
   <div class="purchase-table-wrap"><table class="purchase-table"><tbody>
     {% for r in to_verify %}<tr><td>{{ r.form }}</td><td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
-      <td><span class="purchase-status {{ 'overdue' if r.status == 'to_verify' else '' }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+      <td><span class="purchase-status {{ 'overdue' if r.status == 'to_verify' else '' }}">{{ teledeclaration_status_label(r.status, r.mode) }}</span></td>
       <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_detail', decl_id=r.id) }}">Vérifier</a></td></tr>{% endfor %}
   </tbody></table></div>
 </section>
@@ -47,7 +47,7 @@
       <tr><td>{{ d.date|fr_date }}<br><span class="purchase-muted">{% set left = (d.date - today).days %}{{ 'aujourd\'hui' if left == 0 else ('dépassée' if left < 0 else 'dans ' ~ left ~ ' j') }}</span></td>
         <td>{{ d.label }}</td><td>{{ d.form }}</td>
         <td class="num">{{ (d.amount|fr_number(0) ~ ' €') if d.amount else '—' }}</td>
-        <td>{% if d.deposited %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.deposited.id) }}">{{ teledeclaration_status_label(d.deposited.status) }}</a>
+        <td>{% if d.deposited %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.deposited.id) }}">{{ teledeclaration_status_label(d.deposited.status, d.deposited.mode) }}</a>
             {% elif d.prepared %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=d.prepared.id) }}">Préparée — à déposer</a>
             {% elif d.type %}<a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=d.type, du=d.start.isoformat(), au=d.end.isoformat(), echeance=d.due_date.isoformat() if d.due_date else None, acompte=d.amount if d.due_date and d.type == 'TVA_3514' else None) }}">Préparer</a>
             {% elif d.link %}<a class="purchase-nav-btn" href="{{ url_for(d.link[0], **d.link[1]) }}">Ouvrir</a>{% endif %}</td></tr>

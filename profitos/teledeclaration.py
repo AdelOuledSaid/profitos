@@ -53,10 +53,18 @@ STATUS_LABELS = {
     'filed': 'Dépôt déclaré — justificatif non vérifié',  # ancien statut, assimilé à « déclaré »
     'deposited': 'Déposée chez le partenaire EDI',
     'acknowledged': "Accusé de réception de l'administration",
-    'accepted': 'Acceptée',
+    'accepted': "Acceptée par l'administration (accusé EDI)",
     'rejected': 'Rejetée',
 }
 MANUAL_FILED_STATUSES = ('declared', 'to_verify', 'confirmed', 'filed')
+def status_label(status, mode=None):
+    """Libellé d'un statut ; un dépôt simulé est toujours signalé comme tel."""
+    if mode == 'simulation':
+        return {'accepted': 'Acceptée (simulation)', 'rejected': 'Rejetée (simulation)'}.get(
+            status, STATUS_LABELS.get(status, status) + ' (simulation)') + " — rien n'a été transmis"
+    return STATUS_LABELS.get(status, status)
+
+
 ACTIVE_STATUSES = ('deposited', 'acknowledged', 'accepted') + MANUAL_FILED_STATUSES
 
 
@@ -394,15 +402,18 @@ def _ef(entity_id):
     return ('entity_id=?', (entity_id,)) if entity_id else ('entity_id IS NULL', ())
 
 
-def active_declaration(conn, entity_id, decl_type, period_start, period_end, due_date=None):
+def active_declaration(conn, entity_id, decl_type, period_start, period_end, due_date=None, include_simulation=False):
     """Déclaration en cours pour la période. Les acomptes (2571, 3514) se distinguent en
-    plus par leur échéance : plusieurs acomptes portent sur le même exercice de référence."""
+    plus par leur échéance : plusieurs acomptes portent sur le même exercice de référence.
+    Un dépôt simulé ne compte jamais comme un dépôt réel (échéancier, relances, doublons),
+    sauf pour éviter deux simulations identiques (include_simulation)."""
     ef, ep = _ef(entity_id)
     df, dp = ('', ())
     if decl_type in INSTALMENT_TYPES and due_date:
         df, dp = ' AND due_date=?', (str(due_date)[:10],)
+    sim = '' if include_simulation else " AND mode<>'simulation'"
     return conn.execute(
-        f"""SELECT * FROM teledeclarations WHERE {ef} AND decl_type=? AND period_start=? AND period_end=?{df}
+        f"""SELECT * FROM teledeclarations WHERE {ef} AND decl_type=? AND period_start=? AND period_end=?{df}{sim}
             AND status IN ('deposited','acknowledged','accepted','declared','to_verify','confirmed','filed') ORDER BY id DESC LIMIT 1""",
         (*ep, decl_type, str(period_start)[:10], str(period_end)[:10], *dp)).fetchone()
 
@@ -431,13 +442,13 @@ def submit_declaration(conn, built, entity_id=None, user=None, corrective=False,
     if built['errors']:
         raise TeledeclarationError('Dépôt impossible : ' + ' '.join(built['errors']))
     payload = built['payload']
+    connector = connector or get_connector()
     existing = active_declaration(conn, entity_id, payload['type'], payload['period']['start'], payload['period']['end'],
-                                  payload.get('due_date'))
+                                  payload.get('due_date'), include_simulation=not connector.production)
     if existing and not (corrective and existing['status'] == 'accepted'):
         raise TeledeclarationError("Une déclaration est déjà déposée pour cette période"
                                    + (" : attendez son acceptation pour déposer une rectificative." if existing['status'] != 'accepted'
                                       else " : cochez « déclaration rectificative » pour la corriger."))
-    connector = connector or get_connector()
     payload = dict(payload, generated_at=_now(), corrective=bool(corrective and existing))
     digest = payload_hash(payload)
     result = connector.submit(payload, digest)
@@ -719,3 +730,19 @@ def analyze_receipt(data, ext, row, payload, text=None):
         checks.append({'label': f"Montant de {f'{n:,}'.replace(',', ' ')} €", 'ok': found})
     status = 'concordant' if all(c['ok'] for c in checks) else 'ecarts'
     return {'status': status, 'checks': checks, 'reason': None}
+
+
+# --------------------------------------------------------- ouverture des déclarations aux clients
+def declarations_open(org_id=None):
+    """Préparation et suivi des dépôts ouverts à cette organisation ?
+
+    En production, fermé par défaut tant que les calculs fiscaux n'ont pas été validés sur
+    des dossiers de référence (docs/validation-fiscale.md) : FISCAL_DECLARATIONS_ENABLED=1
+    ouvre à tous, FISCAL_DECLARATIONS_PILOT_ORGS (identifiants séparés par des virgules)
+    ouvre à des organisations pilotes. Toujours ouvert en développement et en test."""
+    if os.environ.get('PROFITOS_ENV', 'production') != 'production':
+        return True
+    if os.environ.get('FISCAL_DECLARATIONS_ENABLED') == '1':
+        return True
+    pilots = {x.strip() for x in (os.environ.get('FISCAL_DECLARATIONS_PILOT_ORGS') or '').split(',') if x.strip()}
+    return org_id is not None and str(org_id) in pilots

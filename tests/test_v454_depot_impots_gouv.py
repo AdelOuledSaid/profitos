@@ -189,6 +189,7 @@ def test_roles_and_isolation(app):
 def test_simulation_hidden_in_production(app, monkeypatch):
     cl, oid = signup(app)
     monkeypatch.setenv('PROFITOS_ENV', 'production')
+    monkeypatch.setenv('FISCAL_DECLARATIONS_ENABLED', '1')
     flashes(cl)
     page = cl.get('/comptabilite/teledeclarations/preparer?type=TVA_CA12&du=2025-01-01&au=2025-12-31').get_data(as_text=True)
     assert 'Déposer en mode simulation' not in page and 'Préparer ma déclaration' in page

@@ -35,13 +35,13 @@ CVAE_SCHEDULE = {
     2028: (0.00063, 0.00113, 0.00013, 0.0019),
     2029: (0.00031, 0.00056, 0.00006, 0.0009),
 }
-TA_CVAE_RATE = {2026: 0.0923, 2027: 0.0923, 2028: 0.1384, 2029: 0.2768}
+TA_CVAE_RATE = {2024: 0.0923, 2025: 0.0923, 2026: 0.0923, 2027: 0.0923, 2028: 0.1384, 2029: 0.2768}
 CVAE_COLLECTION_THRESHOLD = 63
 CVAE_DECLARATION_TURNOVER = 152_500
 CVAE_INSTALMENT_THRESHOLD = 1_500
-# Dégrèvement des entreprises au CA < 2 M€ (art. 1586 quater). 188 € tant que le barème
-# reste gelé au niveau 2024 (taux 2026-2027 identiques à 2024) : montant à confirmer.
-CVAE_SMALL_RELIEF = {2026: 188, 2027: 188}
+# Dégrèvement des entreprises au CA < 2 M€ (art. 1586 quater), proportionnel au taux
+# maximal : 188 € au taux de 0,28 % (2024 à 2027), 125 € à 0,19 % (2028), 63 € à 0,09 % (2029).
+CVAE_SMALL_RELIEF = {2024: 188, 2025: 188, 2026: 188, 2027: 188, 2028: 125, 2029: 63}
 
 
 def _r(x):

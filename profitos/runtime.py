@@ -923,6 +923,7 @@ MODULE_AREAS={
     'profitos.routes.finance_leases':'accounting','profitos.routes.analytics':'accounting',
     'profitos.routes.reviews':'accounting','profitos.routes.payroll':'accounting',
     'profitos.routes.ledger':'accounting','profitos.routes.teledeclarations':'accounting','profitos.routes.automations':'accounting',
+    'profitos.routes.tiers':'accounting',
     'profitos.routes.bank_sync':'banking','profitos.routes.swan_baas':'banking',
     'profitos.routes.gocardless_baas':'banking',
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
@@ -3683,6 +3684,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-19','title':"Valeur ajoutée (CVAE) : variation des stocks corrigée ; dégrèvement CVAE appliqué pour 2024-2025 ; dépôts simulés clairement signalés"},
     {'date':'2026-10-17','title':"Dépôts : statuts distincts « dépôt déclaré », « justificatif à vérifier » et « dépôt confirmé », confirmation manuelle tracée"},
     {'date':'2026-10-17','title':"Accusés de dépôt contrôlés automatiquement (SIREN, formulaire, période, montant) et relances des déclarations en retard"},
     {'date':'2026-10-17','title':"Déclarations fiscales : récapitulatif PDF, dépôt par vous sur impots.gouv.fr et archivage de l'accusé de réception"},

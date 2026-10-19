@@ -18,3 +18,7 @@ Procédure détaillée : `DEPLOIEMENT_PRODUCTION.md`.
 - [ ] PITR PostgreSQL actif ; exercice de restauration fait (`RESTORE.md`)
 - [ ] sonde externe sur `/readyz`, `SENTRY_DSN` configuré
 - [ ] vérifier CSP/HSTS/Secure cookie dans le navigateur
+- [ ] déclarations fiscales : préparation, récapitulatif PDF, accusé archivé conservé après redéploiement
+- [ ] `EDI_PARTNER_ENABLED=0` tant qu'aucun partenaire EDI n'est contractualisé ; `EDI_SIMULATION_ENABLED` absent
+- [ ] calculs fiscaux validés par un expert-comptable sur trois dossiers réels (grille de `docs/validation-fiscale.md`) avant `FISCAL_DECLARATIONS_ENABLED=1`
+- [ ] dépôt GitHub : projet à la racine, CI verte avant déploiement

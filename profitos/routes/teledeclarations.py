@@ -72,7 +72,14 @@ def _build(c, eid, decl_type, start, end, args):
 
 
 def register(app):
-    app.jinja_env.globals['teledeclaration_status_label'] = lambda s: T.STATUS_LABELS.get(s, s)
+    app.jinja_env.globals['teledeclaration_status_label'] = T.status_label
+    app.jinja_env.globals['declarations_open'] = lambda: T.declarations_open(session.get('org_id'))
+
+    CLOSED_MSG = ("La préparation des déclarations est en cours de validation et n'est pas encore ouverte : "
+                  "les montants restent consultables à titre indicatif.")
+
+    def _closed():
+        return not T.declarations_open(session.get('org_id'))
     from profitos.corporate_tax import masked_iban
     app.jinja_env.globals['masked_iban'] = masked_iban
 
@@ -95,9 +102,11 @@ def register(app):
             from profitos.vat_return import ca12_form
             vat_instalments = ca12_form(c, closed['start'].isoformat(), closed['end'].isoformat(), eid)['instalments']
         c.close()
-        active = {(r['decl_type'], r['period_start'], r['period_end']): r for r in rows if r['status'] in T.ACTIVE_STATUSES}
+        active = {(r['decl_type'], r['period_start'], r['period_end']): r for r in rows
+                  if r['status'] in T.ACTIVE_STATUSES and r['mode'] != 'simulation'}
         inst_active = {(r['decl_type'], r['due_date']): r for r in reversed(rows)
-                       if (r['status'] in T.ACTIVE_STATUSES or r['status'] == 'prepared') and r['decl_type'] in T.INSTALMENT_TYPES
+                       if (r['status'] in T.ACTIVE_STATUSES or r['status'] == 'prepared') and r['mode'] != 'simulation'
+                       and r['decl_type'] in T.INSTALMENT_TYPES
                        and r['period_end'] == closed['end'].isoformat()}
         vat_filing = profile_vat
         vat_candidates = {
@@ -158,6 +167,9 @@ def register(app):
         back = url_for('teledeclaration_prepare', type=decl_type, du=request.form.get('du'), au=request.form.get('au'),
                        regime=request.form.get('regime'), acompte=request.form.get('acompte') or None,
                        echeance=request.form.get('echeance') or None)
+        if _closed():
+            flash(CLOSED_MSG)
+            return redirect(back)
         if current_role() not in SUBMIT_ROLES:
             flash("Seuls le propriétaire, un administrateur ou le comptable peuvent déposer une déclaration.")
             return redirect(back)
@@ -224,6 +236,9 @@ def register(app):
         back = url_for('teledeclaration_prepare', type=decl_type, du=request.form.get('du'), au=request.form.get('au'),
                        regime=request.form.get('regime'), acompte=request.form.get('acompte') or None,
                        echeance=request.form.get('echeance') or None)
+        if _closed():
+            flash(CLOSED_MSG)
+            return redirect(back)
         if current_role() not in SUBMIT_ROLES:
             flash("Seuls le propriétaire, un administrateur ou le comptable peuvent préparer une déclaration.")
             return redirect(back)
@@ -267,6 +282,9 @@ def register(app):
         import uuid
         from profitos import storage as _st
         eid = _eid()
+        if _closed():
+            flash(CLOSED_MSG)
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
         if current_role() not in SUBMIT_ROLES:
             flash("Seuls le propriétaire, un administrateur ou le comptable peuvent enregistrer un dépôt.")
             return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
@@ -313,6 +331,9 @@ def register(app):
     @login_required
     def teledeclaration_confirm(decl_id):
         eid = _eid()
+        if _closed():
+            flash(CLOSED_MSG)
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
         if current_role() not in SUBMIT_ROLES:
             flash("Seuls le propriétaire, un administrateur ou le comptable peuvent confirmer un dépôt.")
             return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
@@ -360,7 +381,7 @@ def register(app):
         row = _row_or_404(c, decl_id, eid)
         try:
             status = T.refresh_status(c, row)
-            flash(f"Statut : {T.STATUS_LABELS.get(status, status)}.")
+            flash(f"Statut : {T.status_label(status, row['mode'])}.")
         except (T.TeledeclarationError, ValueError) as exc:
             flash(f"Statut indisponible : {exc}")
         except Exception:

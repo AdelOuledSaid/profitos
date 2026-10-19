@@ -456,11 +456,11 @@ def valeur_ajoutee(bal):
         'OH': _r(p('75') - p('751') - p('755')),
         'OE': p('72'),
         'OF': p('74'),
-        'OD': max(0.0, p('713')),
+        'OD': 0.0,  # calculé ci-dessous avec OQ
         'OI': 0.0,
         'XT': p('7714'),
         'ON': _r(c('601', '602', '604', '605', '606', '607', '608', '609')),
-        'OQ': _r(max(0.0, c('603')) + max(0.0, -p('713'))),
+        'OQ': 0.0,  # calculé ci-dessous avec OD
         'OR': _r(c('61', '62') - c('612', '613')),
         # Loyers déductibles = seulement ceux des locations de 6 mois au plus (hors crédit-bail) :
         # non identifiables en comptabilité, laissés à compléter (VA légèrement majorée).
@@ -471,6 +471,11 @@ def valeur_ajoutee(bal):
         'OU': 0.0,
         'OY': 0.0,
     }
+    # Variation des stocks de marchandises, matières (603) et produits (713) : en hausse, en
+    # « variation positive » (OD, produits) ; en baisse, en « variation négative » (OQ, charges).
+    variation = _r(-c('603') + p('713'))
+    lines['OD'] = max(0.0, variation)
+    lines['OQ'] = max(0.0, -variation)
     lines['OX'] = _r(lines['OA'] + lines['OK'] + lines['OL'] + lines['OT'])
     lines['OM'] = _r(lines['OH'] + lines['OE'] + lines['OF'] + lines['OD'] + lines['OI'] + lines['XT'])
     lines['OJ'] = _r(lines['ON'] + lines['OQ'] + lines['OR'] + lines['OS'] + lines['OZ'] + lines['OW'] + lines['OU'] + lines['OY'])

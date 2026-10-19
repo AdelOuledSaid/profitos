@@ -1,4 +1,4 @@
-"""
+r"""
 ProfitOS V1.3.5 - Vérification locale du journal security_events.
 
 Usage (CMD Windows):

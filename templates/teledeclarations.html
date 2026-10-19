@@ -9,6 +9,7 @@
   </div>
 </div>
 
+{% if not declarations_open() %}<div class="flash" role="status">🔒 La préparation et le suivi des dépôts sont en cours de validation et ne sont pas encore ouverts. Les montants affichés sont indicatifs : ne les utilisez pas pour une déclaration officielle sans l'avis de votre expert-comptable.</div>{% endif %}
 {% if partner %}
 <div class="flash" role="status">Partenaire EDI connecté : les déclarations déposées sont réellement transmises à l'administration fiscale.</div>
 {% else %}
@@ -31,17 +32,17 @@
       <tr><td><strong>{{ c.title }}</strong><br><span class="purchase-muted">{{ c.meta.label }}</span></td>
         <td>{{ c.meta.form }} <span class="purchase-muted">({{ c.meta.channel if partner else ('impots.gouv.fr' if c.channel == 'efi' else 'EDI obligatoire') }})</span></td>
         <td>{{ c.start|fr_date }} → {{ c.end|fr_date }}</td>
-        <td>{% if c.existing %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=c.existing.id) }}">{{ teledeclaration_status_label(c.existing.status) }}</a>{% else %}<span class="purchase-muted">Non déposée</span>{% endif %}</td>
+        <td>{% if c.existing %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=c.existing.id) }}">{{ teledeclaration_status_label(c.existing.status, c.existing.mode) }}</a>{% else %}<span class="purchase-muted">Non déposée</span>{% endif %}</td>
         <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type=c.type, du=c.start.isoformat(), au=c.end.isoformat()) }}">Préparer</a></td></tr>
     {% endfor %}
     {% for a in vat_instalments %}
       <tr><td><strong>{{ a.label }} — {{ a.date|fr_date }}</strong><br><span class="purchase-muted">{{ types.TVA_3514.label }}</span></td>
-        <td>3514 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('TVA_3514', a.date.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
+        <td>3514 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('TVA_3514', a.date.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status, ex.mode) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
         <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='TVA_3514', du=closed.start.isoformat(), au=closed.end.isoformat(), acompte=a.amount, echeance=a.date.isoformat()) }}">Préparer</a></td></tr>
     {% endfor %}
     {% for d in instalments %}
       <tr><td><strong>Acompte d'IS du {{ d|fr_date }}</strong><br><span class="purchase-muted">{{ types.IS_2571.label }}</span></td>
-        <td>2571 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('IS_2571', d.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
+        <td>2571 <span class="purchase-muted">(EDI-Paiement)</span></td><td>Exercice clos le {{ closed.end|fr_date }}</td><td>{% set ex = inst_active.get(('IS_2571', d.isoformat())) %}{% if ex %}<a class="purchase-detail-link" href="{{ url_for('teledeclaration_detail', decl_id=ex.id) }}">{{ teledeclaration_status_label(ex.status, ex.mode) }}</a>{% else %}<span class="purchase-muted">Non déposé</span>{% endif %}</td>
         <td><a class="purchase-nav-btn" href="{{ url_for('teledeclaration_prepare', type='IS_2571', du=closed.start.isoformat(), au=closed.end.isoformat(), echeance=d.isoformat()) }}">Préparer</a></td></tr>
     {% endfor %}
     </tbody>
@@ -65,7 +66,7 @@
         <td>{{ r.form }}{% if r.corrective %} <span class="purchase-status">Rectificative</span>{% endif %}</td>
         <td>{{ r.period_start|fr_date }} → {{ r.period_end|fr_date }}</td>
         <td>{{ {'production': 'Partenaire EDI', 'manual': 'Par vous', 'simulation': 'Simulation'}.get(r.mode, r.mode) }}</td>
-        <td><span class="purchase-status {{ 'paid' if r.status in ('accepted', 'confirmed') else ('overdue' if r.status in ('rejected', 'to_verify') else '') }}">{{ teledeclaration_status_label(r.status) }}</span></td>
+        <td><span class="purchase-status {{ 'paid' if r.status in ('accepted', 'confirmed') and r.mode != 'simulation' else ('overdue' if r.status in ('rejected', 'to_verify') else '') }}">{{ teledeclaration_status_label(r.status, r.mode) }}</span></td>
         <td class="num">{{ (r.payment_amount|fr_number(0) ~ ' €') if r.payment_amount else '—' }}</td></tr>
     {% endfor %}
     </tbody>

@@ -1,83 +1,89 @@
-# ProfitOS V1.3.4 — CSP / XSS Hardening
+# ProfitOS
 
-# ProfitOS V1.3.3 — Secure Tokens & Account Recovery
+Logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets
+d'expertise comptable : facturation et facture électronique, achats, banque, trésorerie,
+comptabilité complète et production fiscale (TVA, liasses, impôt sur les sociétés,
+déclarations annuelles), en français et selon les règles fiscales françaises.
 
-# ProfitOS — V1.3.2
+Application Flask (Python 3.12), SQLite en développement, PostgreSQL en production
+(un schéma par organisation), déployée sur Render (`app.profitos.fr`).
 
-**Production Hardening: distributed rate limiting with Flask-Limiter + Render Key Value.**
+## Modules
 
-# ProfitOS V1.1 — Production Architecture
+| Module | Contenu |
+| --- | --- |
+| Facturation | Clients, devis, factures, acomptes, avoirs, bons de livraison, factures récurrentes, paiements, relances |
+| Facture électronique | Factur-X, envoi et réception par plateforme agréée (WeInvoice), statuts, e-reporting |
+| Achats et dépenses | Factures fournisseurs (dépôt, boîte mail, dossiers cloud), notes de frais, budgets |
+| Banque | Connexion bancaire ou import de relevés, rapprochement, catégorisation, état de rapprochement |
+| Trésorerie | Prévision à 90 jours, scénarios, plan mensuel, simulateur de décision, diagnostic |
+| Comptabilité | Saisie, journaux, grand livre, balance, immobilisations (dotations, cessions), emprunts, crédit-bail, paie importée, cut-off, analytique, clôture, plaquette, FEC |
+| Fiscalité | TVA CA3 et CA12 (acomptes 3514), liasses 2033-A à G et 2050 à 2059-G avec 2065, IS et CVAE, DAS2, prélèvements sur dividendes (2777) et IFU, CFE, DECLOYER, profil fiscal, échéancier et relances |
+| Déclarations fiscales | Préparation contrôlée, récapitulatif PDF, dépôt par l'entreprise sur impots.gouv.fr, archivage et contrôle automatique de l'accusé ; transmission EDI dès qu'un partenaire est connecté |
+| Multi-sociétés et cabinets | Entités, consolidation, portefeuille clients, révision comptable, accès expert-comptable |
 
-This release refactors the cleaned V1.0 into a modular production-oriented Flask structure while preserving the existing product behavior.
+Fonctionnement des déclarations, règles fiscales appliquées et limites :
+[`docs/production-reglementaire.md`](docs/production-reglementaire.md). Validation des calculs
+sur dossiers de référence et grille pour l'expert-comptable :
+[`docs/validation-fiscale.md`](docs/validation-fiscale.md) (la préparation des déclarations
+reste fermée aux clients tant qu'elle n'est pas signée).
+Mode d'emploi pour les clients : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)
+(publié dans l'application, menu Aide).
 
-## Local start (same simple workflow)
-
-```cmd
-cd Z:\ProfitOS_V1_1_Production_Architecture
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
-
-Open:
-
-`http://127.0.0.1:5050`
-
-## Production-style local start on Windows
-
-```cmd
-RUN_PRODUCTION_WINDOWS.bat
-```
-
-This runs Waitress instead of Flask's development server.
-
-## Cloud WSGI
-
-Linux / Railway / Render style command:
+## Démarrage local
 
 ```bash
-gunicorn --workers 2 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --bind 0.0.0.0:$PORT wsgi:app
+python -m venv venv
+source venv/bin/activate          # Windows : venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env              # puis renseigner au minimum PROFITOS_SECRET_KEY
+python app.py                     # http://127.0.0.1:5050
 ```
 
-## Health check
-
-`GET /healthz`
-
-returns:
-
-```json
-{"status":"ok","service":"profitos","version":"1.1"}
-```
+Sous Windows : `LANCER_PROFITOS.bat` (développement) ou `RUN_PRODUCTION_WINDOWS.bat`
+(serveur Waitress).
 
 ## Tests
 
-```cmd
+```bash
 pytest -q
 ```
 
-## Architecture
+Environ 1 480 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
+déclarations, tâches planifiées). La CI GitHub (`.github/workflows/tests.yml`) les exécute à
+chaque push ; Render ne déploie que si elle est verte.
 
-See `ARCHITECTURE.md`.
-
-## Important
-
-For a public launch, configure at minimum:
-
-- `PROFITOS_ENV=production`
-- `PROFITOS_SECRET_KEY`
-- `DATABASE_URL` (PostgreSQL recommended)
-- Stripe variables if billing is enabled
-- SMTP variables for transactional mail
-- HTTPS at the hosting/reverse-proxy layer
-
-The existing PostgreSQL compatibility layer is preserved, but it still needs integration testing against the exact managed PostgreSQL target before a public production launch.
-
-
-## V1.3 — Production Hardening
-
-Sécurité des sessions, headers HTTP, CSRF same-origin, uploads isolés et validés, anti open-redirect, validation des webhooks, request IDs, pages d’erreur sûres et tests de sécurité de base. Voir `SECURITY.md` et `PRODUCTION_CHECKLIST.md`.
+Le dépôt GitHub doit contenir le projet **à sa racine** (dossiers `profitos/`, `templates/`,
+`tests/`… directement sous la racine). Un second exemplaire dans un sous-dossier fait échouer
+la CI (« import file mismatch »).
 
 ## Production
 
-Render : voir `DEPLOIEMENT_PRODUCTION.md` (disque persistant, cron, sauvegardes `RESTORE.md`).
+- Déploiement Render, variables, tâches planifiées, vérifications :
+  [`DEPLOIEMENT_PRODUCTION.md`](DEPLOIEMENT_PRODUCTION.md)
+- Liste de contrôle avant mise en ligne : [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md)
+- Sauvegardes et restauration : [`RESTORE.md`](RESTORE.md),
+  [`PRODUCTION_MONITORING_BACKUP.md`](PRODUCTION_MONITORING_BACKUP.md)
+- PostgreSQL : [`MIGRATION_POSTGRES.md`](MIGRATION_POSTGRES.md)
+- Paiements et e-mails : [`STRIPE_SETUP.md`](STRIPE_SETUP.md), [`RESEND_SETUP.md`](RESEND_SETUP.md)
+- Banque : [`POWENS_OPEN_BANKING_SETUP.md`](POWENS_OPEN_BANKING_SETUP.md)
+
+Points de santé : `GET /healthz` (processus), `GET /readyz` (base, disque, e-mail).
+
+## Sécurité
+
+[`SECURITY.md`](SECURITY.md) (vue d'ensemble), [`AUTHORIZATION_HARDENING.md`](AUTHORIZATION_HARDENING.md),
+[`CSP_XSS_HARDENING.md`](CSP_XSS_HARDENING.md), [`RATE_LIMITING_REDIS.md`](RATE_LIMITING_REDIS.md),
+[`SECURE_TOKENS_ACCOUNT_RECOVERY.md`](SECURE_TOKENS_ACCOUNT_RECOVERY.md),
+[`SECURITY_AUDIT_LOGGING.md`](SECURITY_AUDIT_LOGGING.md),
+[`SECURITY_EVENTS_DASHBOARD.md`](SECURITY_EVENTS_DASHBOARD.md).
+
+## Architecture
+
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+## Historique
+
+Les fichiers `V1_*.md`, `RELEASE_RC1.md` et `RENDER_RC1_CHECKLIST.md` décrivent des versions
+antérieures et sont conservés pour mémoire. Les nouveautés récentes sont publiées dans
+l'application (menu Nouveautés).

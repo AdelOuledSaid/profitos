@@ -3,7 +3,8 @@
 <div class="purchase-page">
 <div class="purchase-toolbar">
   <div>
-    <div class="purchase-eyebrow">DÉCLARATION FISCALE · {{ row.channel }}{% if row.mode == 'simulation' %} · SIMULATION{% endif %}</div>
+    <div class="purchase-eyebrow">DÉCLARATION FISCALE · {{ row.channel }}{% if not declarations_open() %}<div class="flash" role="status">🔒 La préparation et le suivi des dépôts sont en cours de validation et ne sont pas encore ouverts. Les montants affichés sont indicatifs : ne les utilisez pas pour une déclaration officielle sans l'avis de votre expert-comptable.</div>{% endif %}
+{% if row.mode == 'simulation' %} · SIMULATION{% endif %}</div>
     <h1 class="purchase-title">{{ types[row.decl_type].label }} ({{ row.form }})</h1>
     <p class="purchase-subtitle">{% if row.due_date %}Acompte à l'échéance du {{ row.due_date|fr_date }} (exercice de référence du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}){% else %}Période du {{ row.period_start|fr_date }} au {{ row.period_end|fr_date }}{% endif %}{% if row.corrective %} — déclaration rectificative{% endif %}. {{ 'Préparée' if row.mode == 'manual' else 'Déposée' }} le {{ row.submitted_at|fr_datetime_paris }} par {{ row.submitted_by or '—' }}.</p>
   </div>
@@ -48,7 +49,7 @@
     <a class="purchase-primary-btn secondary" href="{{ url_for('teledeclaration_pdf', decl_id=row.id) }}">Télécharger le récapitulatif PDF</a>
     {% if payload.filing == 'efi' %}<a class="purchase-primary-btn primary" href="{{ impots_url }}" target="_blank" rel="noopener noreferrer">Accéder à impots.gouv.fr ↗</a>{% endif %}
   </div>
-  {% if can_submit %}
+  {% if can_submit and declarations_open() %}
   <form method="post" action="{{ url_for('teledeclaration_receipt_upload', decl_id=row.id) }}" enctype="multipart/form-data" class="stack" style="margin-top:8px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="twocol">
@@ -72,7 +73,7 @@
 {% endif %}
 
 <div class="purchase-stats" style="margin-bottom:14px;">
-  <div class="purchase-stat"><div><div class="purchase-stat-label">Statut</div><div class="purchase-stat-value" style="font-size:18px;">{{ teledeclaration_status_label(row.status) }}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Statut</div><div class="purchase-stat-value" style="font-size:18px;">{{ teledeclaration_status_label(row.status, row.mode) }}</div></div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Accusé de réception</div><div class="purchase-stat-value" style="font-size:18px;">{{ row.ack_number or '—' }}</div>{% if row.ack_at %}<div class="purchase-muted" style="font-size:12px;">{{ row.ack_at|fr_datetime_paris }}</div>{% endif %}</div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Paiement associé</div><div class="purchase-stat-value" style="font-size:18px;">{{ (row.payment_amount|fr_number(0) ~ ' €') if row.payment_amount else '—' }}</div>{% if payload.payment %}<div class="purchase-muted" style="font-size:12px;">{{ 'Prélèvement sur ' ~ masked_iban(payload.payment.iban) ~ ' (mandat ' ~ payload.payment.rum ~ ')' if payload.payment.method == 'prelevement_edi' else 'À payer depuis votre espace professionnel' }}</div>{% endif %}</div></div>
   <div class="purchase-stat"><div><div class="purchase-stat-label">Référence de dépôt</div><div class="purchase-stat-value" style="font-size:14px;overflow-wrap:anywhere;">{{ row.remote_id or '—' }}</div></div></div>
@@ -91,7 +92,7 @@
 <section class="purchase-panel">
   <h2>Historique</h2>
   <ul class="purchase-timeline" style="padding-left:18px;">
-    {% for h in history %}<li><strong>{{ h.at|fr_datetime_paris }}</strong> — {{ teledeclaration_status_label(h.status) }}{% if h.message %} <span class="purchase-muted">· {{ h.message }}</span>{% endif %}</li>{% endfor %}
+    {% for h in history %}<li><strong>{{ h.at|fr_datetime_paris }}</strong> — {{ teledeclaration_status_label(h.status, row.mode) }}{% if h.message %} <span class="purchase-muted">· {{ h.message }}</span>{% endif %}</li>{% endfor %}
   </ul>
   <p class="purchase-muted" style="font-size:12px;overflow-wrap:anywhere;">Empreinte SHA-256 du contenu préparé : {{ row.payload_hash }}</p>
 </section>

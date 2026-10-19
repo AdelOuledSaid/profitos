@@ -146,8 +146,10 @@ def test_is_instalments_distinct_due_dates(app):
         b = T.build_declaration(c, 'IS_2571', date(2025, 1, 1), date(2025, 12, 31), identity=IDENTITY, due_date=due)
         assert not b['errors']
         T.submit_declaration(c, b)
-    assert T.active_declaration(c, None, 'IS_2571', '2025-01-01', '2025-12-31', '2026-06-15')
-    assert not T.active_declaration(c, None, 'IS_2571', '2025-01-01', '2025-12-31', '2026-09-15')
+    # Dépôts simulés : visibles pour éviter les doublons de simulation, jamais comptés comme réels.
+    assert T.active_declaration(c, None, 'IS_2571', '2025-01-01', '2025-12-31', '2026-06-15', include_simulation=True)
+    assert not T.active_declaration(c, None, 'IS_2571', '2025-01-01', '2025-12-31', '2026-06-15')
+    assert not T.active_declaration(c, None, 'IS_2571', '2025-01-01', '2025-12-31', '2026-09-15', include_simulation=True)
     bad = T.build_declaration(c, 'IS_2571', date(2025, 1, 1), date(2025, 12, 31), identity=IDENTITY, due_date='2025-12-15')
     c.close()
     assert any('échéance' in e for e in bad['errors'])

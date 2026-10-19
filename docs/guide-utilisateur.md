@@ -1,6 +1,6 @@
 # ProfitOS — Guide utilisateur
 
-Oct 14, 2026 · @adel
+Mis à jour le 17 octobre 2026
 
 ## 1. Présentation
 
@@ -16,7 +16,8 @@ Ce guide explique, module par module, comment utiliser ProfitOS au quotidien. Le
 | Facture électronique | Factures Factur-X, envoi par plateforme agréée, suivi des statuts | Starter |
 | Achats et dépenses | Factures fournisseurs, notes de frais, budgets | Starter |
 | Banque | Connexion ou import des relevés, rapprochement, catégorisation | Pro |
-| Comptabilité | Écritures, grand livre, balance, TVA, clôture, FEC, liasses 2033 et 2050, IS et CVAE | Pro |
+| Comptabilité | Écritures, grand livre, balance, immobilisations, clôture, FEC | Pro |
+| Fiscalité | TVA CA3 et CA12, liasses 2033 et 2050 avec la 2065, IS et CVAE, DAS2, dividendes (2777, IFU), CFE, préparation des déclarations et suivi des dépôts | Pro |
 | Trésorerie et scénarios | Prévision à 90 jours, plan mensuel, simulateur de décision | Business |
 | Multi-sociétés | Plusieurs entités, consolidation, portefeuille cabinet | Multi-sociétés |
 
@@ -465,6 +466,8 @@ Menu **Comptabilité → Déclarations fiscales**. ProfitOS calcule et prépare 
 **Contrôle de l'accusé** : à l'archivage, ProfitOS lit l'accusé (PDF) et vérifie qu'il porte le bon SIREN, le bon formulaire, la bonne période et le bon montant. Il affiche « justificatif concordant » ou la liste des écarts (mauvais fichier, période ou montant différents), et en déduit le statut ci-dessus. Une image ou un PDF scanné ne peut pas être lu automatiquement : contrôlez-le vous-même. Ce contrôle ne confirme pas l'acceptation par l'administration, que ProfitOS ne peut pas interroger pour un dépôt fait sur impots.gouv.fr : un rejet ou une anomalie vous est signalé dans votre espace professionnel (messagerie sécurisée, compte fiscal).
 
 **Relances** : un accusé avec écarts est rappelé par e-mail le lendemain puis chaque semaine, et listé dans « Justificatifs à vérifier » (Échéances fiscales). Si une échéance passe sans justificatif archivé, la déclaration apparaît dans « Déclarations en retard » (Échéances fiscales) et le propriétaire est relancé par e-mail le lendemain, puis chaque semaine pendant neuf semaines, avec le rappel de vérifier le compte fiscal. Les déclarations sans montant ni préparation (TVA à néant, acompte nul) ne sont pas relancées.
+
+Tant que la préparation des déclarations n'est pas ouverte sur votre compte (validation des calculs en cours), la page l'indique : les montants restent consultables à titre indicatif.
 
 ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. Préparer à nouveau une déclaration non encore déposée met à jour son récapitulatif ; une fois déposée, seule une déclaration rectificative peut être préparée.
 

@@ -18,10 +18,11 @@
 </nav>
 {% endif %}
 
+{% if not declarations_open() %}<div class="flash" role="status">🔒 La préparation et le suivi des dépôts sont en cours de validation et ne sont pas encore ouverts. Les montants affichés sont indicatifs : ne les utilisez pas pour une déclaration officielle sans l'avis de votre expert-comptable.</div>{% endif %}
 {% for e in built.errors %}<div class="flash" role="alert">⛔ {{ e }}</div>{% endfor %}
 {% for w in built.warnings %}<div class="flash" role="status">⚠ {{ w }}</div>{% endfor %}
 {% if not built.errors %}<div class="flash" role="status">✓ Contrôles bloquants passés : la déclaration peut être préparée et déposée.</div>{% endif %}
-{% if existing %}<div class="flash" role="status">Une déclaration est déjà déposée pour cette période : <a class="link" href="{{ url_for('teledeclaration_detail', decl_id=existing.id) }}">{{ teledeclaration_status_label(existing.status) }}</a>.</div>{% endif %}
+{% if existing %}<div class="flash" role="status">Une déclaration est déjà déposée pour cette période : <a class="link" href="{{ url_for('teledeclaration_detail', decl_id=existing.id) }}">{{ teledeclaration_status_label(existing.status, existing.mode) }}</a>.</div>{% endif %}
 
 <section class="purchase-panel">
   <h2>Contenu de la déclaration</h2>
@@ -39,7 +40,9 @@
 
 <section class="purchase-panel" style="margin-top:14px;">
   <h2>Dépôt</h2>
-  {% if not can_submit %}
+  {% if not declarations_open() %}
+    <p class="purchase-muted">Préparation des déclarations pas encore ouverte (validation des calculs en cours).</p>
+  {% elif not can_submit %}
     <p class="purchase-muted">Seuls le propriétaire, un administrateur ou le comptable peuvent préparer ou déposer une déclaration.</p>
   {% elif built.errors %}
     <p class="purchase-muted">Corrigez les anomalies bloquantes ci-dessus pour pouvoir continuer.</p>
