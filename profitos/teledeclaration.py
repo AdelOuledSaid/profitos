@@ -31,6 +31,8 @@ from datetime import date, datetime, timezone
 SCHEMA = 'profitos.teledeclaration.v1'
 
 INSTALMENT_TYPES = ('IS_2571', 'TVA_3514')
+MAX_PERIOD_DAYS = 731          # premier exercice : 24 mois au plus
+PARTNER_STATUSES = ('deposited', 'acknowledged', 'accepted', 'rejected')
 
 TYPES = {
     'TVA_CA3': {'label': 'Déclaration de TVA', 'form': '3310-CA3', 'channel': 'EDI-TVA'},
@@ -122,6 +124,18 @@ def build_declaration(conn, decl_type, period_start, period_end, entity_id=None,
     end = date.fromisoformat(str(period_end)[:10])
     if start > end:
         raise TeledeclarationError("Période invalide.")
+    if (end - start).days > MAX_PERIOD_DAYS:
+        raise TeledeclarationError("Période trop longue : un exercice compte 24 mois au plus.")
+    from profitos.accounting import paris_today as _today
+    if start.year < 2000 or end.year > _today().year + 1:
+        raise TeledeclarationError("Période hors des années gérées.")
+    if instalment_amount is not None:
+        try:
+            instalment_amount = float(instalment_amount)
+        except (TypeError, ValueError):
+            raise TeledeclarationError("Montant d'acompte invalide.")
+        if instalment_amount != instalment_amount or abs(instalment_amount) > 1e12:
+            raise TeledeclarationError("Montant d'acompte invalide.")
     identity = identity or {}
     meta = dict(TYPES[decl_type])
     if decl_type in INSTALMENT_TYPES:
@@ -284,6 +298,8 @@ def build_declaration(conn, decl_type, period_start, period_end, entity_id=None,
     from profitos.accounting import paris_today
     if due_date and due_date <= end:
         errors.append("L'échéance de l'acompte doit suivre l'exercice de référence.")
+    elif due_date and (due_date - end).days > 731:
+        errors.append("L'échéance de l'acompte doit tomber dans les deux ans qui suivent l'exercice de référence.")
     if end >= paris_today():
         warnings.append("La période n'est pas terminée : le dépôt sera refusé tant qu'elle n'est pas close.")
         errors.append("Période non terminée.")
@@ -476,6 +492,9 @@ def refresh_status(conn, row, connector=None):
     payload = json.loads(row['payload_json'] or '{}')
     res = connector.fetch_status(row['remote_id'], row['status'], payload)
     status = res.get('status') or row['status']
+    if status not in PARTNER_STATUSES:
+        # Statut inconnu renvoyé par le partenaire : ignoré (jamais un statut de dépôt manuel).
+        status = row['status']
     if status == row['status'] and not res.get('ack_number'):
         return status
     history = json.loads(row['history_json'] or '[]')
@@ -635,6 +654,8 @@ def record_filing(conn, row, stored_name, original_name, filed_on, reference=Non
     from profitos.accounting import paris_today
     if filed_on > paris_today():
         raise TeledeclarationError("La date de dépôt ne peut pas être dans le futur.")
+    if filed_on < date.fromisoformat(str(row['period_end'])[:10]):
+        raise TeledeclarationError("La date de dépôt ne peut pas précéder la fin de la période déclarée.")
     other = active_declaration(conn, row['entity_id'], row['decl_type'], row['period_start'], row['period_end'], row['due_date'])
     if other and other['id'] != row['id'] and not row['corrective']:
         raise TeledeclarationError("Une autre déclaration est déjà enregistrée comme déposée pour cette période.")

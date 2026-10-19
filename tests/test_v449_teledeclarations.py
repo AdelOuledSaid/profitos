@@ -3,6 +3,8 @@ dépôt figé et horodaté, dépôt unique par période, rectificative, accusés
 connecteur simulation et connecteur partenaire EDI)."""
 import json
 
+import pytest
+
 from support_v4xx import app, auth, flashes, post, signup, tenant  # noqa: F401
 from profitos.accounting import create_entry
 from profitos import teledeclaration as T
@@ -45,8 +47,10 @@ def test_build_ca3_and_liasse_payloads(app):
     assert cases[('2053', 'HN')] == 70000 and cases[('2050', 'BX')] == 120000 and not l['errors']
     bad = T.build_declaration(c, 'TVA_CA3', '2025-03-01', '2025-03-31', identity={'name': 'X', 'siret': '12345678900000'})
     assert any('SIREN' in e for e in bad['errors'])
-    future = T.build_declaration(c, 'TVA_CA3', '2099-01-01', '2099-01-31', identity=ident)
+    future = T.build_declaration(c, 'TVA_CA3', '2026-12-01', '2026-12-31', identity=ident)
     assert 'Période non terminée.' in future['errors']
+    with pytest.raises(T.TeledeclarationError):      # années hors limites : refus immédiat (v459)
+        T.build_declaration(c, 'TVA_CA3', '2099-01-01', '2099-01-31', identity=ident)
     c.close()
     assert T.payload_hash(b['payload']) == T.payload_hash(json.loads(json.dumps(b['payload'])))
 

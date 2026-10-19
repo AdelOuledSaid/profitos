@@ -407,6 +407,11 @@ def register(app):
         eid = _eid()
         c = cx()
         fy, prior, choice, current, previous = _fiscal_years(c, eid)
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='corporate_tax')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('accounting_corporate_tax', exercice=choice))
         if request.method == 'POST':
             action = request.form.get('action')
             try:
@@ -417,10 +422,23 @@ def register(app):
                             amt = (request.form.get(f'{prefix}_amount_{i}') or '').strip()
                             if not amt:
                                 continue
+                            value = form_float(amt)
+                            if value < 0:
+                                raise ValueError("montant négatif dans les réintégrations ou déductions")
                             out.append({'code': (request.form.get(f'{prefix}_code_{i}') or '').strip()[:3],
                                         'label': (request.form.get(f'{prefix}_label_{i}') or '').strip()[:120],
-                                        'amount': form_float(amt)})
+                                        'amount': value})
                         return out
+                    def _pos(name, allow_empty=False):
+                        raw = (request.form.get(name) or '').strip()
+                        if allow_empty and not raw:
+                            return None
+                        v = form_float(raw)
+                        if v < 0:
+                            raise ValueError(f"montant négatif ({name.replace('_', ' ')})")
+                        return v
+                    for name in ('deficits_anterieurs', 'credits_impot', 'mvlt_anterieures', 'acomptes_verses', 'tva_acomptes_verses'):
+                        _pos(name, allow_empty=True)
                     raw_acomptes = (request.form.get('acomptes_verses') or '').strip()
                     raw_tva = (request.form.get('tva_acomptes_verses') or '').strip()
                     CT.save_fiscal_settings(c, eid, fy['end'].isoformat(), {

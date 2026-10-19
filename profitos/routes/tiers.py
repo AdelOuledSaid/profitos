@@ -30,6 +30,11 @@ def register(app):
             year = today.year - 1
         eid = _eid()
         c = cx()
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='das2_page')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('das2_page', annee=year))
         if request.method == 'POST':
             f = request.form
             rows, errors = {}, []
@@ -84,6 +89,11 @@ def register(app):
             month = date.fromisoformat(raw + '-01') if raw else (months[0] if months else today.replace(day=1))
         except ValueError:
             month = months[0] if months else today.replace(day=1)
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='rcm_2777_page')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('rcm_2777_page', mois=month.strftime('%Y-%m')))
         if request.method == 'POST':
             try:
                 part = (request.form.get('part_pp') or '').strip()
@@ -119,6 +129,11 @@ def register(app):
             year = today.year - 1
         eid = _eid()
         c = cx()
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='ifu_page')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('ifu_page', annee=year))
         if request.method == 'POST':
             keys = [k[:120] for k in request.form.getlist('dispensed')][:50]
             TD.save_store(c, eid, f'ifu-{year}', {'dispensed': keys}, now(), current_user()['email'])
@@ -148,6 +163,11 @@ def register(app):
             year = today.year
         eid = _eid()
         c = cx()
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='cfe_page')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('cfe_page', annee=year))
         if request.method == 'POST':
             action = request.form.get('action')
             try:

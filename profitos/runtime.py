@@ -2799,11 +2799,27 @@ def form_float(value, default=0.0):
     if value is None or (isinstance(value,str) and value.strip()==''):
         return float(default)
     if isinstance(value,(int,float)):
+        if not math.isfinite(float(value)) or abs(float(value))>MAX_FORM_AMOUNT:
+            raise ValueError(f"Montant hors limites : {value!r}")
         return float(value)
     v=parse_amount(str(value).replace('%',''))
     if v is None:
         raise ValueError(f"Nombre illisible : {value!r}")
+    # « inf », « 1e400 », montants démesurés : jamais une saisie légitime (et source d'erreurs
+    # de calcul ou d'arrondi plus loin).
+    if not math.isfinite(v) or abs(v)>MAX_FORM_AMOUNT:
+        raise ValueError(f"Montant hors limites : {value!r}")
     return v
+
+MAX_FORM_AMOUNT=1e12
+
+# Rôles habilités à modifier les données fiscales (profil fiscal, paramètres d'impôt,
+# DAS2, IFU, 2777, CFE) et à préparer ou suivre les déclarations.
+FISCAL_WRITE_ROLES=('OWNER','ADMIN','COMPTABLE')
+FISCAL_WRITE_DENIED="Seuls le propriétaire, un administrateur ou le comptable peuvent modifier les données fiscales."
+
+def fiscal_write_allowed():
+    return current_role() in FISCAL_WRITE_ROLES
 
 def money(v):
     try:return float(v or 0)
@@ -3684,6 +3700,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-19','title':"Sécurité du module fiscal : données fiscales réservées aux rôles habilités, montants et dates contrôlés"},
     {'date':'2026-10-19','title':"Valeur ajoutée (CVAE) : variation des stocks corrigée ; dégrèvement CVAE appliqué pour 2024-2025 ; dépôts simulés clairement signalés"},
     {'date':'2026-10-17','title':"Dépôts : statuts distincts « dépôt déclaré », « justificatif à vérifier » et « dépôt confirmé », confirmation manuelle tracée"},
     {'date':'2026-10-17','title':"Accusés de dépôt contrôlés automatiquement (SIREN, formulaire, période, montant) et relances des déclarations en retard"},

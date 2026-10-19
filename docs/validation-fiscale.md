@@ -12,7 +12,7 @@ indicatifs. On ouvre :
 
 - à des organisations pilotes : `FISCAL_DECLARATIONS_PILOT_ORGS=12,34` (identifiants) ;
 - à tous les clients : `FISCAL_DECLARATIONS_ENABLED=1`, **seulement** une fois la grille du
-  paragraphe 5 signée par un expert-comptable.
+  paragraphe 6 signée par un expert-comptable.
 
 ## 2. Statuts : aucune acceptation sans accusé EDI
 
@@ -32,7 +32,21 @@ Tests `tests/test_v457_statuts_non_acceptes.py` :
 - seul un connecteur de partenaire EDI réel (mode production) peut produire le statut
   « Acceptée par l'administration (accusé EDI) ».
 
-## 3. Dossiers de référence
+## 3. Sécurité du module (v459)
+
+Tests `tests/test_v459_securite_fiscale.py` (chaque protection a été retirée une à une pour
+vérifier qu'un test échoue) :
+
+| Contrôle | Garantie |
+| --- | --- |
+| Module fermé | préparation, dépôt, archivage, confirmation et actualisation refusés en production sans `FISCAL_DECLARATIONS_ENABLED` (ou hors des organisations pilotes) ; aucun rappel fiscal envoyé |
+| Routes et API | toutes les pages fiscales exigent une connexion et sont rattachées au contrôle des rôles ; aucune route d'API par jeton n'expose les déclarations ; jeton CSRF exigé sur chaque envoi |
+| Isolation | une autre entreprise, ou une autre entité de la même organisation, obtient « introuvable » sur les déclarations, PDF, contenus et justificatifs, en lecture comme en écriture |
+| Autorisations | profil fiscal, paramètres d'impôt et écriture d'IS, DAS2, IFU, 2777, CFE et déclarations réservés au propriétaire, à l'administrateur et au comptable ; mandat de prélèvement au propriétaire et à l'administrateur ; IBAN masqué dans l'export JSON pour les autres rôles |
+| Montants et dates | montants infinis ou démesurés (au-delà de 1 000 milliards d'euros) refusés partout ; montants négatifs refusés (crédits, acomptes, déficits, réintégrations, parts, dispenses) ; période de 24 mois au plus ; échéance d'acompte dans les deux ans ; date de dépôt ni future ni antérieure à la fin de la période |
+| Statuts | un statut inconnu renvoyé par un partenaire est ignoré ; aucun formulaire ne peut imposer un statut ; un dépôt manuel n'atteint jamais « Acceptée » |
+
+## 4. Dossiers de référence
 
 Trois dossiers complets sont passés en écritures dans `tests/test_v458_dossiers_reference.py`,
 et les résultats de ProfitOS comparés aux montants calculés à la main ci-dessous
@@ -93,7 +107,7 @@ banque 14 000 ; capital 20 000. Ventes 50 000 HT, achats 70 000. Machine cédée
 | Déficits (2033-D) | 982 : 5 000 ; 983 : 0 ; 984 : 5 000 ; 860 : 19 000 ; 870 : 24 000 | conformes |
 | IS | exercice déficitaire | 0 |
 
-## 4. Écarts trouvés et corrigés grâce aux dossiers
+## 5. Écarts trouvés et corrigés grâce aux dossiers
 
 | Écart | Effet | Correction |
 | --- | --- | --- |
@@ -101,7 +115,7 @@ banque 14 000 ; capital 20 000. Ventes 50 000 HT, achats 70 000. Machine cédée
 | Dégrèvement CVAE de 188 € absent pour 2024-2025, barème réduit 2028-2029 absent | CVAE 2025 surévaluée pour les entreprises sous 2 M€ | 188 € (2024-2027), 125 € (2028), 63 € (2029) ; taxe additionnelle 2024-2025 |
 | Dépôt simulé affiché « Acceptée » et compté comme déposé | échéance cochée sans dépôt réel | libellé « (simulation) », exclu des dépôts réels |
 
-## 5. Grille de validation par l'expert-comptable
+## 6. Grille de validation par l'expert-comptable
 
 À remplir sur **au moins trois dossiers réels** (un par régime : simplifié, normal, et un
 exercice déficitaire ou avec cession), en comparant ProfitOS à la liasse et aux

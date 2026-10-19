@@ -472,6 +472,11 @@ def recurring_entries(org, ctx):
      description="Rappelle au propriétaire les échéances fiscales à 7 jours et à la veille, puis relance le lendemain et chaque semaine tant qu'aucun justificatif de dépôt n'est archivé.")
 def fiscal_deadlines(org, ctx):
     _require_paid(org, 'accounting_core')
+    from profitos.teledeclaration import declarations_open
+    if not declarations_open(org['id']):
+        # Module fiscal pas encore ouvert à cette organisation : pas de rappels qui
+        # inciteraient à déposer sur la base de montants indicatifs.
+        return 'module fiscal non ouvert'
     from profitos.runtime import tenant_cx_direct, fr_number
     from profitos.automation import upcoming_deadlines
     from profitos.accounting import paris_today

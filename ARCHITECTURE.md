@@ -61,8 +61,12 @@ trentaine de modules de routes ; la logique métier vit dans des modules Python 
    `banking`, `pilotage`, `cabinet`…), vérifié avant chaque requête
    (`enforce_role_areas`). Toute route sous `/comptabilite` doit y être rattachée (test
    `test_v456`). LECTURE ne peut rien modifier.
-4. **Actions sensibles** : préparer ou enregistrer une déclaration est réservé à OWNER,
-   ADMIN et COMPTABLE ; le mandat de prélèvement à OWNER et ADMIN.
+4. **Actions sensibles** : toute écriture fiscale (profil fiscal, paramètres d'impôt, DAS2,
+   IFU, 2777, CFE, déclarations) est réservée à OWNER, ADMIN et COMPTABLE
+   (`runtime.fiscal_write_allowed`) ; le mandat de prélèvement à OWNER et ADMIN. En
+   production, la préparation des déclarations est fermée tant que
+   `FISCAL_DECLARATIONS_ENABLED` n'est pas activé (`teledeclaration.declarations_open`).
+   Les saisies de montants refusent les valeurs non finies ou démesurées (`form_float`).
 5. **CSRF** sur tous les POST, en-têtes de sécurité et CSP stricte, limitation de débit
    (Flask-Limiter + Redis).
 

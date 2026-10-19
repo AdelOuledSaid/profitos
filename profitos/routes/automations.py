@@ -121,6 +121,11 @@ def register_fiscal(app):
         eid = _eid()
         c = cx()
         profile = CT.get_fiscal_profile(c, eid)
+        if request.method == 'POST' and not fiscal_write_allowed():
+            c.close()
+            log_security_event('FISCAL_WRITE_DENIED', 'BLOCKED', target='fiscal_profile')
+            flash(FISCAL_WRITE_DENIED)
+            return redirect(url_for('fiscal_profile'))
         if request.method == 'POST':
             f = request.form
             errors = []
@@ -139,6 +144,8 @@ def register_fiscal(app):
                 if 'shares' in r:
                     try:
                         r['shares'] = form_float(r.get('shares') or 0)
+                        if r['shares'] < 0:
+                            raise ValueError
                     except ValueError:
                         errors.append(f"{r['name']} : nombre de parts invalide.")
                 siren = ''.join(ch for ch in r.get('siren', '') if ch.isdigit())

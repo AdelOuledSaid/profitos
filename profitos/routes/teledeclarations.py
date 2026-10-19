@@ -377,6 +377,9 @@ def register(app):
     @login_required
     def teledeclaration_refresh(decl_id):
         eid = _eid()
+        if _closed() or current_role() not in SUBMIT_ROLES:
+            flash(CLOSED_MSG if _closed() else "Seuls le propriétaire, un administrateur ou le comptable peuvent actualiser une déclaration.")
+            return redirect(url_for('teledeclaration_detail', decl_id=decl_id))
         c = cx()
         row = _row_or_404(c, decl_id, eid)
         try:
@@ -397,5 +400,11 @@ def register(app):
         c = cx()
         row = _row_or_404(c, decl_id, eid)
         c.close()
-        return Response(row['payload_json'], mimetype='application/json',
+        data = row['payload_json']
+        if current_role() not in ('OWNER', 'ADMIN'):
+            payload = json.loads(data or '{}')
+            if (payload.get('payment') or {}).get('iban'):
+                payload['payment']['iban'] = masked_iban(payload['payment']['iban'])
+                data = json.dumps(payload, ensure_ascii=False)
+        return Response(data, mimetype='application/json',
                         headers={'Content-Disposition': f'attachment; filename="teledeclaration-{decl_id}.json"'})
