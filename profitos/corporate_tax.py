@@ -7,10 +7,15 @@ Règles en vigueur pour les exercices 2026 (loi n° 2026-103 du 19 février 2026
   par des personnes physiques) ; contribution sociale de 3,3 % sur l'IS excédant
   763 000 € (exonération des PME au CA < 7,63 M€) ;
 - acomptes d'IS les 15 mars, 15 juin, 15 septembre et 15 décembre quand l'IS de
-  référence dépasse 3 000 € ; solde le 15 du 4e mois suivant la clôture ;
-- CVAE en cours de suppression : taux maximal 0,28 % en 2026 et 2027, 0,19 % en 2028,
-  0,09 % en 2029, suppression en 2030 ; non due sous 63 € ; valeur ajoutée plafonnée à
-  80 % du CA (85 % au-delà de 7,6 M€) ; taxe additionnelle CCI 9,23 % (2026-2027).
+  référence (ramené à 12 mois) dépasse 3 000 € ; aucun acompte au premier exercice ;
+  solde le 15 du 4e mois suivant la clôture ;
+- exercice de plus ou de moins de 12 mois : plafond du taux réduit et abattement de la
+  contribution sociale ajustés à la durée (mois entiers et jours résiduels en trentièmes) ;
+- CVAE en cours de suppression : taux maximal 0,28 % en 2024, 0,19 % en 2025 (plus une
+  contribution complémentaire de 47,4 %), 0,28 % en 2026 et 2027, 0,19 % en 2028, 0,09 %
+  en 2029, suppression en 2030 ; taux arrondi au centième de pourcent ; non due jusqu'à
+  63 € ; valeur ajoutée plafonnée à 80 % du CA (85 % au-delà de 7,6 M€) ; taxe
+  additionnelle CCI 9,23 % (13,84 % en 2025).
 
 Résultat indicatif à faire valider : les crédits d'impôt, l'intégration fiscale, les
 régimes particuliers et le carry-back ne sont pas calculés automatiquement.
@@ -26,22 +31,30 @@ SOCIAL_CONTRIBUTION_ALLOWANCE = 763_000
 SOCIAL_CONTRIBUTION_PME_TURNOVER = 7_630_000
 IS_INSTALMENT_THRESHOLD = 3_000
 
-# CVAE : (taux plafond, (seuils de la formule)) par année d'imposition.
-# Formule légale (art. 1586 ter CGI) : taux progressif selon le CA, linéaire par tranche.
+# CVAE : barème par année d'imposition (art. 1586 ter CGI, notices 1329-AC / 1329-DEF).
+# Taux progressif selon le CA (ramené à 12 mois), linéaire par tranche, exprimé en
+# pourcentage et arrondi au centième le plus proche.
 CVAE_SCHEDULE = {
-    # année : (taux tranche 500 k€–3 M€, taux additionnel 3–10 M€, taux additionnel 10–50 M€, taux maximal)
-    2026: (0.00094, 0.00169, 0.00019, 0.0028),
-    2027: (0.00094, 0.00169, 0.00019, 0.0028),
-    2028: (0.00063, 0.00113, 0.00013, 0.0019),
-    2029: (0.00031, 0.00056, 0.00006, 0.0009),
+    # année : (taux 500 k€–3 M€, taux additionnel 3–10 M€, base 10–50 M€, taux additionnel 10–50 M€, taux maximal)
+    # (bases et taux tels que publiés dans les notices, la base de la 3e tranche est arrondie)
+    2024: (0.00094, 0.00169, 0.00263, 0.00019, 0.0028),
+    2025: (0.00063, 0.00113, 0.00175, 0.00013, 0.0019),   # + contribution complémentaire de 47,4 %
+    2026: (0.00094, 0.00169, 0.00263, 0.00019, 0.0028),   # relevé à 0,28 % (loi de finances pour 2026)
+    2027: (0.00094, 0.00169, 0.00263, 0.00019, 0.0028),
+    2028: (0.00063, 0.00113, 0.00175, 0.00013, 0.0019),
+    2029: (0.00031, 0.00056, 0.00087, 0.00006, 0.0009),
 }
-TA_CVAE_RATE = {2024: 0.0923, 2025: 0.0923, 2026: 0.0923, 2027: 0.0923, 2028: 0.1384, 2029: 0.2768}
+TA_CVAE_RATE = {2024: 0.0923, 2025: 0.1384, 2026: 0.0923, 2027: 0.0923, 2028: 0.1384, 2029: 0.2768}
+# Contribution complémentaire temporaire (CVAE 2025 seulement) : 47,4 % de la CVAE due,
+# hors taxe additionnelle et hors plafonnement.
+CVAE_COMPLEMENTARY_RATE = {2025: 0.474}
 CVAE_COLLECTION_THRESHOLD = 63
 CVAE_DECLARATION_TURNOVER = 152_500
 CVAE_INSTALMENT_THRESHOLD = 1_500
+CVAE_CAP_TURNOVER = 7_600_000
 # Dégrèvement des entreprises au CA < 2 M€ (art. 1586 quater), proportionnel au taux
-# maximal : 188 € au taux de 0,28 % (2024 à 2027), 125 € à 0,19 % (2028), 63 € à 0,09 % (2029).
-CVAE_SMALL_RELIEF = {2024: 188, 2025: 188, 2026: 188, 2027: 188, 2028: 125, 2029: 63}
+# maximal : 188 € à 0,28 % (2024, 2026, 2027), 125 € à 0,19 % (2025, 2028), 63 € à 0,09 % (2029).
+CVAE_SMALL_RELIEF = {2024: 188, 2025: 125, 2026: 188, 2027: 188, 2028: 125, 2029: 63}
 
 
 def _r(x):
@@ -49,7 +62,21 @@ def _r(x):
 
 
 def _months(start, end):
-    return max(1.0, ((end - start).days + 1) / 365.0 * 12)
+    """Durée de l'exercice en mois : mois entiers, plus les jours résiduels comptés en
+    trentièmes de mois (BOI-IS-LIQ-20-20 § 50 : du 1er janvier au 15 septembre = 8,5 mois)."""
+    import calendar
+    if end < start:
+        return 1 / 30
+
+    def anniversary(k):
+        y, m = divmod(start.month - 1 + k, 12)
+        y += start.year
+        return date(y, m + 1, min(start.day, calendar.monthrange(y, m + 1)[1]))
+    k = 0
+    while anniversary(k + 1) - timedelta(days=1) <= end:
+        k += 1
+    rest = (end - anniversary(k)).days + 1
+    return max(1 / 30, k + rest / 30)
 
 
 # ------------------------------------------------------------------------------- IS
@@ -70,7 +97,9 @@ def compute_is(resultat_fiscal, start, end, turnover, eligible_pme, credits=0.0,
     is_total = round(is_reduced + is_normal)  # l'IS se liquide à l'euro
     ca12 = float(turnover or 0) * 12 / _months(start, end)
     cs_exempt = bool(eligible_pme and ca12 < SOCIAL_CONTRIBUTION_PME_TURNOVER)
-    cs = 0 if cs_exempt else round(max(0.0, is_total - SOCIAL_CONTRIBUTION_ALLOWANCE) * SOCIAL_CONTRIBUTION_RATE)
+    # Abattement de 763 000 € ajusté à la durée de l'exercice (BOI-IS-AUT-10-10).
+    allowance = SOCIAL_CONTRIBUTION_ALLOWANCE * _months(start, end) / 12
+    cs = 0 if cs_exempt else round(max(0.0, is_total - allowance) * SOCIAL_CONTRIBUTION_RATE)
     credits = _r(credits)
     acomptes = _r(acomptes)
     due = _r(is_total + cs - credits)
@@ -132,32 +161,57 @@ def liasse_deadline(end):
     return legal, legal + timedelta(days=15)
 
 
-def next_instalments(is_reference, next_start, next_end):
-    """Acomptes de l'exercice suivant : un quart de l'IS de référence chacun, si celui-ci
-    dépasse 3 000 €."""
-    if float(is_reference or 0) <= IS_INSTALMENT_THRESHOLD:
+def reference_is_12m(is_reference, ref_start=None, ref_end=None):
+    """IS de référence ramené à 12 mois quand l'exercice de référence n'en compte pas 12
+    (BOI-IS-DECLA-20-10 : acomptes calculés sur les bénéfices rapportés à 12 mois)."""
+    months = _months(ref_start, ref_end) if ref_start and ref_end else 12.0
+    return float(is_reference or 0) * 12 / months
+
+
+def instalment_amount(is_reference, ref_start=None, ref_end=None):
+    """Montant de chaque acompte d'IS (2571) : un quart de l'IS de référence ramené à
+    12 mois (6,25 % du bénéfice au taux normal et 3,75 % de la part au taux réduit),
+    arrondi à l'euro ; 0 si cet IS ne dépasse pas 3 000 € (dispense d'acomptes)."""
+    ref = reference_is_12m(is_reference, ref_start, ref_end)
+    if ref <= IS_INSTALMENT_THRESHOLD:
+        return 0.0
+    return float(round(ref / 4))
+
+
+def next_instalments(is_reference, next_start, next_end, ref_start=None, ref_end=None):
+    """Acomptes de l'exercice suivant (vide en cas de dispense)."""
+    amount = instalment_amount(is_reference, ref_start, ref_end)
+    if not amount:
         return []
-    amount = round(float(is_reference) / 4)
-    return [{'date': d, 'amount': float(amount)} for d in instalment_dates(next_start, next_end)]
+    return [{'date': d, 'amount': amount} for d in instalment_dates(next_start, next_end)]
 
 
 # ----------------------------------------------------------------------------- CVAE
+def _round_rate(rate):
+    """Taux exprimé en pourcentage et arrondi au centième le plus proche (0,055 % → 0,06 %)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    pct = Decimal(repr(round(rate * 100, 10))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return float(pct) / 100
+
+
 def cvae_rate(turnover12, year):
     if year >= 2030:
         return 0.0
-    # Avant 2026 : même barème qu'en 2026 (taux gelés au niveau 2024).
-    sched = CVAE_SCHEDULE.get(year) or CVAE_SCHEDULE[2026 if year < 2026 else 2029]
-    r1, r2, r3, rmax = sched
+    # Avant 2024 : barème 2024 (ProfitOS ne traite pas les impositions antérieures).
+    sched = CVAE_SCHEDULE.get(year) or CVAE_SCHEDULE[2024 if year < 2024 else 2029]
+    r1, r2, base3, r3, rmax = sched
     ca = float(turnover12 or 0)
     if ca < 500_000:
         return 0.0
     if ca <= 3_000_000:
-        return r1 * (ca - 500_000) / 2_500_000
-    if ca <= 10_000_000:
-        return r1 + r2 * (ca - 3_000_000) / 7_000_000
-    if ca <= 50_000_000:
-        return r1 + r2 + r3 * (ca - 10_000_000) / 40_000_000
-    return rmax
+        raw = r1 * (ca - 500_000) / 2_500_000
+    elif ca <= 10_000_000:
+        raw = r1 + r2 * (ca - 3_000_000) / 7_000_000
+    elif ca <= 50_000_000:
+        raw = base3 + r3 * (ca - 10_000_000) / 40_000_000
+    else:
+        return rmax
+    return _round_rate(raw)
 
 
 def compute_cvae(turnover, valeur_ajoutee, start, end, previous_cvae=None):
@@ -167,7 +221,9 @@ def compute_cvae(turnover, valeur_ajoutee, start, end, previous_cvae=None):
     ca = float(turnover or 0)
     ca12 = ca * 12 / months
     va = max(0.0, float(valeur_ajoutee or 0))
-    cap = 0.8 if ca12 <= 7_600_000 else 0.85
+    # Plafonnement : CA réel de la période (seuls le taux et le dégrèvement utilisent le CA
+    # ramené à 12 mois, art. 1586 quinquies II).
+    cap = 0.8 if ca <= CVAE_CAP_TURNOVER else 0.85
     va_capped = min(va, ca * cap)
     rate = cvae_rate(ca12, year)
     gross = va_capped * rate
@@ -177,6 +233,7 @@ def compute_cvae(turnover, valeur_ajoutee, start, end, previous_cvae=None):
         net = 0.0
     net = float(round(net))
     ta = float(round(net * TA_CVAE_RATE.get(year, 0.0)))
+    cc = float(round(net * CVAE_COMPLEMENTARY_RATE.get(year, 0.0)))
     instalments = []
     if net > CVAE_INSTALMENT_THRESHOLD:
         instalments = [{'date': date(year + 1, 6, 15), 'amount': float(round(net / 2))},
@@ -185,7 +242,7 @@ def compute_cvae(turnover, valeur_ajoutee, start, end, previous_cvae=None):
         'year': year, 'turnover': _r(ca), 'turnover_12m': _r(ca12), 'valeur_ajoutee': _r(va),
         'plafond_va_pct': int(cap * 100), 'va_plafonnee': _r(va_capped), 'taux': rate,
         'taux_pct': round(rate * 100, 4), 'cotisation_brute': _r(gross), 'degrevement': float(relief),
-        'cvae': net, 'taxe_additionnelle': ta, 'total': _r(net + ta),
+        'cvae': net, 'taxe_additionnelle': ta, 'contribution_complementaire': cc, 'total': _r(net + ta + cc),
         'declaration_obligatoire': ca12 > CVAE_DECLARATION_TURNOVER,
         'echeance_solde': second_working_day_after_may_1(year + 1),
         'acomptes_annee_suivante': instalments,
@@ -233,7 +290,7 @@ def fiscal_calendar(start, end, is_result, cvae_result):
         nxt_end = date(end.year + 1, end.month, end.day)
     except ValueError:
         nxt_end = date(end.year + 1, end.month, 28)
-    for a in next_instalments(is_result['is_total'], end + timedelta(days=1), nxt_end):
+    for a in next_instalments(is_result['is_total'], end + timedelta(days=1), nxt_end, start, end):
         items.append({'date': a['date'], 'label': "Acompte d'impôt sur les sociétés", 'form': '2571', 'amount': a['amount']})
     if cvae_result and cvae_result['declaration_obligatoire']:
         items.append({'date': cvae_result['echeance_solde'], 'label': 'Déclaration de valeur ajoutée et solde de CVAE',

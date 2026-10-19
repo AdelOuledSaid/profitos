@@ -26,7 +26,7 @@ trentaine de modules de routes ; la logique métier vit dans des modules Python 
 ├── scripts/                # préflight, tâches, sauvegarde / restauration, migration PostgreSQL
 ├── docs/                   # guide utilisateur, production réglementaire
 ├── mobile/                 # application Capacitor (Android / iOS)
-└── tests/                  # pytest (≈ 1 470 tests)
+└── tests/                  # pytest (≈ 1 540 tests)
 ```
 
 ## Données

@@ -6,7 +6,7 @@
   <div>
     <div class="purchase-eyebrow">LIASSE FISCALE — RÉGIME RÉEL NORMAL</div>
     <h1 class="purchase-title">Tableaux 2050 à 2059</h1>
-    <p class="purchase-subtitle">Exercice {{ fy.label }}{% if choice=='courant' %} — situation provisoire{% endif %}. Pré-remplis à partir de la comptabilité, arrondis à l'euro : à relire et compléter avant le dépôt.</p>
+    <p class="purchase-subtitle">Exercice {{ fy.label }} ({{ l.duree_mois|fr_number(2 if l.duree_mois % 1 else 0) }} mois){% if choice=='courant' %} — situation provisoire{% endif %}. Pré-remplis à partir de la comptabilité, arrondis à l'euro : à relire et compléter avant le dépôt.</p>
   </div>
   <div class="actionbuttons">
     <a class="purchase-nav-btn" href="{{ url_for('accounting_liasse_2050', exercice=choice, format='xlsx') }}">Exporter Excel</a>

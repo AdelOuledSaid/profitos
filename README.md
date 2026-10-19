@@ -49,7 +49,7 @@ Sous Windows : `LANCER_PROFITOS.bat` (développement) ou `RUN_PRODUCTION_WINDOWS
 pytest -q
 ```
 
-Environ 1 480 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
+Environ 1 540 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
 déclarations, tâches planifiées). La CI GitHub (`.github/workflows/tests.yml`) les exécute à
 chaque push ; Render ne déploie que si elle est verte.
 

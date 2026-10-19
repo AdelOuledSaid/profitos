@@ -45,6 +45,15 @@ def _balance_before(conn, account, day, entity_id):
     return round(float(row['n'] or 0), 2)
 
 
+def unliquidated_before(conn, date_from, entity_id=None):
+    """Vrai si des comptes de TVA collectée ou déductible gardent un solde avant la période :
+    une période antérieure n'a pas été liquidée et son crédit éventuel ne sera pas reporté."""
+    for account in (VAT_COLLECTED_ACCOUNT, DEDUCTIBLE_ASSETS, DEDUCTIBLE_OTHER):
+        if abs(_balance_before(conn, account, date_from, entity_id)) >= 0.01:
+            return True
+    return False
+
+
 def ca3_form(conn, date_from, date_to, entity_id=None):
     """Cases de la CA3 (formulaire n° 3310-CA3) pour la période."""
     rates = ca3_collected_by_rate(conn, date_from, date_to, entity_id)

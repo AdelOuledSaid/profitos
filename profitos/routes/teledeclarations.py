@@ -94,8 +94,11 @@ def register(app):
         m_start, m_end = _previous_month()
         q_end = m_end
         q_start = date(q_end.year, ((q_end.month - 1) // 3) * 3 + 1, 1)
-        instalments = [d for d in CT.instalment_dates(current['start'], current['end'])]
         profile = CT.get_fiscal_profile(c, eid)
+        is_ref = T.reference_is(c, closed['start'], closed['end'], eid)
+        is_instalment = CT.instalment_amount(is_ref['is_total'], closed['start'], closed['end'])
+        # Dispense (IS de référence ramené à 12 mois ≤ 3 000 €, premier exercice) : aucun acompte.
+        instalments = list(CT.instalment_dates(current['start'], current['end'])) if is_instalment else []
         profile_vat = profile.get('vat_filing') or 'ca3_mensuelle'
         vat_instalments = []
         if profile_vat == 'ca12':
@@ -130,6 +133,7 @@ def register(app):
             cand['existing'] = active.get(key) or prepared.get(key)
             cand['channel'] = T.filing_channel(cand['type'], profile.get('tax_regime') or 'normal')
         return render_template('teledeclarations.html', rows=rows, candidates=candidates, instalments=instalments,
+                               is_instalment=is_instalment, is_reference=is_ref['is_total'],
                                vat_instalments=vat_instalments, inst_active=inst_active, vat_filing=profile_vat, mandate_ok=CT.mandate_ready(profile),
                                closed=closed, partner=T.partner_configured(), types=T.TYPES,
                                can_submit=current_role() in SUBMIT_ROLES)

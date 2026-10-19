@@ -1,6 +1,6 @@
 # ProfitOS — Guide utilisateur
 
-Mis à jour le 17 octobre 2026
+Mis à jour le 19 octobre 2026
 
 ## 1. Présentation
 
@@ -445,7 +445,7 @@ La TVA sur encaissements (prestations de services) est gérée : elle devient ex
 4. **Plaquette** : bilan et compte de résultat de l'exercice en PDF.
 5. **Liasse 2033** (régime réel simplifié) : les tableaux 2033-A (bilan simplifié) et 2033-B (compte de résultat et détermination du résultat fiscal), 2033-C (immobilisations, amortissements, plus et moins-values de cession), 2033-D (provisions, suivi des déficits), 2033-E (valeur ajoutée), 2033-F (composition du capital), 2033-G (filiales et participations) et la page de garde 2065, préremplis depuis la comptabilité et le profil fiscal. Les réintégrations, déductions et déficits antérieurs se saisissent dans l'écran Impôt sur les sociétés, commun aux deux régimes. Export Excel complet.
 6. **Liasse 2050 (réel normal)** : les tableaux 2050 à 2059 préremplis depuis la comptabilité — bilan actif et passif avec la colonne N-1, compte de résultat, immobilisations, amortissements, provisions, échéances des créances et dettes (emprunts ventilés selon leur échéancier), résultat fiscal (2058-A), suivi des déficits (2058-B), renseignements divers (2058-C) et valeur ajoutée (2059-E). Les tableaux 2054 (immobilisations), 2055 (amortissements) et 2056 (provisions) portent les codes de cases du formulaire. S'y ajoutent les plus et moins-values de cession (2059-A), le suivi des moins-values à long terme (2059-C), la composition du capital (2059-F), les filiales et participations (2059-G) et la page de garde 2065, remplis depuis le **profil fiscal** ; les tableaux 2059-B et 2059-D sont présentés à néant. Export Excel case par case.
-7. **Impôt sur les sociétés et CVAE** : calcul de l'IS (taux réduit de 15 % jusqu'à 42 500 € pour les PME éligibles, 25 % au-delà, contribution sociale), des acomptes et du solde à payer, et de la CVAE de l'année. Saisissez les réintégrations et déductions extra-comptables, les déficits antérieurs et les crédits d'impôt : la liasse et l'impôt sont recalculés. Un bouton passe l'écriture d'impôt de l'exercice (695 / 444) et un calendrier liste les échéances (acomptes, relevé de solde, dépôt de la liasse, CVAE).
+7. **Impôt sur les sociétés et CVAE** : calcul de l'IS (taux réduit de 15 % jusqu'à 42 500 € pour les PME éligibles, 25 % au-delà, contribution sociale), des acomptes (aucun pendant le premier exercice, ni quand l'impôt de l'exercice précédent, ramené à 12 mois, ne dépasse pas 3 000 €) et du solde à payer, et de la CVAE de l'année. Pour un exercice de plus ou de moins de 12 mois, le plafond du taux réduit est ajusté à sa durée. Saisissez les réintégrations et déductions extra-comptables, les déficits antérieurs et les crédits d'impôt : la liasse et l'impôt sont recalculés. Un bouton passe l'écriture d'impôt de l'exercice (695 / 444) et un calendrier liste les échéances (acomptes, relevé de solde, dépôt de la liasse, CVAE).
 
 Ces calculs sont des aides à la préparation : ils doivent être validés par votre expert-comptable.
 

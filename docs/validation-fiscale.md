@@ -12,7 +12,7 @@ indicatifs. On ouvre :
 
 - à des organisations pilotes : `FISCAL_DECLARATIONS_PILOT_ORGS=12,34` (identifiants) ;
 - à tous les clients : `FISCAL_DECLARATIONS_ENABLED=1`, **seulement** une fois la grille du
-  paragraphe 6 signée par un expert-comptable.
+  paragraphe 7 signée par un expert-comptable.
 
 ## 2. Statuts : aucune acceptation sans accusé EDI
 
@@ -48,9 +48,10 @@ vérifier qu'un test échoue) :
 
 ## 4. Dossiers de référence
 
-Trois dossiers complets sont passés en écritures dans `tests/test_v458_dossiers_reference.py`,
-et les résultats de ProfitOS comparés aux montants calculés à la main ci-dessous
-(tolérance 1 €).
+Huit dossiers sont passés en écritures dans `tests/test_v458_dossiers_reference.py`
+(A à C) et `tests/test_v460_dossiers_reference_2.py` (D à H), et les résultats de ProfitOS
+comparés aux montants calculés à la main ci-dessous (tolérance 1 €), à partir des notices
+officielles (3310-CA3, 2571, 2572, 1329-AC et 1329-DEF 2026) et du BOFiP.
 
 ### Dossier A — SARL de services, régime simplifié, TVA CA12, exercice 2025
 
@@ -88,7 +89,7 @@ machine 60 000 HT (dotation 6 000) ; provision pour litige 5 000 ; déficits ant
 | IS | 15 % × 42 500 + 25 % × 141 500 = 6 375 + 35 375 ; contribution sociale nulle | 41 750 |
 | Bilan 2050 / 2051 | immobilisations nettes 54 000, stock 20 000, clients 51 000, banque 285 000, créance de TVA 92 000 ; capital 50 000, résultat 214 000, provision 5 000, emprunt 82 000, TVA collectée 151 000 | actif = passif = 502 000 |
 | Valeur ajoutée (2059-E) | 900 000 + variation positive des stocks 20 000 − (achats 300 000 + services 100 000) | 520 000 |
-| CVAE 2025 | 520 000 × 0,094 % × (900 000 − 500 000) / 2 500 000 = 78,21 ; dégrèvement de 188 € (CA < 2 M€) | 0 |
+| CVAE 2025 | barème 2025 à 0,19 % : 0,063 % × 400 000 / 2 500 000 = 0,0101 %, arrondi à 0,01 % ; 520 000 × 0,01 % = 52 ; dégrèvement de 125 € (CA < 2 M€) | 0 |
 | TVA de l'année | 140 000 + 11 000 − (60 000 + 20 000) − 12 000 | 59 000 |
 
 ### Dossier C — exercice déficitaire avec cession, régime simplifié, exercice 2025
@@ -107,15 +108,122 @@ banque 14 000 ; capital 20 000. Ventes 50 000 HT, achats 70 000. Machine cédée
 | Déficits (2033-D) | 982 : 5 000 ; 983 : 0 ; 984 : 5 000 ; 860 : 19 000 ; 870 : 24 000 | conformes |
 | IS | exercice déficitaire | 0 |
 
+### Dossier D — CA3 mensuelles avec crédit de TVA, premier trimestre 2026
+
+| Mois | Opérations (HT) | Calcul | Attendu |
+| --- | --- | --- | --- |
+| Janvier | ventes 10 000 à 20 % ; machine 50 000 ; achats 5 000 | 2 000 − (10 000 + 1 000) | crédit 9 000 (lignes 25 et 27) |
+| Février | ventes 20 000 ; achats 10 000 | 4 000 − (2 000 + crédit reporté 9 000 en ligne 22) | crédit 7 000 |
+| Mars | ventes 50 000 à 20 % et 20 000 à 10 % ; achats 15 000 | 12 000 − (3 000 + 7 000) | 2 000 à payer (lignes 28 et 32) |
+| Fin mars | après les trois liquidations | 44567 soldé, 4457 / 4456 soldés | 44551 créditeur de 2 000 |
+
+Sans liquidation de janvier, le crédit ne peut pas être reporté : la préparation de février
+le signale (« La TVA d'une période précédente n'a pas été liquidée »).
+
+### Dossier E — acomptes et solde d'IS
+
+| Calcul | Détail | Attendu |
+| --- | --- | --- |
+| IS 2025 (référence) | bénéfice 100 000 : 15 % × 42 500 + 25 % × 57 500 | 20 750 |
+| Acomptes 2026 | 6,25 % × 57 500 + 3,75 % × 42 500 = 5 187,50 | 4 × 5 188 (15/03, 15/06, 15/09, 15/12) |
+| Solde 2026 (2572) | IS 2026 sur 135 500 = 6 375 + 23 250 = 29 625 ; − 20 752 | 8 873 (7 373 avec 1 500 € de crédits d'impôt) |
+| Excédent | IS 2026 sur 60 000 = 10 750 ; − 20 752 | 10 002 à restituer |
+| Seuil | IS de référence 3 000 € (bénéfice 20 000) | dispense, aucune 2571 ; 3 001 € → 4 × 750 |
+
+### Dossier F — CVAE aux seuils (taux arrondi au centième de pourcent)
+
+| Cas (exercice civil 2026 sauf mention) | Calcul | Attendu |
+| --- | --- | --- |
+| CA 152 500 / 152 501 | seuil de déclaration | 1330-CVAE non obligatoire / obligatoire |
+| CA 1 M€, VA 600 000 | 0,0188 % → 0,02 % : 120 € − dégrèvement 188 € | 0 |
+| CA 1 999 999, VA 1 M€ | 0,0564 % → 0,06 % : 600 − 188 | 412 |
+| CA 2 M€, VA 1 M€ | 600, sans dégrèvement ; taxe additionnelle 9,23 % | 600 + 55, pas d'acompte |
+| CA 3 M€, VA 2 M€ | 0,094 % → 0,09 % : 1 800 > 1 500 € | 1 800 ; acomptes 900 / 900 en 2027 ; TA 166 |
+| CA 2,5 M€, VA 78 750 / 80 000 | 0,0752 % → 0,08 % : 63 € / 64 € | non due / 64 |
+| CA 7,6 M€ / 7 600 001 €, VA 7 M€ | 0,21 % sur 80 % du CA / sur 85 % | 12 768 / 13 566 |
+| 2025 : CA 2,7 M€, VA 1 M€ | barème 0,19 % : 0,0554 % → 0,06 % (exemple de la notice) ; contribution complémentaire 47,4 % ; TA 13,84 % | 600 + 284 + 83 |
+| 2025 : CA 1,5 M€, VA 1 M€ | 0,03 % : 300 − dégrèvement 125 € | 175 + 83 de contribution complémentaire |
+| Exercice de 16 mois, CA 4,2 M€ | CA ramené à 12 mois 3,15 M€ (exemple de la notice) : 0,0976 % → 0,10 % ; VA 3 M€ non ramenée | 3 000 |
+| Exercice de 16 mois, CA 8 M€ | plafond à 85 % (CA réel > 7,6 M€) ; taux sur 6 M€ : 0,17 % ; 6,8 M€ × 0,17 % | 11 560 |
+
+### Dossier G — liasse 2050 avec emprunt et provisions, exercice 2025
+
+À-nouveaux : banque 50 000, capital 42 000, provision pour litige 8 000. Emprunt de 120 000 €
+sans intérêts sur 60 mois (échéances de 2 000 € du 1er février 2025 au 1er janvier 2030),
+11 échéances payées ; ventes 100 000 (70 000 encaissés) ; achats 40 000 non réglés ;
+provision pour un nouveau litige 3 000 ; reprise d'une provision devenue sans objet 5 000 ;
+dépréciation d'un client douteux 2 000.
+
+| Calcul | Détail | Attendu |
+| --- | --- | --- |
+| Résultat | 100 000 − 40 000 − 3 000 + 5 000 − 2 000 | 60 000 |
+| Bilan | banque 218 000, clients 30 000 − 2 000 ; capital 42 000, résultat 60 000, provision 6 000, emprunt 98 000, fournisseurs 40 000 | actif = passif = 246 000 |
+| 2057 (VH) | capital restant dû 98 000 : échéances 2026 / 2027 à janvier 2030 | 24 000 à un an, 74 000 de 1 à 5 ans |
+| 2056 litiges (4A à 4D) | 8 000 + 3 000 − 5 000 | 8 000 / 3 000 / 5 000 / 6 000 |
+| 2056 clients (6T à 6W) | dotation 2 000 | 0 / 2 000 / 0 / 2 000 |
+| 2056 total (7C à UD), dont exploitation (UE / UF) | | 8 000 / 5 000 / 5 000 / 8 000 ; 5 000 / 5 000 |
+
+### Dossier H — premier exercice de 18 mois (1er juillet 2025 – 31 décembre 2026)
+
+| Calcul | Détail | Attendu |
+| --- | --- | --- |
+| Durée | mois entiers + jours résiduels / 30 | 18 mois (2050, 2065) |
+| PME | CA 600 000 ramené à 12 mois = 400 000 | éligible |
+| Plafond du taux réduit | 42 500 × 18 / 12 | 63 750 |
+| IS | 15 % × 63 750 + 25 % × 136 250 | 43 625 |
+| Acomptes pendant l'exercice | premier exercice | aucun |
+| Acomptes 2027 | IS ramené à 12 mois 29 083,33 / 4 | 4 × 7 271 |
+| Solde | clôture au 31 décembre | 15 mai 2027 |
+| CVAE 2026 | CA ramené à 12 mois 400 000 < 500 000 | 0, déclaration obligatoire |
+| Exercice de 8,5 mois (1er janvier – 15 septembre) | 42 500 × 8,5 / 12 (exemple du BOFiP) | plafond 30 104 |
+| Contribution sociale sur 18 mois | abattement 763 000 × 18 / 12 = 1 144 500 | 3,3 % × (IS − 1 144 500) |
+
 ## 5. Écarts trouvés et corrigés grâce aux dossiers
 
 | Écart | Effet | Correction |
 | --- | --- | --- |
 | Hausse de stock (603 créditeur) ignorée dans la valeur ajoutée | VA sous-évaluée (dossier B : 500 000 au lieu de 520 000) | variation des stocks répartie en « variation positive » (OD) ou « négative » (OQ) |
-| Dégrèvement CVAE de 188 € absent pour 2024-2025, barème réduit 2028-2029 absent | CVAE 2025 surévaluée pour les entreprises sous 2 M€ | 188 € (2024-2027), 125 € (2028), 63 € (2029) ; taxe additionnelle 2024-2025 |
+| Dégrèvement CVAE absent pour 2024-2025, barème réduit 2028-2029 absent | CVAE surévaluée pour les entreprises sous 2 M€ | dégrèvement selon l'année (v458, corrigé en v460) |
+| v460 — taux de CVAE non arrondi au centième de pourcent | écart jusqu'à ± 0,005 point de taux (ex. 0,0564 % au lieu de 0,06 %) | arrondi au centième le plus proche, comme les notices |
+| v460 — CVAE 2025 calculée au barème 0,28 % | 2025 : barème 0,19 %, dégrèvement 125 €, taxe additionnelle 13,84 % et contribution complémentaire de 47,4 % | barème, dégrèvement et taxes de l'année 2025 |
+| v460 — plafonnement de la valeur ajoutée apprécié sur le CA ramené à 12 mois | plafond à 80 % au lieu de 85 % pour un exercice long dépassant 7,6 M€ de CA réel | CA réel de la période |
+| v460 — dispense d'acomptes d'IS (≤ 3 000 €) ignorée par la 2571 et la liste des déclarations | acomptes proposés à des entreprises dispensées, et pendant le premier exercice | dispense appliquée partout |
+| v460 — acomptes calculés sur l'IS d'un exercice long sans le ramener à 12 mois | après un premier exercice de 18 mois, acomptes surévalués de 50 % | IS de référence ramené à 12 mois |
+| v460 — durée de l'exercice en jours / 365 | plafond de 42 500 € légèrement faux (8,48 mois au lieu de 8,5) | mois entiers + jours résiduels / 30 (BOFiP) |
+| v460 — abattement de 763 000 € non proratisé | contribution sociale surévaluée sur un exercice long | abattement ajusté à la durée |
+| v460 — crédit de TVA non reporté si la période précédente n'est pas liquidée, sans avertissement | ligne 22 vide sans explication | avertissement à la préparation |
 | Dépôt simulé affiché « Acceptée » et compté comme déposé | échéance cochée sans dépôt réel | libellé « (simulation) », exclu des dépôts réels |
+| v461 — CA3 en retard d'un jour non relancée | la recherche des retards (63 jours en arrière) ne voyait que les deux périodes voisines de son point de départ : relance seulement au bout d'un mois | toutes les périodes dont l'échéance tombe dans la fenêtre |
 
-## 6. Grille de validation par l'expert-comptable
+## 6. Parcours complet dans un navigateur, sur PostgreSQL (v461)
+
+`tests/test_v461_parcours_complet.py` enchaîne tout le parcours d'un client dans Chromium
+(Playwright), contre l'application lancée sur une base PostgreSQL réelle :
+
+1. inscription, profil de l'entreprise (SIRET), profil fiscal (régime normal, CA3 mensuelle) ;
+2. saisie des écritures de deux mois, CA3 et liquidation de la TVA de chaque mois ;
+3. tâche planifiée au lendemain de l'échéance : e-mail « Déclarations en retard » ;
+4. préparation de la CA3 du premier mois, récapitulatif PDF téléchargé et relu (SIREN,
+   formulaire) ;
+5. accusé avec un montant erroné : « justificatif à vérifier », relance « écarts » le
+   lendemain, puis confirmation avec explication obligatoire ;
+6. CA3 du mois suivant avec un accusé concordant : « dépôt confirmé » sans intervention ;
+7. plus aucune relance pour les déclarations justifiées, rappel de l'échéance suivante à
+   7 jours ; aucun statut « acceptée » ; justificatif téléchargeable ; aucune erreur
+   serveur ni de console sur les pages fiscales.
+
+Les dates des relances sont simulées en fixant la date du jour de la tâche ; seuls la
+vérification de l'adresse e-mail et l'abonnement sont posés directement en base (lien de
+l'e-mail et paiement Stripe hors périmètre). Test ignoré par défaut ; pour le lancer :
+
+```bash
+PROFITOS_E2E_DATABASE_URL="postgresql://utilisateur@/base_vide?host=/tmp&port=5432" pytest tests/test_v461_parcours_complet.py
+```
+
+Le parcours a révélé l'écart ci-dessus (relance tardive des CA3), corrigé et couvert par
+`tests/test_v461_relances_ca3.py`, qui tourne en CI.
+
+## 7. Grille de validation par l'expert-comptable
 
 À remplir sur **au moins trois dossiers réels** (un par régime : simplifié, normal, et un
 exercice déficitaire ou avec cession), en comparant ProfitOS à la liasse et aux

@@ -170,16 +170,21 @@ def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
                 items.append({'date': a['date'], 'label': a['label'] + ' de TVA', 'form': '3514', 'type': 'TVA_3514',
                               'start': closed['start'], 'end': closed['end'], 'amount': a['amount'], 'due_date': a['date'],
                               'deposited': active_declaration(conn, entity_id, 'TVA_3514', closed['start'], closed['end'], a['date'])})
+    # Toutes les périodes de CA3 dont l'échéance tombe dans la fenêtre (y compris une fenêtre
+    # longue : la recherche des retards part de 63 jours en arrière), plus la période dont
+    # l'échéance vient de passer (10 jours) pour l'affichage.
     periods = []
-    if vat_filing == 'ca3_mensuelle':
-        for back in (1, 0):
-            first = (today.replace(day=1) - timedelta(days=1)).replace(day=1) if back else today.replace(day=1)
-            periods.append((back, first, _add_months(first, 1, 1) - timedelta(days=1)))
-    elif vat_filing == 'ca3_trimestrielle':
-        q_first = date(today.year, ((today.month - 1) // 3) * 3 + 1, 1)
-        prev_first = _add_months(q_first, -3, 1)
-        periods.append((1, prev_first, q_first - timedelta(days=1)))
-        periods.append((0, q_first, _add_months(q_first, 3, 1) - timedelta(days=1)))
+    step = {'ca3_mensuelle': 1, 'ca3_trimestrielle': 3}.get(vat_filing)
+    if step:
+        first = date(today.year, ((today.month - 1) // step) * step + 1, 1)
+        first = _add_months(first, -2 * step, 1)
+        while True:
+            last = _add_months(first, step, 1) - timedelta(days=1)
+            due = _add_months(last.replace(day=1), 1, 15)
+            if due > limit:
+                break
+            periods.append((due < today, first, last))
+            first = _add_months(first, step, 1)
     for back, first, last in periods:
         due = _add_months(last.replace(day=1), 1, 15)
         if today <= due <= limit or (back and due >= today - timedelta(days=10)):

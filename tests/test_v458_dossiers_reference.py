@@ -153,7 +153,9 @@ def test_dossier_b_regime_normal(app):
     # Valeur ajoutée (2059-E) : la hausse du stock diminue les consommations.
     assert near(l['va']['OX'], 900000) and near(l['va']['OG'], 520000)
     cvae = CT.compute_cvae(l['va']['OX'], l['va']['OG'], Y0, Y1)
-    assert near(cvae['cotisation_brute'], 78.21, 0.05) and cvae['cvae'] == 0       # dégrèvement de 188 €
+    # Barème 2025 (0,19 %) : 0,063 % × 400 000 / 2 500 000 = 0,0101 % → 0,01 % × 520 000 = 52 €,
+    # inférieur au dégrèvement de 125 € → 0.
+    assert near(cvae['cotisation_brute'], 52, 0.01) and cvae['degrevement'] == 125 and cvae['cvae'] == 0
     vat = ca3_form(c, '2025-01-01', '2025-12-31')
     assert near(vat['l16'], 151000) and near(vat['l32'], 59000)
     c.close()

@@ -198,6 +198,7 @@ def form_2065(identity, profile, liasse, is_res, start, end):
         'adresse': ' '.join(x for x in (identity.get('address') or '', identity.get('postal_code') or '',
                                          identity.get('city') or '') if x).strip(),
         'exercice_debut': start.isoformat(), 'exercice_fin': end.isoformat(),
+        'duree_mois': liasse.get('duree_mois'),
         'regime': 'Régime réel normal' if (profile.get('tax_regime') or 'normal') == 'normal' else "Régime simplifié d'imposition",
         'activite': profile.get('activite') or '', 'pme_innovante': bool(profile.get('pme_innovante')),
         'groupe': bool(profile.get('groupe')), 'societe_mere_siren': profile.get('societe_mere_siren') or '',

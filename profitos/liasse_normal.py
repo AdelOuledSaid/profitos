@@ -607,8 +607,9 @@ def liasse_normale(conn, fy_start, fy_end, entity_id=None, settings=None, previo
         checks.append('Comptes de gestion rattachés par défaut (autres produits / autres charges) : '
                       + ', '.join(sorted(unmatched)) + '.')
     duration = (fy_end - fy_start).days + 1
+    from profitos.corporate_tax import _months
     return {
-        'start': fy_start, 'end': fy_end, 'duration_days': duration,
+        'start': fy_start, 'end': fy_end, 'duration_days': duration, 'duree_mois': round(_months(fy_start, fy_end), 2),
         'actif': actif, 'totals_a': totals_a, 'passif': passif, 'totals_p': totals_p,
         'cr': cr, 'cr_labels': {box: label for box, label, *_ in CR_LINES},
         'immobilisations': immo, 'immo_tot': immo_tot, 'amortissements': amort, 'amort_tot': amort_tot,

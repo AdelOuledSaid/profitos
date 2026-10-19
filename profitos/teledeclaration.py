@@ -114,6 +114,20 @@ def _boxes_ca3(form):
     return boxes
 
 
+def reference_is(conn, start, end, entity_id=None, settings=None):
+    """IS de l'exercice (calcul de la 2572), servant de référence aux acomptes suivants."""
+    from profitos import corporate_tax as CT
+    from profitos.liasse_normal import liasse_normale
+    settings = settings if settings is not None else CT.get_fiscal_settings(conn, entity_id, end.isoformat())
+    l = liasse_normale(conn, start, end, entity_id, settings=settings)
+    eligible = CT.pme_eligible(l['chiffre_affaires'], start, end, settings.get('capital_libere'), settings.get('detention_pp'))
+    acomptes = settings.get('acomptes_verses')
+    if acomptes in (None, ''):
+        acomptes = CT.acomptes_from_ledger(conn, start, end, entity_id)
+    return CT.compute_is(l['fiscal']['XN'], start, end, l['chiffre_affaires'], eligible,
+                         credits=settings.get('credits_impot') or 0, acomptes=acomptes)
+
+
 def build_declaration(conn, decl_type, period_start, period_end, entity_id=None, identity=None, regime='normal',
                       settings=None, instalment_amount=None, due_date=None):
     """Construit le contenu canonique d'une déclaration (sans rien enregistrer) et la
@@ -151,6 +165,10 @@ def build_declaration(conn, decl_type, period_start, period_end, entity_id=None,
         payment = form['l32'] or None
         if not form['liquidated']:
             warnings.append("L'écriture de liquidation de TVA de la période n'est pas encore passée.")
+        from profitos.vat_return import unliquidated_before
+        if unliquidated_before(conn, start.isoformat(), entity_id):
+            warnings.append("La TVA d'une période précédente n'a pas été liquidée : le crédit à reporter (ligne 22) "
+                            "peut être incomplet. Passez d'abord les liquidations des périodes antérieures.")
         if not any(b['amount'] for b in boxes):
             warnings.append("Déclaration à néant : aucune opération de TVA sur la période.")
     elif decl_type in ('TVA_CA12', 'TVA_3514'):
@@ -262,11 +280,19 @@ def build_declaration(conn, decl_type, period_start, period_end, entity_id=None,
                               'amount': abs(res['solde'])}]
                     payment = res['solde'] if res['solde'] > 0 else None
                 else:
-                    amount = float(instalment_amount if instalment_amount is not None else round(res['is_total'] / 4))
-                    if amount <= 0:
-                        errors.append("Aucun acompte d'impôt sur les sociétés n'est dû (IS de référence nul).")
+                    due_amount = CT.instalment_amount(res['is_total'], start, end)
+                    ref12 = CT.reference_is_12m(res['is_total'], start, end)
+                    amount = float(instalment_amount if instalment_amount is not None else due_amount)
+                    if not due_amount:
+                        msg = ("Dispense d'acomptes : l'IS de référence" + (" ramené à 12 mois" if abs(ref12 - res['is_total']) > 0.5 else '')
+                               + f" ({round(ref12):,} €".replace(',', ' ') + ") ne dépasse pas 3 000 €.")
+                        (warnings if amount > 0 else errors).append(msg)
+                    elif amount <= 0:
+                        errors.append("Montant de l'acompte nul.")
                     boxes = [{'code': 'AC', 'label': "Montant de l'acompte", 'amount': amount},
                              {'code': 'IR', 'label': 'IS de référence (dernier exercice clos)', 'amount': res['is_total']}]
+                    if abs(ref12 - res['is_total']) > 0.5:
+                        boxes.append({'code': 'IR12', 'label': "IS de référence ramené à 12 mois", 'amount': round(ref12, 2)})
                     payment = amount or None
             elif decl_type == 'CVAE_1330':
                 cv = CT.compute_cvae(l['va']['OX'], l['va']['OG'], start, end)

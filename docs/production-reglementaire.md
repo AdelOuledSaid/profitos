@@ -45,7 +45,8 @@ l'expert-comptable.
 ### TVA
 - CA3 : base et taxe par taux, TVA déductible sur immobilisations et autres biens et
   services, crédit antérieur, TVA nette ou crédit ; écriture de liquidation une fois par
-  période.
+  période. Le crédit d'une période (ligne 25 / 27) n'est reporté en ligne 22 de la suivante
+  que si la période a été liquidée : sinon, la préparation le signale.
 - CA12 : lignes par taux (20 % 5A/0207, 10 % 6C/0151, 5,5 % 06/0105, 2,1 % 09/0950,
   8,5 % 07/0201), déductions, crédit antérieur, acomptes payés (compte 44581 ou montant
   saisi), solde ou excédent ; date limite : deuxième jour ouvré suivant le 1er mai pour une
@@ -56,21 +57,35 @@ l'expert-comptable.
   (chiffre d'affaires ≤ 10 M€, capital libéré, détenu à 75 % au moins par des personnes
   physiques).
 - Contribution sociale de 3,3 % sur l'IS au-delà de 763 000 € (exonération des PME dont le chiffre d'affaires est inférieur à 7,63 M€).
+- Exercice de plus ou de moins de 12 mois (premier exercice notamment) : plafond de 42 500 €
+  et abattement de 763 000 € ajustés à la durée, comptée en mois entiers plus les jours
+  résiduels en trentièmes (1er janvier – 15 septembre = 8,5 mois) ; seuils de chiffre
+  d'affaires appréciés sur 12 mois.
 - Résultat fiscal (2058-A / 2033-B) : résultat comptable, IS et amendes réintégrés
   automatiquement, réintégrations et déductions saisies, imputation des déficits antérieurs
   dans la limite d'1 M€ majoré de 50 % du bénéfice excédant.
-- Acomptes les 15 mars, juin, septembre et décembre compris dans l'exercice ; solde le
-  15 mai pour une clôture au 31 décembre. Chaque acompte se dépose pour son échéance.
+- Acomptes les 15 mars, juin, septembre et décembre compris dans l'exercice, chacun égal au
+  quart de l'IS du dernier exercice clos **ramené à 12 mois**, arrondi à l'euro ; dispense
+  si cet IS ne dépasse pas 3 000 € et pendant le premier exercice ; solde (2572) le 15 du
+  4e mois suivant la clôture (15 mai pour une clôture au 31 décembre). Chaque acompte se
+  dépose pour son échéance.
+- Non calculés : acomptes de contribution sociale, majoration du dernier acompte des
+  entreprises dont le CA dépasse 250 M€, découpage d'un exercice de plus de 12 mois ne
+  couvrant pas une création (période d'imposition au 31 décembre).
 - Écriture de l'impôt : 695 / 444.
 
 ### CVAE
-- Taux 2026–2027 : jusqu'à 0,28 % selon le chiffre d'affaires (barème 0,094 % / +0,169 % /
-  +0,019 %) ; 0,19 % en 2028, 0,09 % en 2029, supprimée en 2030.
+- Taux maximal : 0,28 % en 2024, 0,19 % en 2025 (plus une contribution complémentaire de
+  47,4 % de la CVAE due), 0,28 % en 2026 et 2027 (barème 0,094 % / +0,169 % / +0,019 %),
+  0,19 % en 2028, 0,09 % en 2029, supprimée en 2030. Le taux, calculé sur le chiffre
+  d'affaires ramené à 12 mois, est arrondi au centième de pourcent (0,0564 % → 0,06 %).
 - Valeur ajoutée : variation des stocks en « variation positive » (OD) ou « négative »
-  (OQ) ; plafonnée à 80 % du chiffre d'affaires (85 % au-delà de 7,6 M€) ;
-  dégrèvement sous 2 M€ de chiffre d'affaires : 188 € (2024 à 2027), 125 € (2028), 63 € (2029) ; non due si 63 € ou moins ;
-  taxe additionnelle CCI 9,23 % en 2026 et 2027. Déclaration obligatoire au-delà de 152 500 € de chiffre
-  d'affaires.
+  (OQ) ; non ramenée à 12 mois ; plafonnée à 80 % du chiffre d'affaires réel de la période
+  (85 % au-delà de 7,6 M€) ; dégrèvement sous 2 M€ de chiffre d'affaires : 188 € (2024,
+  2026, 2027), 125 € (2025, 2028), 63 € (2029) ; non due si 63 € ou moins ; taxe
+  additionnelle CCI 9,23 % (13,84 % en 2025). Déclaration obligatoire au-delà de 152 500 €
+  de chiffre d'affaires (ramené à 12 mois) ; acomptes de 50 % les 15 juin et 15 septembre
+  quand la CVAE dépasse 1 500 €.
 
 ### Liasses
 - Bilan, compte de résultat et annexes établis depuis la balance (préfixe de compte le plus
@@ -166,7 +181,8 @@ validés (`FISCAL_DECLARATIONS_ENABLED`, `FISCAL_DECLARATIONS_PILOT_ORGS`) : voi
 
 ## 6. Tests
 
-`tests/test_v445` à `test_v458` (dont `test_v457` : aucune acceptation sans accusé EDI ;
-`test_v458` : dossiers de référence calculés à la main, détaillés dans `validation-fiscale.md`) : liasses, IS et CVAE, télédéclarations, automatisations,
+`tests/test_v445` à `test_v461` (dont `test_v457` : aucune acceptation sans accusé EDI ;
+`test_v458` et `test_v460` : dossiers de référence calculés à la main, détaillés dans
+`validation-fiscale.md` ; `test_v461` : parcours complet dans un navigateur sur PostgreSQL) : liasses, IS et CVAE, télédéclarations, automatisations,
 régime simplifié et annexes, DAS2, 2777, IFU, CFE, DECLOYER, dépôt sur impots.gouv.fr,
 contrôle des accusés, relances, contrôle des rôles.

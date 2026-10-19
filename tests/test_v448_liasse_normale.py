@@ -73,7 +73,7 @@ def test_deficits_and_is_rates():
     assert r['is_total'] == 42_500 * 0.15 + 57_500 * 0.25 == 20_750 and r['solde'] == 15_750
     assert CT.compute_is(100_000, date(2026, 1, 1), date(2026, 12, 31), 2_000_000, False)['is_total'] == 25_000
     six = CT.compute_is(100_000, date(2026, 1, 1), date(2026, 6, 30), 2_000_000, True)
-    assert abs(six['plafond_taux_reduit'] - 42_500 * 181 / 365) < 1
+    assert six['plafond_taux_reduit'] == 42_500 * 6 / 12          # prorata en mois (BOI-IS-LIQ-20-20 § 50)
     assert not CT.pme_eligible(11_000_000, date(2026, 1, 1), date(2026, 12, 31), True, True)
     assert CT.is_balance_deadline(date(2026, 12, 31)) == date(2027, 5, 15)
     assert CT.is_balance_deadline(date(2026, 6, 30)) == date(2026, 10, 15)
@@ -84,11 +84,11 @@ def test_deficits_and_is_rates():
 
 def test_cvae_2026_schedule():
     assert CT.cvae_rate(400_000, 2026) == 0
-    assert abs(CT.cvae_rate(3_000_000, 2026) - 0.00094) < 1e-12
+    assert abs(CT.cvae_rate(3_000_000, 2026) - 0.0009) < 1e-12     # 0,094 % arrondi au centième : 0,09 %
     assert CT.cvae_rate(60_000_000, 2026) == 0.0028 and CT.cvae_rate(60_000_000, 2028) == 0.0019
     assert CT.cvae_rate(60_000_000, 2030) == 0
     r = CT.compute_cvae(3_000_000, 1_200_000, date(2026, 1, 1), date(2026, 12, 31))
-    assert r['cvae'] == 1128 and r['taxe_additionnelle'] == round(1128 * 0.0923) and r['declaration_obligatoire']
+    assert r['cvae'] == 1080 and r['taxe_additionnelle'] == round(1080 * 0.0923) and r['declaration_obligatoire']
     capped = CT.compute_cvae(1_000_000, 950_000, date(2026, 1, 1), date(2026, 12, 31))
     assert capped['va_plafonnee'] == 800_000
     assert CT.compute_cvae(600_000, 300_000, date(2026, 1, 1), date(2026, 12, 31))['cvae'] == 0  # sous 63 € : non due

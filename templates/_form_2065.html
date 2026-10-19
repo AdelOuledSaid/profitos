@@ -4,7 +4,7 @@
     <tr><td>Dénomination</td><td>{{ f2065.denomination or '—' }}</td></tr>
     <tr><td>SIRET</td><td>{{ f2065.siret or '—' }}</td></tr>
     <tr><td>Adresse</td><td>{{ f2065.adresse or '—' }}</td></tr>
-    <tr><td>Exercice</td><td>du {{ f2065.exercice_debut|fr_date }} au {{ f2065.exercice_fin|fr_date }}</td></tr>
+    <tr><td>Exercice</td><td>du {{ f2065.exercice_debut|fr_date }} au {{ f2065.exercice_fin|fr_date }}{% if f2065.duree_mois %} — durée : {{ f2065.duree_mois|fr_number(2 if f2065.duree_mois % 1 else 0) }} mois{% endif %}</td></tr>
     <tr><td>Régime d'imposition</td><td>{{ f2065.regime }}</td></tr>
     <tr><td>Activité exercée</td><td>{{ f2065.activite or '—' }}</td></tr>
     <tr><td>Membre d'un groupe fiscal</td><td>{{ 'Oui' ~ (' — société mère ' ~ f2065.societe_mere_siren if f2065.societe_mere_siren else '') if f2065.groupe else 'Non' }}</td></tr>
