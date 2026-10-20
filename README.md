@@ -28,7 +28,9 @@ sur dossiers de référence et grille pour l'expert-comptable :
 [`docs/validation-fiscale.md`](docs/validation-fiscale.md) (la préparation des déclarations
 reste fermée aux clients tant qu'elle n'est pas signée).
 Mode d'emploi pour les clients : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)
-(publié dans l'application, menu Aide).
+(publié dans l'application, menu Aide). Avant la mise en vente :
+[`docs/mise-en-vente.md`](docs/mise-en-vente.md) (liste de contrôle et preuves) et
+[`docs/pilote.md`](docs/pilote.md) (programme pilote).
 
 ## Démarrage local
 
@@ -49,9 +51,12 @@ Sous Windows : `LANCER_PROFITOS.bat` (développement) ou `RUN_PRODUCTION_WINDOWS
 pytest -q
 ```
 
-Environ 1 540 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
+Environ 1 550 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
 déclarations, tâches planifiées). La CI GitHub (`.github/workflows/tests.yml`) les exécute à
-chaque push ; Render ne déploie que si elle est verte.
+chaque push ; Render ne déploie que si elle est verte. Les parcours dans un vrai
+navigateur et l'exercice de restauration PostgreSQL se lancent à part (voir
+`docs/validation-fiscale.md`, § 6). L'isolation entre entreprises est auditée route par
+route par `tests/test_v467_isolation_audit.py`.
 
 Le dépôt GitHub doit contenir le projet **à sa racine** (dossiers `profitos/`, `templates/`,
 `tests/`… directement sous la racine). Un second exemplaire dans un sous-dossier fait échouer

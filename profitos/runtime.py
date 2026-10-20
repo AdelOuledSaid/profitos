@@ -3700,6 +3700,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-19','title':"Conditions d'utilisation : rôle de ProfitOS dans les déclarations fiscales précisé (préparation, dépôt par vous, statuts)"},
     {'date':'2026-10-19','title':"Relances : une CA3 en retard est signalée dès le lendemain de l'échéance (et non plus après un mois)"},
     {'date':'2026-10-19','title':"Calculs fiscaux fiabilisés : CVAE (taux arrondi, barème et contribution 2025, plafonnement), acomptes d'IS (dispense sous 3 000 €, exercice long ramené à 12 mois), exercices de plus ou de moins de 12 mois"},
     {'date':'2026-10-19','title':"Sécurité du module fiscal : données fiscales réservées aux rôles habilités, montants et dates contrôlés"},
