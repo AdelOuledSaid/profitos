@@ -78,6 +78,7 @@ trentaine de modules de routes ; la logique métier vit dans des modules Python 
 | Facture électronique | `weinvoice`, `einvoice_validation`, `ereporting` |
 | Achats, banque | `expenses`, `document_extraction`, `bank_import`, `bank_reconciliation`, `cloud_storage` |
 | Trésorerie | `treasury`, `loans`, `finance_leases` |
+| Veille de secteur | `market_watch` (catalogue par secteur, lecture INSEE / BCE avec contrôle du titre, alertes, révision de prix, actualités) |
 | Comptabilité | `accounting` (écritures, immobilisations, cessions), `ledger` (exercices, balance, clôture), `reviews`, `plaquette` |
 | Liasses | `liasse` (2033-A/B), `liasse_2033_annexes` (2033-B fiscal à 2033-G), `liasse_normal` (2050 à 2059-E), `liasse_annexes` (2054 à 2056 codés, 2059-A à G, 2065) |
 | Impôts | `vat_return` (CA3, CA12), `corporate_tax` (IS, CVAE, calendrier, profil fiscal, mandat), `tiers_declarations` (DAS2, 2777, IFU), `local_taxes` (CFE, DECLOYER) |

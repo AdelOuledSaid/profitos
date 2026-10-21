@@ -819,6 +819,40 @@ def retention_purge(org, ctx):
     return '; '.join(done)[:400]
 
 
+@job('market_watch_refresh', 'daily', hour=7, scope='global',
+     description="Veille de secteur : met à jour les indicateurs officiels (INSEE, BCE) suivis par les entreprises et les actualités.")
+def market_watch_refresh(org, ctx):
+    from profitos import market_watch as MW
+    from profitos.runtime import auth_cx, list_organization_ids, tenant_cx_direct
+    settings = []
+    for org_id in list_organization_ids():
+        try:
+            c = tenant_cx_direct(org_id)
+        except Exception:
+            continue
+        try:
+            for eid in _entity_ids(c):
+                settings.append(dict(MW.load_settings(c, eid)))
+        except Exception:
+            pass
+        finally:
+            c.close()
+    codes, custom = MW.all_followed_codes(settings)
+    for code in MW.COMMON + [x for s in MW.SECTORS.values() for x in s['series']]:
+        if code not in codes:
+            codes.append(code)
+    ac = auth_cx()
+    try:
+        report = MW.refresh(ac, codes, custom=custom)
+        news = MW.refresh_news(ac, MW.configured_feeds())
+    finally:
+        ac.close()
+    failed = {k: v for k, v in report.items() if v != 'ok'}
+    if failed:
+        _ops('MARKET_WATCH_PARTIAL', 'WARNING', '; '.join(f'{k}: {v}' for k, v in failed.items())[:400])
+    return f"{len(report) - len(failed)}/{len(report)} indicateur(s) à jour, actualités : {news or 'aucun flux'}"[:400]
+
+
 @job('backup', 'daily', hour=2, scope='global', needs_disk=True,
      description='Sauvegarde chiffrée PostgreSQL + documents, envoi S3 ou rotation locale.')
 def backup(org, ctx):

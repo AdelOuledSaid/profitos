@@ -17,6 +17,7 @@ Application Flask (Python 3.12), SQLite en développement, PostgreSQL en product
 | Achats et dépenses | Factures fournisseurs (dépôt, boîte mail, dossiers cloud), notes de frais, budgets |
 | Banque | Connexion bancaire ou import de relevés, rapprochement, catégorisation, état de rapprochement |
 | Trésorerie | Prévision à 90 jours, scénarios, plan mensuel, simulateur de décision, diagnostic |
+| Veille de secteur | Indicateurs officiels (INSEE, BCE) choisis selon l'activité de l'entreprise, alertes, révision de prix, actualités |
 | Comptabilité | Saisie, journaux, grand livre, balance, immobilisations (dotations, cessions), emprunts, crédit-bail, paie importée, cut-off, analytique, clôture, plaquette, FEC |
 | Fiscalité | TVA CA3 et CA12 (acomptes 3514), liasses 2033-A à G et 2050 à 2059-G avec 2065, IS et CVAE, DAS2, prélèvements sur dividendes (2777) et IFU, CFE, DECLOYER, profil fiscal, échéancier et relances |
 | Déclarations fiscales | Préparation contrôlée, récapitulatif PDF, dépôt par l'entreprise sur impots.gouv.fr, archivage et contrôle automatique de l'accusé ; transmission EDI dès qu'un partenaire est connecté |
