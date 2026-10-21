@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">VEILLE DE VOTRE SECTEUR</div>
+    <h1 class="purchase-title">Révision de prix</h1>
+    <p class="purchase-subtitle">Formule de révision d'un prix indexé : P = P₀ × (a + b × I / I₀), où a est la partie fixe prévue au contrat, b = 1 − a, I₀ l'indice du mois de référence et I celui du mois de révision.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('market_watch') }}">← Veille</a></div>
+</div>
+<section class="purchase-panel">
+  <form method="get" class="stack">
+    <div class="twocol">
+      <label>Indice
+        <select name="code">{% for x in codes %}<option value="{{ x }}" {{ 'selected' if x == code }}>{{ definitions[x].label }}</option>{% endfor %}</select>
+      </label>
+      <label>Montant initial P₀ (€ HT)<input name="amount" inputmode="decimal" value="{{ args.amount or '' }}" required></label>
+    </div>
+    {% if periods %}
+    <div class="twocol">
+      <label>Mois de référence I₀ (offre ou prix initial)<select name="base">{% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == args.base }}>{{ labels[p] }}</option>{% endfor %}</select></label>
+      <label>Mois de révision I<select name="new">{% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == args.new or (not args.new and loop.first) }}>{{ labels[p] }}</option>{% endfor %}</select></label>
+    </div>
+    {% else %}<p class="purchase-muted">Aucune valeur connue pour cet indice : saisissez les valeurs ci-dessous.</p>{% endif %}
+    <div class="twocol">
+      <label>… ou valeur I₀ saisie<input name="base_value" inputmode="decimal" value="{{ args.base_value or '' }}"></label>
+      <label>… ou valeur I saisie<input name="new_value" inputmode="decimal" value="{{ args.new_value or '' }}"></label>
+    </div>
+    <div class="twocol">
+      <label>Partie fixe a (%)<input name="fixed" inputmode="decimal" value="{{ args.fixed or '15' }}"></label>
+      <label>Arrondi du coefficient<select name="decimals">{% for v, l in (('4', '4 décimales'), ('3', '3 décimales'), ('none', 'Aucun')) %}<option value="{{ v }}" {{ 'selected' if (args.decimals or '4') == v }}>{{ l }}</option>{% endfor %}</select></label>
+    </div>
+    <button type="submit" class="purchase-primary-btn primary">Calculer</button>
+  </form>
+  {% if error %}<div class="flash" role="alert" style="margin-top:10px;">{{ error }}</div>{% endif %}
+  {% if result %}
+  <div class="purchase-stats" style="margin-top:14px;">
+    <div class="purchase-stat"><div><div class="purchase-stat-label">Coefficient</div><div class="purchase-stat-value">{{ result.coefficient|fr_number(4) }}</div><div class="purchase-muted" style="font-size:12px;">{{ result.fixed|fr_number(4) }} + {{ result.variable|fr_number(4) }} × {{ new_v|fr_number(2) }} / {{ base_v|fr_number(2) }}</div></div></div>
+    <div class="purchase-stat"><div><div class="purchase-stat-label">Prix révisé</div><div class="purchase-stat-value">{{ result.revised|fr_number(2) }} €</div></div></div>
+    <div class="purchase-stat"><div><div class="purchase-stat-label">Écart</div><div class="purchase-stat-value">{{ '+' if result.difference > 0 }}{{ result.difference|fr_number(2) }} €</div></div></div>
+  </div>
+  {% if drafts %}
+  <form method="post" action="{{ url_for('market_watch_revision_invoice') }}" class="ledger-filters" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for k in ('code', 'amount', 'base', 'new', 'fixed', 'decimals', 'base_value', 'new_value') %}{% if args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ args.get(k) }}">{% endif %}{% endfor %}
+    <label>Ajouter l'écart ({{ '+' if result.difference > 0 }}{{ result.difference|fr_number(2) }} € HT) à la facture brouillon
+      <select name="invoice_id">{% for d in drafts %}<option value="{{ d.id }}">Brouillon n°{{ d.id }} — {{ d.client_name }} ({{ d.total|fr_number(2) }} € TTC)</option>{% endfor %}</select></label>
+    <label>TVA (%)<input name="vat_rate" inputmode="decimal" value="20" style="max-width:90px;"></label>
+    <button type="submit" class="purchase-primary-btn secondary">Ajouter la ligne</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Appliquez la formule, la partie fixe, le mois de référence et l'arrondi prévus par votre contrat (CCAP pour un marché public). Les index publiés peuvent être provisoires puis révisés par l'INSEE.</p>
+</section>
+</div>
+{% endblock %}

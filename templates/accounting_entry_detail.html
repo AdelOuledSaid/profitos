@@ -43,6 +43,7 @@
 <div class="twocol">
   <section class="purchase-panel">
     <h2 style="color:#fff;margin-top:0;">Pièces justificatives</h2>
+    {% for r in doc_requests %}<div class="flash" role="alert">📎 Pièce demandée par {{ r.created_by or 'votre expert-comptable' }} le {{ r.created_at|fr_date }}{% if r.message %} : « {{ r.message }} »{% endif %}. Joignez-la ci-dessous.</div>{% endfor %}
     {% if attachments %}
     <ul>{% for a in attachments %}<li><a class="link" href="{{ url_for('accounting_entry_attachment', entry_id=e.id, attachment_id=a.id) }}">{{ a.filename }}</a> <span class="purchase-muted">· {{ a.uploaded_at|fr_date }}</span></li>{% endfor %}</ul>
     {% else %}<p class="purchase-muted">Aucune pièce jointe.</p>{% endif %}
@@ -51,6 +52,13 @@
       <input type="file" name="piece" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xlsx,.xls,.csv,.docx,.txt" required>
       <button type="submit" class="purchase-primary-btn secondary">Joindre</button>
     </form>
+    {% if can_request_doc and not doc_requests and not attachments %}
+    <form method="post" action="{{ url_for('accounting_entry_request_document', entry_id=e.id) }}" class="stack" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Demander la pièce à l'entreprise (message facultatif)<input name="message" maxlength="300" placeholder="ex. facture du fournisseur, contrat…"></label>
+      <button type="submit" class="purchase-primary-btn secondary">Demander la pièce</button>
+    </form>
+    {% endif %}
   </section>
   <section class="purchase-panel">
     <h2 style="color:#fff;margin-top:0;">Corriger cette écriture</h2>

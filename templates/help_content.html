@@ -1,5 +1,5 @@
 {# Fichier généré par scripts/build_help.py depuis docs/guide-utilisateur.md — ne pas modifier à la main. #}
-<p>Mis à jour le 19 octobre 2026</p>
+<p>Mis à jour le 21 octobre 2026</p>
 <h2 id="presentation">1. Présentation</h2>
 <p>ProfitOS est un logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets. Il réunit facturation, facture électronique, achats, banque, trésorerie et comptabilité dans un seul outil, en français et conforme aux règles fiscales françaises.</p>
 <p>Ce guide explique, module par module, comment utiliser ProfitOS au quotidien. Les menus cités sont ceux de la barre latérale à gauche de l'écran.</p>
@@ -252,7 +252,7 @@
 </tr>
 <tr>
 <td>Premiers pas</td>
-<td>La liste de démarrage, tant qu'elle n'est pas terminée</td>
+<td>La liste de démarrage, tant qu'elle n'est pas terminée : profil entreprise, banque, factures, reprise de la comptabilité (FEC), IBAN et relances, secteur de la veille, invitation d'un collègue ou de l'expert-comptable</td>
 </tr>
 <tr>
 <td>Trésorerie</td>
@@ -276,6 +276,7 @@
 </tr>
 </tbody>
 </table></div>
+<p><strong>Rapport du lundi</strong> : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.</p>
 <p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
 <h2 id="facturation-clients">5. Facturation clients</h2>
 <p>Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu <strong>Ventes &amp; clients → Facturation</strong>.</p>
@@ -306,7 +307,11 @@
 <h3 id="relances-clients-et-echeancier">Relances clients et échéancier</h3>
 <ul>
 <li><strong>Relances clients</strong> liste les factures en retard, classées par un score de risque (montant, retard, historique) pour savoir qui relancer en premier. Les retenues de garantie y sont suivies jusqu'à leur date de libération.</li>
-<li><strong>Relancer</strong> sur une facture prépare l'e-mail de relance ; rien n'est envoyé sans votre validation.</li>
+<li><strong>Relancer</strong> sur une facture envoie l'e-mail de relance d'un clic.</li>
+<li><strong>Facturation → Encaissement et relances</strong> :</li>
+<li><strong>QR code de virement</strong> : il est imprimé sur la facture PDF et sur la facture en ligne avec votre IBAN, le reste à payer et le numéro de facture. Votre client le scanne avec l'application de sa banque et le virement est pré-rempli. Renseignez l'IBAN dans le profil de l'entreprise.</li>
+<li><strong>Lien de paiement en ligne</strong> (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». ProfitOS ne manipule jamais les fonds.</li>
+<li><strong>Relances automatiques</strong> (à activer) : un rappel courtois, un rappel ferme puis un dernier avis avant mise en demeure, aux délais que vous choisissez (3, 15 et 30 jours après l'échéance par défaut), chaque matin. Jamais deux relances à moins de 5 jours d'intervalle ; arrêt dès que la facture est réglée, couverte par un avoir, ou refusée ou en litige côté facture électronique. Vous pouvez suspendre les relances d'une facture précise.</li>
 <li><strong>Échéancier</strong> affiche sur un calendrier les échéances clients et fournisseurs.</li>
 <li><strong>Facturation → Créances</strong> donne l'état de toutes les sommes dues par client.</li>
 </ul>
@@ -431,7 +436,7 @@
 <h3 id="notes-de-frais">Notes de frais</h3>
 <p>Menu <strong>Notes de frais</strong>. Un collaborateur crée une note, ajoute ses lignes (ticket, montant, catégorie ; frais kilométriques calculés avec le barème fiscal) puis la <strong>soumet</strong>. Un responsable la <strong>valide</strong> ou la <strong>rejette</strong>, puis la marque <strong>remboursée</strong>. Chaque étape passe ses écritures.</p>
 <h3 id="importer-des-depenses">Importer des dépenses</h3>
-<p><strong>Données &amp; connexions → Importer des dépenses</strong> accepte un fichier Excel, CSV ou des PDF (section 12). Les dépenses servent à repérer les économies possibles et à calculer la dépense courante de la prévision de trésorerie.</p>
+<p><strong>Données &amp; connexions → Importer des dépenses</strong> accepte un fichier Excel, CSV ou des PDF (section 13). Les dépenses servent à repérer les économies possibles et à calculer la dépense courante de la prévision de trésorerie.</p>
 <h2 id="banque">8. Banque</h2>
 <p>Vos opérations bancaires arrivent dans ProfitOS, soit par connexion à la banque, soit par import de relevés, puis se rapprochent de vos factures en quelques clics. Menu <strong>Données &amp; connexions → Banques connectées</strong> (formule Pro et plus).</p>
 <h3 id="faire-entrer-ses-operations">Faire entrer ses opérations</h3>
@@ -536,7 +541,43 @@
 <h3 id="flux-projetes-90-jours">Flux projetés 90 jours</h3>
 <p>Menu <strong>Trésorerie → Flux projetés 90 jours</strong> : les mêmes données par tranches de 30 jours (encaissements, fournisseurs, autres sorties, dépenses courantes, flux net). Les montants sont identiques à ceux de Trésorerie &amp; scénarios.</p>
 <p>La prévision est une aide à la décision, pas une garantie : elle n'invente aucune dépense que vous n'avez pas enregistrée.</p>
-<h2 id="aide-a-la-decision">10. Aide à la décision</h2>
+<h2 id="veille-de-votre-secteur">10. Veille de votre secteur</h2>
+<p>Menu <strong>Trésorerie → Veille de votre secteur</strong>. Les indicateurs officiels qui pèsent sur vos prix,
+vos coûts et vos contrats, mis à jour chaque matin depuis l'INSEE et la Banque centrale
+européenne.</p>
+<ul>
+<li><strong>Votre secteur</strong> : ProfitOS le propose d'après les activités de votre profil entreprise ;
+  confirmez-le, changez-le, ou indiquez votre code APE. Les entreprises du bâtiment et des travaux
+  publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
+  les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
+  la BCE et l'Euribor 3 mois.</li>
+<li><strong>Chaque carte</strong> donne la dernière valeur publiée, sa période, la variation sur la période et sur
+  un an, la courbe des deux dernières années et un lien vers la source officielle.</li>
+<li><strong>Alertes</strong> : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an
+  et 2 % sur une période par défaut ; 0,5 point et 0,25 point pour les taux).</li>
+<li><strong>Indicateurs de votre métier</strong> : ajoutez toute série de l'INSEE (index BT d'un corps d'état,
+  prix de production d'un produit, prix agricoles…) en collant son identifiant à 9 chiffres ou
+  l'adresse de sa page sur insee.fr. Un indice non publié par l'INSEE (Syntec, Comité national
+  routier, indice contractuel) se saisit à la main dans le <strong>Suivi des marges</strong>.</li>
+<li><strong>Révision de prix</strong> : choisissez l'indice, le mois de référence, le mois de révision, la partie
+  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé, et peut
+  ajouter l'écart comme ligne d'une facture en brouillon.</li>
+<li>
+<p><strong>Suivi des marges</strong> : choisissez un indice de la veille comme indice de référence ; ses valeurs
+  officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
+  risque depuis sa signature.</p>
+</li>
+<li>
+<p><strong>Aides et financements</strong> : liens vers les moteurs officiels (Les-aides.fr des CCI, Bpifrance)
+  pour rechercher les aides de votre activité et de votre région.</p>
+</li>
+<li><strong>Comparaison anonyme</strong> : si vous participez à la comparaison des délais de paiement
+  (Paramètres), le tableau de bord compare votre délai moyen à celui des entreprises de votre
+  secteur dès que 5 autres participantes en font partie, sinon à toutes les participantes.</li>
+</ul>
+<p>Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
+« à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.</p>
+<h2 id="aide-a-la-decision">11. Aide à la décision</h2>
 <p>Trois pages s'appuient sur la prévision de trésorerie pour vous aider à décider. Elles sont visibles dans le menu complet (formule Business et plus).</p>
 <h3 id="simulateur-de-decision">Simulateur de décision</h3>
 <p>Menu <strong>Trésorerie → Simulateur de décision</strong>. Il répond à la question : « puis-je me le permettre, et comment ? »</p>
@@ -583,7 +624,7 @@
 <p>Menu <strong>Trésorerie → Diagnostic financier</strong>. Un score de maîtrise financière sur 100, la décision qui protège le plus votre argent en ce moment, la liste des décisions classées par impact, et une réponse à « peut-on financièrement prendre ce marché ? » pour vos opportunités. La page dit aussi ce que ProfitOS ne sait pas encore, pour que vous complétiez les données manquantes.</p>
 <h3 id="gisements-de-cash">Gisements de cash</h3>
 <p>Menu <strong>Trésorerie → Gisements de cash</strong>. Le montant que vous pourriez récupérer (factures clients en retard à relancer, économies repérées sur vos dépenses, marchés publics ouverts) et vos décisions prioritaires. Chaque piste se transforme en action dans le <strong>Centre d'actions</strong> ; une fois menée, son résultat réel s'enregistre dans <strong>Gains vérifiés</strong>. Les économies potentielles ne sont jamais ajoutées à la trésorerie prévue.</p>
-<h2 id="comptabilite">11. Comptabilité</h2>
+<h2 id="comptabilite">12. Comptabilité</h2>
 <p>La comptabilité se tient en grande partie toute seule : chaque facture, paiement et opération bancaire validée passe son écriture en partie double. Vous contrôlez, complétez et clôturez. Menu <strong>Comptabilité</strong> (formule Pro et plus).</p>
 <h3 id="ce-qui-est-comptabilise-automatiquement">Ce qui est comptabilisé automatiquement</h3>
 <div class="help-table"><table>
@@ -794,7 +835,7 @@
 </ul>
 <h3 id="export-fec">Export FEC</h3>
 <p><strong>Export FEC</strong> génère le fichier des écritures comptables au format exigé par l'administration fiscale (article A47 A-1 du LPF) pour une période. Vous pouvez le télécharger ou l'envoyer directement à votre expert-comptable par un lien sécurisé à durée limitée.</p>
-<h2 id="importer-ses-donnees">12. Importer ses données</h2>
+<h2 id="importer-ses-donnees">13. Importer ses données</h2>
 <p>Vous pouvez démarrer avec l'historique de votre ancien outil : factures, dépenses, relevés et comptabilité s'importent depuis un fichier. Menu <strong>Données &amp; connexions</strong>.</p>
 <h3 id="formats-acceptes">Formats acceptés</h3>
 <ul>
@@ -843,7 +884,7 @@
 <li><strong>les soldes seulement</strong>, pour démarrer avec les à-nouveaux de l'exercice.</li>
 </ul>
 <p>Les comptes absents du plan comptable sont créés, et l'import est refusé s'il est déséquilibré ou s'il touche une période clôturée. Tout ou rien : la moindre erreur annule l'import, et un même fichier ne peut être importé qu'une fois.</p>
-<h2 id="equipe-multi-societes-et-securite">13. Équipe, multi-sociétés et sécurité</h2>
+<h2 id="equipe-multi-societes-et-securite">14. Équipe, multi-sociétés et sécurité</h2>
 <p>Chaque collaborateur a son propre compte et un rôle qui limite ce qu'il voit et fait ; votre compte est protégé par mot de passe, double authentification et contrôle des appareils.</p>
 <h3 id="inviter-son-equipe">Inviter son équipe</h3>
 <p>Menu <strong>Entreprise &amp; compte → Équipe</strong> : saisissez l'e-mail du collaborateur et choisissez son rôle. Le nombre d'utilisateurs dépend de la formule (section 3).</p>
@@ -884,6 +925,7 @@
 <p>Retirer un membre, créer une clé d'API ou supprimer le compte demande de ressaisir votre mot de passe.</p>
 <h3 id="travailler-avec-son-expert-comptable">Travailler avec son expert-comptable</h3>
 <p>Depuis la <strong>Révision</strong> des comptes, invitez votre expert-comptable : il accède au dossier, échange avec vous par demandes et commentaires, et reçoit le FEC par lien sécurisé.</p>
+<p>Sur une écriture sans justificatif, votre expert-comptable (ou un administrateur) peut <strong>demander la pièce</strong>. Elle apparaît dans <strong>Comptabilité → Pièces demandées</strong>, sur l'écriture et dans votre rapport du lundi ; la demande est soldée dès que vous joignez la pièce. Dans son <strong>portefeuille</strong>, le cabinet voit pour chaque dossier les pièces attendues et les déclarations en retard.</p>
 <h3 id="plusieurs-societes">Plusieurs sociétés</h3>
 <ul>
 <li><strong>Plusieurs entités</strong> dans une même organisation (filiales, établissements) : le sélecteur en haut du menu change l'entité active ; factures, banque, trésorerie et comptabilité sont séparées par entité, et un compte bancaire se rattache à une entité.</li>
@@ -898,7 +940,7 @@
 <li><strong>Mot de passe et e-mail</strong> : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.</li>
 <li><strong>Protection automatique</strong> : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.</li>
 </ul>
-<h2 id="donnees-personnelles-et-export-rgpd">14. Données personnelles et export RGPD</h2>
+<h2 id="donnees-personnelles-et-export-rgpd">15. Données personnelles et export RGPD</h2>
 <p>Vos données vous appartiennent : vous pouvez les télécharger à tout moment et supprimer votre compte vous-même.</p>
 <ul>
 <li><strong>Mes données</strong> (Sécurité du compte) : télécharge une archive ZIP de vos données personnelles d'utilisateur.</li>
@@ -908,7 +950,7 @@
 </ul>
 <p>Les identifiants de connexion à des services tiers (stockage, boutique en ligne) et les secrets de double authentification sont chiffrés, et les données sont sauvegardées chaque jour.</p>
 <p>Avant de supprimer votre compte, pensez à télécharger vos factures et votre FEC : la loi impose de conserver les pièces comptables 10 ans.</p>
-<h2 id="questions-frequentes-et-depannage">15. Questions fréquentes et dépannage</h2>
+<h2 id="questions-frequentes-et-depannage">16. Questions fréquentes et dépannage</h2>
 <div class="help-table"><table>
 <thead>
 <tr>

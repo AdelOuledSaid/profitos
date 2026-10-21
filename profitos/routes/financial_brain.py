@@ -6,10 +6,11 @@ from .money_hunter import build_money_brief, _safe_float, _confidence, _clamp
 def _margin_risk(c):
     settings=c.execute("SELECT price_index_name FROM app_settings WHERE id=1").fetchone()
     index_name=((settings['price_index_name'] if settings and settings['price_index_name'] else 'INDICE').strip() or 'INDICE')
-    readings=c.execute("SELECT * FROM price_index_readings WHERE index_name=? ORDER BY reading_date ASC",(index_name,)).fetchall()
+    from profitos import market_watch as MW
+    readings=MW.index_readings(c,index_name)
     contracts=c.execute("SELECT * FROM fixed_price_contracts WHERE status='ACTIVE' ORDER BY signed_date DESC").fetchall()
     if len(readings)<2 or not contracts:
-        return {'total':0.0,'contracts':0,'available':False,'index_name':index_name,'note':f'Ajoutez des contrats et au moins deux relevés {index_name} dans Suivi des marges.'}
+        return {'total':0.0,'contracts':0,'available':False,'index_name':MW.index_label(index_name),'note':f'Ajoutez des contrats et au moins deux relevés {MW.index_label(index_name)} dans Suivi des marges.'}
     latest=readings[-1]
     total=0.0; exposed=0
     for ct in contracts:
@@ -25,7 +26,7 @@ def _margin_risk(c):
         if change>0:
             risk=_safe_float(ct['amount'])*(_safe_float(ct['materials_share_pct'])/100.0)*change
             total+=max(0.0,risk); exposed+=1
-    return {'total':round(total,2),'contracts':exposed,'available':True,'index_name':index_name,'note':f'Risque indicatif lié à la variation de {index_name} sur les contrats à prix fixe.'}
+    return {'total':round(total,2),'contracts':exposed,'available':True,'index_name':MW.index_label(index_name),'note':f'Risque indicatif lié à la variation de {MW.index_label(index_name)} sur les contrats à prix fixe.'}
 
 
 def build_financial_brain():

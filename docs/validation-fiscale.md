@@ -178,6 +178,20 @@ dépréciation d'un client douteux 2 000.
 | Exercice de 8,5 mois (1er janvier – 15 septembre) | 42 500 × 8,5 / 12 (exemple du BOFiP) | plafond 30 104 |
 | Contribution sociale sur 18 mois | abattement 763 000 × 18 / 12 = 1 144 500 | 3,3 % × (IS − 1 144 500) |
 
+### Dossier I — cycle de clôture sur deux exercices (2024 bénéficiaire, 2025 déficitaire)
+
+`tests/test_v464_cloture_bout_en_bout.py`, par les écrans de clôture et d'export FEC :
+
+| Calcul | Détail | Attendu |
+| --- | --- | --- |
+| Résultat 2024 | 100 000 − 40 000 − 20 000 − 2 000 = 38 000 ; IS 15 % = 5 700 | 32 300 |
+| À-nouveaux au 01/01/2025 | chaque compte de bilan repris pour son solde, tiers par tiers | identiques au bilan de clôture ; 120000 créditeur de 32 300 ; banque 40 800 |
+| Après clôture | saisie ou contrepassation datée de 2024 | refusée ; à-nouveaux non régénérables |
+| FEC 2024 | 18 colonnes, dates AAAAMMJJ, montants, équilibre, numérotation continue | conforme, 12 écritures |
+| Affectation 2025 | 5 % en réserve légale, solde en report à nouveau | 1 615 / 30 685 |
+| Résultat 2025 | 20 000 − 30 000 − 2 000 | − 12 000 (129000 débiteur dans les à-nouveaux 2026) |
+| Liasse 2025 | colonne N-1 | égale à la liasse 2024 |
+
 ## 5. Écarts trouvés et corrigés grâce aux dossiers
 
 | Écart | Effet | Correction |
@@ -222,6 +236,30 @@ PROFITOS_E2E_DATABASE_URL="postgresql://utilisateur@/base_vide?host=/tmp&port=54
 
 Le parcours a révélé l'écart ci-dessus (relance tardive des CA3), corrigé et couvert par
 `tests/test_v461_relances_ca3.py`, qui tourne en CI.
+
+`tests/test_v462_parcours_modules.py` enchaîne de la même façon, dans le navigateur :
+exercice précédent saisi, à-nouveaux, clôture (saisie tardive et recul de la clôture
+refusés), export FEC contrôlé, facture client émise (mentions obligatoires, TVA sur les
+encaissements), PDF, relevé bancaire importé et rapproché (TVA devenue exigible),
+facture fournisseur, bilan de l'exercice en cours équilibré.
+
+`tests/test_v467_restauration_postgresql.py` sauvegarde la base PostgreSQL de ces parcours
+(pg_dump chiffré) et la restaure dans une base neuve : toutes les tables de tous les
+schémas identiques ligne pour ligne, documents identiques à l'octet. Les trois tests se
+lancent avec la même variable `PROFITOS_E2E_DATABASE_URL`.
+
+Les tests ordinaires peuvent aussi tourner sur PostgreSQL, chaque test repartant d'une base
+vide (base de test dédiée, jamais la production) :
+
+```bash
+PROFITOS_TEST_DATABASE_URL="postgresql://utilisateur@/base_de_test?host=/tmp&port=5432" pytest tests/test_v467_isolation_audit.py tests/test_v459_securite_fiscale.py
+```
+
+`test_v467_isolation_audit` parcourt toutes les routes GET et POST de l'application,
+connecté à une entreprise B avec les identifiants d'une entreprise A : aucune donnée de A
+ne doit apparaître et ses données doivent rester identiques. Sa capacité à détecter une
+fuite a été vérifiée en en introduisant une volontairement (page facture lisant la base
+d'une autre entreprise) : le test échoue sur cette page.
 
 ## 7. Grille de validation par l'expert-comptable
 

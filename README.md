@@ -12,11 +12,12 @@ Application Flask (Python 3.12), SQLite en développement, PostgreSQL en product
 
 | Module | Contenu |
 | --- | --- |
-| Facturation | Clients, devis, factures, acomptes, avoirs, bons de livraison, factures récurrentes, paiements, relances |
+| Facturation | Clients, devis, factures, acomptes, avoirs, bons de livraison, factures récurrentes, paiements, QR code de virement et lien de paiement, relances automatiques par étapes |
 | Facture électronique | Factur-X, envoi et réception par plateforme agréée (WeInvoice), statuts, e-reporting |
 | Achats et dépenses | Factures fournisseurs (dépôt, boîte mail, dossiers cloud), notes de frais, budgets |
 | Banque | Connexion bancaire ou import de relevés, rapprochement, catégorisation, état de rapprochement |
 | Trésorerie | Prévision à 90 jours, scénarios, plan mensuel, simulateur de décision, diagnostic |
+| Veille de secteur | Indicateurs officiels (INSEE, BCE) choisis selon l'activité de l'entreprise, alertes, révision de prix, actualités |
 | Comptabilité | Saisie, journaux, grand livre, balance, immobilisations (dotations, cessions), emprunts, crédit-bail, paie importée, cut-off, analytique, clôture, plaquette, FEC |
 | Fiscalité | TVA CA3 et CA12 (acomptes 3514), liasses 2033-A à G et 2050 à 2059-G avec 2065, IS et CVAE, DAS2, prélèvements sur dividendes (2777) et IFU, CFE, DECLOYER, profil fiscal, échéancier et relances |
 | Déclarations fiscales | Préparation contrôlée, récapitulatif PDF, dépôt par l'entreprise sur impots.gouv.fr, archivage et contrôle automatique de l'accusé ; transmission EDI dès qu'un partenaire est connecté |
@@ -28,7 +29,9 @@ sur dossiers de référence et grille pour l'expert-comptable :
 [`docs/validation-fiscale.md`](docs/validation-fiscale.md) (la préparation des déclarations
 reste fermée aux clients tant qu'elle n'est pas signée).
 Mode d'emploi pour les clients : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)
-(publié dans l'application, menu Aide).
+(publié dans l'application, menu Aide). Avant la mise en vente :
+[`docs/mise-en-vente.md`](docs/mise-en-vente.md) (liste de contrôle et preuves) et
+[`docs/pilote.md`](docs/pilote.md) (programme pilote).
 
 ## Démarrage local
 
@@ -49,9 +52,12 @@ Sous Windows : `LANCER_PROFITOS.bat` (développement) ou `RUN_PRODUCTION_WINDOWS
 pytest -q
 ```
 
-Environ 1 540 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
+Environ 1 550 tests (sécurité, isolation des organisations, comptabilité, fiscalité,
 déclarations, tâches planifiées). La CI GitHub (`.github/workflows/tests.yml`) les exécute à
-chaque push ; Render ne déploie que si elle est verte.
+chaque push ; Render ne déploie que si elle est verte. Les parcours dans un vrai
+navigateur et l'exercice de restauration PostgreSQL se lancent à part (voir
+`docs/validation-fiscale.md`, § 6). L'isolation entre entreprises est auditée route par
+route par `tests/test_v467_isolation_audit.py`.
 
 Le dépôt GitHub doit contenir le projet **à sa racine** (dossiers `profitos/`, `templates/`,
 `tests/`… directement sous la racine). Un second exemplaire dans un sous-dossier fait échouer

@@ -451,3 +451,19 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .filing-steps li::before{content:counter(step);position:absolute;left:12px;top:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;background:#3ddc84;color:#04150c}
 .filing-steps li.is-done::before{content:"✓";background:#16a34a;color:#fff}
 .filing-steps li.is-current{border-color:#3ddc84}
+
+/* Veille de votre secteur (v469) */
+.mw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:12px}
+.mw-card h2{font-size:15px;margin:0 0 6px}
+.mw-card-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mw-value{font-size:26px;font-weight:700;line-height:1.1}
+.mw-changes{font-size:12px;margin-top:4px}
+.mw-up{color:#e8a33d;font-weight:600}
+.mw-down{color:#4cc38a;font-weight:600}
+.mw-spark{width:100%;height:44px;margin-top:6px;color:#7aa7ff}
+.mw-spark-large{height:140px}
+.mw-alert{color:#e8a33d;font-size:12px;margin:6px 0 0}
+.mw-news{margin:0;padding-left:18px}
+.mw-news li{margin:4px 0}
+.mw-checks{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 12px}
+.mw-checks legend{font-weight:600;margin-bottom:4px}

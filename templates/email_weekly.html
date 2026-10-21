@@ -15,10 +15,39 @@
   </td></tr>
 
   <tr><td style="padding:28px 32px 8px;">
-    <div style="color:#374151;font-size:14px;">Bonjour, voici les nouveautés détectées cette semaine chez <strong>{{ org.name if org else '' }}</strong> :</div>
+    <div style="color:#374151;font-size:14px;">Bonjour, voici ce qui compte cette semaine chez <strong>{{ org.name if org else '' }}</strong> :</div>
   </td></tr>
 
-  {% if digest.has_signal %}
+  {% set w = digest.week %}
+  {% if w and w.has_signal %}
+  <tr><td style="padding:12px 32px 0;">
+    <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:8px;">Votre semaine</div>
+    {% if w.receivables and (w.receivables.overdue_count or w.receivables.soon_count) %}
+    <div style="padding:12px 16px;background:#f9fafb;border-radius:6px;margin-bottom:8px;font-size:14px;color:#374151;">
+      {% if w.receivables.overdue_count %}<strong>{{ w.receivables.overdue_total|fr_number(0) }}&nbsp;€</strong> de factures clients échues ({{ w.receivables.overdue_count }}){% endif %}{% if w.receivables.overdue_count and w.receivables.soon_count %} · {% endif %}{% if w.receivables.soon_count %}<strong>{{ w.receivables.soon_total|fr_number(0) }}&nbsp;€</strong> attendus sous 7 jours ({{ w.receivables.soon_count }}){% endif %}
+    </div>
+    {% endif %}
+    {% if w.payables and w.payables.count %}
+    <div style="padding:12px 16px;background:#f9fafb;border-radius:6px;margin-bottom:8px;font-size:14px;color:#374151;"><strong>{{ w.payables.total|fr_number(0) }}&nbsp;€</strong> de factures fournisseurs à régler sous 7 jours ({{ w.payables.count }})</div>
+    {% endif %}
+    {% if w.fiscal %}
+    <div style="padding:12px 16px;background:#eff6ff;border-radius:6px;margin-bottom:8px;font-size:14px;color:#374151;">
+      <div style="font-weight:600;margin-bottom:4px;">Échéances fiscales des deux prochaines semaines</div>
+      {% for f in w.fiscal %}<div>• {{ f.date|fr_date }} — {{ f.label }}{% if f.amount %} (environ {{ f.amount|fr_number(0) }}&nbsp;€){% endif %}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% if w.documents %}
+    <div style="padding:12px 16px;background:#fef2f2;border-radius:6px;margin-bottom:8px;font-size:14px;color:#374151;"><strong>{{ w.documents }}</strong> pièce(s) justificative(s) demandée(s) par votre expert-comptable : menu Comptabilité → Pièces demandées.</div>
+    {% endif %}
+    {% if w.watch %}
+    <div style="padding:12px 16px;background:#fffbeb;border-radius:6px;margin-bottom:8px;font-size:14px;color:#374151;">
+      <div style="font-weight:600;margin-bottom:4px;">Veille de votre secteur</div>
+      {% for a in w.watch %}<div>• {{ a.label }} ({{ a.period }}) : {{ a.alerts|join(', ') }}</div>{% endfor %}
+    </div>
+    {% endif %}
+  </td></tr>
+  {% endif %}
+  {% if digest.recover_count or digest.save_count or digest.grow_count %}
   <tr><td style="padding:12px 32px;">
     {% if digest.recover_count %}
     <div style="padding:14px 16px;background:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:10px;">
@@ -41,7 +70,7 @@
     </div>
     {% endif %}
   </td></tr>
-  {% else %}
+  {% elif not (w and w.has_signal) %}
   <tr><td style="padding:12px 32px;">
     <div style="padding:16px;background:#f9fafb;border-radius:6px;color:#6b7280;font-size:14px;">
       Aucune nouveauté détectée cette semaine. ProfitOS continue de surveiller vos factures, dépenses et marchés publics en arrière-plan.

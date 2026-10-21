@@ -1,6 +1,6 @@
 # ProfitOS — Guide utilisateur
 
-Mis à jour le 19 octobre 2026
+Mis à jour le 21 octobre 2026
 
 ## 1. Présentation
 
@@ -105,12 +105,14 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 | Bloc | Ce qu'il montre |
 | --- | --- |
 | Message du jour | Les factures clients en retard aujourd'hui, ou l'absence de retard |
-| Premiers pas | La liste de démarrage, tant qu'elle n'est pas terminée |
+| Premiers pas | La liste de démarrage, tant qu'elle n'est pas terminée : profil entreprise, banque, factures, reprise de la comptabilité (FEC), IBAN et relances, secteur de la veille, invitation d'un collègue ou de l'expert-comptable |
 | Trésorerie | Solde déclaré et sa date, état (stable, vigilance, alerte), mini-courbe sur 90 jours, solde prévu à 30 et 90 jours, point bas |
 | À encaisser | Total des factures clients échues non payées (émises et importées) |
 | Économies potentielles | Dépenses à revoir repérées par ProfitOS |
 | Gains vérifiés | Résultats confirmés des actions menées (relance payée, économie réalisée) |
 | À traiter en priorité | Les actions les plus utiles du moment, avec un lien vers le Centre d'actions |
+
+**Rapport du lundi** : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.
 
 Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).
 
@@ -156,7 +158,11 @@ Sur une facture, **Règlement** enregistre un paiement total ou partiel (date, m
 ### Relances clients et échéancier
 
 - **Relances clients** liste les factures en retard, classées par un score de risque (montant, retard, historique) pour savoir qui relancer en premier. Les retenues de garantie y sont suivies jusqu'à leur date de libération.
-- **Relancer** sur une facture prépare l'e-mail de relance ; rien n'est envoyé sans votre validation.
+- **Relancer** sur une facture envoie l'e-mail de relance d'un clic.
+- **Facturation → Encaissement et relances** :
+  - **QR code de virement** : il est imprimé sur la facture PDF et sur la facture en ligne avec votre IBAN, le reste à payer et le numéro de facture. Votre client le scanne avec l'application de sa banque et le virement est pré-rempli. Renseignez l'IBAN dans le profil de l'entreprise.
+  - **Lien de paiement en ligne** (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». ProfitOS ne manipule jamais les fonds.
+  - **Relances automatiques** (à activer) : un rappel courtois, un rappel ferme puis un dernier avis avant mise en demeure, aux délais que vous choisissez (3, 15 et 30 jours après l'échéance par défaut), chaque matin. Jamais deux relances à moins de 5 jours d'intervalle ; arrêt dès que la facture est réglée, couverte par un avoir, ou refusée ou en litige côté facture électronique. Vous pouvez suspendre les relances d'une facture précise.
 - **Échéancier** affiche sur un calendrier les échéances clients et fournisseurs.
 - **Facturation → Créances** donne l'état de toutes les sommes dues par client.
 
@@ -245,7 +251,7 @@ Menu **Notes de frais**. Un collaborateur crée une note, ajoute ses lignes (tic
 
 ### Importer des dépenses
 
-**Données & connexions → Importer des dépenses** accepte un fichier Excel, CSV ou des PDF (section 12). Les dépenses servent à repérer les économies possibles et à calculer la dépense courante de la prévision de trésorerie.
+**Données & connexions → Importer des dépenses** accepte un fichier Excel, CSV ou des PDF (section 13). Les dépenses servent à repérer les économies possibles et à calculer la dépense courante de la prévision de trésorerie.
 
 ## 8. Banque
 
@@ -353,7 +359,42 @@ Menu **Trésorerie → Flux projetés 90 jours** : les mêmes données par tranc
 
 La prévision est une aide à la décision, pas une garantie : elle n'invente aucune dépense que vous n'avez pas enregistrée.
 
-## 10. Aide à la décision
+## 10. Veille de votre secteur
+
+Menu **Trésorerie → Veille de votre secteur**. Les indicateurs officiels qui pèsent sur vos prix,
+vos coûts et vos contrats, mis à jour chaque matin depuis l'INSEE et la Banque centrale
+européenne.
+
+- **Votre secteur** : ProfitOS le propose d'après les activités de votre profil entreprise ;
+  confirmez-le, changez-le, ou indiquez votre code APE. Les entreprises du bâtiment et des travaux
+  publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
+  les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
+  la BCE et l'Euribor 3 mois.
+- **Chaque carte** donne la dernière valeur publiée, sa période, la variation sur la période et sur
+  un an, la courbe des deux dernières années et un lien vers la source officielle.
+- **Alertes** : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an
+  et 2 % sur une période par défaut ; 0,5 point et 0,25 point pour les taux).
+- **Indicateurs de votre métier** : ajoutez toute série de l'INSEE (index BT d'un corps d'état,
+  prix de production d'un produit, prix agricoles…) en collant son identifiant à 9 chiffres ou
+  l'adresse de sa page sur insee.fr. Un indice non publié par l'INSEE (Syntec, Comité national
+  routier, indice contractuel) se saisit à la main dans le **Suivi des marges**.
+- **Révision de prix** : choisissez l'indice, le mois de référence, le mois de révision, la partie
+  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé, et peut
+  ajouter l'écart comme ligne d'une facture en brouillon.
+- **Suivi des marges** : choisissez un indice de la veille comme indice de référence ; ses valeurs
+  officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
+  risque depuis sa signature.
+
+- **Aides et financements** : liens vers les moteurs officiels (Les-aides.fr des CCI, Bpifrance)
+  pour rechercher les aides de votre activité et de votre région.
+- **Comparaison anonyme** : si vous participez à la comparaison des délais de paiement
+  (Paramètres), le tableau de bord compare votre délai moyen à celui des entreprises de votre
+  secteur dès que 5 autres participantes en font partie, sinon à toutes les participantes.
+
+Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
+« à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
+
+## 11. Aide à la décision
 
 Trois pages s'appuient sur la prévision de trésorerie pour vous aider à décider. Elles sont visibles dans le menu complet (formule Business et plus).
 
@@ -387,7 +428,7 @@ Menu **Trésorerie → Diagnostic financier**. Un score de maîtrise financière
 
 Menu **Trésorerie → Gisements de cash**. Le montant que vous pourriez récupérer (factures clients en retard à relancer, économies repérées sur vos dépenses, marchés publics ouverts) et vos décisions prioritaires. Chaque piste se transforme en action dans le **Centre d'actions** ; une fois menée, son résultat réel s'enregistre dans **Gains vérifiés**. Les économies potentielles ne sont jamais ajoutées à la trésorerie prévue.
 
-## 11. Comptabilité
+## 12. Comptabilité
 
 La comptabilité se tient en grande partie toute seule : chaque facture, paiement et opération bancaire validée passe son écriture en partie double. Vous contrôlez, complétez et clôturez. Menu **Comptabilité** (formule Pro et plus).
 
@@ -516,7 +557,7 @@ Menu **Comptabilité → Profil fiscal** :
 
 **Export FEC** génère le fichier des écritures comptables au format exigé par l'administration fiscale (article A47 A-1 du LPF) pour une période. Vous pouvez le télécharger ou l'envoyer directement à votre expert-comptable par un lien sécurisé à durée limitée.
 
-## 12. Importer ses données
+## 13. Importer ses données
 
 Vous pouvez démarrer avec l'historique de votre ancien outil : factures, dépenses, relevés et comptabilité s'importent depuis un fichier. Menu **Données & connexions**.
 
@@ -547,7 +588,7 @@ Le nombre d'imports par mois dépend de la formule (20 en Starter, 200 en Pro, i
 
 Les comptes absents du plan comptable sont créés, et l'import est refusé s'il est déséquilibré ou s'il touche une période clôturée. Tout ou rien : la moindre erreur annule l'import, et un même fichier ne peut être importé qu'une fois.
 
-## 13. Équipe, multi-sociétés et sécurité
+## 14. Équipe, multi-sociétés et sécurité
 
 Chaque collaborateur a son propre compte et un rôle qui limite ce qu'il voit et fait ; votre compte est protégé par mot de passe, double authentification et contrôle des appareils.
 
@@ -570,6 +611,8 @@ Retirer un membre, créer une clé d'API ou supprimer le compte demande de ressa
 
 Depuis la **Révision** des comptes, invitez votre expert-comptable : il accède au dossier, échange avec vous par demandes et commentaires, et reçoit le FEC par lien sécurisé.
 
+Sur une écriture sans justificatif, votre expert-comptable (ou un administrateur) peut **demander la pièce**. Elle apparaît dans **Comptabilité → Pièces demandées**, sur l'écriture et dans votre rapport du lundi ; la demande est soldée dès que vous joignez la pièce. Dans son **portefeuille**, le cabinet voit pour chaque dossier les pièces attendues et les déclarations en retard.
+
 ### Plusieurs sociétés
 
 - **Plusieurs entités** dans une même organisation (filiales, établissements) : le sélecteur en haut du menu change l'entité active ; factures, banque, trésorerie et comptabilité sont séparées par entité, et un compte bancaire se rattache à une entité.
@@ -585,7 +628,7 @@ Menu **Entreprise & compte → Sécurité du compte**.
 - **Mot de passe et e-mail** : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.
 - **Protection automatique** : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.
 
-## 14. Données personnelles et export RGPD
+## 15. Données personnelles et export RGPD
 
 Vos données vous appartiennent : vous pouvez les télécharger à tout moment et supprimer votre compte vous-même.
 
@@ -598,7 +641,7 @@ Les identifiants de connexion à des services tiers (stockage, boutique en ligne
 
 Avant de supprimer votre compte, pensez à télécharger vos factures et votre FEC : la loi impose de conserver les pièces comptables 10 ans.
 
-## 15. Questions fréquentes et dépannage
+## 16. Questions fréquentes et dépannage
 
 | Problème | Solution |
 | --- | --- |

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">VEILLE DE VOTRE SECTEUR</div>
+    <h1 class="purchase-title">{{ sectors[sector].label }}</h1>
+    <p class="purchase-subtitle">Les indicateurs officiels qui pèsent sur vos prix, vos coûts et vos contrats, mis à jour chaque jour depuis l'INSEE et la Banque centrale européenne.{% if guessed %} Secteur proposé d'après votre activité : confirmez-le ou changez-le ci-dessous.{% endif %}</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('market_watch_revision') }}">Calculer une révision de prix</a>
+    <form method="post" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="refresh">
+      <button type="submit" class="purchase-nav-btn">Actualiser</button>
+    </form>
+  </div>
+</div>
+
+{% set alerting = cards|selectattr('alerts')|list %}
+{% if alerting %}
+<div class="flash" role="status"><strong>À surveiller :</strong>
+  {% for c in alerting %}{{ c.defn.label }} ({{ c.alerts|join(', ') }}){% if not loop.last %} · {% endif %}{% endfor %}.
+  Vérifiez vos devis en cours, vos contrats à prix ferme et vos clauses de révision.</div>
+{% endif %}
+
+<section class="mw-grid">
+{% for c in cards %}
+  <article class="purchase-panel mw-card">
+    <div class="mw-card-head">
+      <h2><a class="link" href="{{ url_for('market_watch_series', code=c.code) }}">{{ c.defn.label }}</a></h2>
+      {% if c.defn.custom %}<span class="purchase-muted" style="font-size:11px;">ajouté par vous</span>{% endif %}
+    </div>
+    {% if c.stat %}
+      <div class="mw-value">{{ c.stat.value|fr_number(2 if c.defn.unit == '%' else 1) }}{% if c.defn.unit == '%' %} %{% endif %}</div>
+      <div class="purchase-muted" style="font-size:12px;">{{ c.stat.label }}</div>
+      <div class="mw-changes">
+        {% if c.stat.change_1p is not none %}<span class="{{ 'mw-up' if c.stat.change_1p > 0 else ('mw-down' if c.stat.change_1p < 0 else '') }}">{{ '+' if c.stat.change_1p > 0 }}{{ c.stat.change_1p|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur la période{% endif %}
+        {% if c.stat.change_12m is not none %} · <span class="{{ 'mw-up' if c.stat.change_12m > 0 else ('mw-down' if c.stat.change_12m < 0 else '') }}">{{ '+' if c.stat.change_12m > 0 }}{{ c.stat.change_12m|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur un an{% endif %}
+      </div>
+      {% if c.spark %}<svg class="mw-spark" viewBox="0 0 220 44" role="img" aria-label="Évolution de {{ c.defn.label }} sur deux ans"><polyline fill="none" stroke="currentColor" stroke-width="2" points="{{ c.spark }}"/></svg>{% endif %}
+      {% if c.alerts %}<p class="mw-alert">⚠ {{ c.alerts|join(' ; ') }}</p>{% endif %}
+    {% elif c.meta.status == 'mismatch' %}
+      <p class="purchase-muted">Série à vérifier : la source a renvoyé un titre inattendu, aucune valeur n'est affichée.</p>
+    {% elif c.meta.status == 'error' %}
+      <p class="purchase-muted">Données indisponibles pour l'instant ({{ c.meta.error }}). Nouvel essai automatique chaque jour.</p>
+    {% else %}
+      <p class="purchase-muted">En attente de la première mise à jour.</p>
+    {% endif %}
+    <p class="purchase-muted" style="font-size:12px;margin-top:6px;">{{ c.defn.why }}</p>
+    <p style="font-size:11px;margin:0;"><a class="link" href="{{ c.url }}" target="_blank" rel="noopener noreferrer">Source : {{ 'INSEE' if c.defn.source == 'insee' else 'Banque centrale européenne' }} ↗</a>{% if c.meta.last_update %} · publié le {{ c.meta.last_update|fr_date }}{% endif %}</p>
+  </article>
+{% endfor %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Actualités</h2>
+  {% if news %}
+    <ul class="mw-news">
+    {% for n in news %}<li><a class="link" href="{{ n.url }}" target="_blank" rel="noopener noreferrer">{{ n.title }}</a> <span class="purchase-muted">— {{ n.source }}{% if n.published %}, {{ n.published|fr_date }}{% endif %}</span></li>{% endfor %}
+    </ul>
+  {% elif news_configured %}
+    <p class="purchase-muted">Aucune actualité récente pour votre secteur.</p>
+  {% else %}
+    <p class="purchase-muted">Les actualités de votre secteur apparaîtront ici. En attendant, les dates de publication des indicateurs sont indiquées sur chaque carte{% if sector == 'batiment' %}, et les appels d'offres publics sont dans la veille des marchés{% endif %}.</p>
+  {% endif %}
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Aides et financements</h2>
+  <p class="purchase-muted" style="font-size:13px;">Les aides publiques dépendent de votre activité, de votre région et de votre projet, et changent souvent : vérifiez-les à la source, sur les moteurs officiels.</p>
+  <ul class="mw-news">
+    <li><a class="link" href="https://les-aides.fr/" target="_blank" rel="noopener noreferrer">Les-aides.fr ↗</a> <span class="purchase-muted">— moteur de recherche des aides aux entreprises du réseau des CCI, par activité et par région</span></li>
+    <li><a class="link" href="https://www.bpifrance.fr/" target="_blank" rel="noopener noreferrer">Bpifrance ↗</a> <span class="purchase-muted">— prêts, garanties et aides à l'innovation et à l'export</span></li>
+  </ul>
+  <p class="purchase-muted" style="font-size:12px;">ProfitOS ne reprend pas ces catalogues (les conditions de Les-aides.fr excluent leur réutilisation à but lucratif) : la recherche se fait directement sur ces sites. Votre CCI, votre CMA ou votre expert-comptable peuvent vous accompagner dans la demande.</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Vos indicateurs</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="settings">
+    <div class="twocol">
+      <label>Secteur d'activité
+        <select name="sector">
+          <option value="">— proposé automatiquement —</option>
+          {% for code, s in sectors.items() %}<option value="{{ code }}" {{ 'selected' if settings.sector == code }}>{{ s.label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Code APE (facultatif)<input name="naf" value="{{ settings.naf or '' }}" maxlength="7" placeholder="ex. 4321A"></label>
+    </div>
+    <fieldset class="mw-checks">
+      <legend>Indicateurs du catalogue</legend>
+      <label class="check"><input type="checkbox" name="custom_selection" value="1" {{ 'checked' if settings.series is not none }}> Choisir moi-même (sinon : ceux de mon secteur et les indicateurs communs)</label>
+      {% for code, d in catalogue.items() %}
+        <label class="check"><input type="checkbox" name="series" value="{{ code }}" {{ 'checked' if code in followed }}> {{ d.label }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="twocol">
+      <label>Alerte si un indice varie sur un an d'au moins (%)<input name="alert_12m" inputmode="decimal" value="{{ settings.alert_12m|fr_number(1) }}"></label>
+      <label>… ou sur la dernière période d'au moins (%)<input name="alert_1p" inputmode="decimal" value="{{ settings.alert_1p|fr_number(1) }}"></label>
+    </div>
+    <p class="purchase-muted" style="font-size:12px;">Pour les taux d'intérêt, l'alerte se déclenche à partir de 0,5 point sur un an ou 0,25 point sur une période.</p>
+    <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+  </form>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Ajouter un indicateur de votre métier</h2>
+  <p class="purchase-muted" style="font-size:13px;">Suggestion pour votre secteur : {{ sectors[sector].add }} Recherchez la série sur insee.fr, puis collez ici son identifiant à 9 chiffres ou l'adresse de sa page ({{ max_custom }} indicateurs au plus).</p>
+  <form method="post" class="ledger-filters">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_custom">
+    <label>Identifiant ou adresse de la série INSEE<input name="idbank" required placeholder="ex. 001710986"></label>
+    <label>Nom affiché (facultatif)<input name="label" maxlength="120"></label>
+    <button type="submit" class="purchase-primary-btn secondary">Ajouter</button>
+  </form>
+  {% if settings.custom %}
+  <div class="purchase-table-wrap" style="margin-top:10px;"><table class="purchase-table"><tbody>
+    {% for x in settings.custom %}
+    <tr><td>{{ x.label or ('Série ' ~ x.idbank) }} <span class="purchase-muted">({{ x.idbank }})</span></td>
+      <td class="num"><form method="post" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="remove_custom"><input type="hidden" name="idbank" value="{{ x.idbank }}"><button type="submit" class="purchase-nav-btn">Retirer</button></form></td></tr>
+    {% endfor %}
+  </tbody></table></div>
+  {% endif %}
+  <p class="purchase-muted" style="font-size:12px;margin-top:8px;">Un indice qui n'est pas publié par l'INSEE (Syntec, Comité national routier, indice contractuel) se saisit à la main dans le suivi des marges. Les informations de cette page sont fournies à titre indicatif et ne constituent pas un conseil financier ou d'investissement.</p>
+</section>
+</div>
+{% endblock %}

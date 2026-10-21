@@ -2,6 +2,7 @@
 
 Procédure détaillée : `DEPLOIEMENT_PRODUCTION.md`.
 
+- [ ] `python scripts/go_live_check.py --network` : 0 point bloquant (services en mode production, voir `docs/mise-en-vente.md`)
 - [ ] `/healthz` = 200
 - [ ] `/readyz` = 200 et database=postgresql
 - [ ] `APP_BASE_URL=https://app.profitos.fr` (domaine personnalisé actif, TLS OK)

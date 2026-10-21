@@ -3389,10 +3389,14 @@ def register(app):
         paid_total=_invoice_paid_total(c,invoice_id,inv['entity_id'])
         balance_due=max(0.0,round(float(inv['total'] or 0)-paid_total-credited_total,2))
         einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 50",(invoice_id,inv['entity_id'])).fetchall()
+        from profitos import invoice_payment as _IP
+        collection=_IP.load(c,inv['entity_id'])
         c.close()
         issued=inv['status'] in ('sent','partially_paid','paid')
         public_url=f"{app_base_url()}{url_for('public_invoice_view',token=inv['public_token'])}" if issued and inv['public_token'] else None
         return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
+                               auto_reminders_on=collection['auto_reminders'],
+                               auto_reminders_excluded=inv['id'] in collection['excluded'],
                                einvoice_hold=_einvoice_hold(inv),
                                credits=credits,credited_total=credited_total,reminders=reminders,payments=payments,
                                paid_total=paid_total,balance_due=balance_due,
@@ -3414,8 +3418,9 @@ def register(app):
             c.close(); abort(404)
         from profitos.entities import resolve_entity
         company_row=_seller_identity(c,inv['entity_id'])
+        payment=_payment_options(c,inv,company_row)
         c.close()
-        pdf_bytes=_render_invoice_pdf(inv,company_row)
+        pdf_bytes=_render_invoice_pdf(inv,company_row,payment)
         if pdf_bytes is None:
             flash("La génération PDF nécessite le paquet 'fpdf2' — lancez : pip install -r requirements.txt")
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
@@ -3906,6 +3911,70 @@ def register(app):
         flash(f"Facture {issued['invoice_number']} émise. Vous pouvez maintenant enregistrer ses règlements.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
+    @app.route('/facturation/encaissement',methods=['GET','POST'])
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_collection_settings():
+        from profitos import invoice_payment as IP
+        from profitos.entities import current_entity_id
+        eid=current_entity_id()
+        c=cx()
+        settings=IP.load(c,eid)
+        if request.method=='POST':
+            f=request.form
+            try:
+                settings=IP.save(c,eid,dict(settings,qr=bool(f.get('qr')),link=f.get('link'),
+                                            auto_reminders=bool(f.get('auto_reminders')),
+                                            steps=[f.get('step_1'),f.get('step_2'),f.get('step_3')]),now(),current_user()['email'])
+                log_activity('COLLECTION_SETTINGS','Encaissement : moyens de paiement et relances mis à jour')
+                flash('Réglages d\'encaissement enregistrés.')
+            except IP.PaymentSettingsError as exc:
+                flash(str(exc))
+            c.close()
+            return redirect(url_for('invoicing_collection_settings'))
+        seller=_seller_identity(c,eid)
+        from profitos.sepa import validate_iban
+        iban=''.join(str(seller.get('iban') or '').split()).upper()
+        rows=c.execute("SELECT * FROM outgoing_invoices WHERE status IN ('sent','partially_paid') AND entity_id IS ? ORDER BY due_date",(eid,)).fetchall()
+        overdue=[]
+        for inv in rows:
+            if _display_status(inv)!='overdue':
+                continue
+            n=c.execute("SELECT COUNT(*) n FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",(inv['id'],eid)).fetchone()['n']
+            late=(paris_today()-date.fromisoformat(inv['due_date'])).days
+            step=IP.reminder_step(late,int(n or 0),settings['steps'])
+            overdue.append({'inv':inv,'late':late,'sent':int(n or 0),'balance':_invoice_balance(c,inv),
+                            'next':(IP.STEP_NAMES[step] if step is not None else None),
+                            'excluded':inv['id'] in settings['excluded'],'blocker':reminder_blocker(c,inv)})
+        c.close()
+        preview=[IP.reminder_text(i,'F-2026-0042','1 200,00','1 200,00','15/09/2026') for i in range(3)]
+        return render_template('invoicing_collection.html',settings=settings,iban_ok=bool(iban and validate_iban(iban)),
+                               iban=iban,step_names=IP.STEP_NAMES,preview=preview,overdue=overdue)
+
+    @app.post('/facturation/<int:invoice_id>/relances-auto')
+    @login_required
+    @requires_active_plan
+    @require_area('invoicing')
+    def invoicing_toggle_auto_reminders(invoice_id):
+        from profitos import invoice_payment as IP
+        c=cx()
+        inv=_current_invoice(c,invoice_id)
+        if not inv:
+            c.close(); abort(404)
+        settings=IP.load(c,inv['entity_id'])
+        excluded=set(settings['excluded'])
+        if invoice_id in excluded:
+            excluded.discard(invoice_id); msg='Relances automatiques réactivées pour cette facture.'
+        else:
+            excluded.add(invoice_id); msg='Relances automatiques suspendues pour cette facture.'
+        IP.save(c,inv['entity_id'],dict(settings,excluded=sorted(excluded)),now(),current_user()['email'])
+        c.close()
+        flash(msg)
+        if request.form.get('next')=='encaissement':
+            return redirect(url_for('invoicing_collection_settings'))
+        return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
+
     @app.route('/facturation/<int:invoice_id>/relancer',methods=['POST'])
     @login_required
     @requires_active_plan
@@ -3916,55 +3985,19 @@ def register(app):
         inv=_current_invoice(c,invoice_id)
         if not inv:
             c.close(); abort(404)
-        if inv['status'] not in ('sent','partially_paid') or _display_status(inv)!='overdue':
+        blocker=reminder_blocker(c,inv)
+        if blocker:
             c.close()
-            flash("Seule une facture envoyée et échue peut être relancée.")
+            flash(blocker)
             return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        hold=_einvoice_hold(inv)
-        if hold:
-            c.close()
-            flash(f"Cette facture est {hold} côté facturation électronique : régularisez-la avant de relancer le client.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        if not inv['client_email']:
-            c.close()
-            flash("Aucun e-mail client renseigné pour cette facture.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-        balance=_invoice_balance(c,inv)
-        if balance <= 0.005:
-            c.close()
-            flash("Cette facture est entièrement réglée ou couverte par un avoir et ne peut pas être relancée.")
-            return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
-
-        row=c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",(invoice_id,inv['entity_id'])).fetchone()
-        reminder_number=int(row['n'] or 0)+1
         org=current_org()
-        base=app_base_url()
-        link=f"{base}{url_for('public_invoice_view',token=inv['public_token'])}"
-        html=render_template(
-            'email_transactional.html',
-            title=f"Relance facture {inv['invoice_number']} — {org['name']}",
-            intro=(f"Sauf erreur de notre part, la facture {inv['invoice_number']} "
-                   f"(montant TTC {fr_number(inv['total'],2)} €), échue le {fr_date(inv['due_date'])}, "
-                   f"présente un reste à payer de {fr_number(balance,2)} €. "
-                   f"Conformément à nos conditions de paiement, tout retard entraîne l'application de pénalités de retard "
-                   f"et d'une indemnité forfaitaire pour frais de recouvrement de 40 € (art. L441-10 du Code de commerce). "
-                   f"Si votre règlement a déjà été effectué, merci de ne pas tenir compte de cette relance."),
-            cta_label='Consulter la facture',cta_url=link,footer=''
-        )
-        try:
-            result=send_email(inv['client_email'],f"Relance facture {inv['invoice_number']} — {org['name']}",html,on_behalf_of_org=org)
-        except Exception:
-            app.logger.exception('Relance de la facture %s impossible', invoice_id)
-            result={'sent':False,'error':'exception'}
+        result=send_invoice_reminder(c,inv,org)
         if result.get('dry_run'):
             flash(f"Service e-mail non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
         elif result.get('sent'):
-            sent_at=now()
-            c.execute("INSERT INTO invoice_reminders(entity_id,invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?,?)",
-                      (inv['entity_id'],invoice_id,inv['client_email'],sent_at,reminder_number))
-            c.commit()
-            log_activity('INVOICE_REMINDER_SENT',f"Relance n°{reminder_number} pour {inv['invoice_number']} envoyée à {inv['client_email']}")
-            flash(f"Relance n°{reminder_number} envoyée à {inv['client_email']}.")
+            n=result.get('reminder_number')
+            log_activity('INVOICE_REMINDER_SENT',f"Relance n°{n} pour {inv['invoice_number']} envoyée à {inv['client_email']}")
+            flash(f"Relance n°{n} envoyée à {inv['client_email']}.")
         else:
             log_ops_event('INVOICE_REMINDER_FAILED',outcome='ERROR',detail=f"facture {invoice_id}: {str(result.get('error') or '')[:200]}")
             flash("La relance n'a pas pu être envoyée. Réessayez dans quelques minutes.")
@@ -4559,15 +4592,17 @@ def register(app):
         if inv:
             from profitos.entities import resolve_entity
             company_row=_seller_identity(tc,inv['entity_id'])
+            payment=_payment_options(tc,inv,company_row)
         else:
             company_row=None
+            payment=None
         tc.close()
         if not inv: abort(404)
         # Seule une facture émise est consultable publiquement : jamais un brouillon
         # (sans valeur de facture) ni une facture annulée.
         if inv['status'] not in ('sent','partially_paid','paid'): abort(404)
         items=json.loads(inv['line_items'] or '[]')
-        return render_template('invoicing_public.html',inv=inv,items=items,company=company_row,token=token,
+        return render_template('invoicing_public.html',inv=inv,items=items,company=company_row,token=token,payment=payment,
                                vat_breakdown=_pdf_breakdown(inv,company_row,items),
                                legal_mentions=_legal_mentions(inv,company_row,fr_date=fr_date))
 
@@ -4583,14 +4618,16 @@ def register(app):
         if inv:
             from profitos.entities import resolve_entity
             company_row=_seller_identity(tc,inv['entity_id'])
+            payment=_payment_options(tc,inv,company_row)
         else:
             company_row=None
+            payment=None
         tc.close()
         if not inv: abort(404)
         # Seule une facture émise est consultable publiquement : jamais un brouillon
         # (sans valeur de facture) ni une facture annulée.
         if inv['status'] not in ('sent','partially_paid','paid'): abort(404)
-        pdf_bytes=_render_invoice_pdf(inv,company_row)
+        pdf_bytes=_render_invoice_pdf(inv,company_row,payment)
         if pdf_bytes is None: abort(404)
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'inline; filename="{inv["invoice_number"]}.pdf"'})
@@ -4725,7 +4762,91 @@ def _pdf_totals(subtotal, vat, total, ttc_label='Total TTC'):
             (ttc_label, _pdf.money(total), True)]
 
 
-def build_invoice_document(inv, company, proforma=False):
+def send_invoice_reminder(c, inv, org, step=None, base_url=None):
+    """Envoie une relance au client et l'enregistre. step : 0 rappel courtois, 1 rappel
+    ferme, 2 dernier avis (relance automatique) ; None = relance manuelle (texte ferme).
+    Retourne le résultat de send_email, avec 'reminder_number' si elle est partie."""
+    from profitos import invoice_payment as IP
+    balance = _invoice_balance(c, inv)
+    row = c.execute("SELECT COUNT(*) AS n FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",
+                    (inv['id'], inv['entity_id'])).fetchone()
+    number = int(row['n'] or 0) + 1
+    base = (base_url or app_base_url()).rstrip('/')
+    link = f"{base}/facture/{inv['public_token']}"
+    kind = 1 if step is None else step
+    label = IP.STEP_NAMES[kind] if step is not None else 'Relance'
+    intro = IP.reminder_text(kind, inv['invoice_number'], fr_number(inv['total'], 2), fr_number(balance, 2), fr_date(inv['due_date']))
+    seller = _seller_identity(c, inv['entity_id'])
+    pay = _payment_options(c, inv, seller)
+    if pay and (pay.get('iban') or pay.get('link')):
+        intro += " Vous pouvez régler par virement" + (" (QR code et IBAN sur la facture en ligne)" if pay.get('iban') else '') + \
+                 (" ou en ligne" if pay.get('link') else '') + "."
+    subject = f"{label} — facture {inv['invoice_number']} — {org['name']}"
+    html = render_template('email_transactional.html', title=subject, intro=intro,
+                           cta_label='Voir et régler la facture', cta_url=link, footer='')
+    try:
+        result = send_email(inv['client_email'], subject, html,on_behalf_of_org=org)
+    except Exception:
+        current_app.logger.exception('Relance de la facture %s impossible', inv['id'])
+        result = {'sent': False, 'error': 'exception'}
+    if result.get('sent') and not result.get('dry_run'):
+        c.execute("INSERT INTO invoice_reminders(entity_id,invoice_id,recipient_email,sent_at,reminder_number) VALUES(?,?,?,?,?)",
+                  (inv['entity_id'], inv['id'], inv['client_email'], now(), number))
+        c.commit()
+        result['reminder_number'] = number
+    return result
+
+
+def reminder_blocker(c, inv):
+    """Raison pour laquelle une facture ne peut pas être relancée, ou None."""
+    if inv['status'] not in ('sent', 'partially_paid') or _display_status(inv) != 'overdue':
+        return "Seule une facture envoyée et échue peut être relancée."
+    hold = _einvoice_hold(inv)
+    if hold:
+        return f"Cette facture est {hold} côté facturation électronique : régularisez-la avant de relancer le client."
+    if not inv['client_email']:
+        return "Aucun e-mail client renseigné pour cette facture."
+    if _invoice_balance(c, inv) <= 0.005:
+        return "Cette facture est entièrement réglée ou couverte par un avoir et ne peut pas être relancée."
+    return None
+
+
+MAX_FORM_LINES = 8
+
+
+def append_draft_line(c, invoice_id, entity_id, label, amount, vat_rate):
+    """Ajoute une ligne (quantité 1) à une facture BROUILLON et recalcule ses totaux.
+    Lève ValueError si la facture n'est pas un brouillon, est pleine ou deviendrait invalide."""
+    inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?', (invoice_id, entity_id)).fetchone()
+    if not inv or inv['status'] != 'draft':
+        raise ValueError("Seule une facture en brouillon peut recevoir une ligne de révision.")
+    items = json.loads(inv['line_items'] or '[]')
+    if len(items) >= MAX_FORM_LINES:
+        raise ValueError(f"Cette facture a déjà {MAX_FORM_LINES} lignes.")
+    price = amounts.quantize(float(amount), 4)
+    items.append({'label': label[:200], 'qty': 1.0, 'unit_price': price, 'vat_rate': amounts.rate_key(vat_rate),
+                  'line_total': amounts.line_total(1.0, price)})
+    err = _line_items_error(items)
+    if err:
+        raise ValueError(err)
+    subtotal, vat, total = _totals(items)
+    c.execute('UPDATE outgoing_invoices SET line_items=?, subtotal=?, vat_amount=?, total=? WHERE id=?',
+              (json.dumps(items, ensure_ascii=False), subtotal, vat, total, invoice_id))
+    c.commit()
+    return items
+
+
+def _payment_options(c, inv, company_row):
+    """QR code de virement et lien de paiement pour une facture émise non soldée."""
+    from profitos import invoice_payment as IP
+    try:
+        return IP.options(inv, company_row, _invoice_balance(c, inv), IP.load(c, _g(inv, 'entity_id')))
+    except Exception:
+        current_app.logger.exception('Moyens de paiement indisponibles pour la facture %s', _g(inv, 'id'))
+        return None
+
+
+def build_invoice_document(inv, company, proforma=False, payment=None):
     """Contenu imprimable d'une facture (toutes les mentions obligatoires)."""
     items = json.loads(_g(inv, 'line_items', '[]') or '[]')
     subtotal, vat, total = amounts.totals(items)
@@ -4760,6 +4881,7 @@ def build_invoice_document(inv, company, proforma=False):
         'rows': _pdf_rows(items), 'vat_breakdown': _pdf_breakdown(inv, company, items), 'totals': totals,
         'mentions': _legal_mentions(inv, company, fr_date=_pdf.fr_date, include_payment=not proforma),
         'notes': _g(inv, 'notes'), 'footer': _seller_legal_footer(company or {}),
+        'payment': payment if not proforma else None,
     }
 
 
@@ -4772,10 +4894,10 @@ def _invoice_watermark(inv):
     return None
 
 
-def _render_invoice_pdf(inv, company_row):
+def _render_invoice_pdf(inv, company_row, payment=None):
     """PDF d'une facture. Un brouillon porte le filigrane « BROUILLON — document sans
     valeur de facture », une facture annulée « ANNULÉE ». Retourne None sans fpdf2."""
-    doc = build_invoice_document(inv, company_row)
+    doc = build_invoice_document(inv, company_row, payment=payment)
     return _pdf.render_document(doc, watermark=_invoice_watermark(inv), title=doc['title'])
 
 

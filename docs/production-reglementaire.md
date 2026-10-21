@@ -181,7 +181,7 @@ validés (`FISCAL_DECLARATIONS_ENABLED`, `FISCAL_DECLARATIONS_PILOT_ORGS`) : voi
 
 ## 6. Tests
 
-`tests/test_v445` à `test_v461` (dont `test_v457` : aucune acceptation sans accusé EDI ;
+`tests/test_v445` à `test_v467` (dont `test_v457` : aucune acceptation sans accusé EDI ;
 `test_v458` et `test_v460` : dossiers de référence calculés à la main, détaillés dans
 `validation-fiscale.md` ; `test_v461` : parcours complet dans un navigateur sur PostgreSQL) : liasses, IS et CVAE, télédéclarations, automatisations,
 régime simplifié et annexes, DAS2, 2777, IFU, CFE, DECLOYER, dépôt sur impots.gouv.fr,

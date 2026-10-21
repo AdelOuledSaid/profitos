@@ -162,6 +162,53 @@ def address_lines(text):
     return [l.strip() for l in str(text or '').replace('\r', '').split('\n') if l.strip()]
 
 
+def _payment_block(pdf, pay):
+    """Encadré « Régler cette facture » : QR code de virement SEPA, IBAN, référence, lien."""
+    matrix = pay.get('qr_matrix')
+    size = 30 if matrix else 0
+    height = max(size, 26) + 6
+    if pdf.get_y() + height > pdf.h - pdf.b_margin:
+        pdf.add_page()
+    y0 = pdf.get_y() + 1
+    pdf.set_draw_color(205, 212, 226)
+    pdf.rect(MARGIN, y0, CONTENT_W, height)
+    x_text = MARGIN + 4
+    if matrix:
+        n = len(matrix)
+        cell = size / (n + 2)
+        ox, oy = MARGIN + 3, y0 + 3
+        pdf.set_fill_color(0, 0, 0)
+        for r, row in enumerate(matrix):
+            c = 0
+            while c < n:
+                if row[c]:
+                    start = c
+                    while c < n and row[c]:
+                        c += 1
+                    pdf.rect(ox + (start + 1) * cell, oy + (r + 1) * cell, (c - start) * cell, cell, style='F')
+                else:
+                    c += 1
+        x_text = MARGIN + size + 7
+    width = CONTENT_W - (x_text - MARGIN) - 3
+    pdf.set_xy(x_text, y0 + 3)
+    pdf.set_font(pdf.base_font, 'B', 9.5)
+    pdf.cell(width, 5, pdf.t(f"Régler cette facture — reste à payer : {money(pay['balance'])}"), new_x='LEFT', new_y='NEXT')
+    pdf.set_font(pdf.base_font, '', 8.5)
+    lines = []
+    if pay.get('iban'):
+        lines.append(f"Virement : IBAN {pay['iban']}" + (f" — BIC {pay['bic']}" if pay.get('bic') else ''))
+        lines.append(f"Référence à indiquer : {pay['reference']}")
+        if matrix:
+            lines.append("Scannez le QR code avec l'application de votre banque : le virement est pré-rempli.")
+    if pay.get('link'):
+        lines.append(f"Payer en ligne : {pay['link']}")
+    for line in lines:
+        pdf.set_x(x_text)
+        pdf.multi_cell(width, 4.2, pdf.t(line), align='L', new_x='LEFT', new_y='NEXT')
+    pdf.set_y(y0 + height + 3)
+    pdf.set_x(MARGIN)
+
+
 def render_document(doc, watermark=None, compliance=None, attachments=None, xmp=None, title=None):
     """Rend un document de vente. doc : dict (voir build_* dans routes/invoicing.py).
     Retourne les octets du PDF, ou None si fpdf2 est absent."""
@@ -314,6 +361,9 @@ def render_document(doc, watermark=None, compliance=None, attachments=None, xmp=
             pdf.multi_cell(CONTENT_W, 3.8, pdf.t(m), align='L', new_x='LMARGIN', new_y='NEXT')
         pdf.set_text_color(*INK)
         pdf.ln(2)
+    pay = doc.get('payment')
+    if pay:
+        _payment_block(pdf, pay)
     if doc.get('notes'):
         pdf.set_font(pdf.base_font, '', 8.5)
         pdf.set_x(MARGIN)

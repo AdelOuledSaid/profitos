@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">VEILLE DE VOTRE SECTEUR</div>
+    <h1 class="purchase-title">{{ defn.label }}</h1>
+    <p class="purchase-subtitle">{{ title }}. {{ defn.why }}</p>
+  </div>
+  <div class="actionbuttons">
+    <a class="purchase-nav-btn" href="{{ url_for('market_watch') }}">← Veille</a>
+    {% if defn.unit != '%' %}<a class="purchase-nav-btn" href="{{ url_for('market_watch_revision', code=defn.code) }}">Révision de prix</a>{% endif %}
+    <a class="purchase-nav-btn" href="{{ url }}" target="_blank" rel="noopener noreferrer">Source officielle ↗</a>
+  </div>
+</div>
+{% if meta.status == 'mismatch' %}<div class="flash" role="alert">Série à vérifier : la source a renvoyé un titre inattendu ({{ meta.error }}). Aucune valeur n'est affichée.</div>{% endif %}
+{% if meta.status == 'error' %}<div class="flash" role="status">Dernière mise à jour impossible ({{ meta.error }}) : les valeurs ci-dessous sont celles déjà connues.</div>{% endif %}
+{% if stat %}
+<div class="purchase-stats" style="margin-bottom:14px;">
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Dernière valeur ({{ stat.label }})</div><div class="purchase-stat-value">{{ stat.value|fr_number(2 if defn.unit == '%' else 1) }}{% if defn.unit == '%' %} %{% endif %}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Sur la période</div><div class="purchase-stat-value">{% if stat.change_1p is not none %}{{ '+' if stat.change_1p > 0 }}{{ stat.change_1p|fr_number(2) }}{{ ' pt' if stat.points else ' %' }}{% else %}—{% endif %}</div></div></div>
+  <div class="purchase-stat"><div><div class="purchase-stat-label">Sur un an</div><div class="purchase-stat-value">{% if stat.change_12m is not none %}{{ '+' if stat.change_12m > 0 }}{{ stat.change_12m|fr_number(2) }}{{ ' pt' if stat.points else ' %' }}{% else %}—{% endif %}</div></div></div>
+</div>
+{% if spark %}<section class="purchase-panel" style="margin-bottom:14px;"><svg class="mw-spark mw-spark-large" viewBox="0 0 640 140" role="img" aria-label="Évolution sur deux ans"><polyline fill="none" stroke="currentColor" stroke-width="2.5" points="{{ spark }}"/></svg></section>{% endif %}
+{% endif %}
+{% if rows %}
+<div class="purchase-table-wrap"><table class="purchase-table">
+  <thead><tr><th>Période</th><th class="num">Valeur</th><th class="num">Variation</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td>{{ r.label }}</td><td class="num">{{ r.value|fr_number(2 if defn.unit == '%' else 1) }}</td><td class="num">{% if r.change is not none %}{{ '+' if r.change > 0 }}{{ r.change|fr_number(2) }}{{ ' pt' if defn.unit == '%' else ' %' }}{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="purchase-muted">Aucune valeur pour l'instant.</p>{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Données publiques{% if meta.last_update %} publiées le {{ meta.last_update|fr_date }}{% endif %}{% if meta.fetched_at %}, relues par ProfitOS le {{ meta.fetched_at|fr_datetime_paris }}{% endif %}. Information indicative, sans conseil financier.</p>
+</div>
+{% endblock %}
