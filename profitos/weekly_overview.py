@@ -45,7 +45,7 @@ def _receivables(c, today):
 def _payables(c, today):
     rows = c.execute("""SELECT p.id, p.entity_id, p.total, p.due_date,
                                COALESCE((SELECT SUM(amount) FROM purchase_invoice_payments x
-                                         WHERE x.purchase_invoice_id=p.id AND x.entity_id IS p.entity_id), 0) AS paid
+                                         WHERE x.purchase_invoice_id=p.id), 0) AS paid
                         FROM purchase_invoices p
                         WHERE p.status NOT IN ('paid','cancelled') AND p.due_date IS NOT NULL AND p.due_date<=?""",
                      ((today + timedelta(days=7)).isoformat(),)).fetchall()
@@ -93,7 +93,9 @@ def compute(c, today=None, accounting=True):
         'payables': _safe(lambda: _payables(c, today), None),
         'fiscal': _safe(lambda: _fiscal(c, today), []) if accounting else [],
         'watch': _safe(lambda: _watch(c), []),
+        'documents': _safe(lambda: __import__('profitos.document_requests', fromlist=['x']).open_count(c), 0) if accounting else 0,
     }
     r, p = data['receivables'] or {}, data['payables'] or {}
-    data['has_signal'] = bool(r.get('overdue_count') or r.get('soon_count') or p.get('count') or data['fiscal'] or data['watch'])
+    data['has_signal'] = bool(r.get('overdue_count') or r.get('soon_count') or p.get('count') or data['fiscal'] or data['watch']
+                              or data['documents'])
     return data

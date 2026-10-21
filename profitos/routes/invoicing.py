@@ -4785,7 +4785,7 @@ def send_invoice_reminder(c, inv, org, step=None, base_url=None):
     html = render_template('email_transactional.html', title=subject, intro=intro,
                            cta_label='Voir et régler la facture', cta_url=link, footer='')
     try:
-        result = send_email(inv['client_email'], subject, html, on_behalf_of_org=org)
+        result = send_email(inv['client_email'], subject, html,on_behalf_of_org=org)
     except Exception:
         current_app.logger.exception('Relance de la facture %s impossible', inv['id'])
         result = {'sent': False, 'error': 'exception'}

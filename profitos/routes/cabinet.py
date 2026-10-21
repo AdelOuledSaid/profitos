@@ -94,7 +94,7 @@ def register(app):
                 'reviews_pending': 0, 'reviews_total': 0, 'blockers': 0,
                 'open_requests': 0, 'entries_count': 0, 'last_entry_date': None,
                 'closed_until': None, 'entities_count': 0, 'health': 'À initialiser',
-                'health_level': 'neutral',
+                'health_level': 'neutral', 'docs_requested': 0, 'late_declarations': 0,
             }
             try:
                 tc = tenant_cx_direct(org['id'])
@@ -128,9 +128,18 @@ def register(app):
                                   WHERE d2.review_id=d.review_id)"""
                 ).fetchone()
                 metrics['blockers'] = int(brow['n'] or 0)
+                # v475 : pièces demandées non fournies et déclarations en retard (chaque
+                # indicateur isolé : un échec n'efface pas les autres).
+                from profitos import document_requests as DR
+                metrics['docs_requested'] = DR.open_count(tc)
+                try:
+                    from profitos.automation import overdue_declarations
+                    metrics['late_declarations'] = len(overdue_declarations(tc, None, paris_today()))
+                except Exception:
+                    pass
                 tc.close()
 
-                if metrics['blockers'] or metrics['open_requests']:
+                if metrics['blockers'] or metrics['open_requests'] or metrics['late_declarations']:
                     metrics['health'], metrics['health_level'] = 'À traiter', 'danger'
                 elif metrics['reviews_pending']:
                     metrics['health'], metrics['health_level'] = 'En révision', 'warning'

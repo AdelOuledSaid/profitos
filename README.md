@@ -12,7 +12,7 @@ Application Flask (Python 3.12), SQLite en développement, PostgreSQL en product
 
 | Module | Contenu |
 | --- | --- |
-| Facturation | Clients, devis, factures, acomptes, avoirs, bons de livraison, factures récurrentes, paiements, relances |
+| Facturation | Clients, devis, factures, acomptes, avoirs, bons de livraison, factures récurrentes, paiements, QR code de virement et lien de paiement, relances automatiques par étapes |
 | Facture électronique | Factur-X, envoi et réception par plateforme agréée (WeInvoice), statuts, e-reporting |
 | Achats et dépenses | Factures fournisseurs (dépôt, boîte mail, dossiers cloud), notes de frais, budgets |
 | Banque | Connexion bancaire ou import de relevés, rapprochement, catégorisation, état de rapprochement |

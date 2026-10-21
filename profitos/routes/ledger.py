@@ -141,9 +141,12 @@ def register(app):
         reversed_of = (c.execute('SELECT id,piece_number FROM accounting_entries WHERE id=?', (e['source_id'],)).fetchone()
                        if e['source_type'] == 'reversal' and e['source_id'] else None)
         labels = {r['code']: r['label'] for r in c.execute('SELECT code,label FROM accounting_chart_of_accounts').fetchall()}
+        from profitos import document_requests as DR
+        doc_requests = DR.open_for_entry(c, entry_id)
         c.close()
         return render_template('accounting_entry_detail.html', e=e, lines=lines, attachments=attachments,
-                               reversal=reversal, reversed_of=reversed_of, labels=labels,
+                               reversal=reversal, reversed_of=reversed_of, labels=labels, doc_requests=doc_requests,
+                               can_request_doc=current_role() in ('OWNER', 'ADMIN', 'COMPTABLE'),
                                today=paris_today().isoformat())
 
     @app.route('/comptabilite/ecritures/<int:entry_id>/contrepasser', methods=['POST'])
@@ -175,12 +178,44 @@ def register(app):
             if not upload or not upload.filename:
                 raise ValueError("aucun fichier sélectionné.")
             _save_attachment(c, entry_id, upload)
-            flash("Pièce jointe ajoutée.")
+            from profitos import document_requests as DR
+            solved = DR.resolve_for_entry(c, entry_id, now(), _who())
+            flash("Pièce jointe ajoutée." + (" La demande de pièce est soldée." if solved else ''))
         except ValueError as exc:
             flash(f"Pièce non ajoutée : {exc}")
         finally:
             c.close()
         return redirect(url_for('accounting_entry_detail', entry_id=entry_id))
+
+    @app.post('/comptabilite/ecritures/<int:entry_id>/demander-piece')
+    @login_required
+    def accounting_entry_request_document(entry_id):
+        from profitos import document_requests as DR
+        if current_role() not in DR.REQUEST_ROLES:
+            flash("Seuls le propriétaire, un administrateur ou le comptable peuvent demander une pièce.")
+            return redirect(url_for('accounting_entry_detail', entry_id=entry_id))
+        eid = _eid()
+        c = cx()
+        _entry_or_404(c, entry_id, eid)
+        if c.execute('SELECT 1 FROM accounting_entry_attachments WHERE entry_id=? LIMIT 1', (entry_id,)).fetchone() \
+                and not request.form.get('force'):
+            c.close()
+            flash("Cette écriture a déjà une pièce jointe.")
+            return redirect(url_for('accounting_entry_detail', entry_id=entry_id))
+        created = DR.create(c, entry_id, eid, request.form.get('message'), now(), _who())
+        c.close()
+        log_activity('DOCUMENT_REQUESTED', f"Pièce demandée pour l'écriture #{entry_id}")
+        flash("Pièce demandée : l'entreprise la voit dans « Pièces demandées »." if created else "Une demande est déjà ouverte pour cette écriture.")
+        return redirect(url_for('accounting_entry_detail', entry_id=entry_id))
+
+    @app.route('/comptabilite/pieces-demandees')
+    @login_required
+    def accounting_document_requests():
+        from profitos import document_requests as DR
+        c = cx()
+        rows = DR.open_requests(c, _eid())
+        c.close()
+        return render_template('accounting_document_requests.html', rows=rows)
 
     @app.route('/comptabilite/ecritures/<int:entry_id>/pieces/<int:attachment_id>')
     @login_required

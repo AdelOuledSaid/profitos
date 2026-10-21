@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-eyebrow">COMPTABILITÉ</div>
+<h1 class="purchase-title">Pièces demandées</h1>
+<p class="purchase-subtitle">Les justificatifs que votre expert-comptable attend. Ouvrez l'écriture et joignez la pièce : la demande est soldée automatiquement.</p>
+{% if rows %}
+<div class="purchase-table-wrap"><table class="purchase-table">
+  <thead><tr><th>Écriture</th><th>Date</th><th>Demandée par</th><th>Message</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr><td>{{ r.journal_code }} {{ r.piece_number or ('#' ~ r.entry_id) }} — {{ r.label }}</td><td>{{ r.entry_date|fr_date }}</td>
+      <td>{{ r.created_by or '—' }}<br><span class="purchase-muted" style="font-size:12px;">le {{ r.created_at|fr_date }}</span></td><td>{{ r.message or '' }}</td>
+      <td class="num"><a class="purchase-nav-btn" href="{{ url_for('accounting_entry_detail', entry_id=r.entry_id) }}">Joindre la pièce</a></td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% else %}<p class="purchase-muted">Aucune pièce en attente. 👍</p>{% endif %}
+</div>
+{% endblock %}

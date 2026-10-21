@@ -74,7 +74,8 @@ trentaine de modules de routes ; la logique métier vit dans des modules Python 
 
 | Domaine | Modules |
 | --- | --- |
-| Facturation | `invoice_amounts`, `invoice_numbering`, `invoice_compliance`, `invoice_pdf`, `receivables`, `sepa` |
+| Facturation | `invoice_amounts`, `invoice_numbering`, `invoice_compliance`, `invoice_pdf`, `receivables`, `sepa`, `invoice_payment` (QR de virement, relances automatiques), `qr` (générateur de QR codes) |
+| Pilotage | `weekly_overview` (« Votre semaine »), `document_requests` (pièces demandées) |
 | Facture électronique | `weinvoice`, `einvoice_validation`, `ereporting` |
 | Achats, banque | `expenses`, `document_extraction`, `bank_import`, `bank_reconciliation`, `cloud_storage` |
 | Trésorerie | `treasury`, `loans`, `finance_leases` |

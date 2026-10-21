@@ -200,7 +200,7 @@ def test_relances_automatiques_par_etapes(app, monkeypatch):
     assert 'Rappel courtois' in page and 'Aucun e-mail client' in page
     assert run(date(2026, 9, 3)) == []                               # J+2 : trop tôt
     assert run(date(2026, 9, 4)) == [('a@example.com', 'Rappel courtois'), ('b@example.com', 'Rappel courtois')]
-    html = sent[0][2]
+    html = next(h for to, _s, h in sent if to == 'a@example.com')
     assert 'simple oubli' in html and '/facture/' in html and 'QR code et IBAN' in html
     assert run(date(2026, 9, 5)) == []                               # déjà envoyée
     # B est suspendue, A est réglée partiellement : la relance porte sur le reste.
@@ -212,7 +212,7 @@ def test_relances_automatiques_par_etapes(app, monkeypatch):
     # B réactivée à J+30 : son rappel ferme part ; son dernier avis attendra 5 jours.
     post(cl, f'/facturation/{inv_b}/relances-auto')                 # réactivée
     assert run(date(2026, 10, 1)) == [('a@example.com', 'Dernier avis avant mise en demeure'), ('b@example.com', 'Rappel ferme')]
-    assert 'mise en demeure' in sent[0][2]
+    assert 'mise en demeure' in next(h for to, _s, h in sent if to == 'a@example.com')
     assert run(date(2026, 10, 3)) == []                              # B : moins de 5 jours depuis la précédente
     assert run(date(2026, 10, 6)) == [('b@example.com', 'Dernier avis avant mise en demeure')]
     assert run(date(2026, 11, 30)) == []                             # trois étapes au plus

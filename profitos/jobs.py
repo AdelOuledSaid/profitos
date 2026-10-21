@@ -836,7 +836,7 @@ def invoice_reminders(org, ctx):
             if not settings['auto_reminders']:
                 continue
             rows = c.execute("SELECT * FROM outgoing_invoices WHERE status IN ('sent','partially_paid') AND entity_id IS ? "
-                             "AND due_date IS NOT NULL AND due_date<?", (eid, today.isoformat())).fetchall()
+                             "AND due_date IS NOT NULL AND due_date<? ORDER BY due_date, id", (eid, today.isoformat())).fetchall()
             for inv in rows:
                 if inv['id'] in settings['excluded'] or reminder_blocker(c, inv):
                     continue

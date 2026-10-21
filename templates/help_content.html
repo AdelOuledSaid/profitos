@@ -252,7 +252,7 @@
 </tr>
 <tr>
 <td>Premiers pas</td>
-<td>La liste de démarrage, tant qu'elle n'est pas terminée</td>
+<td>La liste de démarrage, tant qu'elle n'est pas terminée : profil entreprise, banque, factures, reprise de la comptabilité (FEC), IBAN et relances, secteur de la veille, invitation d'un collègue ou de l'expert-comptable</td>
 </tr>
 <tr>
 <td>Trésorerie</td>
@@ -276,6 +276,7 @@
 </tr>
 </tbody>
 </table></div>
+<p><strong>Rapport du lundi</strong> : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.</p>
 <p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
 <h2 id="facturation-clients">5. Facturation clients</h2>
 <p>Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu <strong>Ventes &amp; clients → Facturation</strong>.</p>
@@ -306,7 +307,11 @@
 <h3 id="relances-clients-et-echeancier">Relances clients et échéancier</h3>
 <ul>
 <li><strong>Relances clients</strong> liste les factures en retard, classées par un score de risque (montant, retard, historique) pour savoir qui relancer en premier. Les retenues de garantie y sont suivies jusqu'à leur date de libération.</li>
-<li><strong>Relancer</strong> sur une facture prépare l'e-mail de relance ; rien n'est envoyé sans votre validation.</li>
+<li><strong>Relancer</strong> sur une facture envoie l'e-mail de relance d'un clic.</li>
+<li><strong>Facturation → Encaissement et relances</strong> :</li>
+<li><strong>QR code de virement</strong> : il est imprimé sur la facture PDF et sur la facture en ligne avec votre IBAN, le reste à payer et le numéro de facture. Votre client le scanne avec l'application de sa banque et le virement est pré-rempli. Renseignez l'IBAN dans le profil de l'entreprise.</li>
+<li><strong>Lien de paiement en ligne</strong> (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». ProfitOS ne manipule jamais les fonds.</li>
+<li><strong>Relances automatiques</strong> (à activer) : un rappel courtois, un rappel ferme puis un dernier avis avant mise en demeure, aux délais que vous choisissez (3, 15 et 30 jours après l'échéance par défaut), chaque matin. Jamais deux relances à moins de 5 jours d'intervalle ; arrêt dès que la facture est réglée, couverte par un avoir, ou refusée ou en litige côté facture électronique. Vous pouvez suspendre les relances d'une facture précise.</li>
 <li><strong>Échéancier</strong> affiche sur un calendrier les échéances clients et fournisseurs.</li>
 <li><strong>Facturation → Créances</strong> donne l'état de toutes les sommes dues par client.</li>
 </ul>
@@ -555,7 +560,11 @@ européenne.</p>
   l'adresse de sa page sur insee.fr. Un indice non publié par l'INSEE (Syntec, Comité national
   routier, indice contractuel) se saisit à la main dans le <strong>Suivi des marges</strong>.</li>
 <li><strong>Révision de prix</strong> : choisissez l'indice, le mois de référence, le mois de révision, la partie
-  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé.</li>
+  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé, et peut
+  ajouter l'écart comme ligne d'une facture en brouillon.</li>
+<li><strong>Suivi des marges</strong> : choisissez un indice de la veille comme indice de référence ; ses valeurs
+  officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
+  risque depuis sa signature.</li>
 </ul>
 <p>Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.</p>
@@ -907,6 +916,7 @@ européenne.</p>
 <p>Retirer un membre, créer une clé d'API ou supprimer le compte demande de ressaisir votre mot de passe.</p>
 <h3 id="travailler-avec-son-expert-comptable">Travailler avec son expert-comptable</h3>
 <p>Depuis la <strong>Révision</strong> des comptes, invitez votre expert-comptable : il accède au dossier, échange avec vous par demandes et commentaires, et reçoit le FEC par lien sécurisé.</p>
+<p>Sur une écriture sans justificatif, votre expert-comptable (ou un administrateur) peut <strong>demander la pièce</strong>. Elle apparaît dans <strong>Comptabilité → Pièces demandées</strong>, sur l'écriture et dans votre rapport du lundi ; la demande est soldée dès que vous joignez la pièce. Dans son <strong>portefeuille</strong>, le cabinet voit pour chaque dossier les pièces attendues et les déclarations en retard.</p>
 <h3 id="plusieurs-societes">Plusieurs sociétés</h3>
 <ul>
 <li><strong>Plusieurs entités</strong> dans une même organisation (filiales, établissements) : le sélecteur en haut du menu change l'entité active ; factures, banque, trésorerie et comptabilité sont séparées par entité, et un compte bancaire se rattache à une entité.</li>

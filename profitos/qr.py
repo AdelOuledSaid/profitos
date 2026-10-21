@@ -237,12 +237,14 @@ def matrix(data):
 
 
 def svg(data, module=4, border=4, label=None):
-    """QR code en SVG autonome (aucun script, compatible avec la politique de sécurité)."""
+    """QR code en SVG autonome (aucun script, compatible avec la politique de sécurité).
+    module=None : largeur 100 % du conteneur (page web)."""
     m = matrix(data)
     n = len(m) + 2 * border
     path = ''.join(f'M{c + border},{r + border}h1v1h-1z' for r, row in enumerate(m) for c, v in enumerate(row) if v)
     title = f'<title>{label}</title>' if label else ''
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{n * module}" height="{n * module}" '
+    size = f'width="{n * module}" height="{n * module}"' if module else 'width="100%"'
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" {size} '
             f'shape-rendering="crispEdges" role="img">{title}<rect width="{n}" height="{n}" fill="#fff"/>'
             f'<path d="{path}" fill="#000"/></svg>')
 

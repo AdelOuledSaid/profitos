@@ -102,17 +102,39 @@ def register(app):
         # « Complété » = toutes les mentions nécessaires pour facturer, pas seulement le nom.
         has_company=bool(_cp) and not missing_mandatory_fields(dict(_cp))
         has_invoices=bool(c2.execute("SELECT 1 FROM invoices LIMIT 1").fetchone() or c2.execute("SELECT 1 FROM outgoing_invoices WHERE COALESCE(status,'draft')!='draft' LIMIT 1").fetchone())
-        has_expenses=bool(c2.execute("SELECT 1 FROM expenses LIMIT 1").fetchone())
-        has_action=bool(c2.execute("SELECT 1 FROM actions LIMIT 1").fetchone())
+        # v475 : démarrage en 10 minutes — les étapes qui rendent ProfitOS utile dès la
+        # première semaine (banque, comptabilité reprise, IBAN pour le paiement, relances, veille).
+        def _exists(sql):
+            try:
+                return bool(c2.execute(sql).fetchone())
+            except Exception:
+                return False
+        has_bank=_exists("SELECT 1 FROM bank_transactions LIMIT 1")
+        has_books=_exists("SELECT 1 FROM accounting_entries LIMIT 1")
+        has_iban=bool(_cp) and bool(str((dict(_cp).get('iban') if 'iban' in _cp.keys() else '') or '').strip())
+        from profitos import invoice_payment as _IP, market_watch as _MW
+        from profitos.entities import current_entity_id as _cur_eid
+        try:
+            _collect=_IP.load(c2,_cur_eid())
+            _watch=_MW.load_settings(c2,_cur_eid())
+        except Exception:
+            _collect,_watch={},{}
         c2.close()
         ac2=auth_cx(); team_count=ac2.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(session['org_id'],)).fetchone()['c']; ac2.close()
+        _org=current_org()
+        _accounting=bool(_org) and feature_enabled(_org['plan'],'accounting_core')
         onboarding_steps=[
             {'label':'Profil entreprise complété','done':has_company,'url':url_for('company')},
-            {'label':'Premières factures importées','done':has_invoices,'url':url_for('upload_invoices')},
-            {'label':'Premières dépenses importées','done':has_expenses,'url':url_for('upload_expenses')},
-            {'label':'Première action préparée','done':has_action,'url':url_for('actions')},
-            {'label':'Un collègue invité','done':team_count>1,'url':url_for('team')},
+            {'label':'Banque connectée ou relevé importé','done':has_bank,'url':url_for('banking')},
+            {'label':'Factures en cours importées ou première facture émise','done':has_invoices,'url':url_for('upload_invoices')},
         ]
+        if _accounting:
+            onboarding_steps.append({'label':'Comptabilité reprise (FEC ou à-nouveaux)','done':has_books,'url':url_for('accounting_fec_import')})
+        if can_access('invoicing'):
+            onboarding_steps.append({'label':'IBAN et relances automatiques réglés','done':has_iban and bool(_collect.get('auto_reminders')),'url':url_for('invoicing_collection_settings')})
+        if can_access('pilotage') and current_plan_is_paid():
+            onboarding_steps.append({'label':'Secteur de la veille confirmé','done':bool(_watch.get('sector') or _watch.get('naf')),'url':url_for('market_watch')})
+        onboarding_steps.append({'label':'Un collègue ou votre expert-comptable invité','done':team_count>1,'url':url_for('team')})
         onboarding_done=sum(1 for s in onboarding_steps if s['done'])
         # Liste de démarrage = configuration du compte : réservée aux rôles qui peuvent la mener à bien.
         show_onboarding=onboarding_done<len(onboarding_steps) and can_access('settings') and can_access('team')

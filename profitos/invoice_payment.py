@@ -80,7 +80,7 @@ def options(invoice, seller, balance, settings):
         if settings.get('qr', True):
             payload = qr.epc_payload((seller or {}).get('name') or '', iban, balance, out['reference'], bic)
             out['qr_matrix'] = qr.matrix(payload)
-            out['qr_svg'] = qr.svg(payload, module=4, label='QR code de virement SEPA')
+            out['qr_svg'] = qr.svg(payload, module=None, label='QR code de virement SEPA')
             out['epc'] = payload
     if not out['iban'] and not out['link']:
         return None

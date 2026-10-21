@@ -105,12 +105,14 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 | Bloc | Ce qu'il montre |
 | --- | --- |
 | Message du jour | Les factures clients en retard aujourd'hui, ou l'absence de retard |
-| Premiers pas | La liste de démarrage, tant qu'elle n'est pas terminée |
+| Premiers pas | La liste de démarrage, tant qu'elle n'est pas terminée : profil entreprise, banque, factures, reprise de la comptabilité (FEC), IBAN et relances, secteur de la veille, invitation d'un collègue ou de l'expert-comptable |
 | Trésorerie | Solde déclaré et sa date, état (stable, vigilance, alerte), mini-courbe sur 90 jours, solde prévu à 30 et 90 jours, point bas |
 | À encaisser | Total des factures clients échues non payées (émises et importées) |
 | Économies potentielles | Dépenses à revoir repérées par ProfitOS |
 | Gains vérifiés | Résultats confirmés des actions menées (relance payée, économie réalisée) |
 | À traiter en priorité | Les actions les plus utiles du moment, avec un lien vers le Centre d'actions |
+
+**Rapport du lundi** : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.
 
 Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).
 
@@ -156,7 +158,11 @@ Sur une facture, **Règlement** enregistre un paiement total ou partiel (date, m
 ### Relances clients et échéancier
 
 - **Relances clients** liste les factures en retard, classées par un score de risque (montant, retard, historique) pour savoir qui relancer en premier. Les retenues de garantie y sont suivies jusqu'à leur date de libération.
-- **Relancer** sur une facture prépare l'e-mail de relance ; rien n'est envoyé sans votre validation.
+- **Relancer** sur une facture envoie l'e-mail de relance d'un clic.
+- **Facturation → Encaissement et relances** :
+  - **QR code de virement** : il est imprimé sur la facture PDF et sur la facture en ligne avec votre IBAN, le reste à payer et le numéro de facture. Votre client le scanne avec l'application de sa banque et le virement est pré-rempli. Renseignez l'IBAN dans le profil de l'entreprise.
+  - **Lien de paiement en ligne** (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». ProfitOS ne manipule jamais les fonds.
+  - **Relances automatiques** (à activer) : un rappel courtois, un rappel ferme puis un dernier avis avant mise en demeure, aux délais que vous choisissez (3, 15 et 30 jours après l'échéance par défaut), chaque matin. Jamais deux relances à moins de 5 jours d'intervalle ; arrêt dès que la facture est réglée, couverte par un avoir, ou refusée ou en litige côté facture électronique. Vous pouvez suspendre les relances d'une facture précise.
 - **Échéancier** affiche sur un calendrier les échéances clients et fournisseurs.
 - **Facturation → Créances** donne l'état de toutes les sommes dues par client.
 
@@ -373,7 +379,11 @@ européenne.
   l'adresse de sa page sur insee.fr. Un indice non publié par l'INSEE (Syntec, Comité national
   routier, indice contractuel) se saisit à la main dans le **Suivi des marges**.
 - **Révision de prix** : choisissez l'indice, le mois de référence, le mois de révision, la partie
-  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé.
+  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé, et peut
+  ajouter l'écart comme ligne d'une facture en brouillon.
+- **Suivi des marges** : choisissez un indice de la veille comme indice de référence ; ses valeurs
+  officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
+  risque depuis sa signature.
 
 Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
@@ -594,6 +604,8 @@ Retirer un membre, créer une clé d'API ou supprimer le compte demande de ressa
 ### Travailler avec son expert-comptable
 
 Depuis la **Révision** des comptes, invitez votre expert-comptable : il accède au dossier, échange avec vous par demandes et commentaires, et reçoit le FEC par lien sécurisé.
+
+Sur une écriture sans justificatif, votre expert-comptable (ou un administrateur) peut **demander la pièce**. Elle apparaît dans **Comptabilité → Pièces demandées**, sur l'écriture et dans votre rapport du lundi ; la demande est soldée dès que vous joignez la pièce. Dans son **portefeuille**, le cabinet voit pour chaque dossier les pièces attendues et les déclarations en retard.
 
 ### Plusieurs sociétés
 

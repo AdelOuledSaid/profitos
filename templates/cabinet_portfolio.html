@@ -16,6 +16,7 @@
       <thead><tr>
         <th>Client</th><th>État</th><th style="text-align:right;">Révisions</th>
         <th style="text-align:right;">Blocages</th><th style="text-align:right;">Demandes</th>
+        <th style="text-align:right;">Pièces attendues</th><th style="text-align:right;">Déclarations en retard</th>
         <th>Dernière écriture</th><th>Clôturé jusqu'au</th><th style="text-align:right;">Temps</th><th></th>
       </tr></thead>
       <tbody>
@@ -26,6 +27,8 @@
           <td style="text-align:right;">{{ r.reviews_pending }} / {{ r.reviews_total }}</td>
           <td style="text-align:right;">{{ r.blockers }}</td>
           <td style="text-align:right;">{{ r.open_requests }}</td>
+          <td style="text-align:right;">{{ r.docs_requested }}</td>
+          <td style="text-align:right;">{% if r.late_declarations %}<strong>{{ r.late_declarations }}</strong>{% else %}0{% endif %}</td>
           <td>{{ r.last_entry_date or '—' }}</td>
           <td>{{ r.closed_until or '—' }}</td>
           <td style="text-align:right;">{{ (r.minutes_month / 60)|round(1) }} h</td>

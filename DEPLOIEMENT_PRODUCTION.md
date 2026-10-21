@@ -77,6 +77,7 @@ schéma ne coûte qu'une requête par organisation. `--force-migrate` rejoue tou
 | `weekly_reports` | lundi 7 h | rapport hebdomadaire (désactivable par utilisateur) |
 | `weekly_accountant_export` | lundi 8 h | lien d'export au comptable si activé |
 | `fiscal_deadlines` | 8 h | rappels des échéances fiscales à 7 jours et la veille ; relance le lendemain puis chaque semaine des déclarations en retard et des accusés avec écarts |
+| `invoice_reminders` | 9 h | relances automatiques des factures échues (entreprises qui les ont activées) |
 | `market_watch_refresh` | 7 h | veille de secteur : indicateurs INSEE et BCE suivis par les entreprises, actualités des flux `MARKET_NEWS_FEEDS` |
 | `teledeclaration_status` | toutes les heures | statut des déclarations transmises par le partenaire EDI (uniquement si `EDI_PARTNER_ENABLED=1`) ; alerte en cas de rejet |
 | `trial_reminders` | 9 h | fin d'essai J-3 / J0, échec de paiement |
