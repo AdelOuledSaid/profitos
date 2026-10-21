@@ -385,6 +385,12 @@ européenne.
   officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
   risque depuis sa signature.
 
+- **Aides et financements** : liens vers les moteurs officiels (Les-aides.fr des CCI, Bpifrance)
+  pour rechercher les aides de votre activité et de votre région.
+- **Comparaison anonyme** : si vous participez à la comparaison des délais de paiement
+  (Paramètres), le tableau de bord compare votre délai moyen à celui des entreprises de votre
+  secteur dès que 5 autres participantes en font partie, sinon à toutes les participantes.
+
 Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
 

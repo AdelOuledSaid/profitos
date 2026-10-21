@@ -81,6 +81,13 @@ def register(app):
                                      'series': chosen if request.form.get('custom_selection') else None,
                                      'alert_12m': a12, 'alert_1p': a1})
                     settings = MW.save_settings(c, eid, settings, now(), user)
+                    # Secteur connu de la comparaison anonyme (choix explicite ou code APE).
+                    try:
+                        ac.execute('UPDATE organizations SET market_sector=? WHERE id=?',
+                                   (settings['sector'] or MW.sector_from_naf(settings['naf']), session['org_id']))
+                        ac.commit()
+                    except Exception:
+                        current_app.logger.exception('secteur de comparaison non enregistré')
                     log_activity('MARKET_WATCH_SETTINGS', 'Veille : réglages mis à jour')
                     flash('Réglages de la veille enregistrés.')
                     sector, _g = _effective_sector(settings, _company_texts(c, eid))

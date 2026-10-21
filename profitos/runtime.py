@@ -279,6 +279,7 @@ def init_auth_db():
         ('referral_credit_months',"ALTER TABLE organizations ADD COLUMN referral_credit_months INTEGER DEFAULT 0"),
         # Benchmark des délais de paiement : participation volontaire (désactivée par défaut).
         ('benchmark_opt_in',"ALTER TABLE organizations ADD COLUMN benchmark_opt_in INTEGER DEFAULT 0"),
+        ('market_sector',"ALTER TABLE organizations ADD COLUMN market_sector TEXT"),
         # Acceptation des CGU/CGV à l'inscription (date et version).
         ('terms_accepted_at',"ALTER TABLE organizations ADD COLUMN terms_accepted_at TEXT"),
         ('terms_version',"ALTER TABLE organizations ADD COLUMN terms_version TEXT"),
@@ -3564,22 +3565,42 @@ def sync_sector_dso(org_id, avg_days_overdue):
 def sector_dso_benchmark(exclude_org_id):
     """Moyenne DSO des autres organisations (leur dernier relevé chacune), anonymisée.
     Réservée aux organisations participantes, et calculée uniquement sur les organisations
-    qui ont elles-mêmes accepté de participer (opt-in dans Paramètres)."""
+    qui ont elles-mêmes accepté de participer (opt-in dans Paramètres).
+    v476 : si l'organisation a indiqué son secteur (veille) et qu'au moins 5 autres
+    participantes du même secteur ont un relevé, la comparaison porte sur ce secteur."""
     c=auth_cx()
     if not benchmark_opted_in(exclude_org_id, c):
         c.close(); return None
-    rows=c.execute('SELECT s.organization_id,MAX(s.snapshot_date) d FROM sector_dso_signals s JOIN organizations o ON o.id=s.organization_id '
-                   'WHERE s.organization_id!=? AND COALESCE(o.benchmark_opt_in,0)=1 GROUP BY s.organization_id',(exclude_org_id,)).fetchall()
-    if not rows: c.close(); return None
-    values=[]
-    for r in rows:
-        v=c.execute('SELECT avg_days_overdue FROM sector_dso_signals WHERE organization_id=? AND snapshot_date=?',(r['organization_id'],r['d'])).fetchone()
-        if v and v['avg_days_overdue'] is not None: values.append(v['avg_days_overdue'])
-    c.close()
-    # Seuil d'anonymat : en dessous de 5 organisations, la moyenne révélerait le
-    # comportement de paiement d'un client identifiable.
-    if len(values) < 5: return None
-    return {'org_count':len(values),'avg_days':round(sum(values)/len(values))}
+    try:
+        own=c.execute('SELECT market_sector FROM organizations WHERE id=?',(exclude_org_id,)).fetchone()
+        sector=(own['market_sector'] if own else None) or None
+    except Exception:
+        sector=None
+    def average(sector_filter):
+        extra=' AND o.market_sector=?' if sector_filter else ''
+        params=(exclude_org_id,)+((sector_filter,) if sector_filter else ())
+        rows=c.execute('SELECT s.organization_id,MAX(s.snapshot_date) d FROM sector_dso_signals s JOIN organizations o ON o.id=s.organization_id '
+                       'WHERE s.organization_id!=? AND COALESCE(o.benchmark_opt_in,0)=1'+extra+' GROUP BY s.organization_id',params).fetchall()
+        values=[]
+        for r in rows:
+            v=c.execute('SELECT avg_days_overdue FROM sector_dso_signals WHERE organization_id=? AND snapshot_date=?',(r['organization_id'],r['d'])).fetchone()
+            if v and v['avg_days_overdue'] is not None: values.append(v['avg_days_overdue'])
+        # Seuil d'anonymat : en dessous de 5 organisations, la moyenne révélerait le
+        # comportement de paiement d'un client identifiable.
+        return values if len(values)>=5 else None
+    try:
+        values=average(sector) if sector else None
+        scope='sector' if values else 'all'
+        if not values:
+            values=average(None)
+    finally:
+        c.close()
+    if not values: return None
+    label=None
+    if scope=='sector':
+        from profitos.market_watch import SECTORS
+        label=SECTORS.get(sector,{}).get('label')
+    return {'org_count':len(values),'avg_days':round(sum(values)/len(values)),'scope':scope,'sector_label':label}
 
 _FORMULA_PREFIXES=('=','+','-','@','\t','\r')
 
@@ -3715,6 +3736,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-21','title':"Comparaison anonyme des délais de paiement avec les entreprises de votre secteur ; aides et financements dans la veille"},
     {'date':'2026-10-21','title':"Pièces demandées par l'expert-comptable, portefeuille cabinet enrichi, liste de démarrage revue"},
     {'date':'2026-10-21','title':"« Votre semaine » dans le rapport du lundi ; suivi des marges et révision de prix branchés sur la veille"},
     {'date':'2026-10-21','title':"Faites-vous payer plus vite : QR code de virement et lien de paiement sur vos factures, relances automatiques en trois étapes"},

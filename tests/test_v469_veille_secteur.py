@@ -313,3 +313,30 @@ def test_tache_quotidienne(app, offline, monkeypatch):
     result = jobs.JOBS['market_watch_refresh'].func({'id': 0, 'name': 'global'}, {})
     assert 'INSEE-010001234' in offline and set(offline) >= {'BT01', 'TP01', 'ICC', 'IPC', 'DFR'}
     assert 'indicateur(s) à jour' in result
+
+
+def test_comparaison_par_secteur_et_aides(app, offline):
+    """v476 : la comparaison anonyme des délais de paiement porte sur le secteur quand au
+    moins 5 autres participantes du même secteur existent ; sinon sur toutes."""
+    cl, org = signup(app, 'Restaurant')
+    page = cl.get('/veille').get_data(as_text=True)
+    assert 'Aides et financements' in page and 'les-aides.fr' in page
+    post(cl, '/veille', {'action': 'settings', 'sector': 'restauration', 'alert_12m': '5', 'alert_1p': '2'})
+    ac = rt.auth_cx()
+    assert ac.execute('SELECT market_sector FROM organizations WHERE id=?', (org,)).fetchone()['market_sector'] == 'restauration'
+    ac.execute('UPDATE organizations SET benchmark_opt_in=1 WHERE id=?', (org,))
+    now = rt.now()
+    for i, (sector, days) in enumerate([('restauration', 10)] * 5 + [('batiment', 60)] * 5):
+        oid = 1000 + i
+        ac.execute("INSERT INTO organizations(id,name,plan,status,created_at,updated_at,benchmark_opt_in,market_sector) "
+                   "VALUES(?,?,?,?,?,?,1,?)", (oid, f'Org {oid}', 'BUSINESS', 'ACTIVE_PAID', now, now, sector))
+        ac.execute('INSERT INTO sector_dso_signals(organization_id,snapshot_date,avg_days_overdue,updated_at) VALUES(?,?,?,?)',
+                   (oid, '2026-10-01', days, now))
+    ac.commit(); ac.close()
+    b = rt.sector_dso_benchmark(org)
+    assert b['scope'] == 'sector' and b['avg_days'] == 10 and b['org_count'] == 5 and b['sector_label'] == 'Hôtellerie et restauration'
+    ac = rt.auth_cx()
+    ac.execute("UPDATE organizations SET market_sector='commerce' WHERE id=?", (org,))      # secteur sans 5 pairs
+    ac.commit(); ac.close()
+    b = rt.sector_dso_benchmark(org)
+    assert b['scope'] == 'all' and b['avg_days'] == 35 and b['org_count'] == 10

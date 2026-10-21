@@ -126,7 +126,7 @@
     <div class="db-delay-chart">{{ dso_svg|safe }}</div>
     {% if dso_period %}<div class="db-pulse-axis"><span>{{ dso_period[0] }}</span><span>{{ dso_period[1] }}</span></div>{% endif %}
     {% if sector_benchmark %}
-    <p class="db-delay-note">Moyenne des autres entreprises ProfitOS : <strong>{{ sector_benchmark.avg_days }}&nbsp;j</strong>, {% if dso_current <= sector_benchmark.avg_days %}vous êtes en dessous.{% else %}vous êtes au-dessus.{% endif %}</p>
+    <p class="db-delay-note">Moyenne des autres entreprises ProfitOS{% if sector_benchmark.scope == 'sector' and sector_benchmark.sector_label %} de votre secteur ({{ sector_benchmark.sector_label|lower }}){% endif %} : <strong>{{ sector_benchmark.avg_days }}&nbsp;j</strong>, {% if dso_current <= sector_benchmark.avg_days %}vous êtes en dessous.{% else %}vous êtes au-dessus.{% endif %}</p>
     {% endif %}
   </section>
   {% endif %}
