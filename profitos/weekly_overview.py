@@ -76,7 +76,7 @@ def _watch(c):
             defn = MW.definition(code, settings.get('custom'))
             if not defn:
                 continue
-            st = MW.stats(MW.observations(ac, code), defn['unit'])
+            st = MW.series_stats(defn, MW.observations(ac, code), MW.series_meta(ac, code))
             alerts = MW.alerts(st, settings)
             if alerts:
                 out.append({'label': defn['label'], 'alerts': alerts, 'period': st['label']})

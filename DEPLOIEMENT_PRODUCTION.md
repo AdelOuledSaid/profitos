@@ -159,6 +159,14 @@ joindre en HTTPS. `MARKET_NEWS_FEEDS` (facultatif) : liste JSON des flux d'actua
 `[{"url": "https://…/rss.xml", "source": "Nom", "sectors": ["batiment"]}]` (`"all"` pour tous
 les secteurs). N'y mettre que des sources dont la licence autorise cette reprise.
 
+Après le premier passage de `market_watch_refresh`, vérifier les dix indices de chiffre
+d'affaires (codes `CA_…`, base 100 en 2021) : la colonne `adjustment` de `market_series`
+(base d'authentification) indique `brut` ou `CVS-CJO` d'après le titre officiel ; une série au
+statut `mismatch` (titre inattendu, poste NAF absent ou « série arrêtée ») n'affiche aucune
+valeur et son identifiant est à contrôler sur insee.fr. Pour figer la correction attendue
+d'une série, renseigner `'adjustment': 'CVS-CJO'` (ou `'brut'`) dans son entrée du catalogue :
+une version différente sera alors refusée.
+
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,
 `SUPPLIER_INBOX_DOMAIN`, `SUPPLIER_INBOX_WEBHOOK_ENABLED`, `SUPPLIER_INBOX_WEBHOOK_SECRET`.

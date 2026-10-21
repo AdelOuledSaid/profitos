@@ -370,6 +370,15 @@ européenne.
   publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
   les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
   la BCE et l'Euribor 3 mois.
+- **Activité de votre secteur** : selon votre code APE, ProfitOS ajoute l'indice de chiffre
+  d'affaires de l'INSEE le plus proche de votre métier (base 100 en 2021, mensuel, France
+  entière) : commerce de gros, habillement, hôtels, hébergement touristique, restauration,
+  restauration rapide, services administratifs et de soutien, conseil en gestion, traduction et
+  interprétation, imprimerie. Comparez-y l'évolution de vos propres ventes. Chaque carte indique
+  si la série est **brute** ou **corrigée des variations saisonnières et des jours ouvrables
+  (CVS-CJO)** : une série brute n'est comparée que sur un an (deux mois consécutifs ne se
+  comparent pas). Ces indices mesurent l'activité, pas les prix : ils ne sont proposés ni pour
+  une révision de prix ni dans le suivi des marges.
 - **Chaque carte** donne la dernière valeur publiée, sa période, la variation sur la période et sur
   un an, la courbe des deux dernières années et un lien vers la source officielle.
 - **Alertes** : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an

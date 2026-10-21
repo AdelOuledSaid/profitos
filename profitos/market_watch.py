@@ -62,6 +62,43 @@ CATALOGUE = {
             'expect': ['coût de la construction'], 'unit': 'indice', 'freq': 'Q',
             'why': 'Coût des bâtiments neufs ; ancien indice de révision des baux.'},
 }
+
+
+# Indices de chiffre d'affaires de l'INSEE (v478) : séries mensuelles nationales, base 100
+# en 2021 (publication de septembre 2026). Ce sont des indices d'activité, pas de prix : ils
+# servent à comparer sa propre évolution à celle de son secteur, jamais à réviser un prix.
+# Certaines séries sont brutes, d'autres corrigées des variations saisonnières et des jours
+# ouvrables (CVS-CJO) : la correction est lue dans le titre officiel à chaque mise à jour,
+# enregistrée et affichée, et une série brute n'est comparée que sur un an.
+# 010770449 remplace l'ancienne série 010542378 (commerce de gros), arrêtée par l'INSEE.
+def _activity(idbank, label, naf, why):
+    return {'source': 'insee', 'idbank': idbank, 'label': label, 'expect': ["chiffre d'affaires"], 'naf': naf,
+            'unit': 'indice', 'freq': 'M', 'kind': 'activite', 'base': '2021', 'why': why}
+
+
+_WHY_ACTIVITY = "Comparez l'évolution de vos ventes à celle de votre secteur."
+CATALOGUE.update({
+    'CA_COMMERCE_GROS': _activity('010770449', "Chiffre d'affaires — commerce de gros", '46', _WHY_ACTIVITY),
+    'CA_HABILLEMENT': _activity('010770751', "Chiffre d'affaires — commerce de détail d'habillement", '47.71Z',
+                                _WHY_ACTIVITY),
+    'CA_HOTELS': _activity('010774374', "Chiffre d'affaires — hôtels", '55.10Z', _WHY_ACTIVITY),
+    'CA_HEBERGEMENT': _activity('010775052', "Chiffre d'affaires — hébergement touristique", '55.20Z', _WHY_ACTIVITY),
+    'CA_RESTAURATION': _activity('010774499', "Chiffre d'affaires — restauration", '56', _WHY_ACTIVITY),
+    'CA_RESTAURATION_RAPIDE': _activity('010774600', "Chiffre d'affaires — restauration rapide", '56.10C',
+                                        _WHY_ACTIVITY),
+    'CA_SERVICES_ADMIN': _activity('010774925', "Chiffre d'affaires — services administratifs et de soutien", 'N',
+                                   _WHY_ACTIVITY),
+    'CA_CONSEIL': _activity('010774564', "Chiffre d'affaires — conseil en gestion", '70.22Z', _WHY_ACTIVITY),
+    'CA_TRADUCTION': _activity('010775001', "Chiffre d'affaires — traduction et interprétation", '74.3',
+                               _WHY_ACTIVITY),
+    'CA_IMPRIMERIE': _activity('010773632', "Chiffre d'affaires — imprimerie", '18.1', _WHY_ACTIVITY),
+})
+REPLACED_SERIES = {'010542378': '010770449'}     # ancienne série INSEE -> série qui la remplace
+
+# Code APE -> indice de chiffre d'affaires le plus précis (préfixe le plus long d'abord).
+_ACTIVITY_BY_NAF = [('5610C', 'CA_RESTAURATION_RAPIDE'), ('4771', 'CA_HABILLEMENT'), ('5510', 'CA_HOTELS'),
+                    ('5520', 'CA_HEBERGEMENT'), ('7022', 'CA_CONSEIL'), ('743', 'CA_TRADUCTION'),
+                    ('181', 'CA_IMPRIMERIE'), ('46', 'CA_COMMERCE_GROS'), ('56', 'CA_RESTAURATION')]
 COMMON = ['IPC', 'ILC', 'ILAT', 'DFR', 'EURIBOR3M']
 
 # Secteurs : sections de la nomenclature NAF, indicateurs proposés, conseils pour compléter.
@@ -79,7 +116,7 @@ SECTORS = {
     'commerce': {'label': 'Commerce', 'naf': 'G', 'series': [],
                  'keywords': ['commerce', 'boutique', 'magasin', 'négoce', 'negoce', 'vente', 'distribution', 'e-commerce'],
                  'add': "les indices de prix à la consommation de vos familles de produits."},
-    'restauration': {'label': 'Hôtellerie et restauration', 'naf': 'I', 'series': [],
+    'restauration': {'label': 'Hôtellerie et restauration', 'naf': 'I', 'series': [], 'activity': ['CA_RESTAURATION'],
                      'keywords': ['restaurant', 'restauration', 'hôtel', 'hotel', 'café', 'traiteur', 'bar'],
                      'add': "les prix à la consommation de l'alimentation et de la restauration."},
     'transport': {'label': 'Transport et logistique', 'naf': 'H', 'series': [],
@@ -144,13 +181,31 @@ def suggest_sector(*texts):
     return best
 
 
+def _naf_key(naf):
+    return re.sub(r'[^0-9A-Z]', '', str(naf or '').upper())
+
+
+def activity_series(naf, sector=None):
+    """Indice de chiffre d'affaires du secteur : le plus précis pour le code APE (ex. 5610C ->
+    restauration rapide, 5630Z -> restauration), sinon celui proposé pour le secteur choisi."""
+    key = _naf_key(naf)
+    if len(key) >= 2:
+        for prefix, code in _ACTIVITY_BY_NAF:
+            if key.startswith(prefix):
+                return [code]
+        if key[:2].isdigit() and 77 <= int(key[:2]) <= 82:      # section N
+            return ['CA_SERVICES_ADMIN']
+        return []
+    return list(SECTORS.get(sector or 'autre', SECTORS['autre']).get('activity', []))
+
+
 def series_for(settings):
-    """Indicateurs suivis : choix de l'entreprise, sinon ceux de son secteur."""
+    """Indicateurs suivis : choix de l'entreprise, sinon ceux de son secteur et de son code APE."""
     if settings.get('series') is not None:
         chosen = [c for c in settings['series'] if c in CATALOGUE]
     else:
         sector = SECTORS.get(settings.get('sector') or 'autre', SECTORS['autre'])
-        chosen = sector['series'] + COMMON
+        chosen = sector['series'] + activity_series(settings.get('naf'), settings.get('sector')) + COMMON
     return chosen + [custom_code(c['idbank']) for c in settings.get('custom', [])]
 
 
@@ -176,6 +231,31 @@ def definition(code, custom=None):
         return {'code': code, 'source': 'insee', 'idbank': idbank, 'label': label or f'Série INSEE {idbank}',
                 'expect': [], 'unit': 'indice', 'freq': None, 'why': 'Indicateur ajouté par votre entreprise.', 'custom': True}
     return None
+
+
+def is_price_index(defn):
+    """Indice utilisable pour une révision de prix ou le suivi des marges : ni un taux, ni un
+    indice d'activité (chiffre d'affaires)."""
+    return bool(defn) and defn.get('unit') != '%' and defn.get('kind') != 'activite'
+
+
+def detect_adjustment(title):
+    """Correction indiquée dans le titre officiel INSEE : 'CVS-CJO', 'CVS', 'CJO', 'brut' ou None."""
+    low = (title or '').lower()
+    if re.search(r'cvs[\s-]*cjo', low):
+        return 'CVS-CJO'
+    if re.search(r'\bcvs\b', low):
+        return 'CVS'
+    if re.search(r'\bcjo\b', low):
+        return 'CJO'
+    if re.search(r'\bbrut(e|es|s)?\b', low):
+        return 'brut'
+    return None
+
+
+ADJUSTMENT_LABELS = {'CVS-CJO': 'corrigée des variations saisonnières et des jours ouvrables (CVS-CJO)',
+                     'CVS': 'corrigée des variations saisonnières (CVS)', 'CJO': 'corrigée des jours ouvrables (CJO)',
+                     'brut': 'brute (non corrigée des variations saisonnières)'}
 
 
 def source_url(defn):
@@ -236,13 +316,30 @@ def parse_ecb_csv(text):
             'freq': first.get('FREQ'), 'last_update': None, 'obs': sorted(obs)}
 
 
+def _norm_title(title):
+    return (title or '').replace('\u2019', "'").replace('\u02bc', "'")
+
+
 def title_matches(defn, title):
-    if not defn.get('expect'):
+    if not defn.get('expect') and not defn.get('naf'):
         return True
     if not title:
         return defn['source'] == 'ecb'           # clé BCE sémantique : titre facultatif dans le CSV
-    low = title.lower()
-    return all(word.lower() in low for word in defn['expect'])
+    low = _norm_title(title).lower()
+    if not all(_norm_title(word).lower() in low for word in defn.get('expect') or []):
+        return False
+    if defn.get('naf'):
+        # Le poste NAF doit figurer dans le titre (« poste 56.10C », « 5610C », « section N »…).
+        flat = _norm_title(title).upper().replace('.', '')
+        code = _naf_key(defn['naf'])
+        if not re.search(r'(?<![0-9A-Z])' + re.escape(code) + r'(?![0-9A-Z])', flat) and \
+                not re.search(r'(?<![0-9A-Za-z])' + re.escape(defn['naf']) + r'(?![0-9A-Za-z])', _norm_title(title)):
+            return False
+    return True
+
+
+def is_discontinued(title):
+    return 'série arrêtée' in _norm_title(title).lower() or 'serie arretee' in _norm_title(title).lower()
 
 
 def fetch(defn, http=None):
@@ -268,8 +365,16 @@ def fetch(defn, http=None):
         data = parse_ecb_csv(body.decode('utf-8', 'replace'))
     if not data['obs']:
         raise MarketWatchError('aucune valeur publiée')
+    if is_discontinued(data['title']):
+        hint = REPLACED_SERIES.get(defn.get('idbank') or '')
+        raise MarketWatchError('série arrêtée par l\'INSEE' + (f' (remplacée par {hint})' if hint else '') +
+                               ' : identifiant à vérifier')
     if not title_matches(defn, data['title']):
         raise MarketWatchError(f"titre officiel inattendu (« {data['title'][:120]} ») : identifiant à vérifier")
+    data['adjustment'] = detect_adjustment(data['title']) if defn['source'] == 'insee' else None
+    expected = defn.get('adjustment')
+    if expected and data['adjustment'] and data['adjustment'] != expected:
+        raise MarketWatchError(f"série {data['adjustment']} au lieu de {expected} : identifiant à vérifier")
     return data
 
 
@@ -277,10 +382,24 @@ def fetch(defn, http=None):
 def ensure_tables(conn):
     conn.execute('''CREATE TABLE IF NOT EXISTS market_series(
         code TEXT PRIMARY KEY, title TEXT, freq TEXT, last_update TEXT, fetched_at TEXT,
-        status TEXT, error TEXT)''')
+        status TEXT, error TEXT, adjustment TEXT)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS market_observations(
         code TEXT NOT NULL, period TEXT NOT NULL, value REAL NOT NULL, PRIMARY KEY(code, period))''')
     conn.commit()
+    _ensure_adjustment_column(conn)
+
+
+def _ensure_adjustment_column(conn):
+    """Colonne 'adjustment' (brut / CVS-CJO…) ajoutée en v478 aux bases existantes."""
+    try:
+        conn.execute('SELECT adjustment FROM market_series WHERE 1=0').fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.execute('ALTER TABLE market_series ADD COLUMN adjustment TEXT')
+        conn.commit()
 
 
 def _now():
@@ -291,10 +410,17 @@ def store(conn, code, data=None, error=None):
     """Enregistre une lecture réussie, ou l'erreur (les valeurs déjà connues restent)."""
     ensure_tables(conn)
     if data is not None:
-        conn.execute("""INSERT INTO market_series(code,title,freq,last_update,fetched_at,status,error) VALUES(?,?,?,?,?,'ok',NULL)
+        adjustment = data.get('adjustment')
+        before = conn.execute('SELECT adjustment FROM market_series WHERE code=?', (code,)).fetchone()
+        if before and before['adjustment'] and adjustment and before['adjustment'] != adjustment:
+            # Brut et CVS-CJO ne se mélangent jamais : l'historique de l'autre version est écarté.
+            conn.execute('DELETE FROM market_observations WHERE code=?', (code,))
+        conn.execute("""INSERT INTO market_series(code,title,freq,last_update,fetched_at,status,error,adjustment)
+                        VALUES(?,?,?,?,?,'ok',NULL,?)
                         ON CONFLICT(code) DO UPDATE SET title=excluded.title, freq=excluded.freq,
-                        last_update=excluded.last_update, fetched_at=excluded.fetched_at, status='ok', error=NULL""",
-                     (code, data['title'][:300], data.get('freq'), data.get('last_update'), _now()))
+                        last_update=excluded.last_update, fetched_at=excluded.fetched_at, status='ok', error=NULL,
+                        adjustment=excluded.adjustment""",
+                     (code, data['title'][:300], data.get('freq'), data.get('last_update'), _now(), adjustment))
         for period, value in data['obs']:
             conn.execute("""INSERT INTO market_observations(code,period,value) VALUES(?,?,?)
                             ON CONFLICT(code,period) DO UPDATE SET value=excluded.value""", (code, period, value))
@@ -379,9 +505,11 @@ def _value_at_or_before(obs, target):
     return best
 
 
-def stats(obs, unit='indice'):
+def stats(obs, unit='indice', raw_seasonal=False):
     """Dernière valeur, variation sur la période précédente et sur un an. Pour un taux (%),
-    les variations sont en points ; pour un indice, en pourcentage."""
+    les variations sont en points ; pour un indice, en pourcentage. raw_seasonal : série
+    d'activité brute, dont deux mois consécutifs ne se comparent pas (saisonnalité, jours
+    ouvrables) — seule la variation sur un an est donnée."""
     if not obs:
         return None
     last_p, last_v = obs[-1]
@@ -398,8 +526,18 @@ def stats(obs, unit='indice'):
             return None
         return round((last_v - old[1]) / old[1] * 100, 2)
     return {'period': last_p, 'label': period_label(last_p), 'value': last_v,
-            'change_1p': change(prev), 'change_12m': change(year) if year and year[0] != last_p else None,
-            'points': unit == '%'}
+            'change_1p': None if raw_seasonal else change(prev),
+            'change_12m': change(year) if year and year[0] != last_p else None,
+            'points': unit == '%', 'raw_seasonal': bool(raw_seasonal)}
+
+
+def is_raw_activity(defn, meta):
+    """Indice d'activité dont la source indique qu'il est brut (ou sans correction connue)."""
+    return bool(defn) and defn.get('kind') == 'activite' and (meta or {}).get('adjustment') in (None, 'brut', 'CJO')
+
+
+def series_stats(defn, obs, meta):
+    return stats(obs, defn['unit'], raw_seasonal=is_raw_activity(defn, meta))
 
 
 RATE_ALERT_12M, RATE_ALERT_1P = 0.5, 0.25    # taux : seuils en points

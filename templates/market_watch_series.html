@@ -9,10 +9,12 @@
   </div>
   <div class="actionbuttons">
     <a class="purchase-nav-btn" href="{{ url_for('market_watch') }}">← Veille</a>
-    {% if defn.unit != '%' %}<a class="purchase-nav-btn" href="{{ url_for('market_watch_revision', code=defn.code) }}">Révision de prix</a>{% endif %}
+    {% if price_index %}<a class="purchase-nav-btn" href="{{ url_for('market_watch_revision', code=defn.code) }}">Révision de prix</a>{% endif %}
     <a class="purchase-nav-btn" href="{{ url }}" target="_blank" rel="noopener noreferrer">Source officielle ↗</a>
   </div>
 </div>
+{% if defn.kind == 'activite' %}<div class="flash" role="status">Indice de chiffre d'affaires{% if defn.base %} (base 100 en {{ defn.base }}){% endif %} : il mesure l'activité du secteur, pas des prix, et ne sert pas à réviser un contrat.{% if meta.adjustment %} Série {{ adjustment_labels.get(meta.adjustment, meta.adjustment) }}.{% endif %}{% if stat and stat.raw_seasonal %} Les variations d'un mois sur l'autre ne sont pas affichées : seule la comparaison sur un an a un sens.{% endif %}</div>
+{% elif meta.adjustment %}<p class="purchase-muted" style="font-size:12px;">Série {{ adjustment_labels.get(meta.adjustment, meta.adjustment) }}.</p>{% endif %}
 {% if meta.status == 'mismatch' %}<div class="flash" role="alert">Série à vérifier : la source a renvoyé un titre inattendu ({{ meta.error }}). Aucune valeur n'est affichée.</div>{% endif %}
 {% if meta.status == 'error' %}<div class="flash" role="status">Dernière mise à jour impossible ({{ meta.error }}) : les valeurs ci-dessous sont celles déjà connues.</div>{% endif %}
 {% if stat %}

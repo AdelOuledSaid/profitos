@@ -352,7 +352,7 @@ def register(app):
         watch_settings=MW.load_settings(c,current_entity_id())
         watch_sector,_guess=_effective_sector(watch_settings,_company_texts(c,current_entity_id()))
         watch_codes=[x for x in MW.series_for(dict(watch_settings,sector=watch_sector))
-                     if (MW.definition(x,watch_settings.get('custom')) or {}).get('unit')!='%']
+                     if MW.is_price_index(MW.definition(x,watch_settings.get('custom')))]
         settings_row=c.execute('SELECT price_index_name FROM app_settings WHERE id=1').fetchone()
         index_name=(settings_row['price_index_name'] if settings_row and settings_row['price_index_name'] else 'INDICE').strip() or 'INDICE'
         if request.method=='POST':
