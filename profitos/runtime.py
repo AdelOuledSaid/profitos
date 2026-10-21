@@ -933,6 +933,7 @@ MODULE_AREAS={
 }
 ENDPOINT_AREAS={
     'cash_forecast':'pilotage','monthly_report_pdf':'pilotage',
+    'market_watch_revision_invoice':'invoicing',
     'entity_new':'settings','entity_detail':'settings',
     'mileage_rate_settings':'settings',
 }
@@ -3055,6 +3056,18 @@ def compute_weekly_digest(org_id, days=7):
             seen={r['item_key'] for r in c.execute('SELECT item_key FROM weekly_digest_seen').fetchall()}
         except Exception:
             seen=set()
+        # v472 : « Votre semaine » — actions des prochains jours (encaissements, paiements,
+        # échéances fiscales, alertes de la veille).
+        from profitos import weekly_overview
+        try:
+            from profitos.plan_limits import feature_enabled
+            acx=auth_cx()
+            org_row=acx.execute('SELECT * FROM organizations WHERE id=?',(org_id,)).fetchone()
+            acx.close()
+            accounting=bool(org_row) and feature_enabled(effective_plan(org_row),'accounting_core')
+        except Exception:
+            accounting=False
+        week=weekly_overview.compute(c,accounting=accounting)
     finally:
         c.close()
     keys=[]
@@ -3073,7 +3086,8 @@ def compute_weekly_digest(org_id, days=7):
         'recover_total':recover_total,'recover_count':len(new_recover),'recover_top':list(new_recover[:3]),
         'save_total':save_total,'save_count':len(new_save),'save_top':list(new_save[:3]),
         'grow_count':len(new_grow),'grow_top':list(new_grow[:3]),
-        'has_signal':bool(new_recover or new_save or new_grow),
+        'has_signal':bool(new_recover or new_save or new_grow or week['has_signal']),
+        'week':week,
         'seen_keys':keys,
     }
 

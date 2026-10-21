@@ -40,6 +40,16 @@
     <div class="purchase-stat"><div><div class="purchase-stat-label">Prix révisé</div><div class="purchase-stat-value">{{ result.revised|fr_number(2) }} €</div></div></div>
     <div class="purchase-stat"><div><div class="purchase-stat-label">Écart</div><div class="purchase-stat-value">{{ '+' if result.difference > 0 }}{{ result.difference|fr_number(2) }} €</div></div></div>
   </div>
+  {% if drafts %}
+  <form method="post" action="{{ url_for('market_watch_revision_invoice') }}" class="ledger-filters" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for k in ('code', 'amount', 'base', 'new', 'fixed', 'decimals', 'base_value', 'new_value') %}{% if args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ args.get(k) }}">{% endif %}{% endfor %}
+    <label>Ajouter l'écart ({{ '+' if result.difference > 0 }}{{ result.difference|fr_number(2) }} € HT) à la facture brouillon
+      <select name="invoice_id">{% for d in drafts %}<option value="{{ d.id }}">Brouillon n°{{ d.id }} — {{ d.client_name }} ({{ d.total|fr_number(2) }} € TTC)</option>{% endfor %}</select></label>
+    <label>TVA (%)<input name="vat_rate" inputmode="decimal" value="20" style="max-width:90px;"></label>
+    <button type="submit" class="purchase-primary-btn secondary">Ajouter la ligne</button>
+  </form>
+  {% endif %}
   {% endif %}
   <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Appliquez la formule, la partie fixe, le mois de référence et l'arrondi prévus par votre contrat (CCAP pour un marché public). Les index publiés peuvent être provisoires puis révisés par l'INSEE.</p>
 </section>

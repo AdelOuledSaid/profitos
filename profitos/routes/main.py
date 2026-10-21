@@ -324,16 +324,31 @@ def register(app):
         indice contractuel ou indice interne — saisi manuellement, pas d'accès API
         temps réel ici)."""
         c=cx()
+        from profitos import market_watch as MW
+        from profitos.entities import current_entity_id
+        from profitos.routes.market_watch import _company_texts, _effective_sector
+        watch_settings=MW.load_settings(c,current_entity_id())
+        watch_sector,_guess=_effective_sector(watch_settings,_company_texts(c,current_entity_id()))
+        watch_codes=[x for x in MW.series_for(dict(watch_settings,sector=watch_sector))
+                     if (MW.definition(x,watch_settings.get('custom')) or {}).get('unit')!='%']
         settings_row=c.execute('SELECT price_index_name FROM app_settings WHERE id=1').fetchone()
         index_name=(settings_row['price_index_name'] if settings_row and settings_row['price_index_name'] else 'INDICE').strip() or 'INDICE'
         if request.method=='POST':
             form=request.form.get('form_type')
             if form=='index_name':
-                new_name=request.form.get('index_name','').strip() or 'INDICE'
+                veille=(request.form.get('veille_code') or '').strip()
+                if veille and veille in watch_codes:
+                    new_name=MW.VEILLE_PREFIX+veille
+                else:
+                    new_name=request.form.get('index_name','').strip()[:60] or 'INDICE'
+                    if new_name.startswith(MW.VEILLE_PREFIX):
+                        new_name='INDICE'
                 c.execute("INSERT INTO app_settings(id,price_index_name,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET price_index_name=excluded.price_index_name,updated_at=excluded.updated_at",(new_name,now())); c.commit()
-                flash(f"Indice de référence mis à jour : {new_name}.")
+                flash(f"Indice de référence mis à jour : {MW.index_label(new_name,watch_settings.get('custom'))}.")
                 c.close(); return redirect(url_for('margin_watch'))
-            if form=='reading':
+            if form=='reading' and index_name.startswith(MW.VEILLE_PREFIX):
+                flash("Cet indice est mis à jour automatiquement par la veille : aucun relevé à saisir.")
+            elif form=='reading':
                 d=request.form.get('reading_date','').strip(); v=request.form.get('value','').strip()
                 try: v=form_float(v) if v else None
                 except ValueError: v=None
@@ -357,7 +372,7 @@ def register(app):
                     flash('Nom du projet, montant et date de signature requis.')
             c.close(); return redirect(url_for('margin_watch'))
 
-        readings=c.execute("SELECT * FROM price_index_readings WHERE index_name=? ORDER BY reading_date ASC",(index_name,)).fetchall()
+        readings=MW.index_readings(c,index_name)
         contracts=c.execute("SELECT * FROM fixed_price_contracts WHERE status='ACTIVE' ORDER BY signed_date DESC").fetchall()
         c.close()
 
@@ -379,7 +394,10 @@ def register(app):
                         'is_erosion':change_pct>0})
         alerts.sort(key=lambda a:abs(a['at_risk']),reverse=True)
 
-        return render_template('margin_watch.html',readings=readings,contracts=contracts,alerts=alerts,index_name=index_name)
+        return render_template('margin_watch.html',readings=readings,contracts=contracts,alerts=alerts,index_name=index_name,
+                               index_label=MW.index_label(index_name,watch_settings.get('custom')),
+                               auto_index=index_name.startswith(MW.VEILLE_PREFIX),
+                               watch_options=[(x,MW.definition(x,watch_settings.get('custom'))['label']) for x in watch_codes])
 
     @app.route('/portfolio')
     @login_required

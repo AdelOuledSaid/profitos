@@ -609,5 +609,34 @@ def news_for(conn, sector, limit=8):
     return out
 
 
+# ------------------------------------------------- suivi des marges (v473)
+VEILLE_PREFIX = 'VEILLE:'
+
+
+def index_readings(conn, index_name):
+    """Relevés de l'indice de référence du suivi des marges : ceux de la veille (mis à jour
+    automatiquement) pour « VEILLE:<code> », sinon les relevés saisis à la main. Format
+    commun : [{'id', 'reading_date' (AAAA-MM-JJ, début de période), 'value'}], chronologique."""
+    if str(index_name or '').startswith(VEILLE_PREFIX):
+        from profitos.runtime import auth_cx
+        code = index_name[len(VEILLE_PREFIX):]
+        ac = auth_cx()
+        try:
+            obs = observations(ac, code)
+        finally:
+            ac.close()
+        return [{'id': f'{code}:{p}', 'reading_date': _period_date(p).isoformat(), 'value': v, 'period': p}
+                for p, v in obs]
+    return [dict(r) for r in conn.execute('SELECT * FROM price_index_readings WHERE index_name=? ORDER BY reading_date ASC',
+                                          (index_name,)).fetchall()]
+
+
+def index_label(index_name, custom=None):
+    if str(index_name or '').startswith(VEILLE_PREFIX):
+        defn = definition(index_name[len(VEILLE_PREFIX):], custom)
+        return defn['label'] if defn else index_name
+    return index_name
+
+
 def json_dumps(x):
     return json.dumps(x, ensure_ascii=False)

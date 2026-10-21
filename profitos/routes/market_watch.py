@@ -50,6 +50,8 @@ def _cards(ac, settings):
 
 
 def register(app):
+    register_invoice_link(app)
+
     @app.route('/veille', methods=['GET', 'POST'])
     @login_required
     @requires_active_plan
@@ -208,7 +210,60 @@ def register(app):
                 error = 'Saisie invalide.'
             except MW.MarketWatchError as exc:
                 error = str(exc)
-        return render_template('market_watch_revision.html', codes=codes, code=code, periods=periods,
+        drafts = []
+        if result and can_access('invoicing'):
+            c = cx()
+            drafts = c.execute("SELECT id, client_name, total, created_at FROM outgoing_invoices WHERE status='draft' AND entity_id IS ? "
+                               "ORDER BY id DESC LIMIT 30", (_eid(),)).fetchall()
+            c.close()
+        return render_template('market_watch_revision.html', codes=codes, code=code, periods=periods, drafts=drafts,
                                labels={p: MW.period_label(p) for p in periods}, args=a, result=result, error=error,
                                base_v=base_v, new_v=new_v,
                                definitions={x: MW.definition(x, settings['custom']) for x in codes})
+
+
+def register_invoice_link(app):
+    @app.post('/veille/revision/facture')
+    @login_required
+    @requires_active_plan
+    def market_watch_revision_invoice():
+        from profitos.routes.invoicing import append_draft_line
+        f = request.form
+        c = cx()
+        settings = MW.load_settings(c, _eid())
+        code = f.get('code') or ''
+        defn = MW.definition(code, settings.get('custom'))
+        back = url_for('market_watch_revision', **{k: f.get(k) for k in ('code', 'amount', 'base', 'new', 'fixed', 'decimals',
+                                                                            'base_value', 'new_value') if f.get(k)})
+        try:
+            if not defn or defn.get('unit') == '%':
+                raise ValueError('Indice inconnu.')
+            ac = auth_cx()
+            try:
+                values = dict(MW.observations(ac, code))
+            finally:
+                ac.close()
+            base_v = form_float(f.get('base_value')) if (f.get('base_value') or '').strip() else values.get(f.get('base'))
+            new_v = form_float(f.get('new_value')) if (f.get('new_value') or '').strip() else values.get(f.get('new'))
+            if base_v is None or new_v is None:
+                raise ValueError("Choisissez les deux périodes de l'indice.")
+            amount = form_float(f.get('amount'))
+            decimals = {'3': 3, '4': 4, 'none': None}.get(f.get('decimals') or '4', 4)
+            res = MW.revision(amount, base_v, new_v, form_float(f.get('fixed') or '15'), decimals)
+            if abs(res['difference']) < 0.01:
+                raise ValueError('Révision nulle : aucune ligne à ajouter.')
+            vat = form_float(f.get('vat_rate') or '20')
+            base_l = MW.period_label(f.get('base')) if f.get('base') and not (f.get('base_value') or '').strip() else f"{base_v:g}"
+            new_l = MW.period_label(f.get('new')) if f.get('new') and not (f.get('new_value') or '').strip() else f"{new_v:g}"
+            label = (f"Révision de prix — {defn['label']} : {base_l} → {new_l}, coefficient "
+                     f"{fr_number(res['coefficient'], 4)} sur {fr_number(amount, 2)} € HT")
+            invoice_id = int(f.get('invoice_id') or 0)
+            append_draft_line(c, invoice_id, _eid(), label, res['difference'], vat)
+        except (ValueError, MW.MarketWatchError) as exc:
+            c.close()
+            flash(str(exc) or 'Saisie invalide.')
+            return redirect(back)
+        c.close()
+        log_activity('PRICE_REVISION_LINE', f'Ligne de révision ajoutée à la facture brouillon {invoice_id}')
+        flash('Ligne de révision ajoutée à la facture brouillon.')
+        return redirect(url_for('invoicing_detail', invoice_id=invoice_id))

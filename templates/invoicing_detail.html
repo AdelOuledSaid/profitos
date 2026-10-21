@@ -36,6 +36,7 @@
     {% if display_status=='overdue' %}
     <form method="post" action="{{ url_for('invoicing_remind',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary">Relancer le client</button></form>
     {% endif %}
+    {% if auto_reminders_on %}<form method="post" action="{{ url_for('invoicing_toggle_auto_reminders',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">{{ 'Réactiver les relances automatiques' if auto_reminders_excluded else 'Suspendre les relances automatiques' }}</button></form>{% endif %}
     <form method="post" action="{{ url_for('invoicing_mark_paid',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Marquer cette facture comme entièrement payée ? Un règlement du solde sera enregistré.">Marquer comme payée</button></form>
     {% endif %}
     <span class="purchase-status {{ 'paid' if display_status=='paid' else ('overdue' if display_status=='overdue' else '') }}">{{ display_status|invoice_status_label }}</span>

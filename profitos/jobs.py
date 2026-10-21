@@ -819,6 +819,46 @@ def retention_purge(org, ctx):
     return '; '.join(done)[:400]
 
 
+@job('invoice_reminders', 'daily', hour=9,
+     description="Relances automatiques des factures échues (rappel courtois, ferme, dernier avis) pour les entreprises qui les ont activées.")
+def invoice_reminders(org, ctx):
+    _require_paid(org)
+    from profitos import invoice_payment as IP
+    from profitos.runtime import tenant_cx_direct
+    from profitos.accounting import paris_today
+    from profitos.routes.invoicing import send_invoice_reminder, reminder_blocker
+    today = paris_today()
+    c = tenant_cx_direct(org['id'])
+    sent, failed = 0, 0
+    try:
+        for eid in _entity_ids(c):
+            settings = IP.load(c, eid)
+            if not settings['auto_reminders']:
+                continue
+            rows = c.execute("SELECT * FROM outgoing_invoices WHERE status IN ('sent','partially_paid') AND entity_id IS ? "
+                             "AND due_date IS NOT NULL AND due_date<?", (eid, today.isoformat())).fetchall()
+            for inv in rows:
+                if inv['id'] in settings['excluded'] or reminder_blocker(c, inv):
+                    continue
+                prev = c.execute("SELECT COUNT(*) n, MAX(sent_at) last FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",
+                                 (inv['id'], eid)).fetchone()
+                if prev['last'] and (today - date.fromisoformat(str(prev['last'])[:10])).days < IP.MIN_GAP_DAYS:
+                    continue
+                step = IP.reminder_step((today - date.fromisoformat(inv['due_date'])).days, int(prev['n'] or 0), settings['steps'])
+                if step is None:
+                    continue
+                result = send_invoice_reminder(c, inv, org, step=step, base_url=_app_url())
+                if result.get('sent') and not result.get('dry_run'):
+                    sent += 1
+                else:
+                    failed += 1
+    finally:
+        c.close()
+    if not sent and not failed:
+        return '0 relance'
+    return f'{sent} relance(s) envoyée(s)' + (f', {failed} échec(s)' if failed else '')
+
+
 @job('market_watch_refresh', 'daily', hour=7, scope='global',
      description="Veille de secteur : met à jour les indicateurs officiels (INSEE, BCE) suivis par les entreprises et les actualités.")
 def market_watch_refresh(org, ctx):

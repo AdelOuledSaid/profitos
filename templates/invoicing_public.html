@@ -54,6 +54,22 @@
     </div>
   </div>
 
+  {% if payment %}
+  <div style="margin:0 36px 24px;padding:20px;border:1px solid #d7deec;border-radius:12px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+    {% if payment.qr_svg %}<div style="flex:0 0 auto;width:150px;">{{ payment.qr_svg|safe }}</div>{% endif %}
+    <div style="flex:1 1 240px;">
+      <div style="font-size:16px;font-weight:800;color:#0f1c33;margin-bottom:6px;">Régler cette facture : {{ payment.balance|fr_number(2) }}&nbsp;€</div>
+      {% if payment.iban %}
+        {% if payment.qr_svg %}<div style="font-size:13px;color:#5b6c8f;margin-bottom:8px;">Scannez le QR code avec l'application de votre banque : bénéficiaire, montant et référence sont pré-remplis.</div>{% endif %}
+        <div style="font-size:13px;">IBAN <strong style="font-family:ui-monospace,Menlo,monospace;">{{ payment.iban }}</strong></div>
+        {% if payment.bic %}<div style="font-size:13px;">BIC <strong style="font-family:ui-monospace,Menlo,monospace;">{{ payment.bic }}</strong></div>{% endif %}
+        <div style="font-size:13px;">Référence <strong>{{ payment.reference }}</strong></div>
+      {% endif %}
+      {% if payment.link %}<a href="{{ payment.link }}" rel="noopener noreferrer nofollow" target="_blank" style="display:inline-block;margin-top:12px;background:#0f7a4d;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 18px;border-radius:8px;">Payer en ligne</a>
+      <div style="font-size:11px;color:#8894ac;margin-top:6px;">Paiement sur le site du prestataire de {{ company.name if company else "l'émetteur" }}.</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
   {% for m in legal_mentions %}<div style="padding:0 36px 8px;color:#5b6c8f;font-size:12px;">{{ m }}</div>{% endfor %}
   {% if inv.notes %}<div style="padding:0 36px 24px;color:#5b6c8f;font-size:13px;white-space:pre-line;">{{ inv.notes }}</div>{% endif %}
 

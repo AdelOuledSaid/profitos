@@ -18,7 +18,9 @@ def test_manifest_is_not_construction_only():
 def test_financial_brain_uses_selected_index():
     t=(ROOT/'profitos/routes/financial_brain.py').read_text(encoding='utf-8')
     assert "SELECT price_index_name FROM app_settings WHERE id=1" in t
-    assert "WHERE index_name=?" in t
+    # v473 : relevés lus par market_watch.index_readings (saisis à la main ou repris de la veille).
+    assert "MW.index_readings(c,index_name)" in t
+    assert "WHERE index_name=?" in (ROOT/'profitos/market_watch.py').read_text(encoding='utf-8')
     assert "index_name='BT01'" not in t
 
 def test_new_schema_default_is_neutral():

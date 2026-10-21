@@ -2,7 +2,7 @@
 {% block content %}
 <div class="purchase-page">
 <div class="purchase-eyebrow">SUIVI DES MARGES</div>
-<h1 class="purchase-title">Suivi de l'érosion de marge ({{ index_name }})</h1>
+<h1 class="purchase-title">Suivi de l'érosion de marge ({{ index_label }})</h1>
 <p class="purchase-subtitle">Comparaison manuelle entre l'évolution de votre indice de référence et vos contrats signés à prix fixe. Saisissez un relevé une fois par mois pour garder ce suivi à jour.</p>
 
 <section class="purchase-panel" style="margin:20px 0;">
@@ -11,7 +11,9 @@
   <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form_type" value="index_name">
-    <label>Nom de l'indice suivi<input type="text" name="index_name" value="{{ index_name }}" placeholder="ex: IPC, indice sectoriel, indice interne..."></label>
+    {% if watch_options %}<label>Indice de la veille (mis à jour automatiquement)
+      <select name="veille_code"><option value="">— saisie manuelle —</option>{% for code, label in watch_options %}<option value="{{ code }}" {{ 'selected' if index_name == 'VEILLE:' ~ code }}>{{ label }}</option>{% endfor %}</select></label>{% endif %}
+    <label>… ou nom d'un indice saisi à la main<input type="text" name="index_name" value="{{ '' if auto_index else index_name }}" placeholder="ex: Syntec, indice contractuel..."></label>
     <button type="submit" class="purchase-primary-btn secondary">Changer d'indice</button>
   </form>
 </section>
@@ -36,12 +38,13 @@
   </div>
 </section>
 {% elif contracts and not readings %}
-<section class="purchase-panel" style="margin:20px 0;"><p class="purchase-muted">Ajoutez au moins un relevé {{ index_name }} pour calculer les alertes.</p></section>
+<section class="purchase-panel" style="margin:20px 0;"><p class="purchase-muted">{% if auto_index %}Aucune valeur connue pour cet indice : actualisez la veille.{% else %}Ajoutez au moins un relevé {{ index_label }} pour calculer les alertes.{% endif %}</p></section>
 {% endif %}
 
 <div class="twocol" style="margin-top:20px;">
   <section class="purchase-panel">
-    <h2 style="color:#fff;">Relevés {{ index_name }}</h2>
+    <h2 style="color:#fff;">Relevés {{ index_label }}</h2>
+    {% if auto_index %}<p class="purchase-muted" style="font-size:13px;">Valeurs officielles reprises chaque jour par la <a class="link" href="{{ url_for('market_watch') }}">veille de votre secteur</a> : rien à saisir.</p>{% else %}
     <form method="post" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="form_type" value="reading">
@@ -49,6 +52,7 @@
       <label>Valeur de l'indice<input type="number" name="value" step="0.01" required placeholder="ex: 125.3"></label>
       <button class="purchase-primary-btn primary">Ajouter le relevé</button>
     </form>
+    {% endif %}
     <p class="purchase-muted" style="font-size:11px;margin-top:8px;">{% if index_name=='BT01' %}L'indice BT01 officiel est publié mensuellement par l'INSEE (insee.fr, indices Bâtiment).{% else %}Renseignez la valeur publiée pour votre indice de référence à la date choisie.{% endif %}</p>
     <div class="purchase-table-wrap" style="margin-top:12px;">
       <table class="purchase-table">

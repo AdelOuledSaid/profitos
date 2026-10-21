@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FACTURATION</div>
+    <h1 class="purchase-title">Encaissement et relances</h1>
+    <p class="purchase-subtitle">Facilitez le paiement de vos factures et laissez ProfitOS relancer vos clients en retard, avec le ton qui convient à chaque étape.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Factures</a></div>
+</div>
+
+<form method="post" class="stack">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<section class="purchase-panel">
+  <h2>Moyens de paiement sur vos factures</h2>
+  {% if not iban_ok %}<div class="flash" role="alert">Renseignez un IBAN valide dans le <a class="link" href="{{ url_for('company') }}">profil de l'entreprise</a> pour afficher le virement et son QR code sur vos factures.</div>{% endif %}
+  <label class="check"><input type="checkbox" name="qr" value="1" {{ 'checked' if settings.qr }}> QR code de virement SEPA sur la facture PDF et la facture en ligne : votre client le scanne avec l'application de sa banque, le virement est pré-rempli (bénéficiaire, IBAN, reste à payer, numéro de facture).</label>
+  <label>Lien de paiement en ligne (facultatif)<input name="link" value="{{ settings.link }}" maxlength="300" placeholder="https://… (lien de paiement de votre prestataire : carte, prélèvement…)"></label>
+  <p class="purchase-muted" style="font-size:12px;">Le bouton « Payer en ligne » renvoie vers votre propre prestataire de paiement. ProfitOS ne manipule jamais les fonds ; enregistrez le règlement à réception (ou laissez le rapprochement bancaire le faire).</p>
+</section>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Relances automatiques</h2>
+  <label class="check"><input type="checkbox" name="auto_reminders" value="1" {{ 'checked' if settings.auto_reminders }}> Relancer automatiquement les factures échues (chaque matin, uniquement les clients avec une adresse e-mail)</label>
+  <div class="twocol">
+    {% for i in range(3) %}
+    <label>{{ step_names[i] }} : jours après l'échéance<input name="step_{{ i + 1 }}" inputmode="numeric" value="{{ settings.steps[i] }}"></label>
+    {% endfor %}
+  </div>
+  <p class="purchase-muted" style="font-size:12px;">Une relance manuelle compte comme une étape. Les relances s'arrêtent dès que la facture est réglée (règlement saisi, rapprochement bancaire ou avoir), ou si elle est refusée ou en litige côté facture électronique.</p>
+  <details style="margin-top:6px;"><summary>Voir les textes envoyés</summary>
+    {% for i in range(3) %}<p style="font-size:13px;"><strong>{{ step_names[i] }}</strong> — {{ preview[i] }}</p>{% endfor %}
+  </details>
+</section>
+<button type="submit" class="purchase-primary-btn primary" style="margin-top:14px;">Enregistrer</button>
+</form>
+
+<section class="purchase-panel" style="margin-top:14px;">
+  <h2>Factures échues</h2>
+  {% if overdue %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Facture</th><th>Client</th><th class="num">Reste à payer</th><th class="num">Retard</th><th>Relances</th><th></th></tr></thead>
+    <tbody>
+    {% for o in overdue %}
+      <tr><td><a class="purchase-detail-link" href="{{ url_for('invoicing_detail', invoice_id=o.inv.id) }}">{{ o.inv.invoice_number }}</a></td>
+        <td>{{ o.inv.client_name }}</td><td class="num">{{ o.balance|fr_number(2) }} €</td><td class="num">{{ o.late }} j</td>
+        <td>{{ o.sent }} envoyée(s){% if o.excluded %} · <strong>suspendues</strong>{% elif o.blocker %} · <span class="purchase-muted">{{ o.blocker }}</span>{% elif o.next and settings.auto_reminders %} · prochaine : {{ o.next }}{% endif %}</td>
+        <td class="num"><form method="post" action="{{ url_for('invoicing_toggle_auto_reminders', invoice_id=o.inv.id) }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="encaissement"><button type="submit" class="purchase-nav-btn">{{ 'Réactiver' if o.excluded else 'Suspendre' }}</button></form></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="purchase-muted">Aucune facture échue. 👍</p>{% endif %}
+</section>
+</div>
+{% endblock %}
