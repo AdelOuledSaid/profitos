@@ -254,6 +254,28 @@ Trois façons de faire entrer une facture :
 
 Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.
 
+### Contrats fournisseurs (Contract Guardian)
+
+Menu **Dépenses & marges → Contrats fournisseurs**. Enregistrez vos contrats récurrents
+(maintenance, logiciels, téléphonie, location, assurance, énergie…) : montant HT prévu par
+période, tolérance, indice de révision et période de référence, plafond de hausse, dates,
+tacite reconduction et préavis. ProfitOS contrôle ensuite chaque facture du fournisseur des
+12 derniers mois :
+
+- **Écart de prix** : facture HT au-delà du montant prévu, révisé par l'indice officiel du
+  contrat (valeurs de la veille INSEE) et au-delà de la tolérance. Le constat montre le calcul
+  et propose d'écrire au fournisseur (e-mail pré-rempli demandant un avoir) si son adresse est
+  connue. Si l'indice est indisponible ou suspendu, la comparaison est « à vérifier » : aucun
+  écart n'est affirmé sans donnée vérifiée.
+- **Préavis** : 60 jours avant la date limite de résiliation d'un contrat reconduit
+  tacitement (critique à 15 jours).
+- **Facture hors contrat** : facture datée après la fin d'un contrat terminé ou résilié.
+- **Hausse sans contrat** : fournisseur récurrent dont la dernière facture dépasse nettement
+  l'habitude, sans contrat enregistré pour trancher ; un lien permet d'enregistrer le contrat.
+- **Doublon possible** : même fournisseur, même numéro, ou même montant à moins de 10 jours.
+
+Ces constats apparaissent aussi dans **Mission Control**.
+
 ### Valider et payer
 
 1. **Valider** confirme la facture et passe l'écriture d'achat (charge, TVA déductible, fournisseur). **Rejeter** l'écarte avec un motif.

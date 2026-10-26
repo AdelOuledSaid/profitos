@@ -21,7 +21,10 @@ PAYMENT_MATCH_SCORE = 60     # score de rapprochement à partir duquel un vireme
 PAYABLES_HORIZON = 7
 BANK_PENDING_DAYS = 7
 
-KIND_LABELS = {'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
+KIND_LABELS = {'contrat_preavis': 'Contrats fournisseurs', 'contrat_ecart': 'Contrats fournisseurs',
+               'contrat_hors_periode': 'Contrats fournisseurs', 'hausse_sans_contrat': 'Hausses de prix',
+               'doublon': 'Doublons possibles',
+               'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
                'banque': 'Banque', 'fiscal': 'Échéances fiscales', 'pieces': 'Pièces justificatives',
                'veille': 'Veille de votre secteur', 'controle_indisponible': 'Contrôles'}
 
@@ -353,9 +356,21 @@ def detect_watch(c, eid, today):
         ac.close()
 
 
+def detect_contracts(c, eid, today):
+    from profitos import contract_guardian as CG
+    return CG.detect(c, eid, today)
+
+
+def _contract_kinds():
+    from profitos import contract_guardian as CG
+    return CG.KINDS
+
+
+# (types contrôlés, nom, fonction) : un détecteur peut produire plusieurs types de constats.
 DETECTORS = [('impaye', 'impayés clients', detect_receivables), ('fournisseur', 'paiements fournisseurs', detect_payables),
              ('banque', 'mouvements bancaires', detect_bank_pending), ('fiscal', 'échéances fiscales', detect_fiscal),
-             ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch)]
+             ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch),
+             (_contract_kinds, 'contrats fournisseurs', detect_contracts)]
 
 
 def compute(c, eid, today, cash=None, accounting=True):
@@ -367,7 +382,7 @@ def compute(c, eid, today, cash=None, accounting=True):
             continue
         try:
             findings += fn(c, eid, today)
-            evaluated.add(kind)
+            evaluated.update(kind() if callable(kind) else (kind,))
         except Exception as exc:
             try:
                 c.rollback()

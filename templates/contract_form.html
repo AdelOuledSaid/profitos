@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CONTRACT GUARDIAN</div>
+    <h1 class="purchase-title">{{ 'Modifier le contrat' if contract else 'Nouveau contrat fournisseur' }}</h1>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('contract_guardian') }}">← Contrats</a></div>
+</div>
+{% if error %}<div class="flash" role="alert">{{ error }}</div>{% endif %}
+<form method="post" class="purchase-panel stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="twocol">
+    <label>Fournisseur
+      <input name="supplier_name" required maxlength="120" list="suppliers" value="{{ values.get('supplier_name') or '' }}">
+      <datalist id="suppliers">{% for s in suppliers %}<option value="{{ s.name }}">{% endfor %}</datalist>
+    </label>
+    <label>Objet du contrat<input name="label" required maxlength="160" value="{{ values.get('label') or '' }}" placeholder="ex. Maintenance du parc informatique"></label>
+  </div>
+  <div class="twocol">
+    <label>Périodicité de facturation
+      <select name="periodicity">{% for code, p in periodicities.items() %}<option value="{{ code }}" {{ 'selected' if values.get('periodicity') == code }}>{{ p[0] }}</option>{% endfor %}</select>
+    </label>
+    <label>Montant HT prévu par période (€)<input name="amount_ht" inputmode="decimal" value="{{ values.get('amount_ht')|fr_number(2) if values.get('amount_ht') not in (none, '') else '' }}"></label>
+  </div>
+  <div class="twocol">
+    <label>Tolérance avant alerte (%)<input name="tolerance_pct" inputmode="decimal" value="{{ values.get('tolerance_pct') if values.get('tolerance_pct') not in (none, '') else 2 }}"></label>
+    <label>Plafond de hausse annuelle (% , facultatif)<input name="cap_pct" inputmode="decimal" value="{{ values.get('cap_pct') if values.get('cap_pct') not in (none, '') else '' }}"></label>
+  </div>
+  <div class="twocol">
+    <label>Indice de révision (facultatif)
+      <select name="index_code"><option value="">— prix fixe, sans indexation —</option>{% for code, label in indices %}<option value="{{ code }}" {{ 'selected' if values.get('index_code') == code }}>{{ label }}</option>{% endfor %}</select>
+    </label>
+    <label>Période de référence de l'indice<input name="index_base_period" value="{{ values.get('index_base_period') or '' }}" placeholder="ex. 2026-01 ou 2026-Q1"></label>
+  </div>
+  <div class="twocol">
+    <label>Début du contrat<input type="date" name="start_date" value="{{ values.get('start_date') or '' }}"></label>
+    <label>Fin de la période en cours<input type="date" name="end_date" value="{{ values.get('end_date') or '' }}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="tacit_renewal" value="1" {{ 'checked' if values.get('tacit_renewal') in (1, '1', true) }}> Reconduction tacite</label>
+  <div class="twocol">
+    <label>Durée de chaque reconduction (mois)<input name="renewal_months" inputmode="numeric" value="{{ values.get('renewal_months') or 12 }}"></label>
+    <label>Préavis de résiliation (jours)<input name="notice_days" inputmode="numeric" value="{{ values.get('notice_days') if values.get('notice_days') not in (none, '') else 0 }}"></label>
+  </div>
+  <div class="twocol">
+    <label>Statut
+      <select name="status"><option value="actif" {{ 'selected' if values.get('status') != 'resilie' }}>Actif</option><option value="resilie" {{ 'selected' if values.get('status') == 'resilie' }}>Résilié</option></select>
+    </label>
+    <label>Date de résiliation (si résilié)<input type="date" name="terminated_on" value="{{ values.get('terminated_on') or '' }}"></label>
+  </div>
+  <label>Notes<textarea name="notes" rows="2" maxlength="1000">{{ values.get('notes') or '' }}</textarea></label>
+  <p class="purchase-muted" style="font-size:12px;margin:0;">Reprenez les chiffres du contrat signé : prix, formule de révision, durée et préavis. ProfitOS compare ensuite chaque facture du fournisseur au montant prévu, révisé par l'indice officiel le cas échéant.</p>
+  <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+</form>
+{% if contract %}
+<form method="post" action="{{ url_for('contract_guardian_delete', contract_id=contract.id) }}" style="margin-top:10px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="purchase-nav-btn">Supprimer ce contrat</button>
+</form>
+{% endif %}
+</div>
+{% endblock %}

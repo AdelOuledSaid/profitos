@@ -9,7 +9,8 @@ from profitos.accounting import paris_today
 
 # Domaine d'accès des pages vers lesquelles Mission Control renvoie (celles dont le module
 # n'est pas rattaché à un domaine dans MODULE_AREAS).
-LINK_AREAS = {'invoicing_detail': 'invoicing', 'purchase_detail': 'invoicing', 'purchase_sepa_batch': 'invoicing',
+LINK_AREAS = {'contract_guardian_edit': 'invoicing', 'contract_guardian_new': 'invoicing', 'purchase_recurring': 'invoicing',
+              'invoicing_detail': 'invoicing', 'purchase_detail': 'invoicing', 'purchase_sepa_batch': 'invoicing',
               'accounting_document_requests': 'accounting', 'banking': 'banking'}
 SNOOZE_DAYS = 7
 
@@ -41,6 +42,10 @@ def _link(spec):
         return {'label': spec['label'], 'url': url_for(endpoint, **(spec.get('args') or {}))}
     except Exception:
         return None
+
+
+def _back():
+    return redirect(safe_next_url(request.form.get('next')) or url_for('mission_control'))
 
 
 def _cash():
@@ -122,15 +127,15 @@ def register(app):
             f = _find(c, key)
             if not f or f['track']['status'] != V.OPEN:
                 flash("Ce point n'est plus à traiter : la situation a changé depuis l'affichage de la page.")
-                return redirect(url_for('mission_control'))
+                return _back()
             area = (f.get('action') or {}).get('area') or 'pilotage'
             if not can_access(area):
                 flash("Votre rôle ne permet pas cette action.")
-                return redirect(url_for('mission_control'))
+                return _back()
             if not V.can_execute(f):
                 failed = [ch['label'] for ch in f['checks'] if ch['ok'] is not True]
                 flash("Action non lancée : vérifications non validées (" + ', '.join(failed) + ').')
-                return redirect(url_for('mission_control'))
+                return _back()
             ok, message = MC.execute(c, _eid(), f, current_org())
             if ok:
                 V.record_action(c, _eid(), key, f['action']['label'], message, current_user()['email'], paris_today(),
@@ -142,7 +147,7 @@ def register(app):
                 flash(message)
         finally:
             c.close()
-        return redirect(url_for('mission_control'))
+        return _back()
 
     @app.post('/mission-control/suivi')
     @login_required
@@ -172,7 +177,7 @@ def register(app):
                 reason = (request.form.get('reason') or '').strip()[:200]
                 if not reason:
                     flash('Indiquez pourquoi ce point est écarté.')
-                    return redirect(url_for('mission_control'))
+                    return _back()
                 V.dismiss(c, _eid(), key, reason, user, today)
                 log_activity('MISSION_CONTROL_DISMISS', f"{row['title']} : {reason}"[:300])
                 flash('Point écarté.')
@@ -183,4 +188,4 @@ def register(app):
                 abort(400)
         finally:
             c.close()
-        return redirect(url_for('mission_control'))
+        return _back()
