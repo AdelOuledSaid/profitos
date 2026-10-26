@@ -40,7 +40,7 @@
         <td>{{ k.index_code or '—' }}{% if k.index_code %} <span class="purchase-muted">(base {{ k.index_base_period }})</span>{% endif %}{% if k.cap_pct is not none %} <span class="purchase-muted">plafond {{ k.cap_pct|fr_number(1) }} %/an</span>{% endif %}</td>
         <td>{% if k.current_end %}{{ k.current_end|fr_date }}{% if k.tacit_renewal %} <span class="purchase-muted">(tacite)</span>{% endif %}{% else %}—{% endif %}</td>
         <td>{% if k.tacit_renewal and k.notice_deadline and k.status == 'actif' %}{{ k.notice_deadline|fr_date }}{% else %}—{% endif %}</td>
-        <td class="num"><a class="purchase-nav-btn" href="{{ url_for('contract_guardian_edit', contract_id=k.id) }}">Modifier</a></td>
+        <td class="num"><a class="link" href="{{ url_for('contract_guardian_edit', contract_id=k.id) }}">Modifier</a></td>
       </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}
