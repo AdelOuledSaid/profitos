@@ -9,7 +9,7 @@ from profitos.accounting import paris_today
 
 # Domaine d'accès des pages vers lesquelles Mission Control renvoie (celles dont le module
 # n'est pas rattaché à un domaine dans MODULE_AREAS).
-LINK_AREAS = {'contract_guardian_edit': 'invoicing', 'contract_guardian_new': 'invoicing', 'purchase_recurring': 'invoicing',
+LINK_AREAS = {'once_done': None, 'contract_guardian_edit': 'invoicing', 'contract_guardian_new': 'invoicing', 'purchase_recurring': 'invoicing',
               'invoicing_detail': 'invoicing', 'purchase_detail': 'invoicing', 'purchase_sepa_batch': 'invoicing',
               'accounting_document_requests': 'accounting', 'banking': 'banking'}
 SNOOZE_DAYS = 7

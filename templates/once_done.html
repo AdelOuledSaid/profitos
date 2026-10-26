@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ONCE &amp; DONE</div>
+    <h1 class="purchase-title">Dossier entreprise et démarches</h1>
+    <p class="purchase-subtitle">Chaque information est saisie une seule fois, vérifiée, puis reprise dans vos factures et vos démarches. Un document n'est préparé que si toutes les données qu'il utilise sont vérifiées.</p>
+  </div>
+</div>
+
+<div class="mc-kpis">
+  <div class="mc-kpi"><b>{{ counts['pret'] }}</b><span>Donnée(s) vérifiée(s)</span></div>
+  <div class="mc-kpi"><b>{{ counts['a_verifier'] }}</b><span>À compléter</span></div>
+  <div class="mc-kpi"><b>{{ counts['bloque'] }}</b><span>Invalide(s) ou contradictoire(s)</span></div>
+</div>
+
+<section class="purchase-panel mc-section">
+  <h2>Démarches prêtes à préparer</h2>
+  <div class="mc-list">
+  {% for d in docs %}
+    <article class="mc-card sev-{{ 'info' if d.level == 'pret' else ('important' if d.level == 'a_verifier' else 'critique') }}">
+      <div class="mc-head"><h3>{{ d.doc.title }}</h3><span class="mc-tag">{{ 'Prêt' if d.level == 'pret' else ('À compléter' if d.level == 'a_verifier' else 'Bloqué') }}</span></div>
+      <p class="purchase-muted" style="font-size:13px;margin:4px 0;">{{ d.doc.why }}</p>
+      {% if d.missing %}<p class="mc-note">Manque : {% for ch in d.missing %}{{ ch.label }}{% if ch.detail %} ({{ ch.detail }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+      <div class="mc-actions">
+        {% if d.allowed %}<a class="{{ 'purchase-primary-btn primary' if d.level == 'pret' else 'purchase-nav-btn' }}" href="{{ url_for('once_done_document', doc_key=d.key) }}">{{ 'Préparer' if d.level == 'pret' else 'Voir ce qui manque' }}</a>
+        {% else %}<span class="purchase-muted" style="font-size:12px;">Réservé aux rôles ayant accès à ce module.</span>{% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="purchase-panel mc-section">
+  <h2>Votre dossier</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Donnée</th><th>Valeur</th><th>Contrôle</th><th>Source</th></tr></thead>
+    <tbody>{% for key, f in info.items() %}
+      <tr>
+        <td>{{ f.label }}</td>
+        <td>{{ f.value or '—' }}</td>
+        <td><span class="{{ 'mc-ok' if f.check.ok is sameas true else ('mc-ko' if f.check.ok is sameas false else 'mc-warn') }}">{{ '✓' if f.check.ok is sameas true else ('✗' if f.check.ok is sameas false else '?') }}</span> {{ f.check.detail }}</td>
+        <td class="purchase-muted">{{ f.source }}{% if f.edit == 'company' and can_edit %} · <a class="link" href="{{ url_for('company') }}">modifier</a>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+{% if can_edit %}
+<section class="purchase-panel mc-section">
+  <h2>À saisir une seule fois</h2>
+  <p class="purchase-muted" style="font-size:13px;">Ces informations sont rangées à leur place habituelle (profil fiscal, veille de secteur) et réutilisées partout : liasse fiscale, factures, démarches.</p>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="twocol">
+      <label>Représentant légal (prénom et nom)<input name="representant" maxlength="120" value="{{ info.representant.value }}"></label>
+      <label>Qualité<input name="qualite" maxlength="120" value="{{ info.qualite.value }}" placeholder="ex. Président, Gérante"></label>
+    </div>
+    <div class="twocol">
+      <label>E-mail de contact<input name="email" type="email" maxlength="120" value="{{ info.email.value }}"></label>
+      <label>Téléphone<input name="telephone" maxlength="20" value="{{ info.telephone.value }}"></label>
+    </div>
+    <div class="twocol">
+      <label>Code APE<input name="naf" maxlength="6" value="{{ info.naf.value }}" placeholder="ex. 4321A"></label>
+      <label>Date de création<input type="date" name="date_creation" value="{{ info.date_creation.value and info.date_creation.value[6:10] ~ '-' ~ info.date_creation.value[3:5] ~ '-' ~ info.date_creation.value[0:2] }}"></label>
+    </div>
+    <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+  </form>
+</section>
+{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Les documents préparés sont des modèles pré-remplis à relire avant envoi ; ils ne remplacent pas le conseil d'un avocat ou de votre expert-comptable.</p>
+</div>
+{% endblock %}

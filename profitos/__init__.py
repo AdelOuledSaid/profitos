@@ -186,6 +186,7 @@ def create_app(config_object=None):
     from .routes import market_watch as market_watch_routes
     from .routes import mission_control as mission_control_routes
     from .routes import contract_guardian as contract_guardian_routes
+    from .routes import once_done as once_done_routes
     account.register(app)
     from .routes import security as security_routes
     security_routes.register(app)
@@ -200,6 +201,7 @@ def create_app(config_object=None):
     market_watch_routes.register(app)
     mission_control_routes.register(app)
     contract_guardian_routes.register(app)
+    once_done_routes.register(app)
     cash_intelligence.register(app)
     decision_simulator.register(app)
     invoicing.register(app)

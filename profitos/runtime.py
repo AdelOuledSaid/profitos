@@ -3737,6 +3737,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-26','title':"Dossier & démarches : informations de l'entreprise vérifiées et saisies une fois, fiche fournisseur, mise en demeure, résiliation et demande de délai prêtes en un clic"},
     {'date':'2026-10-26','title':"Contrats fournisseurs : chaque facture comparée au prix du contrat (révisé par l'indice officiel), préavis de résiliation, hausses et doublons signalés"},
     {'date':'2026-10-26','title':"Mission Control : un seul écran pour détecter, vérifier, agir et contrôler le résultat ; relances bloquées si un virement reçu n'est pas encore rapproché"},
     {'date':'2026-10-26','title':"Veille : séries INSEE vérifiées sur leurs caractéristiques officielles (correction, activité, base) ; « Correction non vérifiée » quand l'INSEE ne la confirme pas"},

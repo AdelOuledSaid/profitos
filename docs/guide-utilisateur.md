@@ -654,6 +654,30 @@ Le nombre d'imports par mois dépend de la formule (20 en Starter, 200 en Pro, i
 
 Les comptes absents du plan comptable sont créés, et l'import est refusé s'il est déséquilibré ou s'il touche une période clôturée. Tout ou rien : la moindre erreur annule l'import, et un même fichier ne peut être importé qu'une fois.
 
+### Dossier entreprise et démarches (Once & Done)
+
+Menu **Entreprise & compte → Dossier & démarches**. Le dossier rassemble toutes les
+informations de l'entreprise avec leur source et leur contrôle : SIRET, SIREN et n° de TVA
+(clés vérifiées, TVA cohérente avec le SIREN), adresse, immatriculation, code APE, IBAN et BIC,
+représentant légal, contact, date de création. Les contradictions entre écrans sont
+bloquantes (par exemple franchise en base sur les factures mais déclarations de TVA au profil
+fiscal) et apparaissent aussi dans Mission Control.
+
+Ce qui manque se saisit **une seule fois** : le représentant, sa qualité, l'e-mail et la date
+de création vont au profil fiscal (repris par la liasse), le code APE à la veille de secteur,
+le téléphone au dossier. Les démarches se préparent ensuite en un clic, uniquement si toutes
+les données qu'elles utilisent sont vérifiées :
+
+- **Fiche de référencement fournisseur**, demandée par vos clients ;
+- **Mise en demeure de payer** pour une facture échue (pénalités et indemnité forfaitaire de 40 €) ;
+- **Résiliation d'un contrat fournisseur** enregistré dans Contrats fournisseurs (l'adresse du
+  fournisseur, saisie une fois, est rangée sur sa fiche) ;
+- **Demande de délai de paiement** au service des impôts des entreprises.
+
+Chaque document s'ouvre en page imprimable (**Imprimer / PDF**). Ce sont des modèles
+pré-remplis à relire avant envoi : ils ne remplacent pas le conseil d'un avocat ou de votre
+expert-comptable.
+
 ## 14. Équipe, multi-sociétés et sécurité
 
 Chaque collaborateur a son propre compte et un rôle qui limite ce qu'il voit et fait ; votre compte est protégé par mot de passe, double authentification et contrôle des appareils.
