@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">EXPERT NETWORK</div>
+    <h1 class="purchase-title">Demander une mission</h1>
+    <p class="purchase-subtitle">L'expert reçoit un lien personnel vers votre demande et les seuls éléments que vous cochez ci-dessous. Il n'a aucun accès à votre compte ProfitOS.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('experts_directory') }}">← Experts</a></div>
+</div>
+{% if finding %}
+<section class="purchase-panel">
+  <h2>Constat à l'origine de la demande</h2>
+  <p style="margin:0 0 4px;"><strong>{{ finding.title }}</strong>{% if finding.amount is not none %} — {{ finding.amount_label }} : {{ finding.amount|fr_number(2) }} €{% endif %}</p>
+  <ul class="mc-checks">{% for ch in finding.checks %}<li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span><span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+<form method="post" class="purchase-panel stack" style="margin-top:12px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="source" value="{{ source }}">
+  {% if domain %}<input type="hidden" name="domaine" value="{{ domain }}">{% endif %}
+  {% if choices %}
+  <label>Expert{% if domain %} ({{ domains[domain].label }}){% endif %}
+    <select name="expert_id">{% for e in choices %}<option value="{{ e.id }}" {{ 'selected' if preselect == e.id }}>{{ e.name }}{% if e.firm %} — {{ e.firm }}{% endif %} · {{ domains[e.domain].label }}{% if e.city %} · {{ e.city }}{% endif %}</option>{% endfor %}</select>
+  </label>
+  <label>Titre de la mission<input name="title" maxlength="160" required value="{{ finding.title if finding else '' }}"></label>
+  <label>Votre besoin<textarea name="request" rows="5" maxlength="4000" required placeholder="Ce que vous attendez de l'expert, vos contraintes de délai, les questions précises."></textarea></label>
+  <fieldset class="mw-checks">
+    <legend>Éléments transmis à l'expert (dossier figé au moment de l'envoi)</legend>
+    {% for code, label in share_items.items() %}{% if code != 'constat' or finding %}
+    <label class="check"><input type="checkbox" name="share" value="{{ code }}" checked> {{ label }}</label>
+    {% endif %}{% endfor %}
+  </fieldset>
+  <label class="check"><input type="checkbox" name="consent" value="1" required> J'autorise ProfitOS à transmettre à l'expert choisi les éléments cochés ci-dessus, pour cette mission uniquement. Je peux annuler la mission à tout moment, ce qui désactive son accès.</label>
+  <button type="submit" class="purchase-primary-btn primary">Envoyer la demande</button>
+  {% else %}
+  <p class="purchase-muted">Aucun expert partenaire disponible{% if domain %} en {{ domains[domain].label|lower }}{% endif %} pour l'instant. <a class="link" href="{{ url_for('experts_directory') }}">Voir l'annuaire</a></p>
+  {% endif %}
+</form>
+</div>
+{% endblock %}

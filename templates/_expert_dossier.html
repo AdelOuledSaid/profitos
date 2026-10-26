@@ -1,0 +1,24 @@
+{# Dossier transmis à l'expert (figé à l'envoi) et fil de la mission. #}
+{% macro dossier(m, share_items) %}
+<section class="purchase-panel mc-section">
+  <h2>Dossier transmis</h2>
+  <p class="purchase-muted" style="font-size:12px;margin:0 0 6px;">Préparé le {{ m.dossier.prepared_at|fr_date }} ; éléments autorisés par {{ m.consent_by }} le {{ m.consent_at|fr_date }} : {% if m.shared_items %}{% for i in m.shared_items %}{{ share_items[i] }}{% if not loop.last %} ; {% endif %}{% endfor %}{% else %}aucun élément du compte, seulement la demande{% endif %}.</p>
+  <h3 style="font-size:14px;margin:8px 0 4px;">Demande</h3>
+  <p style="white-space:pre-line;margin:0;">{{ m.request }}</p>
+  {% if m.dossier.identite %}
+  <h3 style="font-size:14px;margin:12px 0 4px;">Entreprise</h3>
+  <ul class="mw-news">{% for x in m.dossier.identite %}<li>{{ x.label }} : {{ x.value }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if m.dossier.constat %}{% set k = m.dossier.constat %}
+  <h3 style="font-size:14px;margin:12px 0 4px;">Constat vérifié par ProfitOS</h3>
+  <p style="margin:0;"><strong>{{ k.title }}</strong>{% if k.amount is not none %} — {{ k.amount_label }} : {{ k.amount|fr_number(2) }} €{% endif %}</p>
+  {% if k.detail %}<p class="purchase-muted" style="margin:2px 0;font-size:13px;">{{ k.detail }}</p>{% endif %}
+  <ul class="mc-checks">{% for ch in k.checks %}<li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span><span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %}{% if ch.source %} <span class="purchase-muted">({{ ch.source }})</span>{% endif %}</span></li>{% endfor %}</ul>
+  {% if k.evidence %}<p class="mc-evidence">{% for e in k.evidence %}{{ e.label }} : <strong>{{ e.value }}</strong> <span class="purchase-muted">— {{ e.source }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% endif %}
+</section>
+<section class="purchase-panel mc-section">
+  <h2>Suivi</h2>
+  <ol class="mw-news">{% for ev in m.events %}<li><strong>{{ {'client': 'Entreprise', 'expert': 'Expert', 'systeme': 'ProfitOS'}.get(ev.actor, ev.actor) }}</strong> <span class="purchase-muted">({{ ev.at|fr_date }})</span> — {{ {'devis': 'Devis', 'livrable': 'Livrable', 'message': 'Message', 'statut': 'Statut', 'partage': 'Partage'}.get(ev.kind, ev.kind) }} : <span style="white-space:pre-line;">{{ ev.text }}</span>{% if ev.url %} <a class="link" href="{{ ev.url }}" target="_blank" rel="noopener noreferrer">lien ↗</a>{% endif %}</li>{% endfor %}</ol>
+</section>
+{% endmacro %}

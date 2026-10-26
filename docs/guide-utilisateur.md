@@ -494,6 +494,26 @@ chacun avec sa source ; aucune hausse de chiffre d'affaires n'est promise.
 
 Comme dans Mission Control, chaque constat peut être suivi, reporté ou écarté.
 
+### Experts partenaires (Expert Network)
+
+Menu **Actions & croissance → Experts partenaires**. Quand un point demande une intervention
+humaine, faites appel à un professionnel sélectionné par ProfitOS : comptabilité, juridique,
+trésorerie et financement, ressources humaines, marketing, informatique. Pour l'expertise
+comptable et le juridique, seuls des professionnels inscrits (Ordre, barreau) sont proposés,
+après vérification de leur inscription.
+
+- Depuis un constat de Mission Control, **Faire appel à un expert** prépare la demande : le
+  constat et ses preuves sont repris, l'expert du bon domaine est proposé.
+- Vous choisissez ce qui est transmis (identité de l'entreprise, constat) et donnez votre
+  **autorisation explicite** : rien n'est envoyé sans elle. L'expert reçoit un lien personnel
+  vers ce dossier figé, sans accès à votre compte ni à vos coordonnées bancaires.
+- L'expert propose un **devis** ; vous l'acceptez ou le refusez. Messages et livrable sont
+  centralisés sur la page de la mission ; vous validez le livrable et pouvez évaluer l'expert.
+- À l'acceptation, le constat d'origine passe « en contrôle » dans Mission Control : la mission
+  est réussie quand le problème disparaît de vos données, ce que la page de la mission indique.
+- Annuler la mission désactive immédiatement l'accès de l'expert. Les honoraires sont convenus
+  et réglés directement avec lui ; ProfitOS ne perçoit aucune commission.
+
 ## 11. Aide à la décision
 
 Trois pages s'appuient sur la prévision de trésorerie pour vous aider à décider. Elles sont visibles dans le menu complet (formule Business et plus).

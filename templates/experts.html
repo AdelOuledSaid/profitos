@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">EXPERT NETWORK</div>
+    <h1 class="purchase-title">Experts partenaires</h1>
+    <p class="purchase-subtitle">Quand un point demande une intervention humaine, faites appel à un professionnel sélectionné. ProfitOS lui transmet un dossier factuel — uniquement ce que vous autorisez —, suit le devis, les échanges et le livrable, puis contrôle le résultat dans vos données.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-primary-btn primary" href="{{ url_for('expert_request') }}">Demander une mission</a></div>
+</div>
+
+{% if missions %}
+<section class="purchase-panel mc-section">
+  <h2>Vos missions ({{ missions|length }})</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Mission</th><th>Expert</th><th>Domaine</th><th>Statut</th><th class="num">Devis HT</th><th></th></tr></thead>
+    <tbody>{% for m in missions %}<tr>
+      <td>{{ m.title }}</td><td>{{ m.expert_name }}</td><td>{{ m.domain_label }}</td><td>{{ m.status_label }}</td>
+      <td class="num">{% if m.quote_amount is not none %}{{ m.quote_amount|fr_number(2) }} €{% else %}—{% endif %}</td>
+      <td class="num"><a class="link" href="{{ url_for('expert_mission', mission_id=m.id) }}">Ouvrir</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% for code, d, rows in by_domain %}
+<section class="mc-section">
+  <h2>{{ d.label }} <span class="purchase-muted" style="font-size:13px;font-weight:400;">— {{ d.examples }}</span></h2>
+  {% if rows %}
+  <div class="mc-list">{% for e in rows %}
+    <article class="mc-card sev-info">
+      <div class="mc-head"><h3>{{ e.name }}{% if e.firm %} — {{ e.firm }}{% endif %}</h3>{% if e.city %}<span class="purchase-muted">{{ e.city }}</span>{% endif %}</div>
+      {% if e.specialties %}<p style="margin:2px 0;font-size:13px;"><strong>{{ e.specialties }}</strong></p>{% endif %}
+      {% if e.description %}<p class="purchase-muted" style="margin:2px 0;font-size:13px;">{{ e.description }}</p>{% endif %}
+      <ul class="mc-checks">
+        {% if d.regulated %}<li><span class="mc-ok">✓</span><span>{{ d.registry }} : n° {{ e.registration_number }} — inscription vérifiée par ProfitOS le {{ e.registration_verified_at|fr_date }}</span></li>{% endif %}
+        {% if e.insurance %}<li><span class="mc-ok">✓</span><span>Assurance : {{ e.insurance }}</span></li>{% endif %}
+        {% if e.ratings %}<li><span class="mc-ok">✓</span><span>{{ e.rating_avg|fr_number(1) }} / 5 sur {{ e.ratings }} mission(s) évaluée(s)</span></li>{% endif %}
+      </ul>
+      <div class="mc-actions"><a class="purchase-nav-btn" href="{{ url_for('expert_request', domaine=code, expert=e.id) }}">Demander une mission</a></div>
+    </article>{% endfor %}</div>
+  {% else %}<p class="purchase-muted" style="font-size:13px;">Aucun expert partenaire pour l'instant dans ce domaine.</p>{% endif %}
+</section>
+{% endfor %}
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les experts sont sélectionnés par ProfitOS ; pour l'expertise comptable et le conseil juridique, seuls des professionnels inscrits (Ordre des experts-comptables, barreau) sont proposés, après vérification de leur inscription. Les honoraires sont convenus et réglés directement avec l'expert : ProfitOS ne perçoit aucune commission sur les missions.</p>
+</div>
+{% endblock %}

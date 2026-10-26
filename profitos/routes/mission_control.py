@@ -75,7 +75,12 @@ def _findings(c):
 def _decorate(f):
     action = f.get('action') or {}
     f = dict(f)
-    f['links'] = [x for x in (_link(a) for a in f.get('alternatives') or []) if x]
+    alternatives = list(f.get('alternatives') or [])
+    from profitos.expert_network import KIND_DOMAINS
+    if f.get('kind') in KIND_DOMAINS and f.get('track', {}).get('status') in (None, V.OPEN):
+        alternatives.append({'label': 'Faire appel à un expert', 'endpoint': 'expert_request',
+                             'args': {'source': f['key'], 'domaine': KIND_DOMAINS[f['kind']]}})
+    f['links'] = [x for x in (_link(a) for a in alternatives) if x]
     f['main_link'] = _link(action) if action.get('kind') in ('link', 'prepare') else None
     f['can_run'] = V.can_execute(f) and can_access(action.get('area') or 'pilotage') and current_role() != 'LECTURE'
     f['automatable'] = V.automatable(f)
