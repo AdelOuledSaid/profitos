@@ -116,6 +116,33 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 
 Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).
 
+### Mission Control
+
+Menu **Trésorerie → Mission Control**. Un seul écran pour ce qui demande votre attention :
+impayés clients, factures fournisseurs à régler, tension de trésorerie, mouvements bancaires
+non traités, échéances fiscales, pièces demandées par l'expert-comptable, indicateurs de la
+veille suspendus. Chaque point suit le même chemin : **détecté → vérifié → action préparée →
+résultat contrôlé**.
+
+- **Vérifications** : chaque point affiche ses contrôles, avec leur source. ✓ vérifié,
+  ? à vérifier (information manquante ou incertaine), ✗ impossible pour l'instant (prérequis
+  manquant ou informations contradictoires). Les points sont classés en « Prêt à traiter »,
+  « À vérifier avant d'agir » et « Action impossible pour l'instant ».
+- **Impayés** : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
+  relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
+  la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
+  le délai depuis la dernière relance. Si tout est vérifié, la relance part en un clic ; si un
+  virement correspond, ProfitOS propose de le rapprocher d'abord. Les relances automatiques
+  suivent la même règle : elles sont suspendues tant qu'un virement probable n'est pas rapproché.
+- **Action en un clic** : au moment du clic, tout est revérifié sur les données du moment ;
+  si la situation a changé, l'action n'est pas lancée.
+- **Contrôle du résultat** : après une action (ou « J'ai traité » pour les points qui se règlent
+  sur une autre page), ProfitOS vérifie à la date indiquée que le problème a disparu : facture
+  payée, virement fait, déclaration déposée… Sinon le point est rouvert avec la raison. Les
+  points résolus restent visibles 30 jours avec l'explication.
+- **Reporter** (7 jours) ou **écarter** (motif obligatoire) un point ; il peut être rétabli.
+- Les vérifications sont refaites à chaque visite et chaque matin, même sans visite.
+
 ## 5. Facturation clients
 
 Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu **Ventes & clients → Facturation**.
