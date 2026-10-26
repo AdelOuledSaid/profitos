@@ -878,11 +878,16 @@ def market_watch_refresh(org, ctx):
         finally:
             c.close()
     codes, custom = MW.all_followed_codes(settings)
-    for code in MW.COMMON + [x for s in MW.SECTORS.values() for x in s['series']]:
+    for code in MW.CATALOGUE:
         if code not in codes:
             codes.append(code)
     ac = auth_cx()
     try:
+        # Dimensions officielles (correction, activité, base) : au plus une fois par mois.
+        try:
+            dims = MW.refresh_dimensions(ac, codes, custom=custom)
+        except Exception as exc:
+            dims = {'*': f'{type(exc).__name__}'}
         report = MW.refresh(ac, codes, custom=custom)
         news = MW.refresh_news(ac, MW.configured_feeds())
     finally:
@@ -890,7 +895,9 @@ def market_watch_refresh(org, ctx):
     failed = {k: v for k, v in report.items() if v != 'ok'}
     if failed:
         _ops('MARKET_WATCH_PARTIAL', 'WARNING', '; '.join(f'{k}: {v}' for k, v in failed.items())[:400])
-    return f"{len(report) - len(failed)}/{len(report)} indicateur(s) à jour, actualités : {news or 'aucun flux'}"[:400]
+    dims_note = f", dimensions INSEE : {sum(1 for v in dims.values() if v == 'ok')}/{len(dims)}" if dims else ''
+    return (f"{len(report) - len(failed)}/{len(report)} indicateur(s) à jour{dims_note}, "
+            f"actualités : {news or 'aucun flux'}")[:400]
 
 
 @job('backup', 'daily', hour=2, scope='global', needs_disk=True,

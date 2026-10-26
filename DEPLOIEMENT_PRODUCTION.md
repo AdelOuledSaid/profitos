@@ -159,13 +159,20 @@ joindre en HTTPS. `MARKET_NEWS_FEEDS` (facultatif) : liste JSON des flux d'actua
 `[{"url": "https://…/rss.xml", "source": "Nom", "sectors": ["batiment"]}]` (`"all"` pour tous
 les secteurs). N'y mettre que des sources dont la licence autorise cette reprise.
 
-Après le premier passage de `market_watch_refresh`, vérifier les dix indices de chiffre
-d'affaires (codes `CA_…`, base 100 en 2021) : la colonne `adjustment` de `market_series`
-(base d'authentification) indique `brut` ou `CVS-CJO` d'après le titre officiel ; une série au
-statut `mismatch` (titre inattendu, poste NAF absent ou « série arrêtée ») n'affiche aucune
-valeur et son identifiant est à contrôler sur insee.fr. Pour figer la correction attendue
-d'une série, renseigner `'adjustment': 'CVS-CJO'` (ou `'brut'`) dans son entrée du catalogue :
-une version différente sera alors refusée.
+Contrôle des séries INSEE (à faire une fois après le déploiement, puis en cas de carte
+suspendue) : dans le shell Render, `python scripts/check_insee_series.py` vérifie une à une
+les dix séries de chiffre d'affaires (`--all` pour tout le catalogue, `--save` pour
+enregistrer le résultat). Pour chaque série, le script affiche le flux et la clé trouvés dans
+le fichier officiel `correspondance_idbank_dimension` de l'INSEE, les dimensions officielles
+(CORRECTION, NAF, base), la correction retenue (CVS-CJO, BRUT ou INCONNU) et sa source, et
+les anomalies. La tâche `market_watch_refresh` relit ces dimensions au plus une fois par mois
+(tables `market_series_dims` et colonnes `adjustment`, `adjustment_source`, `naf_check` de
+`market_series`, base d'authentification). Le fichier est cherché à
+`https://www.insee.fr/fr/statistiques/fichier/2862759/AAAAMM_correspondance_idbank_dimension.zip`
+(mois courant puis précédents) ; `MARKET_INSEE_IDBANK_FILE` permet d'imposer une autre
+adresse si l'INSEE la change. Pour figer la correction attendue d'une série, renseigner
+`'adjustment': 'CVS-CJO'` (ou `'BRUT'`) dans son entrée du catalogue : une version différente
+suspendra alors l'indicateur.
 
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,

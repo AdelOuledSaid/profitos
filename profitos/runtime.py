@@ -3736,6 +3736,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-26','title':"Veille : séries INSEE vérifiées sur leurs caractéristiques officielles (correction, activité, base) ; « Correction non vérifiée » quand l'INSEE ne la confirme pas"},
     {'date':'2026-10-21','title':"Veille : l'activité de votre secteur (indices de chiffre d'affaires de l'INSEE, base 100 en 2021), choisie d'après votre code APE"},
     {'date':'2026-10-21','title':"Comparaison anonyme des délais de paiement avec les entreprises de votre secteur ; aides et financements dans la veille"},
     {'date':'2026-10-21','title':"Pièces demandées par l'expert-comptable, portefeuille cabinet enrichi, liste de démarrage revue"},

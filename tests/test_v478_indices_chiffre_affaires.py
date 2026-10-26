@@ -65,7 +65,7 @@ def test_indicateurs_suivis():
 
 
 def test_correction_lue_dans_le_titre():
-    assert MW.detect_adjustment(RAPIDE_BRUT) == 'brut'
+    assert MW.detect_adjustment(RAPIDE_BRUT) == 'BRUT'
     assert MW.detect_adjustment(RAPIDE_CVS) == 'CVS-CJO'
     assert MW.detect_adjustment('Indice ... - Série CVS') == 'CVS'
     assert MW.detect_adjustment('Indice ... - Série corrigée CJO') == 'CJO'
@@ -75,8 +75,9 @@ def test_correction_lue_dans_le_titre():
 def test_garde_fous_de_provenance():
     rapide = MW.definition('CA_RESTAURATION_RAPIDE')
     d = MW.fetch(rapide, lambda u, p: (200, sdmx(RAPIDE_CVS)))           # apostrophe typographique acceptée
-    assert d['adjustment'] == 'CVS-CJO' and d['obs'][-1] == ('2026-08', 112.4)
-    assert MW.fetch(rapide, lambda u, p: (200, sdmx(RAPIDE_BRUT.replace('56.10C', '5610C'))))['adjustment'] == 'brut'
+    assert d['adjustment'] == 'CVS-CJO' and d['adjustment_source'] == 'titre' and d['naf_check'] == 'titre'
+    assert d['obs'][-1] == ('2026-08', 112.4)
+    assert MW.fetch(rapide, lambda u, p: (200, sdmx(RAPIDE_BRUT.replace('56.10C', '5610C'))))['adjustment'] == 'BRUT'
     # Mauvais poste NAF (restauration au lieu de restauration rapide) : rejeté.
     with pytest.raises(MW.MarketWatchError, match='à vérifier'):
         MW.fetch(rapide, lambda u, p: (200, sdmx(RAPIDE_CVS.replace('sous-classe poste 56.10C', 'division poste 56'))))
@@ -89,19 +90,22 @@ def test_garde_fous_de_provenance():
         MW.fetch(old, lambda u, p: (200, sdmx("Indice de chiffre d'affaires - Commerce de gros (NAF rév. 2, niv. "
                                                 "division poste 46) - Série arrêtée", '010542378')))
     # Correction attendue imposée par le catalogue : une autre version est refusée.
-    with pytest.raises(MW.MarketWatchError, match='brut au lieu de CVS-CJO'):
+    with pytest.raises(MW.MarketWatchError, match='BRUT au lieu de CVS-CJO'):
         MW.fetch(dict(rapide, adjustment='CVS-CJO'), lambda u, p: (200, sdmx(RAPIDE_BRUT)))
     # Section N : la lettre seule suffit, pas une autre section.
     n = MW.definition('CA_SERVICES_ADMIN')
-    assert MW.title_matches(n, "Indice de chiffre d'affaires - Activités de services administratifs et de soutien "
-                               "(NAF rév. 2, niv. section poste N) - Série CVS-CJO")
-    assert not MW.title_matches(n, "Indice de chiffre d'affaires - Activités spécialisées (NAF rév. 2, section M)")
+    ok = MW.check_metadata(n, {'idbank': '010774925', 'title': "Indice de chiffre d'affaires - Activités de services "
+                               "administratifs et de soutien (NAF rév. 2, niv. section poste N) - Série CVS-CJO"})
+    assert ok['anomalies'] == [] and ok['naf_check'] == 'titre'
+    bad = MW.check_metadata(n, {'idbank': '010774925', 'title': "Indice de chiffre d'affaires - Activités spécialisées "
+                                "(NAF rév. 2, niv. section poste M)"})
+    assert bad['anomalies'] == ["activité M dans l'intitulé au lieu de N"]
 
 
 def test_brut_et_cvs_ne_se_melangent_pas(tmp_path):
     conn = db(tmp_path)
     MW.refresh(conn, ['CA_RESTAURATION_RAPIDE'], http=lambda u, p: (200, sdmx(RAPIDE_BRUT)))
-    assert MW.series_meta(conn, 'CA_RESTAURATION_RAPIDE')['adjustment'] == 'brut'
+    assert MW.series_meta(conn, 'CA_RESTAURATION_RAPIDE')['adjustment'] == 'BRUT'
     assert len(MW.observations(conn, 'CA_RESTAURATION_RAPIDE')) == 3
     # La source passe en CVS-CJO : l'historique brut est écarté, rien n'est mélangé.
     MW.refresh(conn, ['CA_RESTAURATION_RAPIDE'],
@@ -152,7 +156,7 @@ def test_veille_restaurant_rapide(app, monkeypatch):
     post(cl, '/veille', {'action': 'settings', 'sector': 'restauration', 'naf': '5610C', 'alert_12m': '3', 'alert_1p': '2'})
     html = cl.get('/veille').get_data(as_text=True)
     assert 'Chiffre d&#39;affaires — restauration rapide' in html
-    assert "Indice d'activité · base 100 en 2021 · série brute" in html
+    assert "Indice d'activité · base 100 en 2021 · <strong>Brute</strong>" in html
     assert 'comparez sur un an' in html and '+4,07' in html
     assert 'Activité de votre secteur' in html and 'À surveiller' not in html
     page = cl.get('/veille/indicateur/CA_RESTAURATION_RAPIDE').get_data(as_text=True)
@@ -169,7 +173,7 @@ def test_veille_restaurant_rapide(app, monkeypatch):
     # Sans code APE : l'indice de la restauration (CVS-CJO), avec la variation mensuelle.
     post(cl, '/veille', {'action': 'settings', 'sector': 'restauration', 'naf': '', 'alert_12m': '3', 'alert_1p': '2'})
     html = cl.get('/veille').get_data(as_text=True)
-    assert 'Chiffre d&#39;affaires — restauration</a>' in html and 'série CVS-CJO' in html
+    assert 'Chiffre d&#39;affaires — restauration</a>' in html and '<strong>CVS-CJO</strong>' in html
     ac = rt.auth_cx()
     assert MW.series_meta(ac, 'CA_RESTAURATION')['adjustment'] == 'CVS-CJO'
     ac.close()

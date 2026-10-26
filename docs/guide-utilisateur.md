@@ -375,10 +375,18 @@ européenne.
   entière) : commerce de gros, habillement, hôtels, hébergement touristique, restauration,
   restauration rapide, services administratifs et de soutien, conseil en gestion, traduction et
   interprétation, imprimerie. Comparez-y l'évolution de vos propres ventes. Chaque carte indique
-  si la série est **brute** ou **corrigée des variations saisonnières et des jours ouvrables
-  (CVS-CJO)** : une série brute n'est comparée que sur un an (deux mois consécutifs ne se
+  la correction de la série : **CVS-CJO** (corrigée des variations saisonnières et des jours
+  ouvrables), **Brute**, ou **Correction non vérifiée** quand l'INSEE ne l'a pas confirmée. Une
+  série brute ou non vérifiée n'est comparée que sur un an (deux mois consécutifs ne se
   comparent pas). Ces indices mesurent l'activité, pas les prix : ils ne sont proposés ni pour
   une révision de prix ni dans le suivi des marges.
+- **Fiabilité des séries INSEE** : l'identifiant à 9 chiffres est la référence. Chaque mois,
+  ProfitOS relit les caractéristiques officielles de chaque série (correction, activité, base)
+  dans le fichier de correspondance publié par l'INSEE ; à défaut, il s'appuie sur l'intitulé
+  officiel. La fiche d'un indicateur montre ces vérifications. Si les informations se
+  contredisent (par exemple « brute » d'un côté et « CVS-CJO » de l'autre, une autre activité,
+  une autre base ou une série arrêtée), l'indicateur est suspendu et aucune valeur n'est
+  affichée tant que l'anomalie n'est pas levée.
 - **Chaque carte** donne la dernière valeur publiée, sa période, la variation sur la période et sur
   un an, la courbe des deux dernières années et un lien vers la source officielle.
 - **Alertes** : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an

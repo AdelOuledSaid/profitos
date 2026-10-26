@@ -151,7 +151,8 @@ def register(app):
                                sectors=MW.SECTORS, catalogue=MW.CATALOGUE, common=MW.COMMON,
                                followed=MW.series_for(view_settings), news=news,
                                news_configured=bool(MW.configured_feeds()), max_custom=MW.MAX_CUSTOM,
-                               adjustment_labels=MW.ADJUSTMENT_LABELS)
+                               adjustment_labels=MW.ADJUSTMENT_LABELS, adjustment_short=MW.ADJUSTMENT_SHORT,
+                               naf_labels=MW.NAF_CHECK_LABELS)
 
     @app.route('/veille/indicateur/<code>')
     @login_required
@@ -168,6 +169,7 @@ def register(app):
         try:
             obs = MW.observations(ac, code)
             meta = MW.series_meta(ac, code) or {}
+            dims = MW.stored_dimensions(ac, defn['idbank']) if defn['source'] == 'insee' else None
         finally:
             ac.close()
         raw = MW.is_raw_activity(defn, meta)
@@ -180,6 +182,8 @@ def register(app):
             rows.append({'period': period, 'label': MW.period_label(period), 'value': value, 'change': change})
         return render_template('market_watch_series.html', defn=defn, meta=meta, rows=list(reversed(rows)),
                                price_index=MW.is_price_index(defn), adjustment_labels=MW.ADJUSTMENT_LABELS,
+                               naf_labels=MW.NAF_CHECK_LABELS,
+                               dims=dims,
                                stat=MW.series_stats(defn, obs, meta), spark=MW.sparkline(obs, 640, 140, 6),
                                url=MW.source_url(defn), title=meta.get('title') or defn['label'])
 

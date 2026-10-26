@@ -38,8 +38,9 @@
       {% if c.defn.custom %}<span class="purchase-muted" style="font-size:11px;">ajouté par vous</span>{% endif %}
     </div>
     {% if c.defn.kind == 'activite' or c.meta.adjustment %}
-    <p class="purchase-muted mw-kind" style="font-size:11px;margin:0 0 4px;">{% if c.defn.kind == 'activite' %}Indice d'activité{% if c.defn.base %} · base 100 en {{ c.defn.base }}{% endif %}{% endif %}{% if c.meta.adjustment %}{% if c.defn.kind == 'activite' %} · {% endif %}série {{ 'brute' if c.meta.adjustment == 'brut' else c.meta.adjustment }}{% elif c.defn.kind == 'activite' and c.stat %} · correction non précisée par la source{% endif %}</p>
+    <p class="purchase-muted mw-kind" style="font-size:11px;margin:0 0 4px;">{% if c.defn.kind == 'activite' %}Indice d'activité{% if c.defn.base %} · base 100 en {{ c.defn.base }}{% endif %}{% endif %}{% if c.meta.adjustment %}{% if c.defn.kind == 'activite' %} · {% endif %}<strong>{{ adjustment_short.get(c.meta.adjustment, c.meta.adjustment) }}</strong>{% endif %}</p>
     {% endif %}
+    {% if c.stat and c.meta.naf_check %}<p class="purchase-muted" style="font-size:11px;margin:0 0 4px;">{{ naf_labels.get(c.meta.naf_check, '') }}</p>{% endif %}
     {% if c.stat %}
       <div class="mw-value">{{ c.stat.value|fr_number(2 if c.defn.unit == '%' else 1) }}{% if c.defn.unit == '%' %} %{% endif %}</div>
       <div class="purchase-muted" style="font-size:12px;">{{ c.stat.label }}</div>
@@ -47,11 +48,11 @@
         {% if c.stat.change_1p is not none %}<span class="{{ 'mw-up' if c.stat.change_1p > 0 else ('mw-down' if c.stat.change_1p < 0 else '') }}">{{ '+' if c.stat.change_1p > 0 }}{{ c.stat.change_1p|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur la période{% endif %}
         {% if c.stat.change_12m is not none %} · <span class="{{ 'mw-up' if c.stat.change_12m > 0 else ('mw-down' if c.stat.change_12m < 0 else '') }}">{{ '+' if c.stat.change_12m > 0 }}{{ c.stat.change_12m|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur un an{% endif %}
       </div>
-      {% if c.stat.raw_seasonal %}<p class="purchase-muted" style="font-size:11px;margin:2px 0 0;">Série non corrigée des variations saisonnières : comparez sur un an, pas d'un mois sur l'autre.</p>{% endif %}
+      {% if c.stat.raw_seasonal %}<p class="purchase-muted" style="font-size:11px;margin:2px 0 0;">{% if c.meta.adjustment == 'INCONNU' %}Correction non vérifiée : par prudence, seule la comparaison sur un an est affichée.{% else %}Série non corrigée des variations saisonnières : comparez sur un an, pas d'un mois sur l'autre.{% endif %}</p>{% endif %}
       {% if c.spark %}<svg class="mw-spark" viewBox="0 0 220 44" role="img" aria-label="Évolution de {{ c.defn.label }} sur deux ans"><polyline fill="none" stroke="currentColor" stroke-width="2" points="{{ c.spark }}"/></svg>{% endif %}
       {% if c.alerts %}<p class="mw-alert">⚠ {{ c.alerts|join(' ; ') }}</p>{% endif %}
     {% elif c.meta.status == 'mismatch' %}
-      <p class="purchase-muted">Série à vérifier : la source a renvoyé un titre inattendu, aucune valeur n'est affichée.</p>
+      <p class="purchase-muted">Indicateur suspendu : {{ c.meta.error }}. Aucune valeur n'est affichée tant que l'anomalie n'est pas levée.</p>
     {% elif c.meta.status == 'error' %}
       <p class="purchase-muted">Données indisponibles pour l'instant ({{ c.meta.error }}). Nouvel essai automatique chaque jour.</p>
     {% else %}
