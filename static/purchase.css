@@ -467,3 +467,32 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .mw-news li{margin:4px 0}
 .mw-checks{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 12px}
 .mw-checks legend{font-weight:600;margin-bottom:4px}
+
+/* Mission Control (v480) */
+.mc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.mc-kpi{border:1px solid var(--border,#294064);border-radius:10px;padding:10px 12px}
+.mc-kpi b{display:block;font-size:24px;line-height:1.1}
+.mc-kpi span{font-size:12px;opacity:.8}
+.mc-section{margin-top:16px}
+.mc-section > h2{font-size:16px;margin:0 0 4px}
+.mc-list{display:grid;gap:10px;margin-top:8px}
+.mc-card{border:1px solid var(--border,#294064);border-left-width:4px;border-radius:10px;padding:12px 14px}
+.mc-card.sev-critique{border-left-color:#e5484d}
+.mc-card.sev-important{border-left-color:#e8a33d}
+.mc-card.sev-info{border-left-color:#7aa7ff}
+.mc-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.mc-head h3{font-size:15px;margin:0}
+.mc-amount{font-weight:700;white-space:nowrap}
+.mc-tags{font-size:11px;opacity:.85;margin:2px 0 6px}
+.mc-tag{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:0 7px;margin-right:4px}
+.mc-checks{list-style:none;margin:6px 0;padding:0;font-size:13px}
+.mc-checks li{display:grid;grid-template-columns:20px 1fr;gap:4px;margin:3px 0}
+.mc-ok{color:#4cc38a;font-weight:700}
+.mc-warn{color:#e8a33d;font-weight:700}
+.mc-ko{color:#e5484d;font-weight:700}
+.mc-evidence{font-size:12px;opacity:.85;margin:4px 0}
+.mc-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.mc-actions form{display:inline-flex;gap:6px;align-items:center;margin:0}
+.mc-actions input[name=reason]{max-width:220px}
+.mc-note{font-size:12px;margin:4px 0 0;color:#e8a33d}
+@media (max-width:600px){.mc-actions input[name=reason]{max-width:100%}}

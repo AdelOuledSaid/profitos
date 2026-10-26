@@ -41,8 +41,8 @@ def _cards(ac, settings):
         if not defn:
             continue
         obs = MW.observations(ac, code)
-        st = MW.stats(obs, defn['unit'])
         meta = MW.series_meta(ac, code) or {}
+        st = MW.series_stats(defn, obs, meta)
         cards.append({'code': code, 'defn': defn, 'stat': st, 'meta': meta, 'alerts': MW.alerts(st, settings),
                       'spark': MW.sparkline(obs), 'url': MW.source_url(defn),
                       'title': meta.get('title') or defn['label']})
@@ -150,7 +150,9 @@ def register(app):
         return render_template('market_watch.html', cards=cards, settings=settings, sector=sector, guessed=guessed,
                                sectors=MW.SECTORS, catalogue=MW.CATALOGUE, common=MW.COMMON,
                                followed=MW.series_for(view_settings), news=news,
-                               news_configured=bool(MW.configured_feeds()), max_custom=MW.MAX_CUSTOM)
+                               news_configured=bool(MW.configured_feeds()), max_custom=MW.MAX_CUSTOM,
+                               adjustment_labels=MW.ADJUSTMENT_LABELS, adjustment_short=MW.ADJUSTMENT_SHORT,
+                               naf_labels=MW.NAF_CHECK_LABELS)
 
     @app.route('/veille/indicateur/<code>')
     @login_required
@@ -167,17 +169,22 @@ def register(app):
         try:
             obs = MW.observations(ac, code)
             meta = MW.series_meta(ac, code) or {}
+            dims = MW.stored_dimensions(ac, defn['idbank']) if defn['source'] == 'insee' else None
         finally:
             ac.close()
+        raw = MW.is_raw_activity(defn, meta)
         rows = []
         for i, (period, value) in enumerate(obs):
             prev = obs[i - 1][1] if i else None
             change = None
-            if prev:
+            if prev and not raw:
                 change = round(value - prev, 2) if defn['unit'] == '%' else round((value - prev) / prev * 100, 2)
             rows.append({'period': period, 'label': MW.period_label(period), 'value': value, 'change': change})
         return render_template('market_watch_series.html', defn=defn, meta=meta, rows=list(reversed(rows)),
-                               stat=MW.stats(obs, defn['unit']), spark=MW.sparkline(obs, 640, 140, 6),
+                               price_index=MW.is_price_index(defn), adjustment_labels=MW.ADJUSTMENT_LABELS,
+                               naf_labels=MW.NAF_CHECK_LABELS,
+                               dims=dims,
+                               stat=MW.series_stats(defn, obs, meta), spark=MW.sparkline(obs, 640, 140, 6),
                                url=MW.source_url(defn), title=meta.get('title') or defn['label'])
 
     @app.route('/veille/revision')
@@ -190,7 +197,7 @@ def register(app):
         texts = _company_texts(c, _eid())
         c.close()
         sector, _g = _effective_sector(settings, texts)
-        codes = [x for x in MW.series_for(dict(settings, sector=sector)) if (MW.definition(x, settings['custom']) or {}).get('unit') != '%']
+        codes = [x for x in MW.series_for(dict(settings, sector=sector)) if MW.is_price_index(MW.definition(x, settings['custom']))]
         a = request.args
         code = a.get('code') if a.get('code') in codes else (codes[0] if codes else None)
         ac = auth_cx()
@@ -243,7 +250,7 @@ def register_invoice_link(app):
         back = url_for('market_watch_revision', **{k: f.get(k) for k in ('code', 'amount', 'base', 'new', 'fixed', 'decimals',
                                                                             'base_value', 'new_value') if f.get(k)})
         try:
-            if not defn or defn.get('unit') == '%':
+            if not MW.is_price_index(defn):
                 raise ValueError('Indice inconnu.')
             ac = auth_cx()
             try:

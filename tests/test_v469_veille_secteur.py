@@ -70,6 +70,10 @@ def offline(monkeypatch):
                     'obs': [('2026-07', 110.0), ('2026-08', 111.5)]}
         return fake_data(defn['code'])
     monkeypatch.setattr(MW, 'fetch', fetch)
+
+    def no_file(wanted, download=None, today=None):
+        raise MW.MarketWatchError('fichier de correspondance INSEE introuvable (hors ligne)')
+    monkeypatch.setattr(MW, 'download_idbank_mapping', no_file)
     return calls
 
 
@@ -170,7 +174,7 @@ def test_secteur_suggere_et_indicateurs():
     assert MW.suggest_sector('') is None
     s = dict(MW.DEFAULT_SETTINGS, sector='batiment')
     assert MW.series_for(s) == ['BT01', 'TP01', 'ICC'] + MW.COMMON
-    assert MW.series_for(dict(s, sector='restauration')) == MW.COMMON
+    assert MW.series_for(dict(s, sector='restauration')) == ['CA_RESTAURATION'] + MW.COMMON
     custom = dict(s, series=['IPC', 'INCONNU'], custom=[{'idbank': '010538820'}])
     assert MW.series_for(custom) == ['IPC', 'INSEE-010538820']
     assert MW.parse_idbank('https://www.insee.fr/fr/statistiques/serie/001710986') == '001710986'

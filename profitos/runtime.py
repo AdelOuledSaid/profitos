@@ -929,7 +929,7 @@ MODULE_AREAS={
     'profitos.routes.gocardless_baas':'banking',
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
     'profitos.routes.decision_simulator':'pilotage','profitos.routes.money_hunter':'pilotage',
-    'profitos.routes.market_watch':'pilotage',
+    'profitos.routes.market_watch':'pilotage','profitos.routes.mission_control':'pilotage',
     'profitos.routes.cabinet':'cabinet',
 }
 ENDPOINT_AREAS={
@@ -3736,6 +3736,9 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-26','title':"Mission Control : un seul écran pour détecter, vérifier, agir et contrôler le résultat ; relances bloquées si un virement reçu n'est pas encore rapproché"},
+    {'date':'2026-10-26','title':"Veille : séries INSEE vérifiées sur leurs caractéristiques officielles (correction, activité, base) ; « Correction non vérifiée » quand l'INSEE ne la confirme pas"},
+    {'date':'2026-10-21','title':"Veille : l'activité de votre secteur (indices de chiffre d'affaires de l'INSEE, base 100 en 2021), choisie d'après votre code APE"},
     {'date':'2026-10-21','title':"Comparaison anonyme des délais de paiement avec les entreprises de votre secteur ; aides et financements dans la veille"},
     {'date':'2026-10-21','title':"Pièces demandées par l'expert-comptable, portefeuille cabinet enrichi, liste de démarrage revue"},
     {'date':'2026-10-21','title':"« Votre semaine » dans le rapport du lundi ; suivi des marges et révision de prix branchés sur la veille"},

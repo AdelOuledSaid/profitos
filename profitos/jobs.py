@@ -826,10 +826,11 @@ def invoice_reminders(org, ctx):
     from profitos import invoice_payment as IP
     from profitos.runtime import tenant_cx_direct
     from profitos.accounting import paris_today
-    from profitos.routes.invoicing import send_invoice_reminder, reminder_blocker
+    from profitos.routes.invoicing import send_invoice_reminder, reminder_blocker, _invoice_balance
+    from profitos.mission_control import probable_bank_payment
     today = paris_today()
     c = tenant_cx_direct(org['id'])
-    sent, failed = 0, 0
+    sent, failed, held = 0, 0, 0
     try:
         for eid in _entity_ids(c):
             settings = IP.load(c, eid)
@@ -847,6 +848,14 @@ def invoice_reminders(org, ctx):
                 step = IP.reminder_step((today - date.fromisoformat(inv['due_date'])).days, int(prev['n'] or 0), settings['steps'])
                 if step is None:
                     continue
+                # Vérification bancaire (moteur de vérification, v480) : pas de relance si un
+                # virement reçu et non rapproché pourrait déjà régler la facture.
+                try:
+                    if probable_bank_payment(c, inv, _invoice_balance(c, inv)):
+                        held += 1
+                        continue
+                except Exception:
+                    c.rollback()
                 result = send_invoice_reminder(c, inv, org, step=step, base_url=_app_url())
                 if result.get('sent') and not result.get('dry_run'):
                     sent += 1
@@ -854,9 +863,32 @@ def invoice_reminders(org, ctx):
                     failed += 1
     finally:
         c.close()
+    note = f', {held} suspendue(s) : virement à rapprocher' if held else ''
     if not sent and not failed:
-        return '0 relance'
-    return f'{sent} relance(s) envoyée(s)' + (f', {failed} échec(s)' if failed else '')
+        return '0 relance' + note
+    return f'{sent} relance(s) envoyée(s)' + (f', {failed} échec(s)' if failed else '') + note
+
+
+@job('mission_control_followup', 'daily', hour=8,
+     description="Mission Control : refait les vérifications et contrôle le résultat des actions (impayés réglés, paiements faits, déclarations déposées…).")
+def mission_control_followup(org, ctx):
+    _require_paid(org)
+    from profitos import mission_control as MC
+    from profitos.runtime import tenant_cx_direct, effective_plan
+    from profitos.plan_limits import feature_enabled
+    from profitos.accounting import paris_today
+    today = paris_today()
+    accounting = feature_enabled(effective_plan(org), 'accounting_core')
+    c = tenant_cx_direct(org['id'])
+    opened = 0
+    try:
+        for eid in _entity_ids(c):
+            # Sans session web, la prévision de trésorerie n'est pas recalculée : ses constats
+            # ne sont ni créés ni soldés ici (seuls les types contrôlés peuvent l'être).
+            opened += len(MC.run(c, eid, today, cash=None, accounting=accounting))
+    finally:
+        c.close()
+    return f'{opened} point(s) suivi(s)'
 
 
 @job('market_watch_refresh', 'daily', hour=7, scope='global',
@@ -878,11 +910,16 @@ def market_watch_refresh(org, ctx):
         finally:
             c.close()
     codes, custom = MW.all_followed_codes(settings)
-    for code in MW.COMMON + [x for s in MW.SECTORS.values() for x in s['series']]:
+    for code in MW.CATALOGUE:
         if code not in codes:
             codes.append(code)
     ac = auth_cx()
     try:
+        # Dimensions officielles (correction, activité, base) : au plus une fois par mois.
+        try:
+            dims = MW.refresh_dimensions(ac, codes, custom=custom)
+        except Exception as exc:
+            dims = {'*': f'{type(exc).__name__}'}
         report = MW.refresh(ac, codes, custom=custom)
         news = MW.refresh_news(ac, MW.configured_feeds())
     finally:
@@ -890,7 +927,9 @@ def market_watch_refresh(org, ctx):
     failed = {k: v for k, v in report.items() if v != 'ok'}
     if failed:
         _ops('MARKET_WATCH_PARTIAL', 'WARNING', '; '.join(f'{k}: {v}' for k, v in failed.items())[:400])
-    return f"{len(report) - len(failed)}/{len(report)} indicateur(s) à jour, actualités : {news or 'aucun flux'}"[:400]
+    dims_note = f", dimensions INSEE : {sum(1 for v in dims.values() if v == 'ok')}/{len(dims)}" if dims else ''
+    return (f"{len(report) - len(failed)}/{len(report)} indicateur(s) à jour{dims_note}, "
+            f"actualités : {news or 'aucun flux'}")[:400]
 
 
 @job('backup', 'daily', hour=2, scope='global', needs_disk=True,

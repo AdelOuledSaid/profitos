@@ -77,7 +77,8 @@ schéma ne coûte qu'une requête par organisation. `--force-migrate` rejoue tou
 | `weekly_reports` | lundi 7 h | rapport hebdomadaire (désactivable par utilisateur) |
 | `weekly_accountant_export` | lundi 8 h | lien d'export au comptable si activé |
 | `fiscal_deadlines` | 8 h | rappels des échéances fiscales à 7 jours et la veille ; relance le lendemain puis chaque semaine des déclarations en retard et des accusés avec écarts |
-| `invoice_reminders` | 9 h | relances automatiques des factures échues (entreprises qui les ont activées) |
+| `invoice_reminders` | 9 h | relances automatiques des factures échues (entreprises qui les ont activées) ; suspendues pour une facture qu'un virement reçu non rapproché pourrait régler |
+| `mission_control_followup` | 8 h | Mission Control : refait les vérifications et contrôle le résultat des actions (impayés réglés, paiements faits, déclarations déposées) |
 | `market_watch_refresh` | 7 h | veille de secteur : indicateurs INSEE et BCE suivis par les entreprises, actualités des flux `MARKET_NEWS_FEEDS` |
 | `teledeclaration_status` | toutes les heures | statut des déclarations transmises par le partenaire EDI (uniquement si `EDI_PARTNER_ENABLED=1`) ; alerte en cas de rejet |
 | `trial_reminders` | 9 h | fin d'essai J-3 / J0, échec de paiement |
@@ -158,6 +159,21 @@ joindre en HTTPS. `MARKET_NEWS_FEEDS` (facultatif) : liste JSON des flux d'actua
 (titre, date et lien seulement), par exemple
 `[{"url": "https://…/rss.xml", "source": "Nom", "sectors": ["batiment"]}]` (`"all"` pour tous
 les secteurs). N'y mettre que des sources dont la licence autorise cette reprise.
+
+Contrôle des séries INSEE (à faire une fois après le déploiement, puis en cas de carte
+suspendue) : dans le shell Render, `python scripts/check_insee_series.py` vérifie une à une
+les dix séries de chiffre d'affaires (`--all` pour tout le catalogue, `--save` pour
+enregistrer le résultat). Pour chaque série, le script affiche le flux et la clé trouvés dans
+le fichier officiel `correspondance_idbank_dimension` de l'INSEE, les dimensions officielles
+(CORRECTION, NAF, base), la correction retenue (CVS-CJO, BRUT ou INCONNU) et sa source, et
+les anomalies. La tâche `market_watch_refresh` relit ces dimensions au plus une fois par mois
+(tables `market_series_dims` et colonnes `adjustment`, `adjustment_source`, `naf_check` de
+`market_series`, base d'authentification). Le fichier est cherché à
+`https://www.insee.fr/fr/statistiques/fichier/2862759/AAAAMM_correspondance_idbank_dimension.zip`
+(mois courant puis précédents) ; `MARKET_INSEE_IDBANK_FILE` permet d'imposer une autre
+adresse si l'INSEE la change. Pour figer la correction attendue d'une série, renseigner
+`'adjustment': 'CVS-CJO'` (ou `'BRUT'`) dans son entrée du catalogue : une version différente
+suspendra alors l'indicateur.
 
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,

@@ -278,6 +278,32 @@
 </table></div>
 <p><strong>Rapport du lundi</strong> : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.</p>
 <p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
+<h3 id="mission-control">Mission Control</h3>
+<p>Menu <strong>Trésorerie → Mission Control</strong>. Un seul écran pour ce qui demande votre attention :
+impayés clients, factures fournisseurs à régler, tension de trésorerie, mouvements bancaires
+non traités, échéances fiscales, pièces demandées par l'expert-comptable, indicateurs de la
+veille suspendus. Chaque point suit le même chemin : <strong>détecté → vérifié → action préparée →
+résultat contrôlé</strong>.</p>
+<ul>
+<li><strong>Vérifications</strong> : chaque point affiche ses contrôles, avec leur source. ✓ vérifié,
+  ? à vérifier (information manquante ou incertaine), ✗ impossible pour l'instant (prérequis
+  manquant ou informations contradictoires). Les points sont classés en « Prêt à traiter »,
+  « À vérifier avant d'agir » et « Action impossible pour l'instant ».</li>
+<li><strong>Impayés</strong> : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
+  relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
+  la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
+  le délai depuis la dernière relance. Si tout est vérifié, la relance part en un clic ; si un
+  virement correspond, ProfitOS propose de le rapprocher d'abord. Les relances automatiques
+  suivent la même règle : elles sont suspendues tant qu'un virement probable n'est pas rapproché.</li>
+<li><strong>Action en un clic</strong> : au moment du clic, tout est revérifié sur les données du moment ;
+  si la situation a changé, l'action n'est pas lancée.</li>
+<li><strong>Contrôle du résultat</strong> : après une action (ou « J'ai traité » pour les points qui se règlent
+  sur une autre page), ProfitOS vérifie à la date indiquée que le problème a disparu : facture
+  payée, virement fait, déclaration déposée… Sinon le point est rouvert avec la raison. Les
+  points résolus restent visibles 30 jours avec l'explication.</li>
+<li><strong>Reporter</strong> (7 jours) ou <strong>écarter</strong> (motif obligatoire) un point ; il peut être rétabli.</li>
+<li>Les vérifications sont refaites à chaque visite et chaque matin, même sans visite.</li>
+</ul>
 <h2 id="facturation-clients">5. Facturation clients</h2>
 <p>Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu <strong>Ventes &amp; clients → Facturation</strong>.</p>
 <figure class="help-figure">{% include "help_invoice_cycle.html" %}<figcaption>Cycle d'une facture : 6 étapes, une correction par avoir</figcaption></figure>
@@ -551,6 +577,23 @@ européenne.</p>
   publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
   les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
   la BCE et l'Euribor 3 mois.</li>
+<li><strong>Activité de votre secteur</strong> : selon votre code APE, ProfitOS ajoute l'indice de chiffre
+  d'affaires de l'INSEE le plus proche de votre métier (base 100 en 2021, mensuel, France
+  entière) : commerce de gros, habillement, hôtels, hébergement touristique, restauration,
+  restauration rapide, services administratifs et de soutien, conseil en gestion, traduction et
+  interprétation, imprimerie. Comparez-y l'évolution de vos propres ventes. Chaque carte indique
+  la correction de la série : <strong>CVS-CJO</strong> (corrigée des variations saisonnières et des jours
+  ouvrables), <strong>Brute</strong>, ou <strong>Correction non vérifiée</strong> quand l'INSEE ne l'a pas confirmée. Une
+  série brute ou non vérifiée n'est comparée que sur un an (deux mois consécutifs ne se
+  comparent pas). Ces indices mesurent l'activité, pas les prix : ils ne sont proposés ni pour
+  une révision de prix ni dans le suivi des marges.</li>
+<li><strong>Fiabilité des séries INSEE</strong> : l'identifiant à 9 chiffres est la référence. Chaque mois,
+  ProfitOS relit les caractéristiques officielles de chaque série (correction, activité, base)
+  dans le fichier de correspondance publié par l'INSEE ; à défaut, il s'appuie sur l'intitulé
+  officiel. La fiche d'un indicateur montre ces vérifications. Si les informations se
+  contredisent (par exemple « brute » d'un côté et « CVS-CJO » de l'autre, une autre activité,
+  une autre base ou une série arrêtée), l'indicateur est suspendu et aucune valeur n'est
+  affichée tant que l'anomalie n'est pas levée.</li>
 <li><strong>Chaque carte</strong> donne la dernière valeur publiée, sa période, la variation sur la période et sur
   un an, la courbe des deux dernières années et un lien vers la source officielle.</li>
 <li><strong>Alertes</strong> : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an

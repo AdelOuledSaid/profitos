@@ -17,11 +17,17 @@
   </div>
 </div>
 
-{% set alerting = cards|selectattr('alerts')|list %}
+{% set alerting = cards|selectattr('alerts')|rejectattr('defn.kind', 'equalto', 'activite')|list %}
 {% if alerting %}
 <div class="flash" role="status"><strong>À surveiller :</strong>
   {% for c in alerting %}{{ c.defn.label }} ({{ c.alerts|join(', ') }}){% if not loop.last %} · {% endif %}{% endfor %}.
   Vérifiez vos devis en cours, vos contrats à prix ferme et vos clauses de révision.</div>
+{% endif %}
+{% set activity_alerting = cards|selectattr('alerts')|selectattr('defn.kind', 'equalto', 'activite')|list %}
+{% if activity_alerting %}
+<div class="flash" role="status"><strong>Activité de votre secteur :</strong>
+  {% for c in activity_alerting %}{{ c.defn.label }} ({{ c.alerts|join(', ') }}){% if not loop.last %} · {% endif %}{% endfor %}.
+  Comparez avec l'évolution de votre propre chiffre d'affaires.</div>
 {% endif %}
 
 <section class="mw-grid">
@@ -31,6 +37,10 @@
       <h2><a class="link" href="{{ url_for('market_watch_series', code=c.code) }}">{{ c.defn.label }}</a></h2>
       {% if c.defn.custom %}<span class="purchase-muted" style="font-size:11px;">ajouté par vous</span>{% endif %}
     </div>
+    {% if c.defn.kind == 'activite' or c.meta.adjustment %}
+    <p class="purchase-muted mw-kind" style="font-size:11px;margin:0 0 4px;">{% if c.defn.kind == 'activite' %}Indice d'activité{% if c.defn.base %} · base 100 en {{ c.defn.base }}{% endif %}{% endif %}{% if c.meta.adjustment %}{% if c.defn.kind == 'activite' %} · {% endif %}<strong>{{ adjustment_short.get(c.meta.adjustment, c.meta.adjustment) }}</strong>{% endif %}</p>
+    {% endif %}
+    {% if c.stat and c.meta.naf_check %}<p class="purchase-muted" style="font-size:11px;margin:0 0 4px;">{{ naf_labels.get(c.meta.naf_check, '') }}</p>{% endif %}
     {% if c.stat %}
       <div class="mw-value">{{ c.stat.value|fr_number(2 if c.defn.unit == '%' else 1) }}{% if c.defn.unit == '%' %} %{% endif %}</div>
       <div class="purchase-muted" style="font-size:12px;">{{ c.stat.label }}</div>
@@ -38,10 +48,11 @@
         {% if c.stat.change_1p is not none %}<span class="{{ 'mw-up' if c.stat.change_1p > 0 else ('mw-down' if c.stat.change_1p < 0 else '') }}">{{ '+' if c.stat.change_1p > 0 }}{{ c.stat.change_1p|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur la période{% endif %}
         {% if c.stat.change_12m is not none %} · <span class="{{ 'mw-up' if c.stat.change_12m > 0 else ('mw-down' if c.stat.change_12m < 0 else '') }}">{{ '+' if c.stat.change_12m > 0 }}{{ c.stat.change_12m|fr_number(2) }}{{ ' pt' if c.stat.points else ' %' }}</span> sur un an{% endif %}
       </div>
+      {% if c.stat.raw_seasonal %}<p class="purchase-muted" style="font-size:11px;margin:2px 0 0;">{% if c.meta.adjustment == 'INCONNU' %}Correction non vérifiée : par prudence, seule la comparaison sur un an est affichée.{% else %}Série non corrigée des variations saisonnières : comparez sur un an, pas d'un mois sur l'autre.{% endif %}</p>{% endif %}
       {% if c.spark %}<svg class="mw-spark" viewBox="0 0 220 44" role="img" aria-label="Évolution de {{ c.defn.label }} sur deux ans"><polyline fill="none" stroke="currentColor" stroke-width="2" points="{{ c.spark }}"/></svg>{% endif %}
       {% if c.alerts %}<p class="mw-alert">⚠ {{ c.alerts|join(' ; ') }}</p>{% endif %}
     {% elif c.meta.status == 'mismatch' %}
-      <p class="purchase-muted">Série à vérifier : la source a renvoyé un titre inattendu, aucune valeur n'est affichée.</p>
+      <p class="purchase-muted">Indicateur suspendu : {{ c.meta.error }}. Aucune valeur n'est affichée tant que l'anomalie n'est pas levée.</p>
     {% elif c.meta.status == 'error' %}
       <p class="purchase-muted">Données indisponibles pour l'instant ({{ c.meta.error }}). Nouvel essai automatique chaque jour.</p>
     {% else %}
@@ -88,13 +99,13 @@
           {% for code, s in sectors.items() %}<option value="{{ code }}" {{ 'selected' if settings.sector == code }}>{{ s.label }}</option>{% endfor %}
         </select>
       </label>
-      <label>Code APE (facultatif)<input name="naf" value="{{ settings.naf or '' }}" maxlength="7" placeholder="ex. 4321A"></label>
+      <label>Code APE (facultatif, choisit l'indice de chiffre d'affaires le plus proche)<input name="naf" value="{{ settings.naf or '' }}" maxlength="7" placeholder="ex. 5610C"></label>
     </div>
     <fieldset class="mw-checks">
       <legend>Indicateurs du catalogue</legend>
       <label class="check"><input type="checkbox" name="custom_selection" value="1" {{ 'checked' if settings.series is not none }}> Choisir moi-même (sinon : ceux de mon secteur et les indicateurs communs)</label>
       {% for code, d in catalogue.items() %}
-        <label class="check"><input type="checkbox" name="series" value="{{ code }}" {{ 'checked' if code in followed }}> {{ d.label }}</label>
+        <label class="check"><input type="checkbox" name="series" value="{{ code }}" {{ 'checked' if code in followed }}> {{ d.label }}{% if d.kind == 'activite' %} <span class="purchase-muted">(activité)</span>{% endif %}</label>
       {% endfor %}
     </fieldset>
     <div class="twocol">

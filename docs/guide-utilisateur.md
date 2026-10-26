@@ -116,6 +116,33 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 
 Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).
 
+### Mission Control
+
+Menu **Trésorerie → Mission Control**. Un seul écran pour ce qui demande votre attention :
+impayés clients, factures fournisseurs à régler, tension de trésorerie, mouvements bancaires
+non traités, échéances fiscales, pièces demandées par l'expert-comptable, indicateurs de la
+veille suspendus. Chaque point suit le même chemin : **détecté → vérifié → action préparée →
+résultat contrôlé**.
+
+- **Vérifications** : chaque point affiche ses contrôles, avec leur source. ✓ vérifié,
+  ? à vérifier (information manquante ou incertaine), ✗ impossible pour l'instant (prérequis
+  manquant ou informations contradictoires). Les points sont classés en « Prêt à traiter »,
+  « À vérifier avant d'agir » et « Action impossible pour l'instant ».
+- **Impayés** : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
+  relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
+  la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
+  le délai depuis la dernière relance. Si tout est vérifié, la relance part en un clic ; si un
+  virement correspond, ProfitOS propose de le rapprocher d'abord. Les relances automatiques
+  suivent la même règle : elles sont suspendues tant qu'un virement probable n'est pas rapproché.
+- **Action en un clic** : au moment du clic, tout est revérifié sur les données du moment ;
+  si la situation a changé, l'action n'est pas lancée.
+- **Contrôle du résultat** : après une action (ou « J'ai traité » pour les points qui se règlent
+  sur une autre page), ProfitOS vérifie à la date indiquée que le problème a disparu : facture
+  payée, virement fait, déclaration déposée… Sinon le point est rouvert avec la raison. Les
+  points résolus restent visibles 30 jours avec l'explication.
+- **Reporter** (7 jours) ou **écarter** (motif obligatoire) un point ; il peut être rétabli.
+- Les vérifications sont refaites à chaque visite et chaque matin, même sans visite.
+
 ## 5. Facturation clients
 
 Du devis à l'encaissement, chaque document est numéroté, conforme et comptabilisé automatiquement. Menu **Ventes & clients → Facturation**.
@@ -370,6 +397,23 @@ européenne.
   publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
   les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
   la BCE et l'Euribor 3 mois.
+- **Activité de votre secteur** : selon votre code APE, ProfitOS ajoute l'indice de chiffre
+  d'affaires de l'INSEE le plus proche de votre métier (base 100 en 2021, mensuel, France
+  entière) : commerce de gros, habillement, hôtels, hébergement touristique, restauration,
+  restauration rapide, services administratifs et de soutien, conseil en gestion, traduction et
+  interprétation, imprimerie. Comparez-y l'évolution de vos propres ventes. Chaque carte indique
+  la correction de la série : **CVS-CJO** (corrigée des variations saisonnières et des jours
+  ouvrables), **Brute**, ou **Correction non vérifiée** quand l'INSEE ne l'a pas confirmée. Une
+  série brute ou non vérifiée n'est comparée que sur un an (deux mois consécutifs ne se
+  comparent pas). Ces indices mesurent l'activité, pas les prix : ils ne sont proposés ni pour
+  une révision de prix ni dans le suivi des marges.
+- **Fiabilité des séries INSEE** : l'identifiant à 9 chiffres est la référence. Chaque mois,
+  ProfitOS relit les caractéristiques officielles de chaque série (correction, activité, base)
+  dans le fichier de correspondance publié par l'INSEE ; à défaut, il s'appuie sur l'intitulé
+  officiel. La fiche d'un indicateur montre ces vérifications. Si les informations se
+  contredisent (par exemple « brute » d'un côté et « CVS-CJO » de l'autre, une autre activité,
+  une autre base ou une série arrêtée), l'indicateur est suspendu et aucune valeur n'est
+  affichée tant que l'anomalie n'est pas levée.
 - **Chaque carte** donne la dernière valeur publiée, sa période, la variation sur la période et sur
   un an, la courbe des deux dernières années et un lien vers la source officielle.
 - **Alertes** : un bandeau signale les indices qui ont varié au-delà de vos seuils (5 % sur un an

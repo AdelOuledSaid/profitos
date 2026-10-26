@@ -9,11 +9,25 @@
   </div>
   <div class="actionbuttons">
     <a class="purchase-nav-btn" href="{{ url_for('market_watch') }}">← Veille</a>
-    {% if defn.unit != '%' %}<a class="purchase-nav-btn" href="{{ url_for('market_watch_revision', code=defn.code) }}">Révision de prix</a>{% endif %}
+    {% if price_index %}<a class="purchase-nav-btn" href="{{ url_for('market_watch_revision', code=defn.code) }}">Révision de prix</a>{% endif %}
     <a class="purchase-nav-btn" href="{{ url }}" target="_blank" rel="noopener noreferrer">Source officielle ↗</a>
   </div>
 </div>
-{% if meta.status == 'mismatch' %}<div class="flash" role="alert">Série à vérifier : la source a renvoyé un titre inattendu ({{ meta.error }}). Aucune valeur n'est affichée.</div>{% endif %}
+{% if defn.kind == 'activite' %}<div class="flash" role="status">Indice de chiffre d'affaires{% if defn.base %} (base 100 en {{ defn.base }}){% endif %} : il mesure l'activité du secteur, pas des prix, et ne sert pas à réviser un contrat.{% if stat and stat.raw_seasonal %} Les variations d'un mois sur l'autre ne sont pas affichées : seule la comparaison sur un an a un sens sûr.{% endif %}</div>{% endif %}
+{% if defn.source == 'insee' %}
+<section class="purchase-panel" style="margin-bottom:14px;">
+  <h2>Vérification de la série</h2>
+  <ul class="mw-news">
+    <li>Identifiant INSEE (référence) : <strong>{{ defn.idbank }}</strong></li>
+    <li>Correction : {% if meta.adjustment %}série {{ adjustment_labels.get(meta.adjustment, meta.adjustment) }}{% if meta.adjustment_source == 'dimensions' %} — d'après les dimensions officielles{% elif meta.adjustment_source == 'titre' %} — d'après l'intitulé officiel{% endif %}{% else %}—{% endif %}</li>
+    {% if defn.naf %}<li>Activité attendue : NAF {{ defn.naf }}{% if meta.naf_check %} — {{ naf_labels.get(meta.naf_check, meta.naf_check) }}{% endif %}</li>{% endif %}
+    {% if dims and dims.status == 'ok' %}<li>Dimensions officielles (flux {{ dims.dataflow }}, clé {{ dims.series_key }}) : {% for k, v in dims.dimensions|dictsort %}{{ k }} = {{ v }}{% if not loop.last %}, {% endif %}{% endfor %} — relues le {{ dims.checked_at|fr_datetime_paris }}</li>
+    {% elif dims %}<li>Dimensions officielles non disponibles ({{ dims.error or dims.status }}) : contrôle sur l'intitulé.</li>
+    {% else %}<li>Dimensions officielles pas encore relues (tâche mensuelle) : contrôle sur l'intitulé.</li>{% endif %}
+  </ul>
+</section>
+{% endif %}
+{% if meta.status == 'mismatch' %}<div class="flash" role="alert">Indicateur suspendu : {{ meta.error }}. Aucune valeur n'est affichée.</div>{% endif %}
 {% if meta.status == 'error' %}<div class="flash" role="status">Dernière mise à jour impossible ({{ meta.error }}) : les valeurs ci-dessous sont celles déjà connues.</div>{% endif %}
 {% if stat %}
 <div class="purchase-stats" style="margin-bottom:14px;">

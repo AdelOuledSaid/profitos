@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% macro card(f, state='open') %}
+<article class="mc-card sev-{{ f.severity }}">
+  <div class="mc-head">
+    <h3>{{ f.title }}</h3>
+    {% if f.amount is not none %}<span class="mc-amount">{{ f.amount|fr_number(2) }} €</span>{% endif %}
+  </div>
+  <div class="mc-tags"><span class="mc-tag">{{ severity_labels[f.severity] }}</span><span class="mc-tag">{{ kind_labels.get(f.kind, f.kind) }}</span>{% if f.track.first_seen %}détecté le {{ f.track.first_seen|fr_date }}{% endif %}</div>
+  {% if f.detail %}<p class="purchase-muted" style="margin:0 0 4px;font-size:13px;">{{ f.detail }}</p>{% endif %}
+  {% if f.track.note %}<p class="mc-note">{{ f.track.note }}</p>{% endif %}
+  <ul class="mc-checks" aria-label="Vérifications">
+    {% for ch in f.checks %}
+    <li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}" aria-label="{{ 'vérifié' if ch.ok is sameas true else ('impossible' if ch.ok is sameas false else 'à vérifier') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span>
+      <span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %}{% if ch.source %} <span class="purchase-muted">({{ ch.source }})</span>{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% if f.evidence %}<p class="mc-evidence">{% for e in f.evidence %}{{ e.label }} : <strong>{{ e.value }}</strong> <span class="purchase-muted">— {{ e.source }}{% if e.as_of %}, {{ e.as_of|fr_date }}{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% if state == 'control' %}
+    <p class="purchase-muted" style="font-size:12px;margin:4px 0 0;">Action du {{ f.track.action_at|fr_date }} par {{ f.track.action_by }} : {{ f.track.action_result or f.track.action_label }}. Contrôle du résultat à partir du {{ f.track.check_after|fr_date }} ; s'il est encore présent, il sera rouvert.</p>
+  {% endif %}
+  <div class="mc-actions">
+    {% if state == 'open' %}
+      {% if f.can_run %}
+      <form method="post" action="{{ url_for('mission_control_execute') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><button type="submit" class="purchase-primary-btn primary">{{ f.action.label }}</button></form>
+      {% elif f.main_link and f.action_allowed %}
+      <a class="purchase-primary-btn primary" href="{{ f.main_link.url }}">{{ f.main_link.label }}</a>
+      {% elif f.main_link %}
+      <a class="purchase-nav-btn" href="{{ f.main_link.url }}">{{ f.main_link.label }}</a>
+      {% endif %}
+      {% for l in f.links %}<a class="purchase-nav-btn" href="{{ l.url }}">{{ l.label }}</a>{% endfor %}
+      {% if f.action and f.action.kind == 'link' %}
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="fait"><button type="submit" class="purchase-nav-btn">J'ai traité</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="reporter"><button type="submit" class="purchase-nav-btn">Reporter {{ snooze_days }} jours</button></form>
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="op" value="ecarter"><input name="reason" maxlength="200" placeholder="Motif (obligatoire)" aria-label="Motif pour écarter ce point"><button type="submit" class="purchase-nav-btn">Écarter</button></form>
+    {% else %}
+      {% for l in f.links %}<a class="purchase-nav-btn" href="{{ l.url }}">{{ l.label }}</a>{% endfor %}
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">MISSION CONTROL</div>
+    <h1 class="purchase-title">Ce qui demande votre attention</h1>
+    <p class="purchase-subtitle">Chaque point est détecté dans vos données, vérifié avant toute action, puis contrôlé après : une action n'est proposée que si toutes les vérifications passent, et le résultat est revérifié automatiquement.</p>
+  </div>
+</div>
+
+<div class="mc-kpis">
+  <div class="mc-kpi"><b>{{ groups['pret']|length }}</b><span>Prêt(s) à traiter</span></div>
+  <div class="mc-kpi"><b>{{ groups['a_verifier']|length }}</b><span>À vérifier avant d'agir</span></div>
+  <div class="mc-kpi"><b>{{ groups['bloque']|length }}</b><span>Action impossible pour l'instant</span></div>
+  <div class="mc-kpi"><b>{{ in_control|length }}</b><span>Résultat en contrôle</span></div>
+  <div class="mc-kpi"><b>{{ resolved|length }}</b><span>Résolu(s) sur 30 jours</span></div>
+</div>
+
+{% set total_open = groups['pret']|length + groups['a_verifier']|length + groups['bloque']|length %}
+{% if not total_open and not in_control %}
+<section class="purchase-panel"><p style="margin:0;">Rien à signaler sur les données actuelles : aucun impayé, paiement, échéance ou mouvement en attente. Les contrôles sont refaits à chaque visite.</p></section>
+{% endif %}
+
+{% for lvl in ('pret', 'a_verifier', 'bloque') %}
+{% if groups[lvl] %}
+<section class="mc-section">
+  <h2>{{ level_labels[lvl] }} ({{ groups[lvl]|length }})</h2>
+  <p class="purchase-muted" style="font-size:12px;margin:0;">{% if lvl == 'pret' %}Toutes les vérifications sont validées : l'action peut être lancée.{% elif lvl == 'a_verifier' %}Une information manque ou est incertaine (point « ? ») : complétez-la avant d'agir.{% else %}Un prérequis manque ou les informations se contredisent (point « ✗ »).{% endif %}</p>
+  <div class="mc-list">{% for f in groups[lvl] %}{{ card(f) }}{% endfor %}</div>
+</section>
+{% endif %}
+{% endfor %}
+
+{% if in_control %}
+<section class="mc-section">
+  <h2>Action faite, résultat en contrôle ({{ in_control|length }})</h2>
+  <div class="mc-list">{% for f in in_control %}{{ card(f, 'control') }}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if resolved %}
+<section class="purchase-panel mc-section">
+  <h2>Résolu récemment</h2>
+  <ul class="mw-news">{% for t in resolved %}<li><strong>{{ t.title }}</strong> — {{ t.resolution }} <span class="purchase-muted">({{ t.resolved_at|fr_date }}{% if t.action_label %} ; action : {{ t.action_result or t.action_label }}{% endif %})</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if set_aside %}
+<section class="purchase-panel mc-section">
+  <h2>Écartés ou reportés</h2>
+  <ul class="mw-news">{% for t in set_aside %}<li>{{ t.title }} — <span class="purchase-muted">{{ t.note }}</span>
+    <form method="post" action="{{ url_for('mission_control_track') }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ t.item_key }}"><input type="hidden" name="op" value="retablir"><button type="submit" class="purchase-nav-btn">Rétablir</button></form></li>{% endfor %}</ul>
+</section>
+{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Mission Control ne devine rien : il s'appuie sur vos factures, règlements, relevés bancaires, l'échéancier fiscal et la veille officielle. Une information manquante est signalée comme telle, jamais complétée au hasard.</p>
+</div>
+{% endblock %}

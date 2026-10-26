@@ -62,6 +62,43 @@ CATALOGUE = {
             'expect': ['coût de la construction'], 'unit': 'indice', 'freq': 'Q',
             'why': 'Coût des bâtiments neufs ; ancien indice de révision des baux.'},
 }
+
+
+# Indices de chiffre d'affaires de l'INSEE (v478) : séries mensuelles nationales, base 100
+# en 2021 (publication de septembre 2026). Ce sont des indices d'activité, pas de prix : ils
+# servent à comparer sa propre évolution à celle de son secteur, jamais à réviser un prix.
+# Certaines séries sont brutes, d'autres corrigées des variations saisonnières et des jours
+# ouvrables (CVS-CJO) : la correction est lue dans le titre officiel à chaque mise à jour,
+# enregistrée et affichée, et une série brute n'est comparée que sur un an.
+# 010770449 remplace l'ancienne série 010542378 (commerce de gros), arrêtée par l'INSEE.
+def _activity(idbank, label, naf, why):
+    return {'source': 'insee', 'idbank': idbank, 'label': label, 'expect': ["chiffre d'affaires"], 'naf': naf,
+            'unit': 'indice', 'freq': 'M', 'kind': 'activite', 'base': '2021', 'why': why}
+
+
+_WHY_ACTIVITY = "Comparez l'évolution de vos ventes à celle de votre secteur."
+CATALOGUE.update({
+    'CA_COMMERCE_GROS': _activity('010770449', "Chiffre d'affaires — commerce de gros", '46', _WHY_ACTIVITY),
+    'CA_HABILLEMENT': _activity('010770751', "Chiffre d'affaires — commerce de détail d'habillement", '47.71Z',
+                                _WHY_ACTIVITY),
+    'CA_HOTELS': _activity('010774374', "Chiffre d'affaires — hôtels", '55.10Z', _WHY_ACTIVITY),
+    'CA_HEBERGEMENT': _activity('010775052', "Chiffre d'affaires — hébergement touristique", '55.20Z', _WHY_ACTIVITY),
+    'CA_RESTAURATION': _activity('010774499', "Chiffre d'affaires — restauration", '56', _WHY_ACTIVITY),
+    'CA_RESTAURATION_RAPIDE': _activity('010774600', "Chiffre d'affaires — restauration rapide", '56.10C',
+                                        _WHY_ACTIVITY),
+    'CA_SERVICES_ADMIN': _activity('010774925', "Chiffre d'affaires — services administratifs et de soutien", 'N',
+                                   _WHY_ACTIVITY),
+    'CA_CONSEIL': _activity('010774564', "Chiffre d'affaires — conseil en gestion", '70.22Z', _WHY_ACTIVITY),
+    'CA_TRADUCTION': _activity('010775001', "Chiffre d'affaires — traduction et interprétation", '74.3',
+                               _WHY_ACTIVITY),
+    'CA_IMPRIMERIE': _activity('010773632', "Chiffre d'affaires — imprimerie", '18.1', _WHY_ACTIVITY),
+})
+REPLACED_SERIES = {'010542378': '010770449'}     # ancienne série INSEE -> série qui la remplace
+
+# Code APE -> indice de chiffre d'affaires le plus précis (préfixe le plus long d'abord).
+_ACTIVITY_BY_NAF = [('5610C', 'CA_RESTAURATION_RAPIDE'), ('4771', 'CA_HABILLEMENT'), ('5510', 'CA_HOTELS'),
+                    ('5520', 'CA_HEBERGEMENT'), ('7022', 'CA_CONSEIL'), ('743', 'CA_TRADUCTION'),
+                    ('181', 'CA_IMPRIMERIE'), ('46', 'CA_COMMERCE_GROS'), ('56', 'CA_RESTAURATION')]
 COMMON = ['IPC', 'ILC', 'ILAT', 'DFR', 'EURIBOR3M']
 
 # Secteurs : sections de la nomenclature NAF, indicateurs proposés, conseils pour compléter.
@@ -79,7 +116,7 @@ SECTORS = {
     'commerce': {'label': 'Commerce', 'naf': 'G', 'series': [],
                  'keywords': ['commerce', 'boutique', 'magasin', 'négoce', 'negoce', 'vente', 'distribution', 'e-commerce'],
                  'add': "les indices de prix à la consommation de vos familles de produits."},
-    'restauration': {'label': 'Hôtellerie et restauration', 'naf': 'I', 'series': [],
+    'restauration': {'label': 'Hôtellerie et restauration', 'naf': 'I', 'series': [], 'activity': ['CA_RESTAURATION'],
                      'keywords': ['restaurant', 'restauration', 'hôtel', 'hotel', 'café', 'traiteur', 'bar'],
                      'add': "les prix à la consommation de l'alimentation et de la restauration."},
     'transport': {'label': 'Transport et logistique', 'naf': 'H', 'series': [],
@@ -144,13 +181,31 @@ def suggest_sector(*texts):
     return best
 
 
+def _naf_key(naf):
+    return re.sub(r'[^0-9A-Z]', '', str(naf or '').upper())
+
+
+def activity_series(naf, sector=None):
+    """Indice de chiffre d'affaires du secteur : le plus précis pour le code APE (ex. 5610C ->
+    restauration rapide, 5630Z -> restauration), sinon celui proposé pour le secteur choisi."""
+    key = _naf_key(naf)
+    if len(key) >= 2:
+        for prefix, code in _ACTIVITY_BY_NAF:
+            if key.startswith(prefix):
+                return [code]
+        if key[:2].isdigit() and 77 <= int(key[:2]) <= 82:      # section N
+            return ['CA_SERVICES_ADMIN']
+        return []
+    return list(SECTORS.get(sector or 'autre', SECTORS['autre']).get('activity', []))
+
+
 def series_for(settings):
-    """Indicateurs suivis : choix de l'entreprise, sinon ceux de son secteur."""
+    """Indicateurs suivis : choix de l'entreprise, sinon ceux de son secteur et de son code APE."""
     if settings.get('series') is not None:
         chosen = [c for c in settings['series'] if c in CATALOGUE]
     else:
         sector = SECTORS.get(settings.get('sector') or 'autre', SECTORS['autre'])
-        chosen = sector['series'] + COMMON
+        chosen = sector['series'] + activity_series(settings.get('naf'), settings.get('sector')) + COMMON
     return chosen + [custom_code(c['idbank']) for c in settings.get('custom', [])]
 
 
@@ -176,6 +231,53 @@ def definition(code, custom=None):
         return {'code': code, 'source': 'insee', 'idbank': idbank, 'label': label or f'Série INSEE {idbank}',
                 'expect': [], 'unit': 'indice', 'freq': None, 'why': 'Indicateur ajouté par votre entreprise.', 'custom': True}
     return None
+
+
+def is_price_index(defn):
+    """Indice utilisable pour une révision de prix ou le suivi des marges : ni un taux, ni un
+    indice d'activité (chiffre d'affaires)."""
+    return bool(defn) and defn.get('unit') != '%' and defn.get('kind') != 'activite'
+
+
+# Correction des variations saisonnières : trois états seulement pour l'affichage —
+# confirmée CVS-CJO, confirmée BRUT, ou INCONNU. L'absence de mention dans un titre ne
+# prouve rien : seule une indication explicite (dimension CORRECTION de l'INSEE, ou mot
+# « CVS-CJO » / « brute » dans l'intitulé officiel) confirme la correction. CVS seule et CJO
+# seule (codes officiels de l'INSEE) sont conservées telles quelles si l'INSEE les indique.
+ADJ_CVS_CJO, ADJ_BRUT, ADJ_UNKNOWN = 'CVS-CJO', 'BRUT', 'INCONNU'
+_ADJ_CODES = {'CVS-CJO': ADJ_CVS_CJO, 'CVSCJO': ADJ_CVS_CJO, 'BRUT': ADJ_BRUT, 'BRUTE': ADJ_BRUT,
+              'CVS': 'CVS', 'CJO': 'CJO'}
+
+
+def normalize_adjustment(value):
+    """Code officiel ou ancienne valeur enregistrée -> 'CVS-CJO' / 'BRUT' / 'CVS' / 'CJO' / None."""
+    key = re.sub(r'[^A-Z-]', '', str(value or '').upper())
+    return _ADJ_CODES.get(key) or _ADJ_CODES.get(key.replace('-', ''))
+
+
+def detect_adjustment(title):
+    """Correction écrite explicitement dans l'intitulé officiel INSEE, sinon None (non confirmée)."""
+    low = _norm_title(title).lower()
+    if re.search(r'cvs[\s-]*cjo', low):
+        return ADJ_CVS_CJO
+    if re.search(r'\bcvs\b', low):
+        return 'CVS'
+    if re.search(r'\bcjo\b', low):
+        return 'CJO'
+    if re.search(r'\b(série|serie|données|donnees)\s+brut(e|es|s)?\b', low) or re.search(r'\bbrut(e|es|s)?\s*$', low):
+        return ADJ_BRUT
+    return None
+
+
+ADJUSTMENT_LABELS = {ADJ_CVS_CJO: 'corrigée des variations saisonnières et des jours ouvrables (CVS-CJO)',
+                     'CVS': 'corrigée des variations saisonnières (CVS)', 'CJO': 'corrigée des jours ouvrables (CJO)',
+                     ADJ_BRUT: 'brute (non corrigée des variations saisonnières)',
+                     ADJ_UNKNOWN: "dont la correction n'a pas pu être vérifiée"}
+ADJUSTMENT_SHORT = {ADJ_CVS_CJO: 'CVS-CJO', 'CVS': 'CVS', 'CJO': 'CJO', ADJ_BRUT: 'Brute',
+                    ADJ_UNKNOWN: 'Correction non vérifiée'}
+NAF_CHECK_LABELS = {'dimensions': "Activité vérifiée sur les dimensions officielles de l'INSEE",
+                    'titre': "Activité vérifiée sur l'intitulé officiel de l'INSEE",
+                    'non vérifiée': "Activité non vérifiée automatiquement : contrôlez la série sur insee.fr"}
 
 
 def source_url(defn):
@@ -211,7 +313,8 @@ def parse_insee_sdmx(xml_bytes):
                 if period:
                     obs.append((period, value))
             return {'title': el.get('TITLE_FR') or el.get('TITLE_EN') or '', 'idbank': el.get('IDBANK') or '',
-                    'freq': el.get('FREQ'), 'last_update': el.get('LAST_UPDATE'), 'obs': sorted(obs)}
+                    'freq': el.get('FREQ'), 'last_update': el.get('LAST_UPDATE'), 'obs': sorted(obs),
+                    'attrs': {_local(k): v for k, v in el.attrib.items()}}
     for el in root.iter():
         if _local(el.tag) in ('Error', 'ErrorMessage'):
             raise MarketWatchError('série inconnue à l\'INSEE')
@@ -236,17 +339,129 @@ def parse_ecb_csv(text):
             'freq': first.get('FREQ'), 'last_update': None, 'obs': sorted(obs)}
 
 
+def _norm_title(title):
+    return (title or '').replace('\u2019', "'").replace('\u02bc', "'")
+
+
 def title_matches(defn, title):
+    """Mots attendus dans l'intitulé officiel (indices de prix du catalogue)."""
     if not defn.get('expect'):
         return True
     if not title:
         return defn['source'] == 'ecb'           # clé BCE sémantique : titre facultatif dans le CSV
-    low = title.lower()
-    return all(word.lower() in low for word in defn['expect'])
+    low = _norm_title(title).lower()
+    return all(_norm_title(word).lower() in low for word in defn['expect'])
+
+
+def is_discontinued(title):
+    low = _norm_title(title).lower()
+    return 'série arrêtée' in low or 'serie arretee' in low
+
+
+def naf_matches(expected, value):
+    """Poste NAF attendu (ex. '56.10C', '47.71Z', 'N') contre un code officiel ('56-10C',
+    '5610C', '47.71', 'N'…). Une sous-classe en Z équivaut à sa classe (47.71Z = 47.71)."""
+    exp, val = _naf_key(expected), _naf_key(value)
+    if not exp or not val:
+        return False
+    return val == exp or (exp.endswith('Z') and val == exp[:-1]) or (val.endswith('Z') and exp == val[:-1])
+
+
+# Dimensions SDMX de l'INSEE utiles au contrôle.
+_DIM_CORRECTION = ('CORRECTION',)
+_DIM_BASE = ('BASIND', 'BASE_PER', 'BASE')
+_DIM_SKIP = {'IDBANK', 'TITLE_FR', 'TITLE_EN', 'LAST_UPDATE', 'UNIT_MEASURE', 'UNIT_MULT', 'REF_AREA', 'DECIMALS',
+             'FREQ', 'TIME_PER_COLLECT', 'OBS_STATUS', 'OBS_QUAL', 'OBS_TYPE', 'EMBARGO_TIME'}
+
+
+def _dim(dims, names):
+    for n in names:
+        if dims.get(n):
+            return dims[n]
+    return None
+
+
+def _naf_dim(dims):
+    for k, v in dims.items():
+        if v and ('NAF' in k.upper() or k.upper() in ('ACTIVITE', 'ACTIVITY')):
+            return v
+    return None
+
+
+def check_metadata(defn, data, dims=None):
+    """Contrôle de provenance d'une série INSEE. L'identifiant à 9 chiffres est la référence
+    principale ; les dimensions officielles (fichier de correspondance de l'INSEE et service
+    SDMX) priment sur l'intitulé ; l'intitulé sert à défaut. Retourne
+    {'adjustment', 'adjustment_source', 'naf_check', 'anomalies': [...]} — toute anomalie
+    (métadonnées contradictoires, série arrêtée) suspend l'indicateur."""
+    dims = {k: v for k, v in (dims or {}).items() if v}
+    for k, v in (data.get('attrs') or {}).items():          # dimensions éventuellement jointes à la réponse
+        if k.upper() not in _DIM_SKIP and v and k not in dims:
+            dims[k] = v
+    title = data.get('title') or ''
+    anomalies = []
+    returned = str(data.get('idbank') or '').strip()
+    if returned and defn.get('idbank') and returned.zfill(9) != defn['idbank']:
+        anomalies.append(f"l'INSEE a renvoyé la série {returned} au lieu de {defn['idbank']}")
+    if is_discontinued(title):
+        hint = REPLACED_SERIES.get(defn.get('idbank') or '')
+        anomalies.append("série arrêtée par l'INSEE" + (f' (remplacée par {hint})' if hint else ''))
+    if defn.get('kind') != 'activite' and not title_matches(defn, title):
+        anomalies.append(f"intitulé inattendu (« {title[:120]} »)")
+    if defn.get('kind') == 'activite' and title:
+        low = _norm_title(title).lower()
+        # Le libellé peut varier, mais un intitulé qui nomme un autre indicateur se contredit.
+        if "chiffre d'affaires" not in low and re.search(r"\bindices?\s+(des|de|du)\s+(prix|production|volume|coût|cout)", low):
+            anomalies.append(f"l'intitulé désigne un autre indicateur (« {title[:120]} »)")
+
+    # Correction : dimension officielle, sinon mention explicite de l'intitulé.
+    dim_adj = normalize_adjustment(_dim(dims, _DIM_CORRECTION))
+    title_adj = detect_adjustment(title)
+    if dim_adj and title_adj and dim_adj != title_adj:
+        anomalies.append(f'correction contradictoire ({dim_adj} dans les dimensions, {title_adj} dans l\'intitulé)')
+    adjustment = dim_adj or title_adj or ADJ_UNKNOWN
+    source = 'dimensions' if dim_adj else ('titre' if title_adj else None)
+    expected_adj = normalize_adjustment(defn.get('adjustment'))
+    if expected_adj and adjustment != ADJ_UNKNOWN and adjustment != expected_adj:
+        anomalies.append(f'série {adjustment} au lieu de {expected_adj}')
+
+    # Activité (poste NAF).
+    naf_check = None
+    if defn.get('naf'):
+        dim_naf = _naf_dim(dims)
+        title_posts = re.findall(r'poste\s+([0-9A-Z][0-9A-Z.\-]*[0-9A-Z])|poste\s+([0-9A-Z])\b', _norm_title(title))
+        title_posts = [a or b for a, b in title_posts]
+        if dim_naf:
+            if naf_matches(defn['naf'], dim_naf):
+                naf_check = 'dimensions'
+            else:
+                anomalies.append(f"activité {dim_naf} dans les dimensions officielles au lieu de {defn['naf']}")
+        if title_posts:
+            if any(naf_matches(defn['naf'], x) for x in title_posts):
+                naf_check = naf_check or 'titre'
+            elif not dim_naf or not naf_matches(defn['naf'], dim_naf):
+                anomalies.append(f"activité {title_posts[0]} dans l'intitulé au lieu de {defn['naf']}")
+            else:
+                anomalies.append(f"activité {title_posts[0]} dans l'intitulé, {dim_naf} dans les dimensions")
+        naf_check = naf_check or 'non vérifiée'
+
+    # Base de l'indice.
+    if defn.get('base'):
+        dim_base = _dim(dims, _DIM_BASE)
+        if dim_base and re.sub(r'\D', '', str(dim_base))[:4] and re.sub(r'\D', '', str(dim_base))[:4] != defn['base']:
+            anomalies.append(f"base {dim_base} dans les dimensions au lieu de {defn['base']}")
+        m = re.search(r'base\s*(?:100\s*en\s*)?(\d{4})', title, re.I)
+        if m and m.group(1) != defn['base']:
+            anomalies.append(f"base {m.group(1)} dans l'intitulé au lieu de {defn['base']}")
+    return {'adjustment': adjustment, 'adjustment_source': source, 'naf_check': naf_check, 'anomalies': anomalies}
+
+
+SUSPENDED = 'indicateur suspendu, à vérifier'
 
 
 def fetch(defn, http=None):
-    """Interroge la source officielle. http(url, params) -> (status, bytes) ; requests par défaut."""
+    """Interroge la source officielle. http(url, params) -> (status, bytes) ; requests par défaut.
+    defn['dimensions'] : dimensions officielles déjà connues de la série (voir refresh_dimensions)."""
     if http is None:
         import requests
 
@@ -268,19 +483,237 @@ def fetch(defn, http=None):
         data = parse_ecb_csv(body.decode('utf-8', 'replace'))
     if not data['obs']:
         raise MarketWatchError('aucune valeur publiée')
-    if not title_matches(defn, data['title']):
-        raise MarketWatchError(f"titre officiel inattendu (« {data['title'][:120]} ») : identifiant à vérifier")
+    if defn['source'] == 'insee':
+        meta = check_metadata(defn, data, defn.get('dimensions'))
+        if meta['anomalies']:
+            raise MarketWatchError('Métadonnées contradictoires : ' + ' ; '.join(meta['anomalies']) + f' — {SUSPENDED}')
+        data.update({k: meta[k] for k in ('adjustment', 'adjustment_source', 'naf_check')})
+    else:
+        if not title_matches(defn, data['title']):
+            raise MarketWatchError(f"titre officiel inattendu (« {data['title'][:120]} ») — {SUSPENDED}")
+        data.update({'adjustment': None, 'adjustment_source': None, 'naf_check': None})
     return data
 
 
+# ------------------------------------------------- dimensions officielles de l'INSEE
+# Fichier « correspondance_idbank_dimension » publié chaque mois par l'INSEE : pour chaque
+# identifiant, le flux SDMX (nomflow) et la clé de la série (cleFlow). Une requête SDMX sur
+# ce flux renvoie la série avec ses dimensions nommées (CORRECTION, NAF2, BASIND…).
+IDBANK_FILE_URL = 'https://www.insee.fr/fr/statistiques/fichier/2862759/{yyyymm}_correspondance_idbank_dimension.zip'
+INSEE_SDMX_FLOW = 'https://bdm.insee.fr/series/sdmx/data/{flow}/{key}'
+DIMENSIONS_TTL_DAYS, DIMENSIONS_RETRY_DAYS = 30, 7
+
+
+def idbank_file_urls(today=None, env=None):
+    import os
+    env = os.environ if env is None else env
+    if today is None:
+        from profitos.accounting import paris_today
+        today = paris_today()
+    urls = [env['MARKET_INSEE_IDBANK_FILE']] if env.get('MARKET_INSEE_IDBANK_FILE') else []
+    y, m = today.year, today.month
+    for _ in range(13):
+        urls.append(IDBANK_FILE_URL.format(yyyymm=f'{y}{m:02d}'))
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    return urls
+
+
+def parse_idbank_mapping(lines, wanted):
+    """Lignes du fichier de correspondance (séparateur ';') -> {idbank: (nomflow, cleFlow)},
+    limitées aux identifiants voulus."""
+    wanted = {str(w).zfill(9) for w in wanted}
+    out = {}
+    for line in lines:
+        parts = [x.strip().strip('"') for x in line.rstrip('\r\n').split(';')]
+        if len(parts) < 3 or not parts[1].isdigit():
+            continue                                         # en-tête ou ligne vide
+        idbank = parts[1].zfill(9)
+        if idbank in wanted:
+            out[idbank] = (parts[0], parts[2])
+            if len(out) == len(wanted):
+                break
+    return out
+
+
+def read_idbank_zip(path, wanted):
+    import zipfile
+    with zipfile.ZipFile(path) as z:
+        names = [n for n in z.namelist() if not n.endswith('/')]
+        name = next((n for n in names if 'correspondance' in n.lower()), names[0] if names else None)
+        if not name:
+            raise MarketWatchError('fichier de correspondance INSEE vide')
+        with z.open(name) as raw:
+            return parse_idbank_mapping(io.TextIOWrapper(raw, encoding='utf-8-sig', errors='replace'), wanted)
+
+
+def download_idbank_mapping(wanted, download=None, today=None):
+    """Télécharge le dernier fichier de correspondance publié et en extrait les séries voulues.
+    download(url, path) -> code HTTP ; requests en flux continu par défaut."""
+    import os
+    import tempfile
+    import zipfile
+    if download is None:
+        import requests
+
+        def download(url, path):
+            with requests.get(url, stream=True, timeout=60) as r:
+                if r.status_code != 200:
+                    return r.status_code
+                with open(path, 'wb') as f:
+                    for chunk in r.iter_content(1 << 16):
+                        f.write(chunk)
+                return 200
+    last = 'aucune adresse'
+    for url in idbank_file_urls(today):
+        fd, path = tempfile.mkstemp(suffix='.zip')
+        os.close(fd)
+        try:
+            code = download(url, path)
+            if code != 200:
+                last = f'HTTP {code}'
+                continue
+            try:
+                return read_idbank_zip(path, wanted), url
+            except (zipfile.BadZipFile, MarketWatchError) as exc:
+                last = f'fichier illisible ({exc})'
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    raise MarketWatchError(f'fichier de correspondance INSEE introuvable ({last})')
+
+
+def fetch_dimensions(flow, key, idbank, http=None):
+    """Dimensions nommées d'une série, par une requête SDMX sur son flux."""
+    if http is None:
+        import requests
+
+        def http(url, params):
+            r = requests.get(url, params=params, timeout=TIMEOUT, headers={'Accept-Encoding': 'gzip'})
+            return r.status_code, r.content
+    status, body = http(INSEE_SDMX_FLOW.format(flow=flow, key=key), {'lastNObservations': 1})
+    if status != 200:
+        raise MarketWatchError(f'flux {flow} indisponible (HTTP {status})')
+    data = parse_insee_sdmx(body)
+    attrs = data.get('attrs') or {}
+    if attrs.get('IDBANK') and attrs['IDBANK'].zfill(9) != idbank:
+        raise MarketWatchError(f"le flux {flow} a renvoyé la série {attrs['IDBANK']} au lieu de {idbank}")
+    return {k: v for k, v in attrs.items() if k.upper() not in _DIM_SKIP and v}
+
+
+def ensure_dimensions_table(conn):
+    conn.execute('''CREATE TABLE IF NOT EXISTS market_series_dims(
+        idbank TEXT PRIMARY KEY, dataflow TEXT, series_key TEXT, dimensions TEXT, checked_at TEXT,
+        status TEXT, error TEXT, source_file TEXT)''')
+    conn.commit()
+
+
+def stored_dimensions(conn, idbank):
+    ensure_dimensions_table(conn)
+    row = conn.execute('SELECT * FROM market_series_dims WHERE idbank=?', (idbank,)).fetchone()
+    if not row:
+        return None
+    out = dict(row)
+    try:
+        out['dimensions'] = json.loads(out.get('dimensions') or '{}')
+    except ValueError:
+        out['dimensions'] = {}
+    return out
+
+
+def _store_dims(conn, idbank, status, flow=None, key=None, dims=None, error=None, source_file=None):
+    conn.execute("""INSERT INTO market_series_dims(idbank,dataflow,series_key,dimensions,checked_at,status,error,source_file)
+                    VALUES(?,?,?,?,?,?,?,?)
+                    ON CONFLICT(idbank) DO UPDATE SET dataflow=excluded.dataflow, series_key=excluded.series_key,
+                    dimensions=excluded.dimensions, checked_at=excluded.checked_at, status=excluded.status,
+                    error=excluded.error, source_file=excluded.source_file""",
+                 (idbank, flow, key, json.dumps(dims or {}, ensure_ascii=False, sort_keys=True), _now(), status,
+                  (error or '')[:300] or None, source_file))
+    conn.commit()
+
+
+def dimensions_due(conn, idbank, now=None):
+    row = stored_dimensions(conn, idbank)
+    if not row or not row.get('checked_at'):
+        return True
+    now = now or datetime.now(timezone.utc)
+    try:
+        checked = datetime.fromisoformat(row['checked_at'])
+    except ValueError:
+        return True
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    ttl = DIMENSIONS_TTL_DAYS if row.get('status') == 'ok' else DIMENSIONS_RETRY_DAYS
+    return (now - checked).days >= ttl
+
+
+def refresh_dimensions(conn, codes, custom=None, http=None, download=None, force=False, today=None):
+    """Met à jour les dimensions officielles des séries INSEE suivies (au plus une fois par
+    mois, une fois par semaine après un échec). Retourne {idbank: 'ok' | message}."""
+    ensure_dimensions_table(conn)
+    idbanks = []
+    for code in codes:
+        defn = definition(code, custom)
+        if defn and defn['source'] == 'insee' and defn['idbank'] not in idbanks and (force or dimensions_due(conn, defn['idbank'])):
+            idbanks.append(defn['idbank'])
+    if not idbanks:
+        return {}
+    try:
+        mapping, url = download_idbank_mapping(idbanks, download, today)
+    except Exception as exc:                                   # fichier absent, réseau
+        msg = str(exc) if isinstance(exc, MarketWatchError) else f'fichier injoignable ({type(exc).__name__})'
+        for idbank in idbanks:
+            previous = stored_dimensions(conn, idbank)
+            if previous and previous.get('status') == 'ok':
+                continue                                       # on garde les dimensions déjà vérifiées
+            _store_dims(conn, idbank, 'error', error=msg)
+        return {i: msg for i in idbanks}
+    out = {}
+    for idbank in idbanks:
+        if idbank not in mapping:
+            _store_dims(conn, idbank, 'absent', error='identifiant absent du fichier de correspondance', source_file=url)
+            out[idbank] = 'absent du fichier de correspondance'
+            continue
+        flow, key = mapping[idbank]
+        try:
+            dims = fetch_dimensions(flow, key, idbank, http)
+        except Exception as exc:
+            msg = str(exc) if isinstance(exc, MarketWatchError) else f'flux injoignable ({type(exc).__name__})'
+            _store_dims(conn, idbank, 'error', flow, key, error=msg, source_file=url)
+            out[idbank] = msg
+        else:
+            _store_dims(conn, idbank, 'ok', flow, key, dims, source_file=url)
+            out[idbank] = 'ok'
+    return out
+
+
 # --------------------------------------------------------------------- stockage
+_META_COLUMNS = ('adjustment', 'adjustment_source', 'naf_check')
+
+
 def ensure_tables(conn):
     conn.execute('''CREATE TABLE IF NOT EXISTS market_series(
         code TEXT PRIMARY KEY, title TEXT, freq TEXT, last_update TEXT, fetched_at TEXT,
-        status TEXT, error TEXT)''')
+        status TEXT, error TEXT, adjustment TEXT, adjustment_source TEXT, naf_check TEXT)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS market_observations(
         code TEXT NOT NULL, period TEXT NOT NULL, value REAL NOT NULL, PRIMARY KEY(code, period))''')
     conn.commit()
+    _ensure_meta_columns(conn)
+
+
+def _ensure_meta_columns(conn):
+    """Colonnes de métadonnées ajoutées en v478-v479 aux bases existantes."""
+    for col in _META_COLUMNS:
+        try:
+            conn.execute(f'SELECT {col} FROM market_series WHERE 1=0').fetchall()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            conn.execute(f'ALTER TABLE market_series ADD COLUMN {col} TEXT')
+            conn.commit()
 
 
 def _now():
@@ -291,15 +724,28 @@ def store(conn, code, data=None, error=None):
     """Enregistre une lecture réussie, ou l'erreur (les valeurs déjà connues restent)."""
     ensure_tables(conn)
     if data is not None:
-        conn.execute("""INSERT INTO market_series(code,title,freq,last_update,fetched_at,status,error) VALUES(?,?,?,?,?,'ok',NULL)
+        adjustment = data.get('adjustment')
+        if adjustment and adjustment != ADJ_UNKNOWN:
+            adjustment = normalize_adjustment(adjustment) or ADJ_UNKNOWN
+        before = conn.execute('SELECT adjustment FROM market_series WHERE code=?', (code,)).fetchone()
+        old = normalize_adjustment(before['adjustment']) if before else None
+        if old and adjustment and adjustment != ADJ_UNKNOWN and old != adjustment:
+            # Brut et CVS-CJO ne se mélangent jamais : l'historique de l'autre version est écarté.
+            conn.execute('DELETE FROM market_observations WHERE code=?', (code,))
+        conn.execute("""INSERT INTO market_series(code,title,freq,last_update,fetched_at,status,error,adjustment,
+                                                  adjustment_source,naf_check)
+                        VALUES(?,?,?,?,?,'ok',NULL,?,?,?)
                         ON CONFLICT(code) DO UPDATE SET title=excluded.title, freq=excluded.freq,
-                        last_update=excluded.last_update, fetched_at=excluded.fetched_at, status='ok', error=NULL""",
-                     (code, data['title'][:300], data.get('freq'), data.get('last_update'), _now()))
+                        last_update=excluded.last_update, fetched_at=excluded.fetched_at, status='ok', error=NULL,
+                        adjustment=excluded.adjustment, adjustment_source=excluded.adjustment_source,
+                        naf_check=excluded.naf_check""",
+                     (code, data['title'][:300], data.get('freq'), data.get('last_update'), _now(), adjustment,
+                      data.get('adjustment_source'), data.get('naf_check')))
         for period, value in data['obs']:
             conn.execute("""INSERT INTO market_observations(code,period,value) VALUES(?,?,?)
                             ON CONFLICT(code,period) DO UPDATE SET value=excluded.value""", (code, period, value))
     else:
-        status = 'mismatch' if error and 'à vérifier' in error else 'error'
+        status = 'mismatch' if error and ('à vérifier' in error or SUSPENDED in error) else 'error'
         conn.execute("""INSERT INTO market_series(code,fetched_at,status,error) VALUES(?,?,?,?)
                         ON CONFLICT(code) DO UPDATE SET fetched_at=excluded.fetched_at, status=excluded.status,
                         error=excluded.error""", (code, _now(), status, (error or '')[:300]))
@@ -316,6 +762,10 @@ def refresh(conn, codes, http=None, custom=None):
         defn = definition(code, custom)
         if not defn:
             continue
+        if defn['source'] == 'insee':
+            known = stored_dimensions(conn, defn['idbank'])
+            if known and known.get('status') == 'ok':
+                defn['dimensions'] = known['dimensions']
         try:
             data = fetch(defn, http)
         except Exception as exc:                 # réseau, format, titre inattendu
@@ -337,7 +787,12 @@ def observations(conn, code):
 def series_meta(conn, code):
     ensure_tables(conn)
     row = conn.execute('SELECT * FROM market_series WHERE code=?', (code,)).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    out = dict(row)
+    if out.get('adjustment'):                    # anciennes valeurs ('brut') ramenées aux codes officiels
+        out['adjustment'] = normalize_adjustment(out['adjustment']) or ADJ_UNKNOWN
+    return out
 
 
 # ------------------------------------------------------------------- calculs
@@ -379,9 +834,11 @@ def _value_at_or_before(obs, target):
     return best
 
 
-def stats(obs, unit='indice'):
+def stats(obs, unit='indice', raw_seasonal=False):
     """Dernière valeur, variation sur la période précédente et sur un an. Pour un taux (%),
-    les variations sont en points ; pour un indice, en pourcentage."""
+    les variations sont en points ; pour un indice, en pourcentage. raw_seasonal : série
+    d'activité brute, dont deux mois consécutifs ne se comparent pas (saisonnalité, jours
+    ouvrables) — seule la variation sur un an est donnée."""
     if not obs:
         return None
     last_p, last_v = obs[-1]
@@ -398,8 +855,20 @@ def stats(obs, unit='indice'):
             return None
         return round((last_v - old[1]) / old[1] * 100, 2)
     return {'period': last_p, 'label': period_label(last_p), 'value': last_v,
-            'change_1p': change(prev), 'change_12m': change(year) if year and year[0] != last_p else None,
-            'points': unit == '%'}
+            'change_1p': None if raw_seasonal else change(prev),
+            'change_12m': change(year) if year and year[0] != last_p else None,
+            'points': unit == '%', 'raw_seasonal': bool(raw_seasonal)}
+
+
+def is_raw_activity(defn, meta):
+    """Indice d'activité dont la variation mensuelle n'a pas de sens sûr : série brute ou CJO
+    seule confirmée, ou correction non vérifiée (par prudence, comme une série brute)."""
+    adj = normalize_adjustment((meta or {}).get('adjustment'))
+    return bool(defn) and defn.get('kind') == 'activite' and adj not in (ADJ_CVS_CJO, 'CVS')
+
+
+def series_stats(defn, obs, meta):
+    return stats(obs, defn['unit'], raw_seasonal=is_raw_activity(defn, meta))
 
 
 RATE_ALERT_12M, RATE_ALERT_1P = 0.5, 0.25    # taux : seuils en points
