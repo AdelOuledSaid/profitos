@@ -503,3 +503,8 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .mc-decision{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-top:8px;font-size:13px}
 .mc-decision input[name=note]{min-width:220px;flex:1}
 .mc-select-all{font-size:13px}
+.mc-amount{white-space:normal;text-align:right;max-width:100%}
+.mc-amount-value{white-space:nowrap}
+.mc-head h3{min-width:0;overflow-wrap:anywhere}
+.mc-decision input[name=note]{min-width:0;flex:1 1 180px}
+.mc-decision select{max-width:100%}

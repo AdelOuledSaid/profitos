@@ -4,7 +4,7 @@
 <article class="mc-card sev-{{ f.severity }}">
   <div class="mc-head">
     <h3>{{ f.title }}</h3>
-    {% if f.amount is not none %}<span class="mc-amount"><span class="mc-amount-label">{{ f.amount_label }} :</span> {{ f.amount|fr_number(2) }} €</span>{% endif %}
+    {% if f.amount is not none %}<span class="mc-amount"><span class="mc-amount-label">{{ f.amount_label }} :</span> <span class="mc-amount-value">{{ f.amount|fr_number(2) }} €</span></span>{% endif %}
   </div>
   <div class="mc-tags"><span class="mc-tag">{{ severity_labels[f.severity] }}</span><span class="mc-tag">{{ kind_labels.get(f.kind, f.kind) }}</span>{% if f.action %}<span class="mc-tag">{{ {'execute': 'Action automatisable', 'prepare': 'Préparé par ProfitOS, à valider', 'link': 'À traiter manuellement'}[f.action.kind] }}</span>{% endif %}{% if f.track.first_seen %}détecté le {{ f.track.first_seen|fr_date }}{% endif %}</div>
   {% if f.detail %}<p class="purchase-muted" style="margin:0 0 4px;font-size:13px;">{{ f.detail }}</p>{% endif %}

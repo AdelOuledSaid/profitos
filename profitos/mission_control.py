@@ -69,6 +69,23 @@ def bank_status(c, eid, today):
             'fresh': bool(best) and (today - best).days <= BANK_FRESH_DAYS}
 
 
+def _invoice_numbers(c, eid):
+    """Numéros normalisés de toutes les factures émises de l'entité."""
+    from profitos.routes.bank_sync import _norm_text
+    return {r['id']: _norm_text(r['invoice_number'] or '') for r in
+            c.execute('SELECT id, invoice_number FROM outgoing_invoices WHERE entity_id IS ?', (eid,)).fetchall()
+            if (r['invoice_number'] or '').strip()}
+
+
+def names_other_invoice(label, invoice_id, numbers):
+    """Le libellé bancaire cite-t-il le numéro d'une AUTRE facture de l'entreprise ?
+    Un tel virement ne peut pas être proposé pour celle-ci."""
+    from profitos.routes.bank_sync import _norm_text
+    low = _norm_text(label or '')
+    own = numbers.get(invoice_id)
+    return any(n and n in low and n != own and not (own and n in own) for i, n in numbers.items() if i != invoice_id)
+
+
 def probable_bank_payment(c, inv, balance):
     """Virement reçu, non encore rapproché, qui pourrait régler la facture (ou None).
     Réutilise le score de rapprochement de la banque (montant, n° de facture, client)."""
@@ -79,10 +96,11 @@ def probable_bank_payment(c, inv, balance):
                         JOIN bank_accounts a ON a.provider_account_id=t.provider_account_id AND a.provider=t.provider
                         WHERE a.entity_id IS ? AND t.amount>0 AND COALESCE(t.transaction_date,'')>=? AND {_tx_filter()}
                         ORDER BY t.transaction_date DESC, t.id DESC LIMIT 300""", (inv['entity_id'], since)).fetchall()
+    numbers = _invoice_numbers(c, inv['entity_id'])
     best = None
     for t in txs:
         available = round(float(t['amount'] or 0) - _bank_allocated_total(c, t['id'], inv['entity_id']), 2)
-        if available <= 0.005:
+        if available <= 0.005 or names_other_invoice(t['label'], inv['id'], numbers):
             continue
         score, reasons = _bank_match_score(inv, t, balance, available)
         if score >= PAYMENT_MATCH_SCORE and (best is None or score > best[1]):
@@ -378,6 +396,7 @@ def bank_proposals(c, eid, today):
     txs = pending_transactions(c, eid, today)
     invoices = c.execute("SELECT * FROM outgoing_invoices WHERE entity_id IS ? AND status IN ('sent','partially_paid') AND total>0 "
                          "ORDER BY issue_date, id", (eid,)).fetchall()
+    numbers = _invoice_numbers(c, eid)
     proposals, unmatched = [], []
     for t in txs:
         amount = float(t['amount'] or 0)
@@ -387,6 +406,8 @@ def bank_proposals(c, eid, today):
             for inv in invoices:
                 balance = _invoice_bank_balance(c, inv)
                 if balance <= .005 or available <= .005:
+                    continue
+                if names_other_invoice(t['label'], inv['id'], numbers):
                     continue
                 score, reasons = _bank_match_score(inv, t, balance, available)
                 if score >= 30:

@@ -30,7 +30,7 @@
         <td>{{ p.tx.transaction_date|fr_date }} — {{ p.tx.label }}<br><strong>{{ p.tx.amount|fr_number(2) }} €</strong></td>
         <td>{{ 'Facture client' if p.target_kind == 'facture' else 'Facture fournisseur' }} {{ p.target.invoice_number }}<br><span class="purchase-muted">{{ p.target.client_name if p.target_kind == 'facture' else p.target.supplier_name }}</span></td>
         <td class="num">{{ p.amount|fr_number(2) }} €</td>
-        <td>Confiance {{ p.confidence|lower }} ({{ p.score }}) : {{ p.reasons|join(', ') }}</td>
+        <td>Confiance {{ p.confidence|lower }} : {{ p.reasons|join(', ') }}</td>
       </tr>{% endfor %}</tbody>
   </table></div>
   {% if can_validate %}<button type="submit" class="purchase-primary-btn primary" style="margin-top:10px;">Valider les rapprochements cochés</button>

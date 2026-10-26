@@ -169,3 +169,21 @@ def test_une_facture_pour_un_seul_mouvement(app):
     c.close()
     assert len(proposals) == 1 and proposals[0]['tx']['label'].endswith(na)
     assert any('déjà proposée pour un autre mouvement' in u['reason'] for u in unmatched)
+
+
+def test_virement_citant_une_autre_facture(app):
+    cl, org = signup(app)
+    a = issue_invoice(cl, price='1000')
+    old = issue_invoice(cl, price='4000')
+    overdue(org, old, 40)
+    overdue(org, a, 20)
+    na = inv_number(org, a)
+    bank(org, 0, txs=[(1200.0, f'VIR CLIENT DURAND {na}', 9)])
+    c = rt.tenant_cx_direct(org)
+    inv_old = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (old,)).fetchone()
+    assert MC.probable_bank_payment(c, inv_old, 4800.0) is None          # le virement cite FA…-001, pas celle-ci
+    inv_a = c.execute('SELECT * FROM outgoing_invoices WHERE id=?', (a,)).fetchone()
+    assert MC.probable_bank_payment(c, inv_a, 1200.0) is not None
+    proposals, _u = MC.bank_proposals(c, None, T)
+    c.close()
+    assert [p['target']['id'] for p in proposals] == [a]
