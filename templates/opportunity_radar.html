@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_verification_card.html" import card %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">OPPORTUNITY RADAR</div>
+    <h1 class="purchase-title">Opportunités repérées dans vos données</h1>
+    <p class="purchase-subtitle">Des constats chiffrés, avec leur source : votre évolution comparée à l'indice officiel de votre secteur, vos clients dormants ou en croissance, votre dépendance à un client et les appels d'offres ouverts. Aucune hausse de chiffre d'affaires n'est promise.</p>
+  </div>
+</div>
+{% set total = groups|map(attribute=2)|map('length')|sum %}
+{% if not total and not other and not followed %}
+<section class="purchase-panel"><p style="margin:0;">Rien à signaler pour l'instant. Le radar s'appuie sur vos factures émises (au moins 15 mois d'historique pour la comparaison avec votre secteur), le code APE de la <a class="link" href="{{ url_for('market_watch') }}">veille</a> et les appels d'offres de votre profil.</p></section>
+{% endif %}
+{% for kind, label, items in groups %}{% if items %}
+<section class="mc-section">
+  <h2>{{ label }} ({{ items|length }})</h2>
+  <div class="mc-list">{% for f in items %}{{ card(f, 'open', severity_labels, kind_labels, 7, url_for('radar')) }}{% endfor %}</div>
+</section>
+{% endif %}{% endfor %}
+{% if other %}
+<section class="mc-section"><h2>Contrôles</h2><div class="mc-list">{% for f in other %}{{ card(f, 'open', severity_labels, kind_labels, 7, url_for('radar')) }}{% endfor %}</div></section>
+{% endif %}
+{% if followed %}
+<section class="mc-section"><h2>Suivies ({{ followed|length }})</h2><div class="mc-list">{% for f in followed %}{{ card(f, 'control', severity_labels, kind_labels, 7, url_for('radar')) }}{% endfor %}</div></section>
+{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les évolutions décrivent les mois écoulés et ne préjugent pas de la suite. Le chiffre d'affaires est celui facturé dans ProfitOS (hors taxes, avoirs déduits) ; l'indice du secteur est celui de l'INSEE pour votre code APE, comparé sur les mêmes mois d'une année sur l'autre.</p>
+</div>
+{% endblock %}

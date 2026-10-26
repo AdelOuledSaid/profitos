@@ -105,7 +105,7 @@ def items(conn, entity_id, statuses=None):
                                           (entity_id,)).fetchall()]
 
 
-def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
+def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None, owner=None):
     """Rapproche les constats du jour du suivi enregistré et contrôle les résultats.
 
     - nouveau constat : enregistré « ouvert » ;
@@ -117,6 +117,8 @@ def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
     evaluated : types de constats ('kind') réellement contrôlés ce jour (None = tous) ; un
     constat d'un type non contrôlé (contrôle en erreur, ou impossible hors session) n'est
     jamais soldé par défaut d'information.
+    owner : module dont cette passe solde les constats « contrôle indisponible » (chaque écran
+    ne solde que les siens).
     Retourne les constats visibles, enrichis de leur suivi ('track')."""
     ensure_table(conn)
     today_s = today.isoformat()
@@ -150,6 +152,8 @@ def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
     for row in conn.execute("SELECT * FROM verification_items WHERE entity_id IS ? AND status IN (?,?)",
                             (entity_id, OPEN, IN_CONTROL)).fetchall():
         if row['item_key'] in seen or (evaluated is not None and row['kind'] not in evaluated):
+            continue
+        if row['kind'] == 'controle_indisponible' and owner and row['module'] != owner:
             continue
         item = dict(row)
         try:

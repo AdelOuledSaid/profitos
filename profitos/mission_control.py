@@ -432,7 +432,7 @@ def resolve_note(c, eid, today):
 
 def run(c, eid, today, cash=None, accounting=True):
     findings, evaluated = compute(c, eid, today, cash, accounting)
-    return V.sync(c, eid, findings, today, resolve_note(c, eid, today), evaluated)
+    return V.sync(c, eid, findings, today, resolve_note(c, eid, today), evaluated, owner=MODULE)
 
 
 # --------------------------------------------------------------------- actions

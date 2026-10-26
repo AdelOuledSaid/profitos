@@ -460,6 +460,26 @@ européenne.
 Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
 
+### Opportunity Radar
+
+Menu **Actions & croissance → Opportunity Radar**. Des opportunités tirées de faits chiffrés,
+chacun avec sa source ; aucune hausse de chiffre d'affaires n'est promise.
+
+- **Votre secteur et vous** : l'évolution sur un an de votre chiffre d'affaires facturé (HT,
+  avoirs déduits) est comparée à celle de l'indice INSEE de chiffre d'affaires de votre code
+  APE, sur les trois mêmes mois (la comparaison sur un an neutralise la saisonnalité). Il faut
+  au moins 15 mois de factures dans ProfitOS et un indice publié et non suspendu ; si l'activité
+  de la série n'a pas pu être vérifiée, le constat l'indique (« ? »).
+- **Clients dormants** : clients qui ont acheté (au moins 500 € HT) entre 18 et 6 mois et plus
+  rien depuis 6 mois — les plus simples à relancer.
+- **Clients en croissance** : achats des 6 derniers mois en hausse d'au moins 30 % (et au moins
+  2 000 € HT) — l'occasion d'un contrat cadre ou d'un service complémentaire.
+- **Dépendance client** : un client pèse au moins 40 % du chiffre d'affaires des 12 derniers mois.
+- **Appels d'offres** ouverts correspondant à votre profil (BOAMP), signalés en priorité quand
+  une date limite tombe dans les 10 jours.
+
+Comme dans Mission Control, chaque constat peut être suivi, reporté ou écarté.
+
 ## 11. Aide à la décision
 
 Trois pages s'appuient sur la prévision de trésorerie pour vous aider à décider. Elles sont visibles dans le menu complet (formule Business et plus).
