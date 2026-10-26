@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ONCE &amp; DONE</div>
+    <h1 class="purchase-title">{{ doc.title }}</h1>
+    <p class="purchase-subtitle">{{ doc.why }}</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('once_done') }}">← Démarches</a></div>
+</div>
+<section class="purchase-panel">
+  <h2>Données reprises du dossier</h2>
+  <ul class="mc-checks">{% for ch in checks %}
+    <li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span><span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %} <span class="purchase-muted">({{ ch.source }})</span></span></li>
+  {% endfor %}</ul>
+  {% if level != 'pret' %}<p class="mc-note">Complétez d'abord le <a class="link" href="{{ url_for('once_done') }}">dossier entreprise</a> : une seule fois, puis le document se prépare en un clic.</p>{% endif %}
+</section>
+{% if level == 'pret' %}
+<form method="post" class="purchase-panel stack" style="margin-top:12px;" target="_blank">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if doc_key == 'mise_en_demeure' %}
+    {% if choices.invoices %}
+    <label>Facture concernée
+      <select name="invoice_id">{% for i in choices.invoices %}<option value="{{ i.id }}" {{ 'selected' if args.get('invoice_id') == i.id|string }}>{{ i.invoice_number }} — {{ i.client_name }} — {{ i.balance|fr_number(2) }} € restant dû (échéance {{ i.due_date|fr_date }})</option>{% endfor %}</select></label>
+    <label>Délai accordé (jours)<input name="delay_days" inputmode="numeric" value="8"></label>
+    {% else %}<p class="purchase-muted">Aucune facture échue et non réglée.</p>{% endif %}
+  {% elif doc_key == 'resiliation' %}
+    {% if choices.contracts %}
+    <label>Contrat à résilier
+      <select name="contract_id">{% for k in choices.contracts %}<option value="{{ k.id }}" {{ 'selected' if args.get('contract_id') == k.id|string }}>{{ k.supplier_name }} — {{ k.label }}{% if k.notice_deadline %} (résiliation avant le {{ k.notice_deadline|fr_date }}){% endif %}</option>{% endfor %}</select></label>
+    <label>Adresse du fournisseur<textarea name="supplier_address" rows="2" maxlength="300">{{ choices.default_address }}</textarea></label>
+    <p class="purchase-muted" style="font-size:12px;margin:0;">Saisie une fois : l'adresse est enregistrée sur la fiche du fournisseur si elle y manque.</p>
+    {% else %}<p class="purchase-muted">Aucun contrat actif : enregistrez-le d'abord dans <a class="link" href="{{ url_for('contract_guardian') }}">Contrats fournisseurs</a>.</p>{% endif %}
+  {% elif doc_key == 'delai_sie' %}
+    <div class="twocol">
+      <label>Impôt concerné<input name="tax" maxlength="80" placeholder="ex. TVA de septembre 2026" required></label>
+      <label>Montant dû (€)<input name="amount" inputmode="decimal" required></label>
+    </div>
+    <div class="twocol">
+      <label>Échéance initiale<input type="date" name="due_date"></label>
+      <label>Nombre de mensualités demandées<input name="months" inputmode="numeric" value="6"></label>
+    </div>
+    <label>Motif (difficulté de trésorerie)<textarea name="reason" rows="3" maxlength="600" required></textarea></label>
+  {% endif %}
+  {% if doc_key == 'fiche_fournisseur' or (doc_key == 'mise_en_demeure' and choices.invoices) or (doc_key == 'resiliation' and choices.contracts) or doc_key == 'delai_sie' %}
+  <button type="submit" class="purchase-primary-btn primary">Préparer le document</button>
+  {% endif %}
+</form>
+{% endif %}
+</div>
+{% endblock %}

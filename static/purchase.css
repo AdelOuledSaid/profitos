@@ -496,3 +496,15 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .mc-actions input[name=reason]{max-width:220px}
 .mc-note{font-size:12px;margin:4px 0 0;color:#e8a33d}
 @media (max-width:600px){.mc-actions input[name=reason]{max-width:100%}}
+/* Mission Control v484 : montant qualifié, ce qui manque, décisions */
+.mc-amount-label{font-weight:400;font-size:12px;opacity:.8}
+.mc-missing{font-size:13px;margin:6px 0;padding:8px 10px;border:1px dashed var(--border,#294064);border-radius:8px}
+.mc-missing ol{margin:4px 0 0;padding-left:20px}
+.mc-decision{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-top:8px;font-size:13px}
+.mc-decision input[name=note]{min-width:220px;flex:1}
+.mc-select-all{font-size:13px}
+.mc-amount{white-space:normal;text-align:right;max-width:100%}
+.mc-amount-value{white-space:nowrap}
+.mc-head h3{min-width:0;overflow-wrap:anywhere}
+.mc-decision input[name=note]{min-width:0;flex:1 1 180px}
+.mc-decision select{max-width:100%}

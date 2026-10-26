@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ doc.title }} — {{ info.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='letter.css') }}">
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+<div class="bar"><strong>{{ doc.title }}</strong> — document pré-rempli à relire avant envoi. <button type="button" data-print>Imprimer / PDF</button></div>
+<div class="page">
+  <div class="sender">
+    <strong>{{ info.name }}</strong>{% if info.legal_form %} — {{ info.legal_form }}{% endif %}{% if info.share_capital %} au capital de {{ info.share_capital }}{% endif %}<br>
+    {{ info.address }}<br>
+    SIRET {{ info.siret }}{% if info.registry %} — {{ info.registry }}{% endif %}<br>
+    {% if info.email %}{{ info.email }}{% endif %}{% if info.telephone %} — {{ info.telephone }}{% endif %}
+  </div>
+
+{% if doc_key == 'fiche_fournisseur' %}
+  <h1>Fiche de référencement fournisseur</h1>
+  <table>
+    <tr><td>Dénomination</td><td>{{ info.name }}</td></tr>
+    <tr><td>Forme juridique</td><td>{{ info.legal_form }}{% if info.share_capital %} — capital {{ info.share_capital }}{% endif %}</td></tr>
+    <tr><td>SIREN / SIRET</td><td>{{ info.siren }} / {{ info.siret }}</td></tr>
+    <tr><td>Immatriculation</td><td>{{ info.registry or '—' }}</td></tr>
+    <tr><td>Code APE</td><td>{{ info.naf }}</td></tr>
+    <tr><td>N° de TVA intracommunautaire</td><td>{{ info.vat_number }}</td></tr>
+    <tr><td>Adresse du siège</td><td>{{ info.address }}</td></tr>
+    <tr><td>Représentant légal</td><td>{{ info.representant }}, {{ info.qualite }}</td></tr>
+    <tr><td>Contact</td><td>{{ info.email }}{% if info.telephone %} — {{ info.telephone }}{% endif %}</td></tr>
+    <tr><td>Date de création</td><td>{{ info.date_creation or '—' }}</td></tr>
+    <tr><td>Coordonnées bancaires</td><td>IBAN {{ info.iban }}<br>BIC {{ info.bic }}</td></tr>
+  </table>
+  <p class="muted">Joignez un RIB émis par votre banque et, si votre client le demande, un extrait Kbis et l'attestation de vigilance de l'Urssaf de moins de 6 mois.</p>
+
+{% elif doc_key == 'mise_en_demeure' %}
+  <div class="recipient"><strong>{{ invoice.client_name }}</strong><br>{{ invoice.client_address|replace('\n', ', ') }}</div>
+  <p>Le {{ today.strftime('%d/%m/%Y') }}</p>
+  <p><strong>Lettre recommandée avec accusé de réception</strong></p>
+  <h1>Objet : mise en demeure de payer — facture n° {{ invoice.invoice_number }}</h1>
+  <p>Madame, Monsieur,</p>
+  <p>Malgré nos relances, la facture n° {{ invoice.invoice_number }} du {{ invoice.issue_date|fr_date }}, d'un montant de {{ invoice.total|fr_number(2) }} € TTC, arrivée à échéance le {{ invoice.due_date|fr_date }}, reste impayée à hauteur de <strong>{{ invoice.balance|fr_number(2) }} €</strong>.</p>
+  <p>Par la présente, nous vous mettons en demeure de régler cette somme dans un délai de {{ delay_days }} jours, soit au plus tard le <strong>{{ deadline.strftime('%d/%m/%Y') }}</strong>{% if info.iban %}, par virement sur le compte IBAN {{ info.iban }}{% endif %}.</p>
+  <p>Conformément à l'article L441-10 du Code de commerce et à nos conditions de vente, cette somme est majorée de pénalités de retard ({{ penalty }}) depuis la date d'échéance, ainsi que de l'indemnité forfaitaire pour frais de recouvrement de 40 € prévue à l'article D441-5 du même code.</p>
+  <p>À défaut de règlement dans ce délai, nous nous réserverons le droit d'engager une procédure de recouvrement, sans autre avis.</p>
+  <p>Nous vous prions d'agréer, Madame, Monsieur, nos salutations distinguées.</p>
+  <p class="sign">{{ info.representant }}<br>{{ info.qualite }}</p>
+
+{% elif doc_key == 'resiliation' %}
+  <div class="recipient"><strong>{{ contract.supplier_name }}</strong><br>{{ supplier_address }}</div>
+  <p>Le {{ today.strftime('%d/%m/%Y') }}</p>
+  <p><strong>Lettre recommandée avec accusé de réception</strong></p>
+  <h1>Objet : résiliation du contrat « {{ contract.label }} »</h1>
+  <p>Madame, Monsieur,</p>
+  <p>Par la présente, nous vous notifions notre décision de résilier le contrat « {{ contract.label }} »{% if contract.start_date %} souscrit le {{ contract.start_date|fr_date }}{% endif %}{% if term_end %}, à l'échéance du {{ term_end.strftime('%d/%m/%Y') }}{% endif %}{% if contract.notice_days %}, dans le respect du préavis contractuel de {{ contract.notice_days }} jours{% endif %}.</p>
+  <p>Nous vous remercions de nous confirmer la prise en compte de cette résiliation et la date de fin effective du contrat, et de nous adresser la facture de clôture le cas échéant.</p>
+  <p>Nous vous prions d'agréer, Madame, Monsieur, nos salutations distinguées.</p>
+  <p class="sign">{{ info.representant }}<br>{{ info.qualite }}</p>
+  {% if late %}<p class="muted"><strong>Attention :</strong> la date limite de préavis ({{ notice_deadline.strftime('%d/%m/%Y') }}) est dépassée selon les dates enregistrées ; la résiliation pourrait ne prendre effet qu'à l'échéance suivante. Vérifiez les conditions du contrat.</p>{% endif %}
+
+{% elif doc_key == 'delai_sie' %}
+  <div class="recipient"><strong>Service des impôts des entreprises</strong><br>(messagerie sécurisée de l'espace professionnel)</div>
+  <p>Le {{ today.strftime('%d/%m/%Y') }}</p>
+  <h1>Objet : demande de plan de règlement — {{ tax }}</h1>
+  <p>Madame, Monsieur,</p>
+  <p>La société {{ info.name }} (SIREN {{ info.siren }}) est redevable de la somme de <strong>{{ amount|fr_number(2) }} €</strong> au titre de : {{ tax }}{% if due_date %}, exigible le {{ due_date }}{% endif %}.</p>
+  <p>{{ reason }}</p>
+  <p>Afin de nous acquitter de cette dette dans les meilleures conditions, nous sollicitons l'octroi d'un plan de règlement en {{ months }} mensualités d'environ {{ monthly|fr_number(2) }} €, et la remise des éventuelles majorations liées à ce délai.</p>
+  <p>Nous restons à votre disposition pour tout justificatif (situation de trésorerie, prévisionnel) et vous prions d'agréer, Madame, Monsieur, nos salutations distinguées.</p>
+  <p class="sign">{{ info.representant }}<br>{{ info.qualite }}<br>{{ info.email }}{% if info.telephone %} — {{ info.telephone }}{% endif %}</p>
+{% endif %}
+  <p class="muted" style="margin-top:40px;">Document préparé avec ProfitOS à partir du dossier de l'entreprise. À relire avant envoi ; il ne remplace pas le conseil d'un avocat ou de votre expert-comptable.</p>
+</div>
+</body>
+</html>

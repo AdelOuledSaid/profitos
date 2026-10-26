@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_verification_card.html" import card %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CONTRACT GUARDIAN</div>
+    <h1 class="purchase-title">Contrats fournisseurs</h1>
+    <p class="purchase-subtitle">Enregistrez vos contrats : chaque facture du fournisseur est comparée au prix convenu (révisé par l'indice officiel du contrat), les dates de résiliation sont surveillées, et les hausses et doublons sont signalés.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-primary-btn primary" href="{{ url_for('contract_guardian_new') }}">Ajouter un contrat</a></div>
+</div>
+
+{% if savings %}<div class="flash" role="status"><strong>{{ savings|fr_number(2) }} € HT</strong> facturés au-delà de vos contrats sur les factures vérifiées : demandez un avoir avant de payer.</div>{% endif %}
+
+<section class="mc-section">
+  <h2>À examiner ({{ findings|length }})</h2>
+  {% if findings %}
+  <div class="mc-list">{% for f in findings %}{{ card(f, 'open', severity_labels, kind_labels, 7, url_for('contract_guardian')) }}{% endfor %}</div>
+  {% else %}<p class="purchase-muted">Aucun écart, préavis proche, hausse ou doublon détecté sur les factures des 12 derniers mois.</p>{% endif %}
+</section>
+
+{% if in_control %}
+<section class="mc-section">
+  <h2>Traité, résultat en contrôle ({{ in_control|length }})</h2>
+  <div class="mc-list">{% for f in in_control %}{{ card(f, 'control', severity_labels, kind_labels, 7, url_for('contract_guardian')) }}{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="purchase-panel mc-section">
+  <h2>Vos contrats ({{ contracts|length }})</h2>
+  {% if contracts %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Fournisseur</th><th>Objet</th><th class="num">Montant HT</th><th>Indexation</th><th>Échéance</th><th>Résiliation avant</th><th></th></tr></thead>
+    <tbody>{% for k in contracts %}
+      <tr>
+        <td>{{ k.supplier_name }}</td>
+        <td>{{ k.label }}{% if k.status == 'resilie' %} <span class="purchase-muted">(résilié{% if k.terminated_on %} le {{ k.terminated_on|fr_date }}{% endif %})</span>{% endif %}</td>
+        <td class="num">{% if k.amount_ht is not none %}{{ k.amount_ht|fr_number(2) }} € <span class="purchase-muted">{{ k.periodicity_label|lower }}</span>{% else %}—{% endif %}</td>
+        <td>{{ k.index_code or '—' }}{% if k.index_code %} <span class="purchase-muted">(base {{ k.index_base_period }})</span>{% endif %}{% if k.cap_pct is not none %} <span class="purchase-muted">plafond {{ k.cap_pct|fr_number(1) }} %/an</span>{% endif %}</td>
+        <td>{% if k.current_end %}{{ k.current_end|fr_date }}{% if k.tacit_renewal %} <span class="purchase-muted">(tacite)</span>{% endif %}{% else %}—{% endif %}</td>
+        <td>{% if k.tacit_renewal and k.notice_deadline and k.status == 'actif' %}{{ k.notice_deadline|fr_date }}{% else %}—{% endif %}</td>
+        <td class="num"><a class="link" href="{{ url_for('contract_guardian_edit', contract_id=k.id) }}">Modifier</a></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <p class="purchase-muted">Aucun contrat enregistré. Commencez par vos abonnements et contrats récurrents (téléphonie, logiciels, maintenance, location, assurance, énergie) : ce sont eux qui se reconduisent seuls et augmentent sans prévenir.</p>
+  {% endif %}
+</section>
+<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Les comparaisons utilisent le montant HT des factures enregistrées dans ProfitOS et les valeurs officielles des indices de la veille. Un indice indisponible ou suspendu rend la comparaison « à vérifier » : aucun écart n'est affirmé sans donnée vérifiée.</p>
+</div>
+{% endblock %}

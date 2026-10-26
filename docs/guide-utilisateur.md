@@ -125,21 +125,35 @@ veille suspendus. Chaque point suit le même chemin : **détecté → vérifié 
 résultat contrôlé**.
 
 - **Vérifications** : chaque point affiche ses contrôles, avec leur source. ✓ vérifié,
-  ? à vérifier (information manquante ou incertaine), ✗ impossible pour l'instant (prérequis
-  manquant ou informations contradictoires). Les points sont classés en « Prêt à traiter »,
-  « À vérifier avant d'agir » et « Action impossible pour l'instant ».
+  ? à vérifier, ✗ impossible pour l'instant. Pour chaque « ? » ou « ✗ », le bloc **Ce qui
+  manque pour agir** dit précisément quoi faire (relier la banque, ajouter l'e-mail du client,
+  attendre telle date, confirmer le statut d'une créance…).
+- **Quatre groupes** : **Action automatisable** (ProfitOS exécute l'action en un clic, ou l'a
+  préparée et vous demande seulement de la valider), **Prêt à traiter manuellement** (vérifié,
+  mais l'action se fait sur une autre page), **À vérifier avant d'agir** et **Action
+  impossible pour l'instant**.
+- **Montants qualifiés** : chaque montant dit ce qu'il représente (restant dû, écart facturé,
+  point bas prévu, volume de mouvements à vérifier…). Le volume des mouvements bancaires est la
+  somme des entrées et sorties à examiner : ni une perte, ni une somme à récupérer.
 - **Impayés** : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
   relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
   la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
-  le délai depuis la dernière relance. Si tout est vérifié, la relance part en un clic ; si un
-  virement correspond, ProfitOS propose de le rapprocher d'abord. Les relances automatiques
-  suivent la même règle : elles sont suspendues tant qu'un virement probable n'est pas rapproché.
+  le délai depuis la dernière relance. Au-delà de 6 mois de retard, il demande le **statut de la
+  créance** : toujours due, en litige ou douteuse (motif obligatoire). Un litige ou une créance
+  douteuse suspend toutes les relances (manuelles et automatiques) jusqu'à nouvelle décision.
+- **Mission bancaire** : pour les mouvements en attente depuis plus de 7 jours, ProfitOS
+  prépare des **propositions de rapprochement** avec leurs preuves (montant, n° de facture, nom
+  du client ou du fournisseur, niveau de confiance). Une facture n'est proposée que pour un seul
+  mouvement, et une correspondance ambiguë n'est pas proposée. Vous cochez ce que vous validez :
+  ProfitOS revérifie chaque proposition, enregistre le règlement, l'écriture comptable et le
+  statut de la facture, puis mesure le résultat (mouvements en attente avant → après). Les
+  mouvements sans correspondance sûre sont listés avec la raison.
 - **Action en un clic** : au moment du clic, tout est revérifié sur les données du moment ;
   si la situation a changé, l'action n'est pas lancée.
-- **Contrôle du résultat** : après une action (ou « J'ai traité » pour les points qui se règlent
-  sur une autre page), ProfitOS vérifie à la date indiquée que le problème a disparu : facture
-  payée, virement fait, déclaration déposée… Sinon le point est rouvert avec la raison. Les
-  points résolus restent visibles 30 jours avec l'explication.
+- **« Je l'ai traité : vérifier »** : pour un point traité sur une autre page, la déclaration ne
+  solde rien. Le point reste « en contrôle » (avec le montant au moment de la déclaration et le
+  montant du jour) tant que les données le montrent ; il n'est soldé que lorsqu'il disparaît des
+  données, et il est rouvert s'il est encore là à la date de contrôle.
 - **Reporter** (7 jours) ou **écarter** (motif obligatoire) un point ; il peut être rétabli.
 - Les vérifications sont refaites à chaque visite et chaque matin, même sans visite.
 
@@ -253,6 +267,28 @@ Trois façons de faire entrer une facture :
 - **Nouvelle facture** : saisie manuelle.
 
 Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.
+
+### Contrats fournisseurs (Contract Guardian)
+
+Menu **Dépenses & marges → Contrats fournisseurs**. Enregistrez vos contrats récurrents
+(maintenance, logiciels, téléphonie, location, assurance, énergie…) : montant HT prévu par
+période, tolérance, indice de révision et période de référence, plafond de hausse, dates,
+tacite reconduction et préavis. ProfitOS contrôle ensuite chaque facture du fournisseur des
+12 derniers mois :
+
+- **Écart de prix** : facture HT au-delà du montant prévu, révisé par l'indice officiel du
+  contrat (valeurs de la veille INSEE) et au-delà de la tolérance. Le constat montre le calcul
+  et propose d'écrire au fournisseur (e-mail pré-rempli demandant un avoir) si son adresse est
+  connue. Si l'indice est indisponible ou suspendu, la comparaison est « à vérifier » : aucun
+  écart n'est affirmé sans donnée vérifiée.
+- **Préavis** : 60 jours avant la date limite de résiliation d'un contrat reconduit
+  tacitement (critique à 15 jours).
+- **Facture hors contrat** : facture datée après la fin d'un contrat terminé ou résilié.
+- **Hausse sans contrat** : fournisseur récurrent dont la dernière facture dépasse nettement
+  l'habitude, sans contrat enregistré pour trancher ; un lien permet d'enregistrer le contrat.
+- **Doublon possible** : même fournisseur, même numéro, ou même montant à moins de 10 jours.
+
+Ces constats apparaissent aussi dans **Mission Control**.
 
 ### Valider et payer
 
@@ -437,6 +473,26 @@ européenne.
 
 Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
+
+### Opportunity Radar
+
+Menu **Actions & croissance → Opportunity Radar**. Des opportunités tirées de faits chiffrés,
+chacun avec sa source ; aucune hausse de chiffre d'affaires n'est promise.
+
+- **Votre secteur et vous** : l'évolution sur un an de votre chiffre d'affaires facturé (HT,
+  avoirs déduits) est comparée à celle de l'indice INSEE de chiffre d'affaires de votre code
+  APE, sur les trois mêmes mois (la comparaison sur un an neutralise la saisonnalité). Il faut
+  au moins 15 mois de factures dans ProfitOS et un indice publié et non suspendu ; si l'activité
+  de la série n'a pas pu être vérifiée, le constat l'indique (« ? »).
+- **Clients dormants** : clients qui ont acheté (au moins 500 € HT) entre 18 et 6 mois et plus
+  rien depuis 6 mois — les plus simples à relancer.
+- **Clients en croissance** : achats des 6 derniers mois en hausse d'au moins 30 % (et au moins
+  2 000 € HT) — l'occasion d'un contrat cadre ou d'un service complémentaire.
+- **Dépendance client** : un client pèse au moins 40 % du chiffre d'affaires des 12 derniers mois.
+- **Appels d'offres** ouverts correspondant à votre profil (BOAMP), signalés en priorité quand
+  une date limite tombe dans les 10 jours.
+
+Comme dans Mission Control, chaque constat peut être suivi, reporté ou écarté.
 
 ## 11. Aide à la décision
 
@@ -631,6 +687,30 @@ Le nombre d'imports par mois dépend de la formule (20 en Starter, 200 en Pro, i
 - **les soldes seulement**, pour démarrer avec les à-nouveaux de l'exercice.
 
 Les comptes absents du plan comptable sont créés, et l'import est refusé s'il est déséquilibré ou s'il touche une période clôturée. Tout ou rien : la moindre erreur annule l'import, et un même fichier ne peut être importé qu'une fois.
+
+### Dossier entreprise et démarches (Once & Done)
+
+Menu **Entreprise & compte → Dossier & démarches**. Le dossier rassemble toutes les
+informations de l'entreprise avec leur source et leur contrôle : SIRET, SIREN et n° de TVA
+(clés vérifiées, TVA cohérente avec le SIREN), adresse, immatriculation, code APE, IBAN et BIC,
+représentant légal, contact, date de création. Les contradictions entre écrans sont
+bloquantes (par exemple franchise en base sur les factures mais déclarations de TVA au profil
+fiscal) et apparaissent aussi dans Mission Control.
+
+Ce qui manque se saisit **une seule fois** : le représentant, sa qualité, l'e-mail et la date
+de création vont au profil fiscal (repris par la liasse), le code APE à la veille de secteur,
+le téléphone au dossier. Les démarches se préparent ensuite en un clic, uniquement si toutes
+les données qu'elles utilisent sont vérifiées :
+
+- **Fiche de référencement fournisseur**, demandée par vos clients ;
+- **Mise en demeure de payer** pour une facture échue (pénalités et indemnité forfaitaire de 40 €) ;
+- **Résiliation d'un contrat fournisseur** enregistré dans Contrats fournisseurs (l'adresse du
+  fournisseur, saisie une fois, est rangée sur sa fiche) ;
+- **Demande de délai de paiement** au service des impôts des entreprises.
+
+Chaque document s'ouvre en page imprimable (**Imprimer / PDF**). Ce sont des modèles
+pré-remplis à relire avant envoi : ils ne remplacent pas le conseil d'un avocat ou de votre
+expert-comptable.
 
 ## 14. Équipe, multi-sociétés et sécurité
 

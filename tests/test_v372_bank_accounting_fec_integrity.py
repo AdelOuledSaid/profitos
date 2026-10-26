@@ -36,8 +36,8 @@ def test_v372_bank_fee_entry_is_balanced_627_512_and_entity_scoped():
     assert "WHERE entity_id IS ? AND source_type='bank_fee' AND source_id=?" in b
 
 def test_v372_reconciliation_is_atomic_until_commit():
-    customer=BANK.split("def banking_reconcile",1)[1].split("def banking_sync",1)[0]
-    supplier=BANK.split("def confirm_purchase_reconciliation",1)[1].split("def banking_transaction_book_fee",1)[0]
+    customer=BANK.split('def _reconcile_invoice',1)[1].split('def reconcile_purchase(',1)[0]
+    supplier=BANK.split('def _reconcile_purchase',1)[1].split('\ndef register(app)',1)[0]
     for block in (customer,supplier):
         assert "c.commit()" in block
         assert "c.rollback()" in block

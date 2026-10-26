@@ -660,6 +660,89 @@ def _reconciliation_suggestions(c, transactions):
 
 
 
+def _reconcile_invoice(c, eid, transaction_id, invoice_id, amount=None):
+    """Rapproche un encaissement bancaire d'une facture client : règlement, écriture
+    comptable, allocation, statut de la facture, puis validation (commit). Lève ValueError
+    (message en français) ou AccountingError. Retourne (montant, facture)."""
+    t=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                      ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                      WHERE t.id=? AND a.entity_id IS ?""",(transaction_id,eid)).fetchone()
+    inv=c.execute("SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?",(invoice_id,eid)).fetchone()
+    if not t or not inv: raise LookupError('introuvable')
+    if inv['status'] not in ('sent','partially_paid'):
+        raise ValueError("Cette facture n'est plus disponible pour le rapprochement.")
+    tx_amount=float(t['amount'] or 0)
+    available=round(tx_amount-_bank_allocated_total(c,transaction_id,eid),2)
+    balance=_invoice_bank_balance(c,inv)
+    if tx_amount <= 0 or available <= .005 or balance <= .005:
+        raise ValueError("Aucun montant restant à rapprocher.")
+    amount=round(amount,2) if amount is not None else min(available,balance)
+    if amount <= 0 or amount > available+.001 or amount > balance+.001:
+        raise ValueError("Montant de rapprochement invalide.")
+    idem=f"bank:{eid}:{transaction_id}:{invoice_id}:{amount:.2f}"
+    matched_at=now()
+    cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
+                     VALUES(?,?,?,?,?,?,?,?)""",(eid,invoice_id,amount,t['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',t['label'] or 'Rapprochement bancaire',idem,matched_at))
+    payment_id=cur.lastrowid
+    payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,eid)).fetchone()
+    bank_code=_bank_ledger_code(c,t,eid)
+    if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
+    generate_sale_partial_payment_entry(c,inv,payment,commit=False,bank_account=bank_code)
+    c.execute("""INSERT INTO bank_invoice_allocations(entity_id,bank_transaction_id,invoice_id,payment_id,matched_amount,match_method,matched_at,idempotency_key)
+                 VALUES(?,?,?,?,?,'manual',?,?)""",(eid,transaction_id,invoice_id,payment_id,amount,matched_at,idem))
+    new_balance=round(balance-amount,2)
+    status='paid' if new_balance <= .005 else 'partially_paid'
+    c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,matched_at if status=='paid' else None,invoice_id,eid))
+    c.commit()
+    return amount, inv
+
+
+def _reconcile_purchase(c, eid, tx_id, purchase_id, amount=None):
+    """Rapproche un paiement bancaire d'une facture fournisseur (même principe). Lève
+    ValueError ou AccountingError. Retourne (montant, facture fournisseur)."""
+    tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
+    p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
+    if not tx or not p: raise LookupError('introuvable')
+    if float(tx['amount'] or 0)>=0: raise ValueError("Cette opération n'est pas une sortie d'argent.")
+    paid=c.execute("SELECT COALESCE(SUM(amount),0) AS x FROM purchase_invoice_payments WHERE entity_id IS ? AND purchase_invoice_id=?",(eid,purchase_id)).fetchone()['x'] or 0
+    balance=max(0.0,round(float(p['total'] or 0)-float(paid),2))
+    allocated=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
+    available=max(0.0,round(abs(float(tx['amount'] or 0))-float(allocated),2))
+    amount=round(amount,2) if amount is not None else min(balance,available)
+    if amount<=0 or amount>balance+.001 or amount>available+.001: raise ValueError("Montant de rapprochement fournisseur invalide.")
+    key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
+    c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or paris_today().isoformat(),'bank',tx['label'],key,now()))
+    payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
+    bank_code=_bank_ledger_code(c,tx,eid)
+    if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
+    generate_purchase_partial_payment_entry(c,p,payment,commit=False,bank_account=bank_code)
+    c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
+    new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
+    c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
+    c.commit()
+    return amount, p
+
+
+def reconcile_invoice(c, eid, transaction_id, invoice_id, amount=None):
+    """Rapprochement atomique d'un encaissement et d'une facture client (voir _reconcile_invoice) :
+    toute erreur annule l'ensemble (c.rollback()) avant d'être relayée."""
+    try:
+        return _reconcile_invoice(c, eid, transaction_id, invoice_id, amount)
+    except (*BANK_DB_INTEGRITY_ERRORS, AccountingError, ValueError, LookupError):
+        c.rollback()
+        raise
+
+
+def reconcile_purchase(c, eid, tx_id, purchase_id, amount=None):
+    """Rapprochement atomique d'un paiement et d'une facture fournisseur (voir _reconcile_purchase) :
+    toute erreur annule l'ensemble (c.rollback()) avant d'être relayée."""
+    try:
+        return _reconcile_purchase(c, eid, tx_id, purchase_id, amount)
+    except (*BANK_DB_INTEGRITY_ERRORS, AccountingError, ValueError, LookupError):
+        c.rollback()
+        raise
+
+
 def register(app):
     @app.route("/banking/comptes/<int:account_id>/entite", methods=["POST"])
     @login_required
@@ -1155,40 +1238,18 @@ def register(app):
         try:
             from profitos.entities import current_entity_id
             eid=current_entity_id()
-            t=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
-                              ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
-                              WHERE t.id=? AND a.entity_id IS ?""",(transaction_id,eid)).fetchone()
-            inv=c.execute("SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?",(invoice_id,eid)).fetchone()
-            if not t or not inv: abort(404)
-            if inv['status'] not in ('sent','partially_paid'):
-                flash("Cette facture n'est plus disponible pour le rapprochement."); return redirect(url_for('banking'))
-            tx_amount=float(t['amount'] or 0)
-            available=round(tx_amount-_bank_allocated_total(c,transaction_id,eid),2)
-            balance=_invoice_bank_balance(c,inv)
-            if tx_amount <= 0 or available <= .005 or balance <= .005:
-                flash("Aucun montant restant à rapprocher."); return redirect(url_for('banking'))
             requested=(request.form.get('matched_amount') or '').strip()
             parsed=parse_amount(requested) if requested else None
             if requested and parsed is None:
                 flash("Montant de rapprochement invalide."); return redirect(url_for('banking'))
-            amount=round(parsed,2) if requested else min(available,balance)
-            if amount <= 0 or amount > available+.001 or amount > balance+.001:
-                flash("Montant de rapprochement invalide."); return redirect(url_for('banking'))
-            idem=f"bank:{eid}:{transaction_id}:{invoice_id}:{amount:.2f}"
-            matched_at=now()
-            cur=c.execute("""INSERT INTO outgoing_invoice_payments(entity_id,invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at)
-                             VALUES(?,?,?,?,?,?,?,?)""",(eid,invoice_id,amount,t['transaction_date'] or datetime.utcnow().date().isoformat(),'bank',t['label'] or 'Rapprochement bancaire',idem,matched_at))
-            payment_id=cur.lastrowid
-            payment=c.execute("SELECT * FROM outgoing_invoice_payments WHERE id=? AND entity_id IS ?",(payment_id,eid)).fetchone()
-            bank_code=_bank_ledger_code(c,t,eid)
-            if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
-            generate_sale_partial_payment_entry(c,inv,payment,commit=False,bank_account=bank_code)
-            c.execute("""INSERT INTO bank_invoice_allocations(entity_id,bank_transaction_id,invoice_id,payment_id,matched_amount,match_method,matched_at,idempotency_key)
-                         VALUES(?,?,?,?,?,'manual',?,?)""",(eid,transaction_id,invoice_id,payment_id,amount,matched_at,idem))
-            new_balance=round(balance-amount,2)
-            status='paid' if new_balance <= .005 else 'partially_paid'
-            c.execute("UPDATE outgoing_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,matched_at if status=='paid' else None,invoice_id,eid))
-            c.commit()
+            try:
+                amount,inv=reconcile_invoice(c,eid,transaction_id,invoice_id,parsed)
+            except LookupError:
+                abort(404)
+            except ValueError as e:
+                if 'plus disponible' in str(e) or 'Aucun montant' in str(e) or 'invalide' in str(e):
+                    c.rollback(); flash(str(e)); return redirect(url_for('banking'))
+                raise
             flash(f"{fr_number(amount,2)} € rapprochés avec la facture {inv['invoice_number']}.")
         except (*BANK_DB_INTEGRITY_ERRORS,ValueError):
             c.rollback(); flash("Ce rapprochement a déjà été enregistré ou son montant est invalide.")
@@ -1268,32 +1329,18 @@ def register(app):
         requested=request.form.get('matched_amount','').strip(); c=cx()
         from profitos.entities import current_entity_id
         eid=current_entity_id()
-        tx=c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id WHERE t.id=? AND a.entity_id IS ?""",(tx_id,eid)).fetchone()
-        p=c.execute("SELECT * FROM purchase_invoices WHERE id=? AND entity_id IS ?",(purchase_id,eid)).fetchone()
-        if not tx or not p: c.close(); abort(404)
-        if float(tx['amount'] or 0)>=0: c.close(); flash("Cette opération n'est pas une sortie d'argent."); return redirect(url_for('banking'))
-        paid=c.execute("SELECT COALESCE(SUM(amount),0) AS x FROM purchase_invoice_payments WHERE entity_id IS ? AND purchase_invoice_id=?",(eid,purchase_id)).fetchone()['x'] or 0
-        balance=max(0.0,round(float(p['total'] or 0)-float(paid),2))
-        allocated=c.execute("SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",(eid,tx_id)).fetchone()['x'] or 0
-        available=max(0.0,round(abs(float(tx['amount'] or 0))-float(allocated),2))
         parsed=parse_amount(requested) if requested else None
         if requested and parsed is None:
             c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
-        amount=round(parsed,2) if requested else min(balance,available)
-        if amount<=0 or amount>balance+.001 or amount>available+.001: c.close(); flash("Montant de rapprochement fournisseur invalide."); return redirect(url_for('banking'))
-        key=f"bank-purchase:{eid}:{tx_id}:{purchase_id}:{amount:.2f}"
         try:
-            c.execute("INSERT INTO purchase_invoice_payments(entity_id,purchase_invoice_id,amount,payment_date,payment_method,reference,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?)",(eid,purchase_id,amount,tx['transaction_date'] or paris_today().isoformat(),'bank',tx['label'],key,now()))
-            payment=c.execute("SELECT * FROM purchase_invoice_payments WHERE entity_id IS ? AND idempotency_key=?",(eid,key)).fetchone()
-            bank_code=_bank_ledger_code(c,tx,eid)
-            if not bank_code: raise AccountingError("Compte banque 512 absent du plan comptable.")
-            generate_purchase_partial_payment_entry(c,p,payment,commit=False,bank_account=bank_code)
-            c.execute("INSERT INTO bank_purchase_allocations(entity_id,bank_transaction_id,purchase_invoice_id,payment_id,matched_amount,idempotency_key,matched_at) VALUES(?,?,?,?,?,?,?)",(eid,tx_id,purchase_id,payment['id'],amount,key,now()))
-            new_balance=round(balance-amount,2); status='paid' if new_balance<=.005 else 'partially_paid'
-            c.execute("UPDATE purchase_invoices SET status=?,paid_at=? WHERE id=? AND entity_id IS ?",(status,now() if status=='paid' else None,purchase_id,eid))
-            c.commit()
+            reconcile_purchase(c,eid,tx_id,purchase_id,parsed)
+        except LookupError:
+            c.close(); abort(404)
         except (AccountingError, *BANK_DB_INTEGRITY_ERRORS, ValueError) as e:
-            c.rollback(); c.close(); flash(f"Rapprochement annulé : {e}"); return redirect(url_for('banking'))
+            c.rollback(); c.close()
+            msg=str(e)
+            flash(msg if msg.startswith(('Cette opération',"Montant de rapprochement")) else f"Rapprochement annulé : {e}")
+            return redirect(url_for('banking'))
         c.close(); flash("Rapprochement fournisseur enregistré."); return redirect(url_for('banking'))
 
     @app.post("/banking/transaction/<int:tx_id>/book-fee")

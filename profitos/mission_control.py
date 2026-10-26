@@ -21,7 +21,10 @@ PAYMENT_MATCH_SCORE = 60     # score de rapprochement à partir duquel un vireme
 PAYABLES_HORIZON = 7
 BANK_PENDING_DAYS = 7
 
-KIND_LABELS = {'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
+KIND_LABELS = {'contrat_preavis': 'Contrats fournisseurs', 'contrat_ecart': 'Contrats fournisseurs',
+               'contrat_hors_periode': 'Contrats fournisseurs', 'hausse_sans_contrat': 'Hausses de prix',
+               'doublon': 'Doublons possibles', 'dossier': 'Dossier entreprise',
+               'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
                'banque': 'Banque', 'fiscal': 'Échéances fiscales', 'pieces': 'Pièces justificatives',
                'veille': 'Veille de votre secteur', 'controle_indisponible': 'Contrôles'}
 
@@ -66,6 +69,23 @@ def bank_status(c, eid, today):
             'fresh': bool(best) and (today - best).days <= BANK_FRESH_DAYS}
 
 
+def _invoice_numbers(c, eid):
+    """Numéros normalisés de toutes les factures émises de l'entité."""
+    from profitos.routes.bank_sync import _norm_text
+    return {r['id']: _norm_text(r['invoice_number'] or '') for r in
+            c.execute('SELECT id, invoice_number FROM outgoing_invoices WHERE entity_id IS ?', (eid,)).fetchall()
+            if (r['invoice_number'] or '').strip()}
+
+
+def names_other_invoice(label, invoice_id, numbers):
+    """Le libellé bancaire cite-t-il le numéro d'une AUTRE facture de l'entreprise ?
+    Un tel virement ne peut pas être proposé pour celle-ci."""
+    from profitos.routes.bank_sync import _norm_text
+    low = _norm_text(label or '')
+    own = numbers.get(invoice_id)
+    return any(n and n in low and n != own and not (own and n in own) for i, n in numbers.items() if i != invoice_id)
+
+
 def probable_bank_payment(c, inv, balance):
     """Virement reçu, non encore rapproché, qui pourrait régler la facture (ou None).
     Réutilise le score de rapprochement de la banque (montant, n° de facture, client)."""
@@ -76,10 +96,11 @@ def probable_bank_payment(c, inv, balance):
                         JOIN bank_accounts a ON a.provider_account_id=t.provider_account_id AND a.provider=t.provider
                         WHERE a.entity_id IS ? AND t.amount>0 AND COALESCE(t.transaction_date,'')>=? AND {_tx_filter()}
                         ORDER BY t.transaction_date DESC, t.id DESC LIMIT 300""", (inv['entity_id'], since)).fetchall()
+    numbers = _invoice_numbers(c, inv['entity_id'])
     best = None
     for t in txs:
         available = round(float(t['amount'] or 0) - _bank_allocated_total(c, t['id'], inv['entity_id']), 2)
-        if available <= 0.005:
+        if available <= 0.005 or names_other_invoice(t['label'], inv['id'], numbers):
             continue
         score, reasons = _bank_match_score(inv, t, balance, available)
         if score >= PAYMENT_MATCH_SCORE and (best is None or score > best[1]):
@@ -89,25 +110,75 @@ def probable_bank_payment(c, inv, balance):
 
 def _bank_check(c, inv, balance, bank, today):
     """Contrôle « aucun paiement déjà arrivé » et le virement candidat éventuel."""
+    label = 'Aucun paiement déjà reçu en banque'
     if bank is None:
-        return V.check('Encaissements vérifiés en banque', None,
-                       "Aucun compte bancaire relié : connectez la banque ou importez un relevé pour vérifier "
-                       "qu'aucun paiement n'est déjà arrivé.", 'Banque'), None
+        return V.check(label, None, "Aucun compte bancaire relié : impossible de savoir si le client a déjà payé.", 'Banque',
+                       fix="Connectez la banque ou importez un relevé récent (menu Banque)."), None
     if not bank['fresh']:
         when = _fr_date(bank['as_of']) if bank['as_of'] else 'date inconnue'
-        return V.check('Encaissements vérifiés en banque', None,
-                       f"Dernier relevé bancaire : {when} (plus de {BANK_FRESH_DAYS} jours). Synchronisez ou importez "
-                       "un relevé récent avant d'agir.", 'Banque'), None
+        return V.check(label, None, f"Dernier relevé bancaire : {when} (plus de {BANK_FRESH_DAYS} jours) : un paiement récent "
+                       "pourrait manquer.", 'Banque',
+                       fix="Synchronisez la banque ou importez un relevé de moins de 3 jours."), None
     candidate = probable_bank_payment(c, inv, balance)
     if candidate:
         t, score, reasons = candidate
-        return V.check('Encaissements vérifiés en banque', None,
+        return V.check(label, None,
                        f"Un virement de {_fr_money(t['amount'])} du {_fr_date(t['transaction_date'])} "
-                       f"(« {(t['label'] or '')[:60]} », {', '.join(reasons)}) pourrait régler cette facture : "
-                       "rapprochez-le avant de relancer.", 'Banque'), t
-    return V.check('Encaissements vérifiés en banque', True,
+                       f"(« {(t['label'] or '')[:60]} », {', '.join(reasons)}) pourrait régler cette facture.", 'Banque',
+                       fix="S'il correspond, rapprochez-le (la facture sera soldée) ; sinon, écartez la proposition "
+                           "sur la page Banque et la relance redeviendra possible."), t
+    return V.check(label, True,
                    f"Aucun virement correspondant non rapproché sur les relevés à jour du {_fr_date(bank['as_of'])}.",
                    'Banque'), None
+
+
+# ------------------------------------------------------------ décisions sur les créances
+OLD_RECEIVABLE_DAYS = 180
+DECISIONS = {'due': 'Toujours due', 'litige': 'En litige', 'douteuse': 'Douteuse (recouvrement incertain)'}
+
+
+def ensure_decisions(c):
+    c.execute('''CREATE TABLE IF NOT EXISTS receivable_decisions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, entity_id INTEGER, source TEXT NOT NULL, invoice_id INTEGER NOT NULL,
+        status TEXT NOT NULL, note TEXT, decided_at TEXT, decided_by TEXT)''')
+    c.commit()
+
+
+def decision(c, eid, source, invoice_id):
+    ensure_decisions(c)
+    r = c.execute('SELECT * FROM receivable_decisions WHERE entity_id IS ? AND source=? AND invoice_id=?',
+                  (eid, source, invoice_id)).fetchone()
+    return dict(r) if r else None
+
+
+def set_decision(c, eid, source, invoice_id, status, note, user, today):
+    if status not in DECISIONS and status != 'aucune':
+        raise ValueError('Décision inconnue.')
+    ensure_decisions(c)
+    # Remplacement explicite : entity_id vaut NULL pour la société mère, et NULL ne déclenche
+    # jamais une contrainte d'unicité (une seconde décision s'ajouterait au lieu de remplacer).
+    c.execute('DELETE FROM receivable_decisions WHERE entity_id IS ? AND source=? AND invoice_id=?', (eid, source, invoice_id))
+    if status != 'aucune':
+        c.execute("""INSERT INTO receivable_decisions(entity_id,source,invoice_id,status,note,decided_at,decided_by)
+                     VALUES(?,?,?,?,?,?,?)""",
+                  (eid, source, invoice_id, status, (note or '')[:300] or None, today.isoformat(), user))
+    c.commit()
+
+
+def reminder_hold(c, inv):
+    """Raison de ne pas relancer une facture émise (litige ou créance douteuse déclarés), ou None."""
+    try:
+        d = decision(c, inv['entity_id'], 'outgoing', inv['id'])
+    except Exception:
+        try:
+            c.rollback()
+        except Exception:
+            pass
+        return None
+    if d and d['status'] in ('litige', 'douteuse'):
+        return (f"Créance déclarée {DECISIONS[d['status']].lower()} le {_fr_date(d['decided_at'])}"
+                + (f" ({d['note']})" if d.get('note') else '') + ' : relance suspendue.')
+    return None
 
 
 # ----------------------------------------------------------------------- détecteurs
@@ -125,30 +196,56 @@ def detect_receivables(c, eid, today):
             if outgoing else None
         probe = inv or {'id': r['id'], 'entity_id': eid, 'issue_date': r['issue_date'],
                         'invoice_number': r['invoice_number'], 'client_name': r['customer']}
+        dec = decision(c, eid, r['source'], r['id'])
         checks = [V.check('Solde restant dû recalculé', True,
                           f"{_fr_money(r['outstanding'])} sur {_fr_money(r['total'])} (règlements et avoirs déduits).",
                           'Factures et règlements ProfitOS')]
         bank_c, candidate = _bank_check(c, probe, r['outstanding'], bank, today)
         checks.append(bank_c)
+        # Statut de la créance : une décision est demandée au-delà de 6 mois, et un litige bloque la relance.
+        if dec and dec['status'] in ('litige', 'douteuse'):
+            checks.append(V.check('Statut de la créance', False,
+                                  f"Déclarée {DECISIONS[dec['status']].lower()} le {_fr_date(dec['decided_at'])} par "
+                                  f"{dec['decided_by']}" + (f" : {dec['note']}" if dec.get('note') else '') + '.',
+                                  'Décision enregistrée',
+                                  fix=("Quand le litige est réglé, choisissez « Toujours due » pour reprendre les relances."
+                                       if dec['status'] == 'litige' else
+                                       "Voyez avec votre expert-comptable la provision pour créance douteuse ; une mise en "
+                                       "demeure reste possible (Dossier & démarches).")))
+        elif r['days_overdue'] > OLD_RECEIVABLE_DAYS and not (dec and dec['status'] == 'due' and
+                                                               (today - date.fromisoformat(dec['decided_at'])).days <= OLD_RECEIVABLE_DAYS):
+            checks.append(V.check('Statut de la créance confirmé', None,
+                                  f"Impayée depuis {r['days_overdue']} jours : au-delà de 6 mois, une relance simple ne suffit "
+                                  "plus et la facture peut être contestée, déjà réglée autrement ou difficile à recouvrer.",
+                                  'Calcul ProfitOS',
+                                  fix="Indiquez ci-dessous si elle est toujours due, en litige ou douteuse ; si elle a été "
+                                      "payée hors banque, enregistrez le règlement sur la facture."))
+        elif dec and dec['status'] == 'due':
+            checks.append(V.check('Statut de la créance confirmé', True,
+                                  f"Toujours due, confirmé le {_fr_date(dec['decided_at'])} par {dec['decided_by']}.",
+                                  'Décision enregistrée'))
         evidence = [V.evidence('Échéance', _fr_date(r['due_date']), f"Facture {r['invoice_number'] or ''}".strip()),
                     V.evidence('Retard', f"{r['days_overdue']} jour(s)", 'Calcul ProfitOS', today.isoformat())]
         action, alternatives = None, []
         if candidate:
-            alternatives.append({'label': 'Rapprocher le virement', 'endpoint': 'banking'})
+            alternatives.append({'label': 'Rapprocher le virement', 'endpoint': 'mission_control_bank'})
         if outgoing:
             prev = c.execute("SELECT COUNT(*) n, MAX(sent_at) last FROM invoice_reminders WHERE invoice_id=? AND entity_id IS ?",
                              (r['id'], eid)).fetchone()
             n, last = int(prev['n'] or 0), _d(prev['last'])
             checks.append(V.check('E-mail du client renseigné', bool(inv['client_email']),
-                                  inv['client_email'] or "Ajoutez l'e-mail du client sur la facture.", 'Facture'))
+                                  inv['client_email'] or 'Aucun e-mail sur la facture.', 'Facture',
+                                  fix=None if inv['client_email'] else "Ajoutez l'e-mail du client sur la facture."))
             hold = r.get('einvoice_hold')
             checks.append(V.check('Pas de blocage de facturation électronique', not hold,
                                   f"Facture {hold} côté facturation électronique." if hold else 'Aucun blocage.',
-                                  'Facturation électronique'))
+                                  'Facturation électronique',
+                                  fix="Régularisez la facture côté facturation électronique." if hold else None))
             if last and (today - last).days < IP.MIN_GAP_DAYS:
+                nxt = last + timedelta(days=IP.MIN_GAP_DAYS)
                 checks.append(V.check(f'Au moins {IP.MIN_GAP_DAYS} jours depuis la dernière relance', False,
-                                      f"Dernière relance le {_fr_date(last)} : prochaine possible le "
-                                      f"{_fr_date(last + timedelta(days=IP.MIN_GAP_DAYS))}.", 'Relances envoyées'))
+                                      f"Dernière relance le {_fr_date(last)}.", 'Relances envoyées',
+                                      fix=f"Attendez le {_fr_date(nxt)} pour la relance suivante."))
             else:
                 checks.append(V.check(f'Au moins {IP.MIN_GAP_DAYS} jours depuis la dernière relance', True,
                                       f"Dernière relance le {_fr_date(last)}." if last else 'Aucune relance envoyée.',
@@ -162,12 +259,15 @@ def detect_receivables(c, eid, today):
             alternatives.append({'label': 'Ouvrir la facture', 'endpoint': 'invoicing_detail', 'args': {'invoice_id': r['id']}})
         else:
             action = {'kind': 'link', 'label': 'Ouvrir la créance', 'url': detail_url(r)}
-        severity = 'critique' if r['days_overdue'] > 30 else 'important'
-        out.append(V.finding(f"impaye:{r['source']}:{r['id']}", MODULE, 'impaye', severity,
-                             f"Facture {r['invoice_number'] or 'sans numéro'} — {r['customer']} : impayée depuis "
-                             f"{r['days_overdue']} jour(s)", amount=r['outstanding'], checks=checks, evidence=evidence,
-                             action=action, alternatives=alternatives, follow_up_days=7,
-                             ref={'source': r['source'], 'id': r['id'], 'number': r['invoice_number']}))
+        severity = 'info' if dec and dec['status'] == 'douteuse' else ('critique' if r['days_overdue'] > 30 else 'important')
+        f = V.finding(f"impaye:{r['source']}:{r['id']}", MODULE, 'impaye', severity,
+                      f"Facture {r['invoice_number'] or 'sans numéro'} — {r['customer']} : impayée depuis "
+                      f"{r['days_overdue']} jour(s)", amount=r['outstanding'], checks=checks, evidence=evidence,
+                      action=action, alternatives=alternatives, follow_up_days=7,
+                      ref={'source': r['source'], 'id': r['id'], 'number': r['invoice_number']})
+        f['decision'] = {'source': r['source'], 'invoice_id': r['id'], 'current': dec['status'] if dec else None,
+                         'asked': r['days_overdue'] > OLD_RECEIVABLE_DAYS or bool(dec)}
+        out.append(f)
     return out
 
 
@@ -255,7 +355,9 @@ def detect_cash(cash, today):
                       follow_up_days=7)]
 
 
-def detect_bank_pending(c, eid, today):
+def pending_transactions(c, eid, today):
+    """Mouvements bancaires des 90 derniers jours, vieux de plus de 7 jours, ni rapprochés, ni
+    comptabilisés, ni ignorés."""
     from profitos.bank_reconciliation import _tx_filter
     limit = (today - timedelta(days=BANK_PENDING_DAYS)).isoformat()
     since = (today - timedelta(days=90)).isoformat()
@@ -268,25 +370,132 @@ def detect_bank_pending(c, eid, today):
                                  AND e.source_type IN ('bank_fee','bank_categorization') AND e.source_id=t.id)"""
     params = [eid, since, limit, eid, eid, eid]
     try:
-        row = c.execute(f"""SELECT COUNT(*) n, COALESCE(SUM(ABS(t.amount)),0) s {base}
-                            AND NOT EXISTS (SELECT 1 FROM bank_transaction_workflow w WHERE w.entity_id IS ?
-                                            AND w.bank_transaction_id=t.id)""", (*params, eid)).fetchone()
+        rows = c.execute(f"""SELECT t.*, a.entity_id AS entity_id {base}
+                             AND NOT EXISTS (SELECT 1 FROM bank_transaction_workflow w WHERE w.entity_id IS ?
+                                             AND w.bank_transaction_id=t.id)
+                             ORDER BY t.transaction_date, t.id""", (*params, eid)).fetchall()
     except Exception:
         try:
             c.rollback()
         except Exception:
             pass
-        row = c.execute(f'SELECT COUNT(*) n, COALESCE(SUM(ABS(t.amount)),0) s {base}', params).fetchone()
-    n = int(row['n'] or 0)
-    if not n:
+        rows = c.execute(f'SELECT t.*, a.entity_id AS entity_id {base} ORDER BY t.transaction_date, t.id', params).fetchall()
+    return [dict(r) for r in rows]
+
+
+PROPOSAL_MIN_SCORE = 60        # même seuil que pour bloquer une relance
+PROPOSAL_AMBIGUITY = 15        # écart minimal avec la 2e meilleure correspondance (sinon : ambigu)
+
+
+def bank_proposals(c, eid, today):
+    """Propositions de rapprochement pour les mouvements en attente, chacune avec ses preuves.
+    Retourne (propositions, non_rapprochables) ; une proposition = {'id', 'tx', 'target_kind',
+    'target', 'amount', 'score', 'confidence', 'reasons'}. Jamais exécutées sans validation."""
+    from profitos.routes.bank_sync import (_bank_allocated_total, _bank_match_score, _invoice_bank_balance,
+                                           _purchase_reconciliation_suggestions)
+    txs = pending_transactions(c, eid, today)
+    invoices = c.execute("SELECT * FROM outgoing_invoices WHERE entity_id IS ? AND status IN ('sent','partially_paid') AND total>0 "
+                         "ORDER BY issue_date, id", (eid,)).fetchall()
+    numbers = _invoice_numbers(c, eid)
+    proposals, unmatched = [], []
+    for t in txs:
+        amount = float(t['amount'] or 0)
+        cands = []
+        if amount > 0:
+            available = round(amount - _bank_allocated_total(c, t['id'], eid), 2)
+            for inv in invoices:
+                balance = _invoice_bank_balance(c, inv)
+                if balance <= .005 or available <= .005:
+                    continue
+                if names_other_invoice(t['label'], inv['id'], numbers):
+                    continue
+                score, reasons = _bank_match_score(inv, t, balance, available)
+                if score >= 30:
+                    cands.append((score, 'facture', inv, min(balance, available), reasons))
+        elif amount < 0:
+            for sug in _purchase_reconciliation_suggestions(c, t):
+                cands.append((sug['score'], 'achat', sug['purchase'], sug['amount'], sug['reasons'].split(', ')))
+        cands.sort(key=lambda x: -x[0])
+        if not cands or cands[0][0] < PROPOSAL_MIN_SCORE:
+            unmatched.append({'tx': t, 'reason': ("Aucune facture client ouverte ne correspond (montant, n° de facture, client)."
+                                                  if amount > 0 else
+                                                  "Aucune facture fournisseur ouverte ne correspond : frais, abonnement ou "
+                                                  "dépense à comptabiliser.")})
+            continue
+        if len(cands) > 1 and cands[0][0] < 80 and cands[0][0] - cands[1][0] < PROPOSAL_AMBIGUITY:
+            unmatched.append({'tx': t, 'reason': f"Plusieurs factures possibles ({cands[0][2]['invoice_number']}, "
+                                                 f"{cands[1][2]['invoice_number']}…) : choix à faire sur la page Banque."})
+            continue
+        score, kind, target, alloc, reasons = cands[0]
+        proposals.append({'id': f"{t['id']}:{kind}:{target['id']}", 'tx': t, 'target_kind': kind, 'target': dict(target),
+                          'amount': round(alloc, 2), 'score': score, 'reasons': list(reasons),
+                          'confidence': 'Élevée' if score >= 90 else ('Moyenne' if score >= 75 else 'Faible')})
+    # Une même facture ne peut être proposée que pour un seul mouvement : la meilleure correspondance.
+    best = {}
+    for p in proposals:
+        k = (p['target_kind'], p['target']['id'])
+        if k not in best or p['score'] > best[k]['score']:
+            best[k] = p
+    kept = [p for p in proposals if best[(p['target_kind'], p['target']['id'])] is p]
+    for p in proposals:
+        if p not in kept:
+            unmatched.append({'tx': p['tx'], 'reason': f"Correspond aussi à la facture {p['target']['invoice_number']}, déjà "
+                                                       "proposée pour un autre mouvement : à vérifier sur la page Banque."})
+    return kept, unmatched
+
+
+def apply_bank_proposals(c, eid, today, selected_ids):
+    """Exécute les rapprochements choisis APRÈS les avoir recalculés : un rapprochement qui
+    n'est plus proposé (situation changée) n'est pas exécuté. Retourne (faits, refusés)."""
+    from profitos.routes.bank_sync import reconcile_invoice, reconcile_purchase
+    proposals, _u = bank_proposals(c, eid, today)
+    by_id = {p['id']: p for p in proposals}
+    done, refused = [], []
+    for pid in selected_ids:
+        p = by_id.get(pid)
+        if not p:
+            refused.append((pid, "n'est plus proposé (déjà traité ou situation changée)"))
+            continue
+        try:
+            if p['target_kind'] == 'facture':
+                amount, _inv = reconcile_invoice(c, eid, p['tx']['id'], p['target']['id'], p['amount'])
+            else:
+                amount, _p = reconcile_purchase(c, eid, p['tx']['id'], p['target']['id'], p['amount'])
+            done.append((p, amount))
+        except Exception as exc:                        # chaque rapprochement est annulé seul en cas d'erreur
+            refused.append((pid, str(exc) or type(exc).__name__))
+    return done, refused
+
+
+def detect_bank_pending(c, eid, today):
+    txs = pending_transactions(c, eid, today)
+    if not txs:
         return []
+    n = len(txs)
+    volume = round(sum(abs(float(t['amount'] or 0)) for t in txs), 2)
+    credits = sum(1 for t in txs if float(t['amount'] or 0) > 0)
+    proposals, unmatched = bank_proposals(c, eid, today)
+    checks = [V.check('Mouvements comptés sur les relevés', True,
+                      f"{n} mouvement(s) ({credits} entrée(s), {n - credits} sortie(s)) ni rapprochés, ni comptabilisés, ni ignorés.",
+                      'Banque')]
+    if proposals:
+        checks.append(V.check('Correspondances vérifiées', True,
+                              f"{len(proposals)} rapprochement(s) proposé(s) avec preuves (montant, n° de facture, nom) ; "
+                              f"{len(unmatched)} mouvement(s) sans correspondance sûre.", 'Calcul ProfitOS'))
+        action = {'kind': 'prepare', 'label': f'Examiner {len(proposals)} proposition(s) de rapprochement',
+                  'endpoint': 'mission_control_bank', 'area': 'banking'}
+    else:
+        checks.append(V.check('Correspondances vérifiées', None,
+                              "Aucun mouvement ne correspond de façon sûre à une facture ouverte.", 'Calcul ProfitOS',
+                              fix="Comptabilisez, rapprochez ou ignorez ces mouvements sur la page Banque."))
+        action = {'kind': 'link', 'label': 'Traiter les mouvements', 'endpoint': 'banking'}
     return [V.finding('banque:a_traiter', MODULE, 'banque', 'important' if n >= 20 else 'info',
                       f'{n} mouvement(s) bancaire(s) non traité(s) depuis plus de {BANK_PENDING_DAYS} jours',
-                      amount=float(row['s'] or 0),
-                      checks=[V.check('Mouvements comptés sur les relevés', True,
-                                      'Ni rapprochés d\'une facture, ni comptabilisés, ni ignorés.', 'Banque')],
-                      action={'kind': 'link', 'label': 'Traiter les mouvements', 'endpoint': 'banking'},
-                      follow_up_days=7)]
+                      amount=volume, checks=checks, action=action,
+                      alternatives=[{'label': 'Ouvrir la page Banque', 'endpoint': 'banking'}] if proposals else [],
+                      detail="Le montant est le volume cumulé des mouvements à vérifier (entrées et sorties) : ce n'est ni "
+                             "une perte, ni une somme à récupérer.",
+                      follow_up_days=7, ref={'count': n, 'proposals': len(proposals)})]
 
 
 def detect_fiscal(c, eid, today):
@@ -353,9 +562,26 @@ def detect_watch(c, eid, today):
         ac.close()
 
 
+def detect_contracts(c, eid, today):
+    from profitos import contract_guardian as CG
+    return CG.detect(c, eid, today)
+
+
+def _contract_kinds():
+    from profitos import contract_guardian as CG
+    return CG.KINDS
+
+
+def detect_dossier(c, eid, today):
+    from profitos import once_done as OD
+    return OD.detect(c, eid, today)
+
+
+# (types contrôlés, nom, fonction) : un détecteur peut produire plusieurs types de constats.
 DETECTORS = [('impaye', 'impayés clients', detect_receivables), ('fournisseur', 'paiements fournisseurs', detect_payables),
              ('banque', 'mouvements bancaires', detect_bank_pending), ('fiscal', 'échéances fiscales', detect_fiscal),
-             ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch)]
+             ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch),
+             (_contract_kinds, 'contrats fournisseurs', detect_contracts), ('dossier', 'dossier entreprise', detect_dossier)]
 
 
 def compute(c, eid, today, cash=None, accounting=True):
@@ -367,7 +593,7 @@ def compute(c, eid, today, cash=None, accounting=True):
             continue
         try:
             findings += fn(c, eid, today)
-            evaluated.add(kind)
+            evaluated.update(kind() if callable(kind) else (kind,))
         except Exception as exc:
             try:
                 c.rollback()
@@ -412,7 +638,7 @@ def resolve_note(c, eid, today):
 
 def run(c, eid, today, cash=None, accounting=True):
     findings, evaluated = compute(c, eid, today, cash, accounting)
-    return V.sync(c, eid, findings, today, resolve_note(c, eid, today), evaluated)
+    return V.sync(c, eid, findings, today, resolve_note(c, eid, today), evaluated, owner=MODULE)
 
 
 # --------------------------------------------------------------------- actions

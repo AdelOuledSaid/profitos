@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">MISSION CONTROL · BANQUE</div>
+    <h1 class="purchase-title">Mouvements bancaires à traiter</h1>
+    <p class="purchase-subtitle">ProfitOS a cherché, pour chaque mouvement en attente depuis plus de 7 jours, la facture qui lui correspond. Vérifiez les preuves, cochez ce que vous validez : les rapprochements sont exécutés (règlement, écriture comptable, statut de la facture), puis le résultat est contrôlé sur les données.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('mission_control') }}">← Mission Control</a><a class="purchase-nav-btn" href="{{ url_for('banking') }}">Page Banque</a></div>
+</div>
+
+<div class="mc-kpis">
+  <div class="mc-kpi"><b>{{ pending|length }}</b><span>Mouvement(s) en attente</span></div>
+  <div class="mc-kpi"><b>{{ proposals|length }}</b><span>Rapprochement(s) proposé(s) avec preuves</span></div>
+  <div class="mc-kpi"><b>{{ unmatched|length }}</b><span>Sans correspondance sûre (manuel)</span></div>
+  <div class="mc-kpi"><b>{{ volume|fr_number(2) }} €</b><span>Volume de mouvements à vérifier (entrées et sorties cumulées)</span></div>
+</div>
+
+{% if proposals %}
+<form method="post" class="purchase-panel mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2>Propositions de rapprochement ({{ proposals|length }})</h2>
+  <p class="purchase-muted" style="font-size:12px;">Seules les correspondances sûres sont proposées (score d'au moins 60, sans autre facture aussi probable). Les propositions à confiance élevée sont pré-cochées ; rien n'est exécuté sans votre validation.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Valider</th><th>Mouvement bancaire</th><th>Facture proposée</th><th class="num">Montant rapproché</th><th>Preuves</th></tr></thead>
+    <tbody>{% for p in proposals %}
+      <tr>
+        <td><input type="checkbox" name="proposal" value="{{ p.id }}" aria-label="Valider ce rapprochement" {{ 'checked' if p.confidence == 'Élevée' }}></td>
+        <td>{{ p.tx.transaction_date|fr_date }} — {{ p.tx.label }}<br><strong>{{ p.tx.amount|fr_number(2) }} €</strong></td>
+        <td>{{ 'Facture client' if p.target_kind == 'facture' else 'Facture fournisseur' }} {{ p.target.invoice_number }}<br><span class="purchase-muted">{{ p.target.client_name if p.target_kind == 'facture' else p.target.supplier_name }}</span></td>
+        <td class="num">{{ p.amount|fr_number(2) }} €</td>
+        <td>Confiance {{ p.confidence|lower }} : {{ p.reasons|join(', ') }}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if can_validate %}<button type="submit" class="purchase-primary-btn primary" style="margin-top:10px;">Valider les rapprochements cochés</button>
+  {% else %}<p class="purchase-muted">Votre rôle ne permet pas de valider des rapprochements.</p>{% endif %}
+</form>
+{% endif %}
+
+{% if unmatched %}
+<section class="purchase-panel mc-section">
+  <h2>À traiter manuellement ({{ unmatched|length }})</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Date</th><th>Libellé</th><th class="num">Montant</th><th>Pourquoi ProfitOS ne propose rien</th></tr></thead>
+    <tbody>{% for u in unmatched %}<tr><td>{{ u.tx.transaction_date|fr_date }}</td><td>{{ u.tx.label }}</td><td class="num">{{ u.tx.amount|fr_number(2) }} €</td><td>{{ u.reason }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="purchase-muted" style="font-size:12px;">Sur la page Banque : comptabilisez (frais, abonnements, dépenses), rapprochez à la main ou ignorez chaque mouvement.</p>
+</section>
+{% endif %}
+
+{% if not pending %}<section class="purchase-panel"><p style="margin:0;">Aucun mouvement en attente depuis plus de 7 jours.</p></section>{% endif %}
+</div>
+{% endblock %}

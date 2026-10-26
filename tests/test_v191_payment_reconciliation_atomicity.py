@@ -39,22 +39,24 @@ def test_manual_purchase_payment_rolls_back_business_status_on_accounting_failur
 
 
 def test_bank_customer_reconciliation_is_atomic_with_accounting():
-    block = BANKING[BANKING.index('def banking_reconcile'):BANKING.index('def banking_sync')]
+    block = BANKING[BANKING.index('def _reconcile_invoice'):BANKING.index('def reconcile_purchase(')]
     assert "INSERT INTO outgoing_invoice_payments" in block
     assert "INSERT INTO bank_invoice_allocations" in block
     assert "generate_sale_partial_payment_entry(c,inv,payment" in block
     assert "c.rollback()" in block
-    assert "Rapprochement annulé" in block
+    route = BANKING[BANKING.index('def banking_reconcile'):BANKING.index('def banking_sync')]
+    assert "Rapprochement annulé" in route and "reconcile_invoice(" in route
     assert block.index("generate_sale_partial_payment_entry(c,inv,payment") < block.index("c.commit()")
 
 
 def test_bank_supplier_reconciliation_is_atomic_with_accounting():
-    block = BANKING[BANKING.index('def confirm_purchase_reconciliation'):BANKING.index("@app.route('/banking/regles'")]
+    block = BANKING[BANKING.index('def _reconcile_purchase'):BANKING.index('\ndef register(app)')]
     assert "INSERT INTO purchase_invoice_payments" in block
     assert "INSERT INTO bank_purchase_allocations" in block
     assert "generate_purchase_partial_payment_entry(c,p,payment" in block
     assert "c.rollback()" in block
-    assert "Rapprochement annulé" in block
+    route = BANKING[BANKING.index('def confirm_purchase_reconciliation'):BANKING.index("@app.route('/banking/regles'")]
+    assert "Rapprochement annulé" in route and "reconcile_purchase(" in route
     assert block.index("generate_purchase_partial_payment_entry(c,p,payment") < block.index("c.commit()")
 
 

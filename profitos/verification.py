@@ -30,11 +30,12 @@ STATUS_LABELS = {OPEN: 'Ouvert', IN_CONTROL: 'Action faite, résultat en contrô
                  DISMISSED: 'Écarté', SNOOZED: 'Reporté'}
 
 
-def check(label, ok, detail='', source=None):
-    """Un contrôle : ok True (vérifié), None (à vérifier), False (impossible)."""
+def check(label, ok, detail='', source=None, fix=None):
+    """Un contrôle : ok True (vérifié), None (à vérifier), False (impossible).
+    fix : ce qu'il faut faire, précisément, pour que le contrôle passe."""
     if ok not in (True, False, None):
         ok = bool(ok)
-    return {'label': label, 'ok': ok, 'detail': detail or '', 'source': source}
+    return {'label': label, 'ok': ok, 'detail': detail or '', 'source': source, 'fix': fix}
 
 
 def evidence(label, value, source, as_of=None, url=None):
@@ -50,15 +51,34 @@ def level(checks):
     return READY
 
 
+# Nature de l'action : exécutée par ProfitOS en un clic, préparée par ProfitOS puis validée
+# par une personne, ou à faire soi-même sur une autre page.
+ACTION_KINDS = ('execute', 'prepare', 'link')
+
+# Ce que représente le montant d'un constat (jamais présenté comme une perte ou un gain sans le dire).
+AMOUNT_LABELS = {
+    'impaye': 'Restant dû', 'fournisseur': 'Restant à payer', 'tresorerie': 'Point bas prévu',
+    'banque': 'Volume de mouvements à vérifier (entrées et sorties cumulées)', 'fiscal': 'Montant estimé',
+    'contrat_ecart': 'Écart facturé HT', 'contrat_preavis': 'Montant du contrat HT', 'contrat_hors_periode': 'Montant HT facturé',
+    'hausse_sans_contrat': 'Hausse constatée TTC', 'doublon': 'Montant en double possible TTC',
+    'radar_dormant': 'Achats HT entre 18 et 6 mois', 'radar_croissance': "Hausse d'achats HT sur 6 mois",
+    'radar_dependance': "Chiffre d'affaires HT du client sur 12 mois",
+}
+
+
 def finding(key, module, kind, severity, title, *, checks, evidence=(), amount=None, detail='', action=None,
-            alternatives=(), follow_up_days=7, ref=None):
-    """Constat vérifiable. action : {'kind': 'execute'|'link', 'label', 'op'?, 'url'?, 'area'?, …}.
+            alternatives=(), follow_up_days=7, ref=None, amount_label=None):
+    """Constat vérifiable. action : {'kind': 'execute'|'prepare'|'link', 'label', 'op'?, 'endpoint'?, 'area'?, …}.
     alternatives : liens utiles quand l'action principale n'est pas encore possible."""
     if severity not in SEVERITIES:
         raise ValueError(severity)
+    if action and action.get('kind') not in ACTION_KINDS:
+        raise ValueError(action.get('kind'))
     lv = level(checks)
     return {'key': key, 'module': module, 'kind': kind, 'severity': severity, 'title': title, 'detail': detail,
-            'amount': None if amount is None else round(float(amount), 2), 'checks': list(checks),
+            'amount': None if amount is None else round(float(amount), 2),
+            'amount_label': amount_label or AMOUNT_LABELS.get(kind, 'Montant'), 'checks': list(checks),
+            'missing': [c for c in checks if c['ok'] is not True],
             'evidence': list(evidence), 'level': lv, 'action': action, 'alternatives': list(alternatives),
             'action_allowed': bool(action) and lv == READY, 'follow_up_days': int(follow_up_days), 'ref': ref or {}}
 
@@ -75,6 +95,11 @@ def can_execute(f):
     return bool(f) and f['action_allowed'] and (f.get('action') or {}).get('kind') == 'execute'
 
 
+def automatable(f):
+    """ProfitOS peut résoudre le constat lui-même (directement, ou après validation humaine)."""
+    return (f.get('action') or {}).get('kind') in ('execute', 'prepare')
+
+
 def sort_key(f):
     return (SEVERITIES.index(f['severity']), {READY: 0, TO_CHECK: 1, BLOCKED: 2}[f['level']], -(f['amount'] or 0), f['key'])
 
@@ -86,8 +111,17 @@ def ensure_table(conn):
         title TEXT, severity TEXT, amount REAL, status TEXT NOT NULL DEFAULT 'ouvert',
         first_seen TEXT, last_seen TEXT, action_label TEXT, action_at TEXT, action_by TEXT, action_result TEXT,
         check_after TEXT, resolved_at TEXT, resolution TEXT, snoozed_until TEXT, note TEXT, reopen_count INTEGER DEFAULT 0,
-        ref TEXT, UNIQUE(entity_id, item_key))''')
+        ref TEXT, action_amount REAL, UNIQUE(entity_id, item_key))''')
     conn.commit()
+    try:
+        conn.execute('SELECT action_amount FROM verification_items WHERE 1=0').fetchall()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.execute('ALTER TABLE verification_items ADD COLUMN action_amount REAL')
+        conn.commit()
 
 
 def _get(conn, entity_id, key):
@@ -105,7 +139,7 @@ def items(conn, entity_id, statuses=None):
                                           (entity_id,)).fetchall()]
 
 
-def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
+def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None, owner=None):
     """Rapproche les constats du jour du suivi enregistré et contrôle les résultats.
 
     - nouveau constat : enregistré « ouvert » ;
@@ -117,6 +151,8 @@ def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
     evaluated : types de constats ('kind') réellement contrôlés ce jour (None = tous) ; un
     constat d'un type non contrôlé (contrôle en erreur, ou impossible hors session) n'est
     jamais soldé par défaut d'information.
+    owner : module dont cette passe solde les constats « contrôle indisponible » (chaque écran
+    ne solde que les siens).
     Retourne les constats visibles, enrichis de leur suivi ('track')."""
     ensure_table(conn)
     today_s = today.isoformat()
@@ -151,6 +187,8 @@ def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
                             (entity_id, OPEN, IN_CONTROL)).fetchall():
         if row['item_key'] in seen or (evaluated is not None and row['kind'] not in evaluated):
             continue
+        if row['kind'] == 'controle_indisponible' and owner and row['module'] != owner:
+            continue
         item = dict(row)
         try:
             item['ref'] = json.loads(item.get('ref') or '{}')
@@ -169,12 +207,15 @@ def sync(conn, entity_id, findings, today, resolve_note=None, evaluated=None):
     return sorted(visible, key=sort_key)
 
 
-def record_action(conn, entity_id, key, label, result, user, today, follow_up_days):
+def record_action(conn, entity_id, key, label, result, user, today, follow_up_days, amount=None):
+    """Action faite (ou déclarée faite) : le constat passe « en contrôle ». Il n'est soldé que
+    lorsque les données ne le montrent plus ; s'il est toujours là après la date de contrôle, il
+    est rouvert. amount : montant au moment de l'action, pour mesurer l'évolution."""
     ensure_table(conn)
     conn.execute("""UPDATE verification_items SET status=?, action_label=?, action_at=?, action_by=?, action_result=?,
-                    check_after=?, note=NULL WHERE entity_id IS ? AND item_key=?""",
+                    check_after=?, note=NULL, action_amount=? WHERE entity_id IS ? AND item_key=?""",
                  (IN_CONTROL, label, today.isoformat(), user, result, (today + timedelta(days=follow_up_days)).isoformat(),
-                  entity_id, key))
+                  amount, entity_id, key))
     conn.commit()
 
 

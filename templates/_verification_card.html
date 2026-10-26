@@ -1,0 +1,61 @@
+{# Constat du moteur de vérification (v480-v484) : montant qualifié, vérifications, ce qui manque,
+   action (automatique, préparée ou manuelle), décision, suivi du résultat. #}
+{% macro card(f, state='open', severity_labels={}, kind_labels={}, snooze_days=7, next='', decisions={}) %}
+<article class="mc-card sev-{{ f.severity }}">
+  <div class="mc-head">
+    <h3>{{ f.title }}</h3>
+    {% if f.amount is not none %}<span class="mc-amount"><span class="mc-amount-label">{{ f.amount_label }} :</span> <span class="mc-amount-value">{{ f.amount|fr_number(2) }} €</span></span>{% endif %}
+  </div>
+  <div class="mc-tags"><span class="mc-tag">{{ severity_labels[f.severity] }}</span><span class="mc-tag">{{ kind_labels.get(f.kind, f.kind) }}</span>{% if f.action %}<span class="mc-tag">{{ {'execute': 'Action automatisable', 'prepare': 'Préparé par ProfitOS, à valider', 'link': 'À traiter manuellement'}[f.action.kind] }}</span>{% endif %}{% if f.track.first_seen %}détecté le {{ f.track.first_seen|fr_date }}{% endif %}</div>
+  {% if f.detail %}<p class="purchase-muted" style="margin:0 0 4px;font-size:13px;">{{ f.detail }}</p>{% endif %}
+  {% if f.track.note %}<p class="mc-note">{{ f.track.note }}</p>{% endif %}
+  <ul class="mc-checks" aria-label="Vérifications">
+    {% for ch in f.checks %}
+    <li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}" aria-label="{{ 'vérifié' if ch.ok is sameas true else ('impossible' if ch.ok is sameas false else 'à vérifier') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span>
+      <span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %}{% if ch.source %} <span class="purchase-muted">({{ ch.source }})</span>{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% set todo = f.missing|selectattr('fix')|list %}
+  {% if todo and state == 'open' %}
+  <div class="mc-missing"><strong>Ce qui manque pour agir :</strong>
+    <ol>{% for ch in todo %}<li>{{ ch.label }} : {{ ch.fix }}</li>{% endfor %}</ol>
+  </div>
+  {% endif %}
+  {% if f.evidence %}<p class="mc-evidence">{% for e in f.evidence %}{{ e.label }} : <strong>{{ e.value }}</strong> <span class="purchase-muted">— {{ e.source }}{% if e.as_of %}, {{ e.as_of|fr_date }}{% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% if state == 'control' %}
+    <div class="mc-missing"><strong>{{ 'Déclaré traité, pas encore confirmé par les données.' if f.track.action_label == 'Déclaré traité' else 'Action faite, résultat en cours de contrôle.' }}</strong>
+      {{ f.track.action_at|fr_date }}, {{ f.track.action_by }} : {{ f.track.action_result or f.track.action_label }}.
+      Le point est toujours détecté{% if f.track.action_amount is not none and f.amount is not none %} ({{ f.amount_label|lower }} : {{ f.track.action_amount|fr_number(2) }} € au moment de l'action, {{ f.amount|fr_number(2) }} € aujourd'hui){% endif %}.
+      Il sera soldé seulement quand il disparaîtra des données ; s'il est encore là le {{ f.track.check_after|fr_date }}, il sera rouvert.</div>
+  {% endif %}
+  <div class="mc-actions">
+    {% if state == 'open' %}
+      {% if f.can_run %}
+      <form method="post" action="{{ url_for('mission_control_execute') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="next" value="{{ next }}"><button type="submit" class="purchase-primary-btn primary">{{ f.action.label }}</button></form>
+      {% elif f.main_link and f.action_allowed %}
+      <a class="purchase-primary-btn primary" href="{{ f.main_link.url }}">{{ f.main_link.label }}</a>
+      {% elif f.main_link %}
+      <a class="purchase-nav-btn" href="{{ f.main_link.url }}">{{ f.main_link.label }}</a>
+      {% endif %}
+      {% for l in f.links %}<a class="purchase-nav-btn" href="{{ l.url }}">{{ l.label }}</a>{% endfor %}
+      {% if f.action and f.action.kind == 'link' %}
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="next" value="{{ next }}"><input type="hidden" name="op" value="fait"><button type="submit" class="purchase-nav-btn" title="Le point restera en contrôle jusqu'à ce que les données confirment la résolution">Je l'ai traité : vérifier</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="next" value="{{ next }}"><input type="hidden" name="op" value="reporter"><button type="submit" class="purchase-nav-btn">Reporter {{ snooze_days }} jours</button></form>
+      <form method="post" action="{{ url_for('mission_control_track') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="next" value="{{ next }}"><input type="hidden" name="op" value="ecarter"><input name="reason" maxlength="200" placeholder="Motif (obligatoire)" aria-label="Motif pour écarter ce point"><button type="submit" class="purchase-nav-btn">Écarter</button></form>
+    {% else %}
+      {% for l in f.links %}<a class="purchase-nav-btn" href="{{ l.url }}">{{ l.label }}</a>{% endfor %}
+    {% endif %}
+  </div>
+  {% if state == 'open' and f.decision and f.decision.asked and decisions %}
+  <form method="post" action="{{ url_for('mission_control_decision') }}" class="mc-decision">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ next }}">
+    <input type="hidden" name="source" value="{{ f.decision.source }}"><input type="hidden" name="invoice_id" value="{{ f.decision.invoice_id }}">
+    <label>Statut de la créance
+      <select name="status">{% for code, label in decisions.items() %}<option value="{{ code }}" {{ 'selected' if f.decision.current == code }}>{{ label }}</option>{% endfor %}{% if f.decision.current %}<option value="aucune">Retirer la décision</option>{% endif %}</select></label>
+    <input name="note" maxlength="300" placeholder="Motif (obligatoire pour litige ou douteuse)" aria-label="Motif">
+    <button type="submit" class="purchase-nav-btn">Enregistrer le statut</button>
+  </form>
+  {% endif %}
+</article>
+{% endmacro %}
