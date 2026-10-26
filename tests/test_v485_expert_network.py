@@ -218,3 +218,17 @@ def test_transitions_interdites_et_lecture_seule(app, monkeypatch):
     ac.close()
     post(cl, '/experts/demande', {'domaine': 'tresorerie', 'expert_id': str(expert_id), 'title': 'x', 'request': 'y', 'consent': '1'})
     assert any("n'est pas disponible" in m for m in flashes(cl))
+
+
+def test_montants_au_format_francais(app, monkeypatch):
+    sent = capture(monkeypatch)
+    expert_id = add_expert(domain='marketing', name='Léa Com', registration_number='', email='lea@com.example')
+    cl, org = signup(app)
+    r = post(cl, '/experts/demande', {'domaine': 'marketing', 'expert_id': str(expert_id), 'title': 'Campagne',
+                                      'request': 'Réactivation.', 'consent': '1'})
+    mission_id = int(r.headers['Location'].rsplit('/', 1)[1])
+    token = re.search(r'/expert/mission/([^"]+)"', sent[-1][2]).group(1)
+    epost(expert_client(app), f'/expert/mission/{token}', {'op': 'quote', 'amount': '1 250,50', 'delay_days': '5', 'text': 'Plan.'})
+    post(cl, f'/experts/missions/{mission_id}/action', {'op': 'accept'})
+    t = text(cl.get(f'/experts/missions/{mission_id}').get_data(as_text=True))
+    assert 'Devis : 1 250,50 € HT, réalisation en 5 jour(s)' in t and '(1 250,50 € HT)' in t and '1250.50' not in t

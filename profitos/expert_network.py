@@ -54,6 +54,11 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
+def _eur(x):
+    from profitos.runtime import fr_number
+    return f'{fr_number(x, 2)} €'
+
+
 def _hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -295,7 +300,7 @@ def expert_quote(c, m, amount, delay_days, text):
         raise ExpertError('Décrivez le contenu de la prestation.')
     _transition(c, m, ('envoyee', 'devis'), 'devis', quote_amount=round(amount, 2), quote_delay_days=int(delay_days),
                 quote_text=text, quote_at=_now())
-    event(c, m['id'], 'expert', 'devis', f"Devis : {amount:.2f} € HT, réalisation en {int(delay_days)} jour(s). {text}")
+    event(c, m['id'], 'expert', 'devis', f"{_eur(amount)} HT, réalisation en {int(delay_days)} jour(s). {text}")
     c.commit()
 
 
@@ -329,7 +334,7 @@ def message(c, m, actor, text, url=None):
 # --- actions de l'entreprise
 def client_accept(c, m, user):
     _transition(c, m, ('devis',), 'acceptee', accepted_at=_now())
-    event(c, m['id'], 'client', 'statut', f"Devis accepté par {user} ({m['quote_amount']:.2f} € HT). Les honoraires se règlent "
+    event(c, m['id'], 'client', 'statut', f"Devis accepté par {user} ({_eur(m['quote_amount'])} HT). Les honoraires se règlent "
                                           "directement auprès de l'expert.")
     c.commit()
 
