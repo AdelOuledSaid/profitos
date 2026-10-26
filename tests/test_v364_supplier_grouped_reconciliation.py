@@ -7,7 +7,7 @@ def supplier():
     return BANK.split("def _purchase_reconciliation_suggestions",1)[1].split("def _bank_allocated_total",1)[0]
 
 def confirm():
-    return BANK.split("def confirm_purchase_reconciliation",1)[1].split("@app.route('/banking/regles'",1)[0]
+    return BANK.split('def _reconcile_purchase',1)[1].split('\ndef register(app)',1)[0]
 
 def test_v364_supplier_suggestions_use_remaining_bank_amount():
     b=supplier()

@@ -3737,6 +3737,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-26','title':"Mission Control résout : rapprochements bancaires proposés avec preuves et validés en un clic, statut des créances anciennes, « ce qui manque » explicite, montants qualifiés"},
     {'date':'2026-10-26','title':"Opportunity Radar : votre chiffre d'affaires comparé à l'indice INSEE de votre secteur, clients dormants ou en croissance, dépendance client et appels d'offres"},
     {'date':'2026-10-26','title':"Dossier & démarches : informations de l'entreprise vérifiées et saisies une fois, fiche fournisseur, mise en demeure, résiliation et demande de délai prêtes en un clic"},
     {'date':'2026-10-26','title':"Contrats fournisseurs : chaque facture comparée au prix du contrat (révisé par l'indice officiel), préavis de résiliation, hausses et doublons signalés"},

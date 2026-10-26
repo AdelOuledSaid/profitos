@@ -24,7 +24,7 @@ def test_manual_supplier_payment_uses_remaining_balance_atomically():
     assert 'c.rollback()' in b
 
 def test_bank_supplier_reconciliation_supports_partial_and_multiple_allocations():
-    b=BANK.split('def confirm_purchase_reconciliation',1)[1].split("@app.route('/banking/regles'",1)[0]
+    b=BANK.split('def _reconcile_purchase',1)[1].split('\ndef register(app)',1)[0]
     assert 'bank_purchase_allocations' in b
     assert 'purchase_invoice_payments' in b
     assert 'amount>balance+.001' in b and 'amount>available+.001' in b

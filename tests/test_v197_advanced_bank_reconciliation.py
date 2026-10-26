@@ -20,7 +20,7 @@ def test_matching_uses_remaining_bank_amount_and_invoice_balance():
     assert 'allocation=min(balance,available)' in BANK
 
 def test_bank_allocation_creates_real_customer_payment_atomically():
-    block=BANK.split('def banking_reconcile',1)[1].split('@app.post("/banking/sync")',1)[0]
+    block=BANK.split('def _reconcile_invoice',1)[1].split('def reconcile_purchase(',1)[0]
     assert 'INSERT INTO outgoing_invoice_payments' in block
     assert 'generate_sale_partial_payment_entry(c,inv,payment' in block
     assert 'INSERT INTO bank_invoice_allocations' in block
@@ -29,7 +29,7 @@ def test_bank_allocation_creates_real_customer_payment_atomically():
     assert 'entity_id IS ?' in block
 
 def test_reconciliation_is_idempotent_and_cannot_over_allocate():
-    block=BANK.split('def banking_reconcile',1)[1].split('@app.post("/banking/sync")',1)[0]
+    block=BANK.split('def _reconcile_invoice',1)[1].split('def reconcile_purchase(',1)[0]
     assert 'amount > available+.001' in block
     assert 'amount > balance+.001' in block
     assert 'idempotency_key' in block

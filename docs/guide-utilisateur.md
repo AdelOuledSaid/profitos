@@ -125,21 +125,35 @@ veille suspendus. Chaque point suit le même chemin : **détecté → vérifié 
 résultat contrôlé**.
 
 - **Vérifications** : chaque point affiche ses contrôles, avec leur source. ✓ vérifié,
-  ? à vérifier (information manquante ou incertaine), ✗ impossible pour l'instant (prérequis
-  manquant ou informations contradictoires). Les points sont classés en « Prêt à traiter »,
-  « À vérifier avant d'agir » et « Action impossible pour l'instant ».
+  ? à vérifier, ✗ impossible pour l'instant. Pour chaque « ? » ou « ✗ », le bloc **Ce qui
+  manque pour agir** dit précisément quoi faire (relier la banque, ajouter l'e-mail du client,
+  attendre telle date, confirmer le statut d'une créance…).
+- **Quatre groupes** : **Action automatisable** (ProfitOS exécute l'action en un clic, ou l'a
+  préparée et vous demande seulement de la valider), **Prêt à traiter manuellement** (vérifié,
+  mais l'action se fait sur une autre page), **À vérifier avant d'agir** et **Action
+  impossible pour l'instant**.
+- **Montants qualifiés** : chaque montant dit ce qu'il représente (restant dû, écart facturé,
+  point bas prévu, volume de mouvements à vérifier…). Le volume des mouvements bancaires est la
+  somme des entrées et sorties à examiner : ni une perte, ni une somme à récupérer.
 - **Impayés** : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
   relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
   la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
-  le délai depuis la dernière relance. Si tout est vérifié, la relance part en un clic ; si un
-  virement correspond, ProfitOS propose de le rapprocher d'abord. Les relances automatiques
-  suivent la même règle : elles sont suspendues tant qu'un virement probable n'est pas rapproché.
+  le délai depuis la dernière relance. Au-delà de 6 mois de retard, il demande le **statut de la
+  créance** : toujours due, en litige ou douteuse (motif obligatoire). Un litige ou une créance
+  douteuse suspend toutes les relances (manuelles et automatiques) jusqu'à nouvelle décision.
+- **Mission bancaire** : pour les mouvements en attente depuis plus de 7 jours, ProfitOS
+  prépare des **propositions de rapprochement** avec leurs preuves (montant, n° de facture, nom
+  du client ou du fournisseur, niveau de confiance). Une facture n'est proposée que pour un seul
+  mouvement, et une correspondance ambiguë n'est pas proposée. Vous cochez ce que vous validez :
+  ProfitOS revérifie chaque proposition, enregistre le règlement, l'écriture comptable et le
+  statut de la facture, puis mesure le résultat (mouvements en attente avant → après). Les
+  mouvements sans correspondance sûre sont listés avec la raison.
 - **Action en un clic** : au moment du clic, tout est revérifié sur les données du moment ;
   si la situation a changé, l'action n'est pas lancée.
-- **Contrôle du résultat** : après une action (ou « J'ai traité » pour les points qui se règlent
-  sur une autre page), ProfitOS vérifie à la date indiquée que le problème a disparu : facture
-  payée, virement fait, déclaration déposée… Sinon le point est rouvert avec la raison. Les
-  points résolus restent visibles 30 jours avec l'explication.
+- **« Je l'ai traité : vérifier »** : pour un point traité sur une autre page, la déclaration ne
+  solde rien. Le point reste « en contrôle » (avec le montant au moment de la déclaration et le
+  montant du jour) tant que les données le montrent ; il n'est soldé que lorsqu'il disparaît des
+  données, et il est rouvert s'il est encore là à la date de contrôle.
 - **Reporter** (7 jours) ou **écarter** (motif obligatoire) un point ; il peut être rétabli.
 - Les vérifications sont refaites à chaque visite et chaque matin, même sans visite.
 

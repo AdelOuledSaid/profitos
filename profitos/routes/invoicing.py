@@ -4808,7 +4808,8 @@ def reminder_blocker(c, inv):
         return "Aucun e-mail client renseigné pour cette facture."
     if _invoice_balance(c, inv) <= 0.005:
         return "Cette facture est entièrement réglée ou couverte par un avoir et ne peut pas être relancée."
-    return None
+    from profitos.mission_control import reminder_hold
+    return reminder_hold(c, inv)
 
 
 MAX_FORM_LINES = 8

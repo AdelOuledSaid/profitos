@@ -116,7 +116,7 @@ def test_impaye_verifie_puis_relance_et_controle(app, monkeypatch):
     cash(org)
     bank(org, 0, txs=[(250.0, 'VIR SANS RAPPORT', 3)])
     html, text = page(cl)
-    assert 'Prêt à traiter (1)' in text and 'Aucun virement correspondant non rapproché' in text
+    assert 'Action automatisable (1)' in text and 'Aucun virement correspondant non rapproché' in text
     assert 'Envoyer la relance n°1' in html
     post(cl, '/mission-control/agir', {'key': f'impaye:outgoing:{inv}'})
     msg = flashes(cl)
@@ -124,7 +124,7 @@ def test_impaye_verifie_puis_relance_et_controle(app, monkeypatch):
     assert sent.count('client@example.com') == 1
     html, text = page(cl)
     assert 'Action faite, résultat en contrôle (1)' in text and 'Envoyer la relance' not in html
-    assert 'Contrôle du résultat à partir du' in text
+    assert 'Action faite, résultat en cours de contrôle' in text and 'Il sera soldé seulement quand il disparaîtra des données' in text
     # Rejouer le formulaire : refusé (le point n'est plus ouvert).
     post(cl, '/mission-control/agir', {'key': f'impaye:outgoing:{inv}'})
     assert any("n'est plus à traiter" in m for m in flashes(cl)) and sent.count('client@example.com') == 1
@@ -148,7 +148,7 @@ def test_virement_probable_bloque_la_relance(app, monkeypatch):
     bank(org, 0, txs=[(1200.0, 'VIR CLIENT DURAND', 2)])
     html, text = page(cl)
     assert 'Un virement de 1 200,00 € du' in text.replace(' ', ' ').replace('\xa0', ' ')
-    assert 'rapprochez-le avant de relancer' in text and 'Rapprocher le virement' in text
+    assert 'pourrait régler cette facture' in text and 'Rapprocher le virement' in text
     assert 'Envoyer la relance' not in html
     # Forcer le POST : la vérification refaite côté serveur refuse.
     post(cl, '/mission-control/agir', {'key': f'impaye:outgoing:{inv}'})
@@ -178,7 +178,7 @@ def test_releve_ancien_et_relance_trop_recente(app, monkeypatch):
     c.commit(); c.close()
     cash(org)
     html, text = page(cl)
-    assert "Action impossible pour l'instant (1)" in text and 'Dernière relance le' in text and 'prochaine possible le' in text
+    assert "Action impossible pour l'instant (1)" in text and 'Dernière relance le' in text and 'Attendez le' in text
     assert 'Envoyer la relance' not in html
 
 
@@ -200,7 +200,7 @@ def test_fournisseur_tresorerie_et_suivi_manuel(app):
     assert 'En attente de validation interne' in text
     # « J'ai traité » sur un lien : en contrôle, puis résolu quand la facture est payée.
     post(cl, '/mission-control/suivi', {'key': 'fournisseur:1', 'op': 'fait'})
-    assert any('ProfitOS vérifiera le' in m for m in flashes(cl))
+    assert any('reste « en contrôle »' in m for m in flashes(cl))
     c = rt.tenant_cx_direct(org)
     c.execute("UPDATE purchase_invoices SET status='paid', paid_at=? WHERE invoice_number='A-0'", (rt.now(),))
     c.commit(); c.close()
