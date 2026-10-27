@@ -17,7 +17,7 @@
   {% for x in actions %}
     {% if x.kind == 'execute' %}
       {% if x.allowed and can_validate %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="{{ x.op }}"><button type="submit" class="purchase-primary-btn primary">{{ x.label }}</button></form>
-      {% else %}<span class="purchase-nav-btn" aria-disabled="true">{{ x.label }} — {{ 'réservé aux propriétaires, administrateurs et comptables' if x.allowed else 'impossible tant que les anomalies ne sont pas levées' }}</span>{% endif %}
+      {% else %}<p class="pp-disabled"><strong>{{ x.label }}</strong> : {{ 'réservé aux propriétaires, administrateurs et comptables.' if x.allowed else 'impossible tant que les anomalies ci-dessous (étapes en rouge) ne sont pas levées.' }}</p>{% endif %}
     {% else %}<a class="purchase-nav-btn" href="{{ x.url }}">{{ x.label }}</a>{% endif %}
   {% endfor %}
   </div>

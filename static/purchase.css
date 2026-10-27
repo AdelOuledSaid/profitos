@@ -516,3 +516,6 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .pp-list{list-style:none;padding:0;margin:12px 0;display:grid;gap:10px}
 .pp-step h2{font-size:15px;margin:0;display:flex;gap:8px;align-items:center}
 .pp-step.bloque{border-left:4px solid #e5484d}.pp-step.a_verifier{border-left:4px solid #e8a33d}.pp-step.pret{border-left:4px solid #4cc38a}
+.pp-disabled{flex-basis:100%;margin:0;font-size:13px;color:#e8a33d;white-space:normal}
+.pp-list{grid-template-columns:minmax(0,1fr)}
+.pp-list>li{min-width:0}
