@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% macro row(a, selectable=false) %}{% set p = a.purchase %}
 <tr>
-  {% if selectable %}<td><input type="checkbox" name="purchase_id" value="{{ p.id }}" checked aria-label="Valider la facture {{ p.invoice_number }}"></td>{% endif %}
+  {% if selectable %}<td><input type="checkbox" name="purchase_id" value="{{ p.id }}" {{ 'checked' if a.level == 'pret' }} aria-label="Valider la facture {{ p.invoice_number }}"></td>{% endif %}
   <td><a class="link" href="{{ url_for('purchase_pipeline_detail', purchase_id=p.id) }}">{{ p.invoice_number }}</a><br><span class="purchase-muted">{{ p.supplier_name }} · {{ p.issue_date|fr_date }}</span></td>
   <td class="num">{{ p.total|fr_number(2) }} €</td>
   <td><span class="pp-steps" aria-label="Étapes">{% for s in a.steps[:7] %}<span class="pp-dot {{ s.level }}" title="{{ s.n }}. {{ s.name }}">{{ s.n }}</span>{% endfor %}</span></td>
@@ -27,7 +27,7 @@
 <form method="post" class="purchase-panel mc-section">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2>Prêtes à valider ({{ groups.ready|length }})</h2>
-  <p class="purchase-muted" style="font-size:12px;">Toutes les vérifications bloquantes sont passées. La validation passe l'écriture d'achat, puis ProfitOS contrôle qu'elle est bien enregistrée et équilibrée.</p>
+  <p class="purchase-muted" style="font-size:12px;">Toutes les vérifications bloquantes sont passées. Les factures entièrement conformes sont pré-cochées ; celles qui portent un point « ? » (TVA particulière, justificatif…) sont à cocher après examen. La validation passe l'écriture d'achat, puis ProfitOS contrôle qu'elle est bien enregistrée et équilibrée.</p>
   <div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>Valider</th><th>Facture</th><th class="num">TTC</th><th>Étapes 1 à 7</th><th>Points d'attention</th></tr></thead>
   <tbody>{% for a in groups.ready %}{{ row(a, true) }}{% endfor %}</tbody></table></div>
   {% if can_validate %}<button type="submit" class="purchase-primary-btn primary" style="margin-top:10px;">Valider et comptabiliser les factures cochées</button>

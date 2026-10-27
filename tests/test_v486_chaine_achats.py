@@ -199,3 +199,13 @@ def test_liste_lot_droits_et_mission_control(app):
     # Isolation.
     cl2, _o2 = signup(app)
     assert cl2.get(f'/facturation/achats/{pid}/traitement').status_code == 404
+
+
+def test_lot_precoche_seulement_les_conformes(app):
+    cl, org = signup(app)
+    sid = supplier(org)
+    de = supplier(org, name='Bauteile GmbH', vat='DE123456789', siret='')
+    a = purchase(org, number='OK-1', supplier_id=sid)
+    b = purchase(org, number='DE-1', ht=2000.0, vat=0.0, supplier_name='Bauteile GmbH', supplier_id=de)
+    html = cl.get('/facturation/achats/traitement').get_data(as_text=True)
+    assert re.search(rf'value="{a}"\s+checked', html) and not re.search(rf'value="{b}"\s+checked', html)
