@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_expert_dossier.html" import dossier %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">EXPERT NETWORK · MISSION</div>
+    <h1 class="purchase-title">{{ m.title }}</h1>
+    <p class="purchase-subtitle">{{ m.expert_name }} · {{ m.domain_label }} · <strong>{{ m.status_label }}</strong></p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('experts_directory') }}">← Experts</a></div>
+</div>
+{% if fresh_link %}<div class="flash" role="status">Lien personnel de l'expert (à lui transmettre si l'e-mail n'est pas parti ; il ne sera plus affiché) : <code style="word-break:break-all;">{{ fresh_link }}</code></div>{% endif %}
+{% if result %}<div class="flash" role="status"><strong>Résultat contrôlé :</strong> {{ result.text }}</div>{% endif %}
+
+{% if m.quote_amount is not none %}
+<section class="purchase-panel">
+  <h2>Devis de l'expert</h2>
+  <p style="margin:0;"><strong>{{ m.quote_amount|fr_number(2) }} € HT</strong> — réalisation en {{ m.quote_delay_days }} jour(s), reçu le {{ m.quote_at|fr_date }}.</p>
+  <p style="white-space:pre-line;">{{ m.quote_text }}</p>
+  {% if m.status == 'devis' %}
+  <div class="mc-actions">
+    <form method="post" action="{{ url_for('expert_mission_action', mission_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="accept"><button type="submit" class="purchase-primary-btn primary">Accepter le devis</button></form>
+    <form method="post" action="{{ url_for('expert_mission_action', mission_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="refuse"><input name="reason" maxlength="500" placeholder="Motif (facultatif)" aria-label="Motif du refus"><button type="submit" class="purchase-nav-btn">Refuser</button></form>
+  </div>
+  <p class="purchase-muted" style="font-size:12px;">Les honoraires sont convenus et réglés directement avec l'expert (lettre de mission ou convention d'honoraires à signer avec lui) ; ProfitOS ne perçoit aucune commission.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if m.status == 'livree' %}
+<form method="post" action="{{ url_for('expert_mission_action', mission_id=m.id) }}" class="purchase-panel stack mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="complete">
+  <h2>Valider la mission</h2>
+  <label>Évaluation de l'expert (facultatif)<select name="rating"><option value="">—</option>{% for n in (5, 4, 3, 2, 1) %}<option value="{{ n }}">{{ n }} / 5</option>{% endfor %}</select></label>
+  <label>Commentaire<input name="note" maxlength="500"></label>
+  <button type="submit" class="purchase-primary-btn primary">Valider le livrable et terminer</button>
+</form>
+{% endif %}
+
+{{ dossier(m, share_items) }}
+
+{% if m.status in ('envoyee', 'devis', 'acceptee', 'livree') %}
+<form method="post" action="{{ url_for('expert_mission_action', mission_id=m.id) }}" class="purchase-panel stack mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="message">
+  <h2>Écrire à l'expert</h2>
+  <label>Message<textarea name="text" rows="3" maxlength="4000" required></textarea></label>
+  <label>Lien vers un document (facultatif, https://)<input name="url" maxlength="500"></label>
+  <button type="submit" class="purchase-nav-btn">Envoyer</button>
+</form>
+{% if m.status in ('envoyee', 'devis', 'acceptee') %}
+<form method="post" action="{{ url_for('expert_mission_action', mission_id=m.id) }}" style="margin-top:10px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="cancel"><button type="submit" class="purchase-nav-btn">Annuler la mission (désactive l'accès de l'expert)</button></form>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

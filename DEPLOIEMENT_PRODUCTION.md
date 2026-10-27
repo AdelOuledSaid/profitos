@@ -175,6 +175,10 @@ adresse si l'INSEE la change. Pour figer la correction attendue d'une série, re
 `'adjustment': 'CVS-CJO'` (ou `'BRUT'`) dans son entrée du catalogue : une version différente
 suspendra alors l'indicateur.
 
+**Expert Network** : `PLATFORM_ADMIN_EMAILS` (adresses séparées par des virgules) donne accès à
+`/admin/experts` pour tenir l'annuaire des experts partenaires (adresse vérifiée exigée). Voir
+`docs/expert-network.md` (cadre des professions réglementées avant tout paiement).
+
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,
 `SUPPLIER_INBOX_DOMAIN`, `SUPPLIER_INBOX_WEBHOOK_ENABLED`, `SUPPLIER_INBOX_WEBHOOK_SECRET`.

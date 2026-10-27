@@ -1,0 +1,45 @@
+{% extends "_public_base.html" %}
+{% from "_expert_dossier.html" import dossier %}
+{% block content %}
+<div class="purchase-eyebrow" style="margin-top:12px;">MISSION PROPOSÉE VIA PROFITOS</div>
+<h1 class="purchase-title" style="font-size:24px;">{{ m.title }}</h1>
+<p class="purchase-subtitle">De la part de <strong>{{ org_name }}</strong> pour {{ e.name }} · {{ m.domain_label }} · <strong>{{ m.status_label }}</strong></p>
+{% for msg in get_flashed_messages() %}<div class="flash" role="status">{{ msg }}</div>{% endfor %}
+
+{% if m.status in ('envoyee', 'devis') %}
+<form method="post" class="purchase-panel stack mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="quote">
+  <h2>{{ 'Modifier votre devis' if m.status == 'devis' else 'Proposer un devis' }}</h2>
+  <div class="twocol">
+    <label>Montant HT (€)<input name="amount" inputmode="decimal" required value="{{ m.quote_amount|fr_number(2) if m.quote_amount is not none else '' }}"></label>
+    <label>Délai de réalisation (jours)<input name="delay_days" inputmode="numeric" required value="{{ m.quote_delay_days or '' }}"></label>
+  </div>
+  <label>Contenu de la prestation<textarea name="text" rows="4" maxlength="4000" required>{{ m.quote_text or '' }}</textarea></label>
+  <button type="submit" class="purchase-primary-btn primary">Envoyer le devis</button>
+</form>
+<form method="post" style="margin-top:8px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="decline"><input name="reason" maxlength="500" placeholder="Motif (facultatif)" aria-label="Motif"><button type="submit" class="purchase-nav-btn">Décliner la mission</button></form>
+{% endif %}
+
+{% if m.status in ('acceptee', 'livree') %}
+<form method="post" class="purchase-panel stack mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="deliver">
+  <h2>Remettre le livrable</h2>
+  <label>Description du livrable<textarea name="text" rows="3" maxlength="4000" required></textarea></label>
+  <label>Lien vers le document (https://, facultatif)<input name="url" maxlength="500"></label>
+  <button type="submit" class="purchase-primary-btn primary">Remettre</button>
+</form>
+{% endif %}
+
+{{ dossier(m, share_items) }}
+
+{% if m.status in ('envoyee', 'devis', 'acceptee', 'livree') %}
+<form method="post" class="purchase-panel stack mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="message">
+  <h2>Écrire à l'entreprise</h2>
+  <label>Message<textarea name="text" rows="3" maxlength="4000" required></textarea></label>
+  <label>Lien (https://, facultatif)<input name="url" maxlength="500"></label>
+  <button type="submit" class="purchase-nav-btn">Envoyer</button>
+</form>
+{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Ce lien est personnel et confidentiel ; il expire au bout de {{ 90 }} jours ou dès que la mission est close. Les informations transmises sont limitées à ce que l'entreprise a autorisé, pour cette mission uniquement. Les honoraires sont convenus et réglés directement avec l'entreprise.</p>
+{% endblock %}

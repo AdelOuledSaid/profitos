@@ -8,9 +8,9 @@
     <div style="font-size:18px;font-weight:600;color:#111827;margin-bottom:10px;">{{ title }}</div>
     <div style="font-size:14px;color:#374151;line-height:1.5;">{{ intro }}</div>
   </td></tr>
-  <tr><td style="padding:20px 32px 32px;">
+  {% if cta_url %}<tr><td style="padding:20px 32px 32px;">
     <a href="{{ cta_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">{{ cta_label }}</a>
-  </td></tr>
+  </td></tr>{% endif %}
   <tr><td style="padding:16px 32px;border-top:1px solid #f0f0f0;">
     <div style="font-size:12px;color:#9ca3af;">{{ footer }}</div>
   </td></tr>

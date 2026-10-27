@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">ADMINISTRATION · EXPERT NETWORK</div>
+    <h1 class="purchase-title">Annuaire des experts partenaires</h1>
+    <p class="purchase-subtitle">Seuls les experts actifs sont proposés aux entreprises ; pour la comptabilité et le juridique, uniquement après vérification de l'inscription (annuaire de l'Ordre des experts-comptables, annuaire du barreau).</p>
+  </div>
+</div>
+<form method="post" class="purchase-panel stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if edit %}<input type="hidden" name="expert_id" value="{{ edit.id }}">{% endif %}
+  <h2>{{ 'Modifier ' ~ edit.name if edit else 'Ajouter un expert' }}</h2>
+  {% set v = edit or {} %}
+  <div class="twocol">
+    <label>Nom<input name="name" required maxlength="200" value="{{ v.get('name') or '' }}"></label>
+    <label>Cabinet / société<input name="firm" maxlength="200" value="{{ v.get('firm') or '' }}"></label>
+  </div>
+  <div class="twocol">
+    <label>Domaine<select name="domain">{% for code, d in domains.items() %}<option value="{{ code }}" {{ 'selected' if v.get('domain') == code }}>{{ d.label }}{% if d.regulated %} (profession réglementée){% endif %}</option>{% endfor %}</select></label>
+    <label>Spécialités<input name="specialties" maxlength="200" value="{{ v.get('specialties') or '' }}"></label>
+  </div>
+  <label>Présentation<textarea name="description" rows="2" maxlength="1000">{{ v.get('description') or '' }}</textarea></label>
+  <div class="twocol">
+    <label>E-mail<input name="email" type="email" required maxlength="200" value="{{ v.get('email') or '' }}"></label>
+    <label>Téléphone<input name="phone" maxlength="40" value="{{ v.get('phone') or '' }}"></label>
+  </div>
+  <div class="twocol">
+    <label>Ville<input name="city" maxlength="100" value="{{ v.get('city') or '' }}"></label>
+    <label>Assurance responsabilité civile professionnelle<input name="insurance" maxlength="200" value="{{ v.get('insurance') or '' }}"></label>
+  </div>
+  <div class="twocol">
+    <label>N° d'inscription (Ordre, barreau)<input name="registration_number" maxlength="100" value="{{ v.get('registration_number') or '' }}"></label>
+    <label>Statut<select name="status"><option value="actif" {{ 'selected' if v.get('status') != 'suspendu' }}>Actif</option><option value="suspendu" {{ 'selected' if v.get('status') == 'suspendu' }}>Suspendu</option></select></label>
+  </div>
+  <label class="check"><input type="checkbox" name="verified" value="1"> J'ai vérifié l'inscription dans l'annuaire officiel aujourd'hui{% if v.get('registration_verified_at') %} (dernière vérification : {{ v.get('registration_verified_at')|fr_date }} par {{ v.get('registration_verified_by') }}){% endif %}</label>
+  <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
+</form>
+<section class="purchase-panel mc-section">
+  <h2>Experts ({{ rows|length }})</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Nom</th><th>Domaine</th><th>Inscription</th><th>Statut</th><th>Proposé</th><th>Évaluation</th><th></th></tr></thead>
+    <tbody>{% for e in rows %}<tr>
+      <td>{{ e.name }}{% if e.firm %} — {{ e.firm }}{% endif %}<br><span class="purchase-muted">{{ e.email }}</span></td>
+      <td>{{ domains[e.domain].label }}</td>
+      <td>{% if e.registration_number %}{{ e.registration_number }}{% if e.registration_verified_at %} <span class="mc-ok">✓</span> {{ e.registration_verified_at|fr_date }}{% else %} <span class="mc-warn">non vérifiée</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{{ e.status }}</td><td>{{ 'oui' if e.proposable else 'non' }}</td>
+      <td>{% if e.ratings %}{{ e.rating_avg|fr_number(1) }} / 5 ({{ e.ratings }}){% else %}—{% endif %}</td>
+      <td class="num"><a class="link" href="{{ url_for('experts_admin', modifier=e.id) }}">Modifier</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+</div>
+{% endblock %}

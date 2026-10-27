@@ -75,7 +75,12 @@ def _findings(c):
 def _decorate(f):
     action = f.get('action') or {}
     f = dict(f)
-    f['links'] = [x for x in (_link(a) for a in f.get('alternatives') or []) if x]
+    alternatives = list(f.get('alternatives') or [])
+    from profitos.expert_network import KIND_DOMAINS
+    if f.get('kind') in KIND_DOMAINS and f.get('track', {}).get('status') in (None, V.OPEN):
+        alternatives.append({'label': 'Faire appel à un expert', 'endpoint': 'expert_request',
+                             'args': {'source': f['key'], 'domaine': KIND_DOMAINS[f['kind']]}})
+    f['links'] = [x for x in (_link(a) for a in alternatives) if x]
     f['main_link'] = _link(action) if action.get('kind') in ('link', 'prepare') else None
     f['can_run'] = V.can_execute(f) and can_access(action.get('area') or 'pilotage') and current_role() != 'LECTURE'
     f['automatable'] = V.automatable(f)
@@ -124,6 +129,8 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def mission_control_execute():
+        if current_role() == 'LECTURE':
+            abort(403)
         key = request.form.get('key') or ''
         c = cx()
         try:
@@ -159,6 +166,8 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def mission_control_track():
+        if current_role() == 'LECTURE':
+            abort(403)
         key = request.form.get('key') or ''
         op = request.form.get('op')
         user = current_user()['email']
@@ -252,6 +261,8 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def mission_control_decision():
+        if current_role() == 'LECTURE':
+            abort(403)
         """Décision humaine sur une créance ancienne : toujours due, en litige ou douteuse."""
         source = request.form.get('source') if request.form.get('source') in ('outgoing', 'imported') else None
         status = request.form.get('status') or ''
