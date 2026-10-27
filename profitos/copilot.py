@@ -287,7 +287,9 @@ def check_answer(text, dossier):
         for candidate in [f['raw']] + [_to_float(x) for x in _NUM.findall(f"{f['value']} {f['label']} {f['calc']}")]:
             if isinstance(candidate, (int, float)) and candidate is not None:
                 allowed.add(round(abs(float(candidate)), 2))
-    years = {date.today().year - 1, date.today().year, date.today().year + 1}
+    from profitos.accounting import paris_today
+    y0 = paris_today().year
+    years = {y0 - 1, y0, y0 + 1}
     stripped = _REF.sub('', _DATE.sub('', text))
     bad = []
     for raw in _NUM.findall(stripped):

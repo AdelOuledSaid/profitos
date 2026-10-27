@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dossier de contrôle fiscal — {{ identity.get('name') or 'Entreprise' }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='letter.css') }}">
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+{% set lv = {'pret': 'Aucun écart', 'a_verifier': 'À vérifier', 'bloque': 'Écart à corriger'} %}
+<div class="bar"><strong>Dossier de contrôle fiscal</strong> — à remettre à l'expert-comptable pour validation. <button type="button" data-print>Imprimer / PDF</button></div>
+<div class="page">
+<h1>Dossier de contrôle fiscal</h1>
+<table>
+  <tr><td>Entreprise</td><td>{{ identity.get('name') or '—' }}{% if identity.get('siret') %} — SIRET {{ identity.siret }}{% endif %}</td></tr>
+  <tr><td>Exercice clos</td><td>du {{ r.closed.start|fr_date }} au {{ r.closed.end|fr_date }}{% if not r.closed_active %} (aucune écriture){% endif %}</td></tr>
+  <tr><td>Exercice en cours</td><td>du {{ r.current.start|fr_date }} au {{ r.current.end|fr_date }}</td></tr>
+  <tr><td>Établi le</td><td>{{ r.today|fr_date }}, à partir des écritures enregistrées dans ProfitOS à cette date</td></tr>
+  <tr><td>Synthèse</td><td>{{ r.counts.blocked }} écart(s) à corriger, {{ r.counts.to_check }} point(s) à vérifier, {{ r.counts.ok }} contrôle(s) conforme(s)</td></tr>
+  {% if r.is %}<tr><td>IS de l'exercice clos (calcul ProfitOS)</td><td>IS dû {{ r.is.is_du|fr_number(2) }} €, acomptes {{ r.is.acomptes_verses|fr_number(2) }} €, solde {{ r.is.solde|fr_number(2) }} €</td></tr>{% endif %}
+</table>
+<p class="muted">ProfitOS prépare les déclarations et calcule les montants à partir de la comptabilité ; il ne les transmet pas seul. La transmission officielle passe par un partenaire EDI agréé ou par l'entreprise sur impots.gouv.fr, et seul un accusé de l'administration constate l'acceptation. Ce dossier ne remplace pas la revue de l'expert-comptable.</p>
+
+{% for s in r.sections %}
+<h2>{{ loop.index }}. {{ s.title }} — {{ lv[s.level] }}</h2>
+{% if s.note %}<p class="muted">{{ s.note }}</p>{% endif %}
+<table>
+{% for ck in s.checks %}
+  <tr><td>{{ '✓ Conforme' if ck.ok is sameas true else ('✗ Écart' if ck.ok is sameas false else '? À vérifier') }}</td>
+    <td><strong>{{ ck.label }}</strong>{% if ck.get('amount') %} — {{ ck.amount|fr_number(2) }} €{% endif %}
+      {% if ck.detail %}<br>{{ ck.detail }}{% endif %}
+      {% if ck.source %}<br><span class="muted">Source : {{ ck.source }}</span>{% endif %}
+      {% if ck.fix and ck.ok is not sameas true %}<br><span class="muted">À faire : {{ ck.fix }}</span>{% endif %}
+      <br><span class="muted">Revue : ☐ validé ☐ à corriger — commentaire : ……………………</span></td></tr>
+{% else %}
+  <tr><td>—</td><td>Aucun contrôle applicable.</td></tr>
+{% endfor %}
+</table>
+{% endfor %}
+
+<h2>{{ r.sections|length + 1 }}. Déclarations et mode de transmission</h2>
+<table>
+{% for d in r.declarations %}
+  <tr><td>{{ d.form }}{% if d.corrective %} (rectificative){% endif %} — {{ d.start|fr_date }} → {{ d.end|fr_date }}</td>
+    <td>{{ d.status }}<br><span class="muted">{{ d.transmission }}{% if d.amount %} — montant {{ d.amount|fr_number(0) }} €{% endif %}</span></td></tr>
+{% else %}
+  <tr><td>—</td><td>Aucune déclaration préparée ou déposée dans ProfitOS sur la période.</td></tr>
+{% endfor %}
+</table>
+
+<h2>{{ r.sections|length + 2 }}. Échéances des 90 prochains jours</h2>
+<table>
+{% for d in r.calendar %}
+  <tr><td>{{ d.date|fr_date }}</td><td>{{ d.label }}{% if d.get('form') %} ({{ d.form }}){% endif %} — {% if d.get('deposited') %}déposée{% elif d.get('prepared') %}préparée{% else %}à préparer{% endif %}</td></tr>
+{% else %}
+  <tr><td>—</td><td>Aucune échéance dans les 90 jours.</td></tr>
+{% endfor %}
+</table>
+
+<div class="sign">
+  <p><strong>Validation de l'expert-comptable</strong></p>
+  <p>Nom et cabinet : ……………………………………………… Date : ………………</p>
+  <p>☐ Montants validés pour dépôt &nbsp; ☐ Corrections demandées (voir commentaires)</p>
+  <p>Signature :</p>
+</div>
+</div>
+</body>
+</html>

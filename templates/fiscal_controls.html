@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+{% set lv = {'pret': 'Aucun écart', 'a_verifier': 'À vérifier', 'bloque': 'Écart à corriger'} %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">FISCALITÉ · CONTRÔLES</div>
+    <h1 class="purchase-title">Contrôles fiscaux</h1>
+    <p class="purchase-subtitle">Ce qui a été déclaré, rapproché de ce que dit votre comptabilité aujourd'hui : TVA, impôt sur les sociétés, liasse et clôture. Chaque contrôle cite sa source et dit quoi faire.</p>
+  </div>
+  <a class="purchase-nav-btn" href="{{ url_for('fiscal_controls_dossier') }}">Dossier pour l'expert-comptable</a>
+</div>
+
+<p class="fc-scope"><strong>ProfitOS prépare, il ne transmet pas seul.</strong> La transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr ; seul un accusé de l'administration constate l'acceptation. Les montants restent à valider par votre expert-comptable.</p>
+
+<div class="mc-kpis">
+  <div class="mc-kpi"><b>{{ r.counts.blocked }}</b><span>Écart(s) à corriger</span></div>
+  <div class="mc-kpi"><b>{{ r.counts.to_check }}</b><span>Point(s) à vérifier</span></div>
+  <div class="mc-kpi"><b>{{ r.counts.ok }}</b><span>Contrôle(s) conforme(s)</span></div>
+</div>
+
+{% for s in r.sections %}
+<section class="purchase-panel mc-section">
+  <h2>{{ s.title }} <span class="fc-level fc-{{ s.level }}">{{ lv[s.level] }}</span></h2>
+  {% if s.note %}<p class="purchase-muted">{{ s.note }}</p>{% endif %}
+  {% if not s.checks %}<p class="purchase-muted">Aucun contrôle applicable pour l'instant.</p>{% endif %}
+  <ul class="mc-checks fc-checks">
+  {% for ck in s.checks %}
+    <li><span class="{{ 'mc-ok' if ck.ok is sameas true else ('mc-ko' if ck.ok is sameas false else 'mc-warn') }}" aria-hidden="true">{{ '✓' if ck.ok is sameas true else ('✗' if ck.ok is sameas false else '?') }}</span>
+      <div><strong>{{ ck.label }}</strong>{% if ck.get('amount') %} — {{ ck.amount|fr_number(2) }} €{% endif %}
+        {% if ck.detail %}<div class="fc-detail">{{ ck.detail }}</div>{% endif %}
+        {% if ck.source %}<div class="mc-evidence">Source : {{ ck.source }}</div>{% endif %}
+        {% if ck.fix and ck.ok is not sameas true %}<div class="mc-note">À faire : {{ ck.fix }}</div>{% endif %}
+      </div></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+<section class="purchase-panel mc-section">
+  <h2>Déclarations depuis le {{ r.closed.start|fr_date }}</h2>
+  {% if r.declarations %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Déclaration</th><th>Période</th><th>Statut</th><th>Transmission</th></tr></thead>
+    <tbody>{% for d in r.declarations %}
+      <tr><td>{{ d.form }}{% if d.corrective %} (rectificative){% endif %}</td><td>{{ d.start|fr_date }} → {{ d.end|fr_date }}</td>
+        <td>{{ d.status }}</td><td>{{ d.transmission }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  {% else %}<p class="purchase-muted">Aucune déclaration préparée ou déposée dans ProfitOS sur cette période.</p>{% endif %}
+</section>
+
+<section class="purchase-panel mc-section">
+  <h2>Échéances des 90 prochains jours</h2>
+  {% if r.calendar %}
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>Échéance</th><th>Déclaration</th><th>Formulaire</th><th>État</th></tr></thead>
+    <tbody>{% for d in r.calendar %}
+      <tr><td>{{ d.date|fr_date }}</td><td>{{ d.label }}</td><td>{{ d.get('form') or '—' }}</td>
+        <td>{% if d.get('deposited') %}Déposée{% elif d.get('prepared') %}Préparée{% else %}À préparer{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+  {% else %}<p class="purchase-muted">Aucune échéance dans les 90 jours.</p>{% endif %}
+  <p class="purchase-muted"><a href="{{ url_for('fiscal_calendar_page') }}">Échéancier complet et pré-contrôles</a> · <a href="{{ url_for('teledeclarations') }}">Déclarations fiscales</a></p>
+</section>
+</div>
+{% endblock %}

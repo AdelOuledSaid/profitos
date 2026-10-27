@@ -11,7 +11,7 @@ from profitos.accounting import paris_today
 # n'est pas rattaché à un domaine dans MODULE_AREAS).
 LINK_AREAS = {'once_done': None, 'purchase_pipeline': 'invoicing', 'mission_control_bank': 'banking', 'invoicing_client_detail': 'invoicing', 'invoicing_clients': 'invoicing', 'grow': 'grow', 'contract_guardian_edit': 'invoicing', 'contract_guardian_new': 'invoicing', 'purchase_recurring': 'invoicing',
               'invoicing_detail': 'invoicing', 'purchase_detail': 'invoicing', 'purchase_sepa_batch': 'invoicing',
-              'accounting_document_requests': 'accounting', 'banking': 'banking'}
+              'accounting_document_requests': 'accounting', 'banking': 'banking', 'fiscal_controls': 'accounting'}
 SNOOZE_DAYS = 7
 
 
