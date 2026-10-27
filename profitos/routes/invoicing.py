@@ -3215,6 +3215,16 @@ def register(app):
             c.close()
             flash("Cette facture n'est pas en attente de validation.")
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
+        # Chaîne de traitement (v487) : une anomalie bloquante (doublon, montants incohérents,
+        # écart au contrat, période close…) empêche la validation, comme dans la chaîne.
+        from profitos import purchase_pipeline as PP
+        analysis = PP.analyse(c, eid, purchase_id, paris_today())
+        if analysis and analysis['blocking']:
+            c.close()
+            flash("Validation refusée par les contrôles : " +
+                  '; '.join(f"{b['step']} — {b['label']}" for b in analysis['blocking'][:3]) +
+                  ". Détail et marche à suivre dans « Contrôles en 10 étapes ».")
+            return redirect(url_for('purchase_detail', purchase_id=purchase_id))
         c.execute(
             "UPDATE purchase_invoices SET validation_status='approved',validated_by=?,validated_at=?,rejection_reason=NULL WHERE id=? AND entity_id IS ?",
             (validator_email, now(), purchase_id, eid),
@@ -3226,7 +3236,13 @@ def register(app):
             c.rollback(); c.close()
             flash(f"Validation impossible : {e}")
             return redirect(url_for('purchase_detail', purchase_id=purchase_id))
-        c.commit(); c.close()
+        c.commit()
+        # Contrôle du résultat sur les données, consigné au journal de la chaîne.
+        after = PP.analyse(c, eid, purchase_id, paris_today())
+        entry_ok = bool(after and after['entry'] is not None and all(ch['ok'] for ch in after['steps'][4]['checks']))
+        PP._log(c, eid, purchase_id, validator_email or '', 'Validée depuis la fiche', entry_ok,
+                'écriture passée et équilibrée, facture validée' if entry_ok else 'contrôle en échec : écriture absente ou incohérente')
+        c.close()
         log_activity('PURCHASE_VALIDATED', f"Facture fournisseur #{purchase_id} validée par {validator_email}")
         flash("Facture validée — elle peut maintenant être marquée comme payée.")
         return redirect(url_for('purchase_detail', purchase_id=purchase_id))

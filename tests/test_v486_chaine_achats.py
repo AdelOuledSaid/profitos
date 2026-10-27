@@ -210,3 +210,18 @@ def test_lot_precoche_seulement_les_conformes(app):
     b = purchase(org, number='DE-1', ht=2000.0, vat=0.0, supplier_name='Bauteile GmbH', supplier_id=de)
     html = cl.get('/facturation/achats/traitement').get_data(as_text=True)
     assert re.search(rf'value="{a}"\s+checked', html) and not re.search(rf'value="{b}"\s+checked', html)
+
+
+def test_validation_depuis_la_fiche_passe_par_la_chaine(app):
+    cl, org = signup(app)
+    sid = supplier(org)
+    purchase(org, number='DUP-1', supplier_id=sid, status='approved')
+    dup = purchase(org, number='DUP-1', supplier_id=sid)
+    post(cl, f'/facturation/achats/{dup}/valider')
+    assert any('Validation refusée par les contrôles : Doublons' in m for m in flashes(cl))
+    assert analyse(org, dup)['purchase']['validation_status'] == 'pending'
+    ok = purchase(org, number='OK-9', supplier_id=sid, doc=None)     # « ? » (justificatif) : non bloquant
+    post(cl, f'/facturation/achats/{ok}/valider')
+    assert any('Facture validée' in m for m in flashes(cl))
+    a = analyse(org, ok)
+    assert a['entry'] is not None and a['log'][0]['action'] == 'Validée depuis la fiche' and a['log'][0]['ok'] == 1

@@ -297,6 +297,9 @@ boîte mail, saisie), passe dix étapes dont le résultat est affiché :
     comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
     et équilibrée et que la facture est validée ; chaque exécution est consignée.
 
+Le bouton **Valider la facture** de la fiche applique les mêmes contrôles : une anomalie
+bloquante (doublon, montants incohérents, écart au contrat, période close…) empêche la
+validation, avec la raison ; le résultat est consigné au journal de la chaîne.
 Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
 moment de la validation est refusée avec la raison. Mission Control signale les factures
 prêtes, à vérifier ou bloquées. Pour que les contrôles aient lieu **avant** la comptabilisation,
