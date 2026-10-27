@@ -1,4 +1,4 @@
-const CACHE_NAME = 'profitos-shell-v3';
+const CACHE_NAME = 'profitos-shell-v4';  // v4 : logo et icônes Veqalio (v491)
 const SHELL_ASSETS = [
   '/static/style.css',
   '/static/manifest.json',
