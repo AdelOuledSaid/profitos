@@ -116,6 +116,23 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 
 Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).
 
+### Copilote
+
+Menu **Trésorerie → Copilote**. Posez une question (« Analyse ma situation financière et
+fiscale du mois et indique-moi les problèmes à résoudre ») ou cliquez **Analyse du mois**.
+
+- ProfitOS calcule d'abord les **faits** sur vos données, numérotés F1, F2… avec leur calcul et
+  leur source : chiffre d'affaires facturé du mois et du mois précédent, encaissements,
+  impayés, achats, factures fournisseurs à payer, solde bancaire, point bas prévu, estimation
+  de TVA, échéances et retards fiscaux, montants des constats de Mission Control.
+- L'IA rédige la réponse **uniquement à partir de ces faits**, en citant le fait utilisé. Chaque
+  chiffre de la réponse est vérifié : un chiffre absent des faits ou une référence inexistante
+  fait écarter la réponse, et le rapport calculé est affiché avec la raison.
+- Sans IA configurée (ou au-delà du quota IA de votre formule), le copilote affiche directement
+  le rapport calculé.
+- La liste **Problèmes à résoudre** vient de Mission Control, avec ce qui manque et l'action.
+- Seuls les faits chiffrés sont transmis au service d'IA, pas vos documents.
+
 ### Mission Control
 
 Menu **Trésorerie → Mission Control**. Un seul écran pour ce qui demande votre attention :

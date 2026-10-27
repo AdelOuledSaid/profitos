@@ -190,6 +190,7 @@ def create_app(config_object=None):
     from .routes import opportunity_radar as opportunity_radar_routes
     from .routes import expert_network as expert_network_routes
     from .routes import purchase_pipeline as purchase_pipeline_routes
+    from .routes import copilot as copilot_routes
     account.register(app)
     from .routes import security as security_routes
     security_routes.register(app)
@@ -208,6 +209,7 @@ def create_app(config_object=None):
     opportunity_radar_routes.register(app)
     expert_network_routes.register(app)
     purchase_pipeline_routes.register(app)
+    copilot_routes.register(app)
     cash_intelligence.register(app)
     decision_simulator.register(app)
     invoicing.register(app)

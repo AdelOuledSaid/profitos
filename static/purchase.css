@@ -519,3 +519,4 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .pp-disabled{flex-basis:100%;margin:0;font-size:13px;color:#e8a33d;white-space:normal}
 .pp-list{grid-template-columns:minmax(0,1fr)}
 .pp-list>li{min-width:0}
+.cp-answer{font-size:14px;line-height:1.55}
