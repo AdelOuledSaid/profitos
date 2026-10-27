@@ -205,6 +205,7 @@ def test_lot_precoche_seulement_les_conformes(app):
     cl, org = signup(app)
     sid = supplier(org)
     de = supplier(org, name='Bauteile GmbH', vat='DE123456789', siret='')
+    bank(org, 0, balance=50000.0)
     a = purchase(org, number='OK-1', supplier_id=sid)
     b = purchase(org, number='DE-1', ht=2000.0, vat=0.0, supplier_name='Bauteile GmbH', supplier_id=de)
     html = cl.get('/facturation/achats/traitement').get_data(as_text=True)
