@@ -357,7 +357,7 @@ def create_app(config_object=None):
 
 
 _PUBLIC_TOKEN_PREFIXES = ('/facture/', '/devis/', '/export-download/', '/comptabilite/export-fec/telecharger/',
-                          '/invitation/', '/collaboration-comptable/accepter/')
+                          '/invitation/', '/collaboration-comptable/accepter/', '/expert/mission/')
 _PUBLIC_TOKEN_ENDPOINTS = ('public_invoice_view', 'public_invoice_pdf', 'public_quote_view', 'public_quote_pdf',
                            'export_download', 'accounting_fec_download')
 

@@ -278,6 +278,22 @@
 </table></div>
 <p><strong>Rapport du lundi</strong> : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.</p>
 <p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
+<h3 id="copilote">Copilote</h3>
+<p>Menu <strong>Trésorerie → Copilote</strong>. Posez une question (« Analyse ma situation financière et
+fiscale du mois et indique-moi les problèmes à résoudre ») ou cliquez <strong>Analyse du mois</strong>.</p>
+<ul>
+<li>ProfitOS calcule d'abord les <strong>faits</strong> sur vos données, numérotés F1, F2… avec leur calcul et
+  leur source : chiffre d'affaires facturé du mois et du mois précédent, encaissements,
+  impayés, achats, factures fournisseurs à payer, solde bancaire, point bas prévu, estimation
+  de TVA, échéances et retards fiscaux, montants des constats de Mission Control.</li>
+<li>L'IA rédige la réponse <strong>uniquement à partir de ces faits</strong>, en citant le fait utilisé. Chaque
+  chiffre de la réponse est vérifié : un chiffre absent des faits ou une référence inexistante
+  fait écarter la réponse, et le rapport calculé est affiché avec la raison.</li>
+<li>Sans IA configurée (ou au-delà du quota IA de votre formule), le copilote affiche directement
+  le rapport calculé.</li>
+<li>La liste <strong>Problèmes à résoudre</strong> vient de Mission Control, avec ce qui manque et l'action.</li>
+<li>Seuls les faits chiffrés sont transmis au service d'IA, pas vos documents.</li>
+</ul>
 <h3 id="mission-control">Mission Control</h3>
 <p>Menu <strong>Trésorerie → Mission Control</strong>. Un seul écran pour ce qui demande votre attention :
 impayés clients, factures fournisseurs à régler, tension de trésorerie, mouvements bancaires
@@ -456,7 +472,10 @@ boîte mail, saisie), passe dix étapes dont le résultat est affiché :</p>
     comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
     et équilibrée et que la facture est validée ; chaque exécution est consignée.</li>
 </ol>
-<p>Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
+<p>Le bouton <strong>Valider la facture</strong> de la fiche applique les mêmes contrôles : une anomalie
+bloquante (doublon, montants incohérents, écart au contrat, période close…) empêche la
+validation, avec la raison ; le résultat est consigné au journal de la chaîne.
+Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
 moment de la validation est refusée avec la raison. Mission Control signale les factures
 prêtes, à vérifier ou bloquées. Pour que les contrôles aient lieu <strong>avant</strong> la comptabilisation,
 activez la validation des factures d'achat dans les paramètres : sans elle, l'écriture est
@@ -1107,6 +1126,7 @@ expert-comptable.</p>
 <li><strong>Sessions</strong> : la liste de vos appareils connectés ; déconnectez-en un à distance. Une connexion depuis un nouvel appareil vous est signalée par e-mail.</li>
 <li><strong>Mot de passe et e-mail</strong> : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.</li>
 <li><strong>Protection automatique</strong> : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.</li>
+<li><strong>Ce que ProfitOS protège pour vous</strong> : chaque entreprise a sa propre base, les jetons bancaires et secrets sont chiffrés, les liens envoyés (factures, devis, missions d'experts) ne sont jamais conservés en cache, et les sauvegardes quotidiennes sont chiffrées et testées. Le détail des contrôles et de leurs preuves est disponible sur demande (dossier sécurité).</li>
 </ul>
 <h2 id="donnees-personnelles-et-export-rgpd">15. Données personnelles et export RGPD</h2>
 <p>Vos données vous appartiennent : vous pouvez les télécharger à tout moment et supprimer votre compte vous-même.</p>

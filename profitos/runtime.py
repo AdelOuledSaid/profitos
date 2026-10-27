@@ -3737,6 +3737,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-27','title':"Sécurité : liens des missions d'experts jamais mis en cache, contrôle de sécurité avant ouverture et dossier sécurité (preuves, restauration, incident, sous-traitants)"},
     {'date':'2026-10-27','title':"Copilote : analyse du mois à partir de vos données, chaque chiffre sourcé et vérifié, problèmes à résoudre et actions"},
     {'date':'2026-10-27','title':"La validation d'une facture fournisseur depuis sa fiche passe par les contrôles de la chaîne de traitement"},
     {'date':'2026-10-27','title':"Chaîne de traitement des achats : chaque facture fournisseur contrôlée en dix étapes (mentions, doublons, contrat, écriture, TVA, trésorerie), validée puis vérifiée"},

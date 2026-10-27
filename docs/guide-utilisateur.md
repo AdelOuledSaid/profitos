@@ -826,6 +826,7 @@ Menu **Entreprise & compte → Sécurité du compte**.
 - **Sessions** : la liste de vos appareils connectés ; déconnectez-en un à distance. Une connexion depuis un nouvel appareil vous est signalée par e-mail.
 - **Mot de passe et e-mail** : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.
 - **Protection automatique** : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.
+- **Ce que ProfitOS protège pour vous** : chaque entreprise a sa propre base, les jetons bancaires et secrets sont chiffrés, les liens envoyés (factures, devis, missions d'experts) ne sont jamais conservés en cache, et les sauvegardes quotidiennes sont chiffrées et testées. Le détail des contrôles et de leurs preuves est disponible sur demande (dossier sécurité).
 
 ## 15. Données personnelles et export RGPD
 
