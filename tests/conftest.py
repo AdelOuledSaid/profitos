@@ -56,6 +56,26 @@ import os
 # valeur, l'application se considère en production et refuse de démarrer sans clé.
 os.environ.setdefault('PROFITOS_ENV', 'development')
 
+# ---------------------------------------------------------------------------
+# Données des tests dans un dossier temporaire neuf à chaque lancement (v491.2).
+#
+# Avant : les tests SQLite écrivaient dans la base de développement du dépôt
+# (profitos_auth.db, tenant_data/, uploads/). Les données s'accumulaient d'un lancement
+# à l'autre (doublons, contraintes d'unicité en échec) et polluaient la base locale.
+# ---------------------------------------------------------------------------
+import atexit
+import shutil
+import tempfile
+
+_TEST_DATA = Path(tempfile.mkdtemp(prefix='veqalio-tests-'))
+atexit.register(shutil.rmtree, _TEST_DATA, True)
+os.environ['PROFITOS_UPLOAD_DIR'] = str(_TEST_DATA / 'uploads')
+if not _PG_TEST_URL.startswith(('postgres://', 'postgresql://')):
+    import profitos.runtime as _rt_isolation
+    _rt_isolation.AUTH_DB = _TEST_DATA / 'profitos_auth.db'
+    _rt_isolation.TENANTS = _TEST_DATA / 'tenant_data'
+    _rt_isolation.TENANTS.mkdir(exist_ok=True)
+
 
 if _PG_TEST_URL.startswith(('postgres://', 'postgresql://')):
     import pytest

@@ -49,7 +49,9 @@ def check_upload_dir(env=None):
         resolved = path.resolve()
     except Exception:
         resolved = path
-    if not path.is_absolute():
+    # Render tourne sous Linux : « /var/data/uploads » est absolu même si le contrôle est
+    # lancé depuis Windows (où Path ne le considère pas comme tel).
+    if not (path.is_absolute() or raw.startswith('/')):
         errors.append('PROFITOS_UPLOAD_DIR doit être un chemin absolu.')
     for tmp_root in ('/tmp', '/var/tmp', '/dev/shm'):
         if str(resolved) == tmp_root or str(resolved).startswith(tmp_root + '/') or raw == tmp_root or raw.startswith(tmp_root + '/'):
