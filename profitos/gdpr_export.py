@@ -102,7 +102,7 @@ def build_organization_export(org_id):
         finally:
             ac.close()
         zf.writestr('LISEZMOI.txt',
-                    "Export RGPD ProfitOS — données de l'organisation.\r\n"
+                    "Export RGPD Veqalio — données de l'organisation.\r\n"
                     "Chaque fichier CSV correspond à une table (séparateur « ; », encodage UTF-8).\r\n"
                     "Les jetons, mots de passe et identifiants d'intégration sont masqués.\r\n")
         zf.writestr('sommaire.json', json.dumps(summary, ensure_ascii=False, indent=2))
@@ -138,7 +138,7 @@ def build_personal_export(user_id):
                 rows = ac.execute(f"SELECT {','.join(cols)} FROM {table} WHERE user_id=?", (user_id,)).fetchall()
                 zf.writestr(name, _rows_to_csv(rows, cols))
             zf.writestr('LISEZMOI.txt',
-                        "Export de vos données personnelles ProfitOS (art. 15 et 20 RGPD).\r\n"
+                        "Export de vos données personnelles Veqalio (art. 15 et 20 RGPD).\r\n"
                         "Les données comptables des organisations sont exportables par leur propriétaire.\r\n")
     finally:
         ac.close()

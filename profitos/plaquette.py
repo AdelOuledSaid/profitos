@@ -126,7 +126,7 @@ def render_plaquette_pdf(company_name, entity_label, as_of_date, exercice_start,
     pdf.ln(10)
     pdf.set_font('Helvetica', 'I', 8); pdf.set_text_color(150, 150, 150)
     pdf.multi_cell(0, 4, _safe(
-        "Document généré via ProfitOS à titre de synthèse de gestion. Ne constitue pas une liasse "
+        "Document généré via Veqalio à titre de synthèse de gestion. Ne constitue pas une liasse "
         "fiscale ni un document certifié — à faire valider par un expert-comptable avant tout dépôt "
         "ou usage officiel."
     ))

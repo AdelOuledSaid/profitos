@@ -1,4 +1,4 @@
-# ProfitOS V1.3.5 — Audit Logging & Security Events
+# Veqalio V1.3.5 — Audit Logging & Security Events
 
 V1.3.5 ajoute un journal de sécurité séparé de `activity_log`.
 

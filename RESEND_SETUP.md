@@ -1,10 +1,10 @@
-# ProfitOS — Resend
+# Veqalio — Resend
 
 Variables Render nécessaires :
 
 - `RESEND_API_KEY` : secret défini manuellement dans Render (service web ET cron
   `profitos-jobs`), jamais dans Git.
-- `RESEND_FROM_EMAIL=ProfitOS <noreply@profitos.fr>` (groupe `profitos-shared`)
+- `RESEND_FROM_EMAIL=Veqalio <noreply@profitos.fr>` (groupe `profitos-shared`)
 - `APP_BASE_URL=https://app.profitos.fr`
 
 Sans `RESEND_API_KEY` ni `SMTP_HOST`, le préflight de déploiement échoue en production :
@@ -27,7 +27,7 @@ les factures et relances envoyées aux clients finaux risquent le dossier spam.
 
 ## Emails envoyés au nom d'une organisation
 
-Factures, devis et relances partent avec l'expéditeur « <Organisation> via ProfitOS
+Factures, devis et relances partent avec l'expéditeur « <Organisation> via Veqalio
 <noreply@profitos.fr> », une adresse de réponse vers le propriétaire de l'organisation et un
 pied de page avec sa raison sociale, son adresse et son SIRET. Le rapport hebdomadaire
 contient un lien de désinscription et les en-têtes `List-Unsubscribe` /

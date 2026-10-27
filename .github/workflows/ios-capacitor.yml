@@ -1,4 +1,4 @@
-name: Build ProfitOS iOS
+name: Build Veqalio iOS
 
 on:
   workflow_dispatch:
@@ -50,11 +50,11 @@ jobs:
       - name: Verify simulator app
         run: test -d ios/App/build/Build/Products/Debug-iphonesimulator/App.app
       - name: Package simulator app
-        run: ditto -c -k --sequesterRsrc --keepParent ios/App/build/Build/Products/Debug-iphonesimulator/App.app ProfitOS-iOS-Simulator.zip
+        run: ditto -c -k --sequesterRsrc --keepParent ios/App/build/Build/Products/Debug-iphonesimulator/App.app Veqalio-iOS-Simulator.zip
       - name: Upload iOS Simulator build
         uses: actions/upload-artifact@v4
         with:
-          name: ProfitOS-iOS-Simulator
+          name: Veqalio-iOS-Simulator
           path: mobile/ProfitOS-iOS-Simulator.zip
           if-no-files-found: error
           retention-days: 14

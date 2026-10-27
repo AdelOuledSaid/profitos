@@ -123,7 +123,7 @@ def build_financial_brain():
         grow_checks.append({
             'id':g['id'],'title':g['title'],'buyer':g['buyer'],'value':value,'score':score,
             'decision':'À QUALIFIER','missing':missing,
-            'reason':'ProfitOS refuse un GO financier tant que les données de capacité financière sont incomplètes.'
+            'reason':'Veqalio refuse un GO financier tant que les données de capacité financière sont incomplètes.'
         })
 
     cash_balance=None if not financial_settings or financial_settings['cash_balance'] is None else _safe_float(financial_settings['cash_balance'])

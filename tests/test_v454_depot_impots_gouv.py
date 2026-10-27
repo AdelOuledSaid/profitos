@@ -1,4 +1,4 @@
-"""v454 — Dépôt par l'entreprise sur impots.gouv.fr : ProfitOS calcule et prépare
+"""v454 — Dépôt par l'entreprise sur impots.gouv.fr : Veqalio calcule et prépare
 (récapitulatif PDF), l'entreprise dépose elle-même, puis archive l'accusé de réception ;
 la déclaration n'est « déposée » qu'avec ce justificatif."""
 import io

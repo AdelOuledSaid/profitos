@@ -144,9 +144,9 @@ def detect_sector(c, eid, today, ac):
                       {'dimensions': "Vérifiée sur les dimensions officielles.", 'titre': "Vérifiée sur l'intitulé officiel."}
                       .get(naf_check, "Non vérifiée automatiquement : contrôlez la série."), 'Veille (INSEE)'),
               V.check('Mêmes mois comparés sur un an', True, f"{span}, contre les mêmes mois un an plus tôt "
-                      "(saisonnalité neutralisée).", 'Calcul ProfitOS'),
+                      "(saisonnalité neutralisée).", 'Calcul Veqalio'),
               V.check('Votre historique de facturation couvre la période', True,
-                      f"Premières factures en {_label(_month(first))}.", 'Factures ProfitOS')]
+                      f"Premières factures en {_label(_month(first))}.", 'Factures Veqalio')]
     if gap <= -SECTOR_GAP_PTS:
         title = f"Votre chiffre d'affaires progresse moins vite que votre secteur ({_pct(mine)} contre {_pct(sector)})"
         severity = 'important'
@@ -160,7 +160,7 @@ def detect_sector(c, eid, today, ac):
         title = f"Votre chiffre d'affaires évolue comme votre secteur ({_pct(mine)} contre {_pct(sector)})"
         severity = 'info'
         detail = 'Écart de moins de 5 points avec votre secteur sur la période.'
-    evidence = [V.evidence('Votre chiffre d\'affaires HT', f"{_money(mine_w)} contre {_money(mine_p)}", 'Factures ProfitOS'),
+    evidence = [V.evidence('Votre chiffre d\'affaires HT', f"{_money(mine_w)} contre {_money(mine_p)}", 'Factures Veqalio'),
                 V.evidence('Indice du secteur (moyenne)', f"{sector_w:.1f} contre {sector_p:.1f}".replace('.', ','),
                            'INSEE', meta.get('last_update')),
                 V.evidence('Correction de la série', MW.ADJUSTMENT_SHORT.get(meta.get('adjustment') or 'INCONNU', '—'), 'INSEE')]
@@ -213,9 +213,9 @@ def detect_clients(c, eid, today):
         out.append(V.finding(
             f'radar:dormant:{k}', MODULE, 'radar_dormant', 'info',
             f"{a['name']} n'a rien commandé depuis le {a['last_date'].strftime('%d/%m/%Y')}", amount=a['before'],
-            checks=[V.check('Achats entre 18 et 6 mois', True, f"{_money(a['before'])} HT facturés.", 'Factures ProfitOS'),
+            checks=[V.check('Achats entre 18 et 6 mois', True, f"{_money(a['before'])} HT facturés.", 'Factures Veqalio'),
                     V.check('Aucune facture depuis 6 mois', True, f"Dernière facture le {a['last_date'].strftime('%d/%m/%Y')}.",
-                            'Factures ProfitOS')],
+                            'Factures Veqalio')],
             detail="Un client qui a déjà acheté est souvent le plus simple à relancer : prenez de ses nouvelles ou proposez "
                    "une offre adaptée.", action=link(k), follow_up_days=60, ref={'client': k}))
     growing = sorted(((k, a) for k, a in agg.items()
@@ -226,8 +226,8 @@ def detect_clients(c, eid, today):
         out.append(V.finding(
             f'radar:croissance:{k}', MODULE, 'radar_croissance', 'info',
             f"{a['name']} : {_pct(rate)} d'achats sur les 6 derniers mois", amount=round(a['last6'] - a['prev6'], 2),
-            checks=[V.check('Achats des 6 derniers mois', True, f"{_money(a['last6'])} HT.", 'Factures ProfitOS'),
-                    V.check('Achats des 6 mois précédents', True, f"{_money(a['prev6'])} HT.", 'Factures ProfitOS')],
+            checks=[V.check('Achats des 6 derniers mois', True, f"{_money(a['last6'])} HT.", 'Factures Veqalio'),
+                    V.check('Achats des 6 mois précédents', True, f"{_money(a['prev6'])} HT.", 'Factures Veqalio')],
             detail="Un client dont les besoins augmentent : l'occasion de proposer un contrat cadre, un volume ou un service "
                    "complémentaire. Constat sur les mois écoulés, sans garantie pour la suite.",
             action=link(k), follow_up_days=60, ref={'client': k}))
@@ -241,7 +241,7 @@ def detect_clients(c, eid, today):
                 f"{top['name']} représente {_pct(share * 100, False)} de votre chiffre d'affaires sur 12 mois",
                 amount=top['y12'],
                 checks=[V.check("Chiffre d'affaires des 12 derniers mois", True, f"{_money(total12)} HT, dont {_money(top['y12'])} "
-                                f"pour ce client.", 'Factures ProfitOS')],
+                                f"pour ce client.", 'Factures Veqalio')],
                 detail="Un retard ou une baisse de commandes de ce client pèserait fortement sur votre trésorerie : "
                        "diversifier votre clientèle réduit ce risque.",
                 action=link(k), alternatives=[{'label': 'Simuler son impact', 'endpoint': 'decision_simulator'}],

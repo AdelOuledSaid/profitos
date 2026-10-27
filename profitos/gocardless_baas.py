@@ -66,7 +66,7 @@ def _request(method, path, json_body=None, environment=None):
 def create_redirect_flow(client_name, client_email, description, redirect_uri, session_token, environment=None):
     """Démarre le parcours d'autorisation de mandat — renvoie l'URL
     hébergée par GoCardless vers laquelle rediriger le client. session_token
-    est une valeur aléatoire propre à ProfitOS, revérifiée à la complétion
+    est une valeur aléatoire propre à Veqalio, revérifiée à la complétion
     du flow pour éviter qu'un tiers ne le détourne."""
     payload = {
         'redirect_flows': {

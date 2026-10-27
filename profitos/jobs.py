@@ -1,4 +1,4 @@
-"""Tâches planifiées ProfitOS (cron Render).
+"""Tâches planifiées Veqalio (cron Render).
 
 Un seul cron Render horaire exécute ``python scripts/run_job.py --due`` : le
 registre ci-dessous décide, à l'heure de Paris (changement d'heure compris),
@@ -432,8 +432,8 @@ def recurring_invoices(org, ctx):
     _notify_owner(
         org, f"{n} facture(s) récurrente(s) prête(s) à vérifier — {org['name']}",
         'Factures récurrentes générées en brouillon',
-        f"ProfitOS a généré {n} facture(s) récurrente(s) en brouillon pour {org['name']} ({numbers}). "
-        "Elles n'ont pas été envoyées à vos clients : vérifiez-les puis émettez-les depuis ProfitOS.",
+        f"Veqalio a généré {n} facture(s) récurrente(s) en brouillon pour {org['name']} ({numbers}). "
+        "Elles n'ont pas été envoyées à vos clients : vérifiez-les puis émettez-les depuis Veqalio.",
         'Vérifier les brouillons', '/facturation/recurrentes',
         "Vous recevez cet email car des modèles de facturation récurrente sont actifs sur votre compte.")
     return f'{n} brouillon(s)'
@@ -462,7 +462,7 @@ def recurring_entries(org, ctx):
     if errors:
         _notify_owner(
             org, f"Écritures récurrentes non passées — {org['name']}", 'Écritures récurrentes à vérifier',
-            "ProfitOS n'a pas pu passer certaines écritures récurrentes : " + ' ; '.join(errors[:5])
+            "Veqalio n'a pas pu passer certaines écritures récurrentes : " + ' ; '.join(errors[:5])
             + ". Vérifiez la date de clôture des périodes ou le modèle concerné.",
             'Voir les écritures récurrentes', '/comptabilite/ecritures-recurrentes')
     return f"{len(created)} écriture(s)" + (f", {len(errors)} erreur(s)" if errors else '')
@@ -518,15 +518,15 @@ def fiscal_deadlines(org, ctx):
         amount = f" — environ {fr_number(item['amount'], 0)} €" if item.get('amount') else ''
         when = 'demain' if left == 1 else 'dans 7 jours'
         lines.append(f"{item['date'].strftime('%d/%m/%Y')} ({when}) : {item['label']} ({item['form']}){amount}")
-    body = 'Rappel : ' + ' · '.join(lines) + '. Préparez vos déclarations dans ProfitOS, déposez-les sur impots.gouv.fr et archivez l\'accusé de réception.'
+    body = 'Rappel : ' + ' · '.join(lines) + '. Préparez vos déclarations dans Veqalio, déposez-les sur impots.gouv.fr et archivez l\'accusé de réception.'
     overdue_only = [x for x in late if not x.get('to_verify')]
     checks = [x for x in late if x.get('to_verify')]
     if overdue_only:
-        body += (" Si la déclaration a bien été déposée, joignez son accusé dans ProfitOS ; sinon, déposez-la sans attendre. "
+        body += (" Si la déclaration a bien été déposée, joignez son accusé dans Veqalio ; sinon, déposez-la sans attendre. "
                  "Vérifiez aussi votre compte fiscal et votre messagerie sécurisée sur impots.gouv.fr : l'administration y signale "
                  "les déclarations rejetées ou manquantes.")
     if checks:
-        body += (" Pour un accusé avec écarts : joignez le bon accusé, ou confirmez le dépôt dans ProfitOS en expliquant l'écart.")
+        body += (" Pour un accusé avec écarts : joignez le bon accusé, ou confirmez le dépôt dans Veqalio en expliquant l'écart.")
     title = ('Déclarations en retard' if overdue_only else 'Justificatifs à vérifier' if checks else 'Échéances fiscales à venir')
     _notify_owner(
         org, f"{title} — {org['name']}", title, body,
@@ -722,17 +722,17 @@ def trial_reminders(org, ctx):
             continue
         end_fr = '/'.join(reversed(ref.split('-'))) if kind != 'past_due' else ''
         if kind == 'trial_j3':
-            r = _notify_owner(org, "Votre essai ProfitOS se termine dans 3 jours", "Votre essai se termine bientôt",
+            r = _notify_owner(org, "Votre essai Veqalio se termine dans 3 jours", "Votre essai se termine bientôt",
                               f"La période d'essai de {org['name']} se termine le {end_fr}. Pour conserver l'accès à vos données "
                               "et à vos automatisations (relances, rapports, synchronisations), choisissez une formule dès maintenant.",
                               'Choisir une formule', '/billing')
         elif kind == 'trial_j0':
-            r = _notify_owner(org, "Votre essai ProfitOS se termine aujourd'hui", "Dernier jour d'essai",
+            r = _notify_owner(org, "Votre essai Veqalio se termine aujourd'hui", "Dernier jour d'essai",
                               f"La période d'essai de {org['name']} se termine aujourd'hui. Sans abonnement, l'accès aux "
                               "fonctionnalités sera suspendu ; vos données restent conservées.",
                               'Choisir une formule', '/billing')
         else:
-            r = _notify_owner(org, "Échec du paiement de votre abonnement ProfitOS", "Paiement refusé",
+            r = _notify_owner(org, "Échec du paiement de votre abonnement Veqalio", "Paiement refusé",
                               f"Le dernier paiement de l'abonnement de {org['name']} a échoué. Mettez à jour votre moyen de "
                               "paiement pour éviter l'interruption du service.",
                               'Mettre à jour le paiement', '/billing')

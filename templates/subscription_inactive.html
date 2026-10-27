@@ -9,7 +9,7 @@
       <p class="billing-lead">Ce module n'est pas inclus dans la formule actuelle de votre organisation.</p>
     {% elif state=='TRIAL_EXPIRED' %}
       <h1>Abonnement inactif : votre essai gratuit est terminé</h1>
-      <p class="billing-lead">Vos données sont conservées. Pour continuer à utiliser ProfitOS, une formule doit être souscrite.</p>
+      <p class="billing-lead">Vos données sont conservées. Pour continuer à utiliser Veqalio, une formule doit être souscrite.</p>
     {% elif state=='PAST_DUE_BLOCKED' %}
       <h1>Abonnement inactif : paiement non régularisé</h1>
       <p class="billing-lead">Le dernier paiement a échoué et le délai de régularisation{% if grace_end %} (jusqu'au {{ grace_end }}){% endif %} est dépassé. Vos données sont conservées.</p>

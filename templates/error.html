@@ -1,5 +1,5 @@
 {% extends ("base.html" if session.get('user_id') else "_public_base.html") %}
-{% block title %}{{ code }} — {{ title }} — ProfitOS{% endblock %}
+{% block title %}{{ code }} — {{ title }} — Veqalio{% endblock %}
 {% block content %}
 <div class="{{ 'purchase-page' if session.get('user_id') else '' }}">
 <div class="purchase-eyebrow">ERREUR {{ code }}</div>

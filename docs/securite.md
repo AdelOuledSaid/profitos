@@ -1,4 +1,4 @@
-# Dossier sécurité ProfitOS
+# Dossier sécurité Veqalio
 
 Ce document décrit les mesures de sécurité indispensables avant d'accueillir des clients réels. Pour chaque contrôle, il indique où il est mis en œuvre et quel test automatisé le prouve. Il est destiné à l'exploitant, à un auditeur ou à un client qui demande des garanties. Les points marqués **Externe** ne peuvent pas être prouvés par le code seul.
 
@@ -65,7 +65,7 @@ L'objectif de reprise est le suivant : perte maximale de 24 h de données, remis
 
 ## 5. Registre RGPD et sous-traitants
 
-ProfitOS agit comme sous-traitant de ses clients pour leurs données comptables et commerciales. Il est responsable de traitement pour les comptes utilisateurs et la facturation.
+Veqalio agit comme sous-traitant de ses clients pour leurs données comptables et commerciales. Il est responsable de traitement pour les comptes utilisateurs et la facturation.
 
 ### Sous-traitants
 

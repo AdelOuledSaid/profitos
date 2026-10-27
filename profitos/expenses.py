@@ -30,7 +30,7 @@ EXPENSE_REPORT_CATEGORY_ACCOUNTS = {k: acct for k, _, acct in DEFAULT_EXPENSE_RE
 #   - jusqu'à 5 000 km  : distance × taux_a
 #   - de 5 001 à 20 000 km : (distance × taux_b) + montant_fixe
 #   - au-delà de 20 000 km : distance × taux_c
-# ProfitOS fournit la structure ; les taux réels (taux_a/b/c et montant
+# Veqalio fournit la structure ; les taux réels (taux_a/b/c et montant
 # fixe) sont saisis par l'utilisateur, jamais devinés — voir seed ci-dessous.
 MILEAGE_FISCAL_POWERS = ['3', '4', '5', '6', '7+']
 MILEAGE_BRACKETS = ['up_to_5000', '5001_to_20000', 'over_20000']

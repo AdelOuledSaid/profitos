@@ -1,4 +1,4 @@
-"""Configuration gunicorn ProfitOS (chargée automatiquement depuis la racine).
+"""Configuration gunicorn Veqalio (chargée automatiquement depuis la racine).
 
 Les options de capacité (--workers 2 --threads 4 --timeout 120 ...) sont sur la
 ligne de commande de render.yaml / Procfile / railway.json. Ce fichier ne fait

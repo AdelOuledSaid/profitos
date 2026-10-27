@@ -196,9 +196,9 @@ PAGE_TITLES = {
 
 
 def page_title(endpoint, explicit=None):
-    """« <Page> — ProfitOS » (une page = un titre distinct, utile aux lecteurs d'écran et aux onglets)."""
+    """« <Page> — Veqalio » (une page = un titre distinct, utile aux lecteurs d'écran et aux onglets)."""
     label = explicit or PAGE_TITLES.get(endpoint or '')
-    return f"{label} — ProfitOS" if label else 'ProfitOS'
+    return f"{label} — Veqalio" if label else 'Veqalio'
 
 
 def register(app):

@@ -1,4 +1,4 @@
-"""ProfitOS — restauration d'une sauvegarde produite par scripts/backup.py.
+"""Veqalio — restauration d'une sauvegarde produite par scripts/backup.py.
 
 Voir RESTORE.md pour la procédure complète et l'exercice de restauration.
 
@@ -121,10 +121,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     passphrase = os.environ.get('BACKUP_PASSPHRASE', '')
     if not passphrase:
-        print('[ProfitOS] ERREUR : BACKUP_PASSPHRASE requise.')
+        print('[Veqalio] ERREUR : BACKUP_PASSPHRASE requise.')
         return 1
     if args.target_db and args.target_db == os.environ.get('DATABASE_URL') and not args.yes:
-        print('[ProfitOS] ERREUR : la cible est la base de production ; ajoutez --yes si c\'est voulu.')
+        print('[Veqalio] ERREUR : la cible est la base de production ; ajoutez --yes si c\'est voulu.')
         return 1
     try:
         manifest = args.manifest
@@ -141,9 +141,9 @@ def main(argv=None):
             manifest = work / mname
         done = restore(manifest, passphrase, args.target_db, args.sqlite_dir, args.uploads_dir, args.yes, args.work_dir)
     except bk.BackupError as exc:
-        print(f'[ProfitOS] ERREUR restauration : {exc}')
+        print(f'[Veqalio] ERREUR restauration : {exc}')
         return 1
-    print(f"[ProfitOS] restauration terminée : {', '.join(done) or 'rien (aucune cible indiquée)'}")
+    print(f"[Veqalio] restauration terminée : {', '.join(done) or 'rien (aucune cible indiquée)'}")
     return 0
 
 

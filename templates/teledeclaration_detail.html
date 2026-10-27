@@ -22,10 +22,10 @@
   {% set filed = row.status in ('declared', 'to_verify', 'confirmed', 'filed') %}
   {% set confirmed = row.status == 'confirmed' %}
   <ol class="filing-steps">
-    <li class="is-done"><strong>Calculée</strong> par ProfitOS depuis votre comptabilité.</li>
+    <li class="is-done"><strong>Calculée</strong> par Veqalio depuis votre comptabilité.</li>
     <li class="is-done"><strong>Préparée</strong> : <a class="link" href="{{ url_for('teledeclaration_pdf', decl_id=row.id) }}">récapitulatif PDF</a> avec les cases à remplir.</li>
     <li class="{{ 'is-done' if filed else 'is-current' }}"><strong>Déposée</strong> {% if payload.filing == 'efi' %}sur impots.gouv.fr{% else %}par votre expert-comptable ou partenaire EDI{% endif %}{% if filed %} le {{ row.filed_at|fr_date }}{% endif %}.</li>
-    <li class="{{ 'is-done' if confirmed else ('is-current' if filed else '') }}"><strong>{{ 'Dépôt confirmé' if confirmed else ('Justificatif à vérifier' if row.status == 'to_verify' else 'Justificatif archivé et vérifié') }}</strong>{% if filed %} : <a class="link" href="{{ url_for('teledeclaration_receipt', decl_id=row.id) }}">{{ row.receipt_name }}</a>{% else %} dans ProfitOS.{% endif %}</li>
+    <li class="{{ 'is-done' if confirmed else ('is-current' if filed else '') }}"><strong>{{ 'Dépôt confirmé' if confirmed else ('Justificatif à vérifier' if row.status == 'to_verify' else 'Justificatif archivé et vérifié') }}</strong>{% if filed %} : <a class="link" href="{{ url_for('teledeclaration_receipt', decl_id=row.id) }}">{{ row.receipt_name }}</a>{% else %} dans Veqalio.{% endif %}</li>
   </ol>
   <div class="purchase-table-wrap" style="margin-bottom:10px;"><table class="purchase-table"><tbody>
     <tr><td>{{ '●' if row.status in ('declared', 'filed') else '○' }} <strong>Dépôt déclaré</strong></td><td class="purchase-muted">Vous indiquez avoir déposé ; l'accusé est archivé mais n'a pas pu être lu automatiquement.</td></tr>
@@ -44,7 +44,7 @@
   <p class="purchase-muted" style="font-size:12px;">Ce contrôle compare l'accusé à la déclaration préparée ; il ne confirme pas l'acceptation par l'administration. En cas de rejet ou d'anomalie, l'administration vous informe dans votre espace professionnel (messagerie sécurisée, compte fiscal).</p>
   {% endif %}
   <div class="flash" role="status">{{ guide }}</div>
-  <p class="purchase-muted" style="font-size:12px;">ProfitOS n'effectue pas lui-même la transmission. Le dépôt n'est confirmé qu'après l'archivage du justificatif officiel (accusé de réception).</p>
+  <p class="purchase-muted" style="font-size:12px;">Veqalio n'effectue pas lui-même la transmission. Le dépôt n'est confirmé qu'après l'archivage du justificatif officiel (accusé de réception).</p>
   <div class="actionbuttons" style="margin:10px 0;">
     <a class="purchase-primary-btn secondary" href="{{ url_for('teledeclaration_pdf', decl_id=row.id) }}">Télécharger le récapitulatif PDF</a>
     {% if payload.filing == 'efi' %}<a class="purchase-primary-btn primary" href="{{ impots_url }}" target="_blank" rel="noopener noreferrer">Accéder à impots.gouv.fr ↗</a>{% endif %}

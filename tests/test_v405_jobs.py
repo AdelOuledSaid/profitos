@@ -240,8 +240,8 @@ def test_trial_reminders_j3_sent_once(app, monkeypatch):
     monkeypatch.setattr(jobs, '_notify_owner', lambda org, subject, *a, **k: subjects.append((org['id'], subject)) or {'sent': True})
     jobs.run_job(app, 'trial_reminders')
     jobs.run_job(app, 'trial_reminders', force=True)  # même période forcée : pas de doublon
-    assert subjects == [(1, 'Votre essai ProfitOS se termine dans 3 jours'),
-                        (2, 'Échec du paiement de votre abonnement ProfitOS')]
+    assert subjects == [(1, 'Votre essai Veqalio se termine dans 3 jours'),
+                        (2, 'Échec du paiement de votre abonnement Veqalio')]
 
 
 def test_dso_snapshot_refreshes_days_overdue(app):
@@ -304,7 +304,7 @@ def test_sync_grow_upsert_preserves_created_at_and_status(app, monkeypatch):
 
 def test_ui_wording_matches_automation():
     rec = (ROOT / 'templates' / 'recurring_invoices.html').read_text(encoding='utf-8')
-    assert 'Chaque matin, ProfitOS génère automatiquement en brouillon' in rec
+    assert 'Chaque matin, Veqalio génère automatiquement en brouillon' in rec
     settings = (ROOT / 'templates' / 'settings.html').read_text(encoding='utf-8')
     assert "weekly_report_preference" in settings and 'chaque lundi' in settings
     weekly = (ROOT / 'templates' / 'email_weekly.html').read_text(encoding='utf-8')

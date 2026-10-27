@@ -9,7 +9,7 @@
 
   <div class="purchase-eyebrow">FACTURATION</div>
   <h1 class="purchase-title">Créances clients</h1>
-  <p class="purchase-subtitle">Toutes vos factures clients restant à encaisser : factures émises dans ProfitOS et factures importées depuis un fichier{% if imported_due %} (dont {{ imported_due|fr_number(2) }}&nbsp;€ importés){% endif %}.</p>
+  <p class="purchase-subtitle">Toutes vos factures clients restant à encaisser : factures émises dans Veqalio et factures importées depuis un fichier{% if imported_due %} (dont {{ imported_due|fr_number(2) }}&nbsp;€ importés){% endif %}.</p>
 
   <div class="purchase-stats">
     <div class="purchase-stat">
@@ -70,7 +70,7 @@
         {% for inv in invoices %}
           <tr>
             <td><a class="purchase-detail-link" href="{{ receivable_url(inv) }}"><strong>{{ inv.invoice_number or '—' }}</strong></a>{% if inv.einvoice_hold %}<br><span class="purchase-alert-text" style="font-size:12px;">⚠ Facture {{ inv.einvoice_hold }} — relance suspendue</span>{% endif %}{% if inv.kind == 'RETENTION' %}<br><span class="purchase-muted" style="font-size:12px;">Retenue contractuelle</span>{% endif %}</td>
-            <td><span class="purchase-status {{ 'paid' if inv.source == 'outgoing' else '' }}" title="{{ 'Facture émise dans ProfitOS' if inv.source == 'outgoing' else 'Facture importée depuis un fichier (lecture seule)' }}">{{ inv.source_label }}</span></td>
+            <td><span class="purchase-status {{ 'paid' if inv.source == 'outgoing' else '' }}" title="{{ 'Facture émise dans Veqalio' if inv.source == 'outgoing' else 'Facture importée depuis un fichier (lecture seule)' }}">{{ inv.source_label }}</span></td>
             <td>{{ inv.customer }}</td>
             <td>
               {{ inv.due_date|fr_date or "—" }}
@@ -79,7 +79,7 @@
             <td><strong>{{ (inv.remaining)|fr_number(2) }}&nbsp;€</strong></td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="purchase-empty">Aucune facture client à encaisser. Les factures émises dans ProfitOS et celles importées depuis un fichier apparaissent ici tant qu'elles ne sont pas réglées.</td></tr>
+          <tr><td colspan="5" class="purchase-empty">Aucune facture client à encaisser. Les factures émises dans Veqalio et celles importées depuis un fichier apparaissent ici tant qu'elles ne sont pas réglées.</td></tr>
         {% endfor %}
         </tbody>
       </table>

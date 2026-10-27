@@ -139,7 +139,7 @@ def test_pages_controles_et_dossier(app):
     r = cl.get('/comptabilite/controles-fiscaux')
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert 'Contrôles fiscaux' in html and 'ProfitOS prépare, il ne transmet pas seul' in html
+    assert 'Contrôles fiscaux' in html and 'Veqalio prépare, il ne transmet pas seul' in html
     d = cl.get('/comptabilite/controles-fiscaux/dossier')
     assert d.status_code == 200 and 'no-store' in d.headers.get('Cache-Control', '')
     body = d.get_data(as_text=True)

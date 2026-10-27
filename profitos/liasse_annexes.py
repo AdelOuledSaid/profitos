@@ -3,7 +3,7 @@
 - 2054 (immobilisations), 2055 (amortissements), 2056 (provisions) avec les codes de
   cases officiels, ligne par ligne ;
 - 2059-A (plus et moins-values de cession, à partir des cessions comptabilisées dans
-  ProfitOS), 2059-B / 2059-D (néant par défaut), 2059-C (suivi des moins-values à long
+  Veqalio), 2059-B / 2059-D (néant par défaut), 2059-C (suivi des moins-values à long
   terme) ;
 - 2059-F (composition du capital) et 2059-G (filiales et participations), à partir du
   profil fiscal ;
@@ -204,7 +204,7 @@ def form_2065(identity, profile, liasse, is_res, start, end):
         'groupe': bool(profile.get('groupe')), 'societe_mere_siren': profile.get('societe_mere_siren') or '',
         'benefice': f['XN'], 'deficit': f['XO'],
         'benefice_taux_normal': is_res['base_taux_normal'], 'benefice_taux_15': is_res['base_taux_reduit'],
-        'comptabilite_informatisee': True, 'logiciel': 'ProfitOS',
+        'comptabilite_informatisee': True, 'logiciel': 'Veqalio',
         'expert_comptable': profile.get('expert_comptable') or '', 'expert_comptable_tel': profile.get('expert_comptable_tel') or '',
         'conseil': profile.get('conseil') or '',
         'signataire': profile.get('signataire') or '', 'signataire_qualite': profile.get('signataire_qualite') or '',

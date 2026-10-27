@@ -1,4 +1,4 @@
-# ProfitOS V1.3.4 — CSP / XSS Hardening
+# Veqalio V1.3.4 — CSP / XSS Hardening
 
 ## Implemented
 

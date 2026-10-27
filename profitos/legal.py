@@ -1,4 +1,4 @@
-"""Identité légale de l'éditeur de ProfitOS (mentions légales, CGV, confidentialité).
+"""Identité légale de l'éditeur de Veqalio (mentions légales, CGV, confidentialité).
 
 Les informations viennent des variables d'environnement LEGAL_* afin d'être renseignées
 une seule fois sur Render, sans modifier le code. En production, le preflight refuse de
@@ -35,7 +35,7 @@ DEFAULTS = {
 # Sous-traitants réellement susceptibles de recevoir des données (RGPD art. 28 et 13).
 SUBPROCESSORS = [
     ('Render', "Hébergement de l'application, de la base de données et des documents", 'Serveurs en Union européenne (Francfort) ; société établie aux États-Unis'),
-    ('Stripe', "Paiement et facturation de l'abonnement ProfitOS", 'Irlande / États-Unis'),
+    ('Stripe', "Paiement et facturation de l'abonnement Veqalio", 'Irlande / États-Unis'),
     ('Resend', 'Envoi des e-mails (vérification, factures, relances, rapports)', 'États-Unis'),
     ('Anthropic', 'Lecture automatique des factures et justificatifs déposés, si la fonction est activée', 'États-Unis'),
     ('Powens', 'Synchronisation bancaire (open banking), si vous connectez une banque', 'France'),
@@ -50,7 +50,7 @@ RETENTION = [
     ('Factures, écritures et justificatifs importés', "Pendant l'abonnement. Exportables à tout moment (FEC, PDF, CSV) : la conservation légale de 10 ans (C. com. art. L123-22) reste de votre responsabilité après la résiliation"),
     ('Journaux de sécurité et d\'activité', '12 mois'),
     ('Demandes de démonstration', '3 ans après le dernier contact'),
-    ("Factures de l'abonnement ProfitOS", '10 ans (obligation comptable)'),
+    ("Factures de l'abonnement Veqalio", '10 ans (obligation comptable)'),
     ('Sauvegardes chiffrées', '35 jours maximum'),
 ]
 
@@ -78,7 +78,7 @@ def legal_identity():
         data[key] = (os.environ.get(env) or DEFAULTS.get(key, '')).strip()
     if not data['privacy_email']:
         data['privacy_email'] = data['email']
-    # « ProfitOS SAS » + forme « SAS » s'affichait « ProfitOS SAS, SAS ».
+    # « Veqalio SAS » + forme « SAS » s'affichait « Veqalio SAS, SAS ».
     form = data['legal_form']
     if form and data['company_name'].upper().endswith(' ' + form.upper()):
         data['company_name'] = data['company_name'][:-len(form)].rstrip(' ,')

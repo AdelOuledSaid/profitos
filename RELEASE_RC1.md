@@ -1,4 +1,4 @@
-# ProfitOS v1.0 RC1
+# Veqalio v1.0 RC1
 
 Release Candidate destinée aux premiers pilotes.
 

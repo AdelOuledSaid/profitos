@@ -25,6 +25,6 @@
 {% if followed %}
 <section class="mc-section"><h2>Suivies ({{ followed|length }})</h2><div class="mc-list">{% for f in followed %}{{ card(f, 'control', severity_labels, kind_labels, 7, url_for('radar')) }}{% endfor %}</div></section>
 {% endif %}
-<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les évolutions décrivent les mois écoulés et ne préjugent pas de la suite. Le chiffre d'affaires est celui facturé dans ProfitOS (hors taxes, avoirs déduits) ; l'indice du secteur est celui de l'INSEE pour votre code APE, comparé sur les mêmes mois d'une année sur l'autre.</p>
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les évolutions décrivent les mois écoulés et ne préjugent pas de la suite. Le chiffre d'affaires est celui facturé dans Veqalio (hors taxes, avoirs déduits) ; l'indice du secteur est celui de l'INSEE pour votre code APE, comparé sur les mêmes mois d'une année sur l'autre.</p>
 </div>
 {% endblock %}

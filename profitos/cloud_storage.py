@@ -12,7 +12,7 @@ tout usage réel — ce que je ne peux pas faire moi-même ici.
 Configuration requise (variables d'environnement) :
   DROPBOX_CLIENT_ID, DROPBOX_CLIENT_SECRET
   GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET
-  APP_BASE_URL (déjà utilisé ailleurs dans ProfitOS pour construire les
+  APP_BASE_URL (déjà utilisé ailleurs dans Veqalio pour construire les
   URLs de redirection OAuth — ex. https://app.profitos.fr)
 
 Chaque fournisseur nécessite une application OAuth enregistrée sur son

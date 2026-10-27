@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ProfitOS — Facturation, achats, trésorerie et comptabilité réunis</title>
-  <meta name="description" content="ProfitOS réunit facturation électronique, achats, trésorerie, comptabilité et pilotage financier dans une seule plateforme pour les PME, les groupes et les cabinets d'expertise comptable.">
+  <title>Veqalio — Facturation, achats, trésorerie et comptabilité réunis</title>
+  <meta name="description" content="Veqalio réunit facturation électronique, achats, trésorerie, comptabilité et pilotage financier dans une seule plateforme pour les PME, les groupes et les cabinets d'expertise comptable.">
   <meta name="theme-color" content="#07101f">
   <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
 
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="ProfitOS">
-  <meta property="og:title" content="ProfitOS — Toute la gestion financière de votre entreprise">
+  <meta property="og:site_name" content="Veqalio">
+  <meta property="og:title" content="Veqalio — Toute la gestion financière de votre entreprise">
   <meta property="og:description" content="Facturer, payer, piloter la trésorerie, tenir la comptabilité et trouver de nouveaux marchés, dans une seule plateforme.">
   <meta property="og:image" content="{{ url_for('static',filename='landing/tableau-de-bord.webp',_external=True) }}">
   <meta property="og:url" content="{{ request.url_root }}">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="ProfitOS — Toute la gestion financière de votre entreprise">
+  <meta name="twitter:title" content="Veqalio — Toute la gestion financière de votre entreprise">
   <meta name="twitter:description" content="Facturer, payer, piloter la trésorerie, tenir la comptabilité et trouver de nouveaux marchés, dans une seule plateforme.">
   <meta name="twitter:image" content="{{ url_for('static',filename='landing/tableau-de-bord.webp',_external=True) }}">
 
@@ -24,7 +24,7 @@
 </head>
 <body class="landing-body">
 <header class="landing-header">
-  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="ProfitOS accueil">Profit<span>OS</span></a>
+  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="Veqalio accueil"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></a>
   <nav class="landing-nav" aria-label="Navigation principale">
     <div class="landing-nav-links">
       <a href="#plateforme">Plateforme</a>
@@ -48,7 +48,7 @@
   <div class="landing-hero-copy landing-fade-in">
     <div class="landing-kicker"><span></span> FINANCIAL OPERATING SYSTEM POUR VOTRE ENTREPRISE</div>
     <h1>Toute la finance de votre entreprise.<br><em>Une seule plateforme.</em></h1>
-    <p>Facturez et encaissez, payez vos fournisseurs, anticipez votre trésorerie, tenez votre comptabilité et trouvez de nouveaux marchés. ProfitOS relie tout et vous dit chaque jour quelle décision protège le mieux votre cash.</p>
+    <p>Facturez et encaissez, payez vos fournisseurs, anticipez votre trésorerie, tenez votre comptabilité et trouvez de nouveaux marchés. Veqalio relie tout et vous dit chaque jour quelle décision protège le mieux votre cash.</p>
     <div class="landing-cta-row">
       <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Commencer gratuitement</a>
       <a class="landing-btn landing-btn-secondary" href="{{ url_for('request_demo') }}">Voir une démo</a>
@@ -57,7 +57,7 @@
   </div>
 </section>
 
-<section class="landing-domain-strip" aria-label="Les domaines couverts par ProfitOS">
+<section class="landing-domain-strip" aria-label="Les domaines couverts par Veqalio">
   <div class="landing-shell landing-domain-grid">
     <a href="#domaine-encaisser" data-tab-link="encaisser"><b>01</b><strong>Encaisser</strong><span>Devis, factures, relances, paiements</span></a>
     <a href="#domaine-payer" data-tab-link="payer"><b>02</b><strong>Payer</strong><span>Achats, validation, virements, budgets</span></a>
@@ -86,7 +86,7 @@
     <div class="landing-domain-copy">
       <small>ENCAISSER</small>
       <h3>Facturez en conformité, faites-vous payer plus vite.</h3>
-      <p>Du devis à l'encaissement, chaque étape est suivie. ProfitOS repère les clients à risque et prépare les relances, que vous validez avant envoi.</p>
+      <p>Du devis à l'encaissement, chaque étape est suivie. Veqalio repère les clients à risque et prépare les relances, que vous validez avant envoi.</p>
       <ul class="landing-feature-list">
         <li>Devis, factures, acomptes et avoirs</li>
         <li>Factures récurrentes et bons de livraison</li>
@@ -99,7 +99,7 @@
     </div>
     <figure class="landing-shot">
       <div class="landing-shot-bar"><i></i><i></i><i></i><span>Facture FA-2026-001</span></div>
-      <img src="{{ url_for('static', filename='landing/encaisser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Fiche facture ProfitOS : montant TTC, règlement partiel enregistré et reste à payer">
+      <img src="{{ url_for('static', filename='landing/encaisser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Fiche facture Veqalio : montant TTC, règlement partiel enregistré et reste à payer">
       <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
     </figure>
   </article>
@@ -108,7 +108,7 @@
     <div class="landing-domain-copy">
       <small>PAYER</small>
       <h3>Des factures fournisseurs lues, validées et payées sans ressaisie.</h3>
-      <p>Envoyez un PDF ou une photo : ProfitOS en extrait les montants, vérifie les doublons et vous montre ce qui arrive à échéance.</p>
+      <p>Envoyez un PDF ou une photo : Veqalio en extrait les montants, vérifie les doublons et vous montre ce qui arrive à échéance.</p>
       <ul class="landing-feature-list">
         <li>Lecture automatique des factures (PDF, photo)</li>
         <li>Boîte mail fournisseurs dédiée (prochainement)</li>
@@ -122,7 +122,7 @@
     </div>
     <figure class="landing-shot">
       <div class="landing-shot-bar"><i></i><i></i><i></i><span>Achats &amp; fournisseurs</span></div>
-      <img src="{{ url_for('static', filename='landing/payer.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Liste des factures fournisseurs ProfitOS avec montants à payer, en retard et échéances">
+      <img src="{{ url_for('static', filename='landing/payer.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Liste des factures fournisseurs Veqalio avec montants à payer, en retard et échéances">
       <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
     </figure>
   </article>
@@ -145,7 +145,7 @@
     </div>
     <figure class="landing-shot">
       <div class="landing-shot-bar"><i></i><i></i><i></i><span>Trésorerie &amp; scénarios</span></div>
-      <img src="{{ url_for('static', filename='landing/piloter.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Prévision de trésorerie ProfitOS à 30, 60 et 90 jours avec scénarios">
+      <img src="{{ url_for('static', filename='landing/piloter.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Prévision de trésorerie Veqalio à 30, 60 et 90 jours avec scénarios">
       <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
     </figure>
   </article>
@@ -168,7 +168,7 @@
     </div>
     <figure class="landing-shot">
       <div class="landing-shot-bar"><i></i><i></i><i></i><span>TVA &amp; dossier déclaratif</span></div>
-      <img src="{{ url_for('static', filename='landing/comptabiliser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Préparation de la TVA dans ProfitOS : TVA collectée, déductible et à décaisser">
+      <img src="{{ url_for('static', filename='landing/comptabiliser.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Préparation de la TVA dans Veqalio : TVA collectée, déductible et à décaisser">
       <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
     </figure>
   </article>
@@ -177,7 +177,7 @@
     <div class="landing-domain-copy">
       <small>DÉVELOPPER</small>
       <h3>Trouvez les marchés publics faits pour vous, et décidez vite d'y aller.</h3>
-      <p>ProfitOS surveille les avis BOAMP selon vos métiers et vos départements, note chaque opportunité et vous aide à répondre au bon moment.</p>
+      <p>Veqalio surveille les avis BOAMP selon vos métiers et vos départements, note chaque opportunité et vous aide à répondre au bon moment.</p>
       <ul class="landing-feature-list">
         <li>Veille des marchés publics BOAMP</li>
         <li>Score de pertinence et suivi des dates limites</li>
@@ -189,7 +189,7 @@
     </div>
     <figure class="landing-shot">
       <div class="landing-shot-bar"><i></i><i></i><i></i><span>Marchés publics</span></div>
-      <img src="{{ url_for('static', filename='landing/developper.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Opportunités de marchés publics notées par ProfitOS avec dates limites">
+      <img src="{{ url_for('static', filename='landing/developper.webp') }}" width="1400" height="889" loading="lazy" decoding="async" alt="Opportunités de marchés publics notées par Veqalio avec dates limites">
       <figcaption>Capture de l'application · données de démonstration d'une entreprise fictive</figcaption>
     </figure>
   </article>
@@ -202,11 +202,11 @@
     <div class="landing-preview-copy">
       <div class="landing-kicker"><span></span> LE COPILOTE AU-DESSUS DE VOS CHIFFRES</div>
       <h2>Chaque matin, la décision qui protège le plus votre trésorerie.</h2>
-      <p>ProfitOS croise vos factures, vos dépenses et votre solde bancaire pour vous indiquer quoi faire en premier : quel client relancer, quelle dépense revoir, quel risque anticiper.</p>
+      <p>Veqalio croise vos factures, vos dépenses et votre solde bancaire pour vous indiquer quoi faire en premier : quel client relancer, quelle dépense revoir, quel risque anticiper.</p>
       <a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Essayer sur mes données</a>
     </div>
-  <div class="landing-product-preview landing-fade-in landing-fade-in-2" aria-label="Aperçu de ProfitOS">
-    <div class="preview-topbar"><div><strong>ProfitOS</strong><span>Diagnostic financier</span></div><span class="preview-live"><span class="preview-live-dot"></span> LIVE</span></div>
+  <div class="landing-product-preview landing-fade-in landing-fade-in-2" aria-label="Aperçu de Veqalio">
+    <div class="preview-topbar"><div><strong>Veqalio</strong><span>Diagnostic financier</span></div><span class="preview-live"><span class="preview-live-dot"></span> LIVE</span></div>
     <div class="preview-score-row">
       <div class="preview-score"><small>SCORE DE MAÎTRISE FINANCIÈRE</small><strong><span data-count-to="78">0</span><span>/100</span></strong><em>MAÎTRISÉ</em></div>
       <div class="preview-metric"><small>CASH À PROTÉGER</small><strong><span data-count-to="28100" data-count-suffix=" €">0</span></strong><span>Créances + marge connue</span></div>
@@ -227,7 +227,7 @@
   <div class="landing-section-heading landing-reveal" data-reveal>
     <div class="landing-kicker"><span></span> AU-DELÀ DE LA GESTION</div>
     <h2>Un logiciel de gestion qui vous aide aussi à décider.</h2>
-    <p>Au-delà de la tenue des comptes, ProfitOS transforme vos données en priorités, en scénarios et en actions compréhensibles.</p>
+    <p>Au-delà de la tenue des comptes, Veqalio transforme vos données en priorités, en scénarios et en actions compréhensibles.</p>
   </div>
   <div class="landing-capability-grid">
     <article class="landing-capability landing-reveal" data-reveal><div class="cap-icon cap-red">€</div><small>RELANCES CLIENTS</small><h3>Faites-vous payer plus vite</h3><p>QR code de virement sur chaque facture, lien de paiement en ligne, relances automatiques en trois étapes que vous activez, arrêtées dès le paiement.</p><ul><li>QR code de virement SEPA</li><li>Relances courtoise, ferme, dernier avis</li><li>Scores de priorité et échéancier</li></ul></article>
@@ -244,7 +244,7 @@
     <div class="landing-reform-copy landing-reveal" data-reveal>
       <div class="landing-kicker"><span></span> RÉFORME DE LA FACTURATION ÉLECTRONIQUE</div>
       <h2>La facture électronique devient obligatoire. Préparez-vous dès maintenant.</h2>
-      <p>Depuis le 1<sup>er</sup> septembre 2026, toutes les entreprises doivent pouvoir recevoir des factures électroniques. L'émission devient obligatoire pour les PME et les micro-entreprises le 1<sup>er</sup> septembre 2027. ProfitOS produit déjà des factures Factur-X conformes et vérifie les mentions obligatoires ; la connexion à une plateforme agréée partenaire est en cours d'activation.</p>
+      <p>Depuis le 1<sup>er</sup> septembre 2026, toutes les entreprises doivent pouvoir recevoir des factures électroniques. L'émission devient obligatoire pour les PME et les micro-entreprises le 1<sup>er</sup> septembre 2027. Veqalio produit déjà des factures Factur-X conformes et vérifie les mentions obligatoires ; la connexion à une plateforme agréée partenaire est en cours d'activation.</p>
     </div>
     <ol class="landing-reform-timeline landing-reveal" data-reveal>
       <li class="is-done"><b>Septembre 2026</b><strong>Réception obligatoire pour toutes les entreprises</strong><span>Émission obligatoire pour les grandes entreprises et les ETI.</span></li>
@@ -254,7 +254,7 @@
       <div class="landing-reveal" data-reveal><strong>Factur-X intégré</strong><span>Chaque facture émise peut être téléchargée au format Factur-X, lisible par l'humain et par la machine.</span></div>
       <div class="landing-reveal" data-reveal><strong>Plateforme agréée partenaire</strong><span>Connexion à une plateforme agréée partenaire pour l'émission et la réception — en cours d'activation.</span></div>
       <div class="landing-reveal" data-reveal><strong>Statuts suivis</strong><span>Déposée, prise en charge, approuvée, refusée, payée : le cycle de vie de chaque facture est visible.</span></div>
-      <div class="landing-reveal" data-reveal><strong>Mentions vérifiées</strong><span>SIREN, nature de l'opération, adresse de livraison : ProfitOS signale ce qui manque avant l'envoi.</span></div>
+      <div class="landing-reveal" data-reveal><strong>Mentions vérifiées</strong><span>SIREN, nature de l'opération, adresse de livraison : Veqalio signale ce qui manque avant l'envoi.</span></div>
     </div>
   </div>
 </section>
@@ -264,7 +264,7 @@
     <div class="landing-decision-copy landing-reveal" data-reveal>
       <div class="landing-kicker"><span></span> BEFORE / AFTER DECISION INTELLIGENCE</div>
       <h2>Ne vous contentez pas de savoir qu'une décision est risquée.</h2>
-      <p>ProfitOS compare le scénario initial avec un plan optimisé et explique comment préserver votre réserve de trésorerie.</p>
+      <p>Veqalio compare le scénario initial avec un plan optimisé et explique comment préserver votre réserve de trésorerie.</p>
       <div class="landing-checks"><span>✓ Report de décision</span><span>✓ Paiement fractionné</span><span>✓ Besoin de financement</span><span>✓ Contraintes vérifiées</span></div>
     </div>
     <div class="landing-before-after landing-reveal" data-reveal>
@@ -321,7 +321,7 @@
       <div class="landing-reveal" data-reveal><b>CL</b><strong>Dropbox et Google Drive</strong><span>Collecte des factures fournisseurs</span></div>
       <div class="landing-reveal" data-reveal><b>@</b><strong>Boîte mail dédiée</strong><span>Transférez vos factures, elles sont lues <em>prochainement</em></span></div>
       <div class="landing-reveal" data-reveal><b>EC</b><strong>Shopify et WooCommerce</strong><span>Commandes importées en factures <em>bêta</em></span></div>
-      <div class="landing-reveal" data-reveal><b>&lt;/&gt;</b><strong>API et webhooks</strong><span>Vos données ProfitOS dans vos outils</span></div>
+      <div class="landing-reveal" data-reveal><b>&lt;/&gt;</b><strong>API et webhooks</strong><span>Vos données Veqalio dans vos outils</span></div>
     </div>
     <p class="landing-integration-note">Connexions aux logiciels comptables Pennylane, QuickBooks et Sage : prochainement.</p>
   </div>
@@ -338,7 +338,7 @@
 
 <section id="securite" class="landing-section landing-section-alt">
   <div class="landing-shell landing-trust-panel landing-reveal" data-reveal>
-    <div><div class="landing-kicker"><span></span> CONÇU POUR RESTER SOUS VOTRE CONTRÔLE</div><h2>Une aide à la décision, pas une boîte noire.</h2><p>ProfitOS distingue les données connues des estimations, signale les informations manquantes et n'envoie jamais une relance client sans que vous l'ayez décidé : relance d'un clic, ou relances automatiques que vous activez et réglez.</p></div>
+    <div><div class="landing-kicker"><span></span> CONÇU POUR RESTER SOUS VOTRE CONTRÔLE</div><h2>Une aide à la décision, pas une boîte noire.</h2><p>Veqalio distingue les données connues des estimations, signale les informations manquantes et n'envoie jamais une relance client sans que vous l'ayez décidé : relance d'un clic, ou relances automatiques que vous activez et réglez.</p></div>
     <div class="landing-trust-cards"><div><strong>Validation humaine</strong><span>Vous gardez la main sur les actions sensibles.</span></div><div><strong>Données isolées</strong><span>Chaque entreprise dispose de son propre espace de données.</span></div><div><strong>Accès par rôle</strong><span>Chacun voit les modules qui le concernent.</span></div><div><strong>Vos données vous appartiennent</strong><span>Export complet à tout moment, FEC compris.</span></div></div>
   </div>
 </section>
@@ -355,10 +355,10 @@
 <section id="faq" class="landing-section landing-band landing-faq-section">
   <div class="landing-shell landing-faq">
   <div class="landing-section-heading"><h2>Questions fréquentes</h2></div>
-  <details><summary>Faut-il une carte bancaire pour essayer ProfitOS ?</summary><p>Non. L'essai peut démarrer sans carte bancaire.</p></details>
-  <details><summary>ProfitOS est-il prêt pour la facture électronique ?</summary><p>En grande partie. Les factures émises sont disponibles au format Factur-X et les mentions obligatoires manquantes sont signalées avant l'émission. La transmission par une plateforme agréée partenaire est en cours d'activation : nous vous prévenons dès qu'elle est ouverte sur votre compte.</p></details>
-  <details><summary>Mon expert-comptable peut-il travailler dans ProfitOS ?</summary><p>Oui. Vous l'invitez avec un accès dédié : il consulte les écritures, révise, lettre et exporte le FEC sans que vous ayez à lui envoyer vos pièces.</p></details>
-  <details><summary>ProfitOS envoie-t-il automatiquement des relances à mes clients ?</summary><p>Non. Une relance doit être validée par vous avant son envoi.</p></details>
+  <details><summary>Faut-il une carte bancaire pour essayer Veqalio ?</summary><p>Non. L'essai peut démarrer sans carte bancaire.</p></details>
+  <details><summary>Veqalio est-il prêt pour la facture électronique ?</summary><p>En grande partie. Les factures émises sont disponibles au format Factur-X et les mentions obligatoires manquantes sont signalées avant l'émission. La transmission par une plateforme agréée partenaire est en cours d'activation : nous vous prévenons dès qu'elle est ouverte sur votre compte.</p></details>
+  <details><summary>Mon expert-comptable peut-il travailler dans Veqalio ?</summary><p>Oui. Vous l'invitez avec un accès dédié : il consulte les écritures, révise, lettre et exporte le FEC sans que vous ayez à lui envoyer vos pièces.</p></details>
+  <details><summary>Veqalio envoie-t-il automatiquement des relances à mes clients ?</summary><p>Non. Une relance doit être validée par vous avant son envoi.</p></details>
   <details><summary>Quels fichiers puis-je importer ?</summary><p>Les flux d'import principaux acceptent Excel et CSV. Les factures fournisseurs peuvent aussi être envoyées en PDF ou en photo.</p></details>
   <details><summary>Les prévisions inventent-elles des revenus futurs ?</summary><p>Non. Les modules de trésorerie et de décision signalent leurs hypothèses et n'ajoutent pas artificiellement des recettes inconnues.</p></details>
   </div>
@@ -366,7 +366,7 @@
 
 <section class="landing-final-cta">
   <div class="landing-shell">
-    <div><div class="landing-kicker"><span></span> PASSEZ DE LA DONNÉE À LA DÉCISION</div><h2>Voyez ce que ProfitOS peut protéger dans votre entreprise.</h2><p>Commencez avec vos propres chiffres, puis laissez ProfitOS prioriser ce qui mérite votre attention.</p></div>
+    <div><div class="landing-kicker"><span></span> PASSEZ DE LA DONNÉE À LA DÉCISION</div><h2>Voyez ce que Veqalio peut protéger dans votre entreprise.</h2><p>Commencez avec vos propres chiffres, puis laissez Veqalio prioriser ce qui mérite votre attention.</p></div>
     <div class="landing-cta-row"><a class="landing-btn landing-btn-primary" href="{{ url_for('signup') }}">Commencer gratuitement</a><a class="landing-btn landing-btn-secondary" href="{{ url_for('request_demo') }}">Demander une démo</a></div>
   </div>
 </section>
@@ -374,7 +374,7 @@
 
 <footer class="landing-footer">
   <div class="landing-shell">
-    <div class="landing-brand">Profit<span>OS</span></div>
+    <div class="landing-brand"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></div>
     <p>Financial Operating System pour toutes les entreprises.</p>
     <nav>
       <a href="#plateforme">Plateforme</a>
@@ -390,7 +390,7 @@
       <a href="{{ url_for('terms_of_use') }}">CGU</a>
       <a href="{{ url_for('terms_of_sale') }}">CGV</a>
     </nav>
-    <span>© ProfitOS</span>
+    <span>© Veqalio</span>
   </div>
 </footer>
 <script src="{{ asset_url('app.js') }}" defer></script>

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% if legal_page == 'mentions' %}Mentions légales{% elif legal_page == 'privacy' %}Politique de confidentialité{% elif legal_page == 'cgu' %}CGU{% else %}CGV{% endif %} — ProfitOS</title>
-  <meta name="description" content="Informations juridiques et conditions d'utilisation de ProfitOS.">
+  <title>{% if legal_page == 'mentions' %}Mentions légales{% elif legal_page == 'privacy' %}Politique de confidentialité{% elif legal_page == 'cgu' %}CGU{% else %}CGV{% endif %} — Veqalio</title>
+  <meta name="description" content="Informations juridiques et conditions d'utilisation de Veqalio.">
   <meta name="theme-color" content="#07101f">
   <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
   <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
@@ -12,7 +12,7 @@
 <body class="landing-body">
 
 <header class="landing-header">
-  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="ProfitOS accueil">Profit<span>OS</span></a>
+  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="Veqalio accueil"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></a>
   <nav class="landing-nav" aria-label="Navigation principale">
     <div class="landing-nav-links">
       <a href="{{ url_for('home') }}">Accueil</a>
@@ -41,23 +41,23 @@
     {% if legal_page == 'mentions' %}
       <h3>Éditeur du service</h3>
       {% if L.prelaunch and not L.siren %}
-      <p>Le site ProfitOS est édité par {{ v(L.company_name, 'nom de l\'éditeur') }}, porteur du projet ProfitOS. <strong>Société en cours d'immatriculation</strong> : ces mentions seront complétées (forme juridique, SIREN, siège) dès l'immatriculation. Aucun abonnement payant n'est proposé avant cette date.</p>
+      <p>Le site Veqalio est édité par {{ v(L.company_name, 'nom de l\'éditeur') }}, porteur du projet Veqalio. <strong>Société en cours d'immatriculation</strong> : ces mentions seront complétées (forme juridique, SIREN, siège) dès l'immatriculation. Aucun abonnement payant n'est proposé avant cette date.</p>
       <p>{% if L.address %}Adresse : {{ L.address }}.<br>{% endif %}
       {% else %}
-      <p>Le site et le service ProfitOS sont édités par {{ v(L.company_name, 'raison sociale') }}, {{ v(L.legal_form, 'forme juridique') }}{% if L.share_capital %} au capital de {{ L.share_capital }} €{% endif %}, immatriculée sous le numéro SIREN {{ v(L.siren, 'SIREN') }}{% if L.rcs_city %} au RCS de {{ L.rcs_city }}{% endif %}{% if L.vat_number %}, n° de TVA intracommunautaire {{ L.vat_number }}{% endif %}.</p>
+      <p>Le site et le service Veqalio sont édités par {{ v(L.company_name, 'raison sociale') }}, {{ v(L.legal_form, 'forme juridique') }}{% if L.share_capital %} au capital de {{ L.share_capital }} €{% endif %}, immatriculée sous le numéro SIREN {{ v(L.siren, 'SIREN') }}{% if L.rcs_city %} au RCS de {{ L.rcs_city }}{% endif %}{% if L.vat_number %}, n° de TVA intracommunautaire {{ L.vat_number }}{% endif %}.</p>
       <p>Siège social : {{ v(L.address, 'adresse du siège') }}.<br>{% endif %}Contact : {% if L.email %}<a href="mailto:{{ L.email }}">{{ L.email }}</a>{% else %}{{ v('', 'e-mail de contact') }}{% endif %}{% if L.phone %} — {{ L.phone }}{% endif %}.</p>
       <p>Directeur de la publication : {{ v(L.director, 'directeur de la publication') }}.</p>
       <h3>Hébergeur</h3>
-      <p>{{ L.host_name }} — {{ L.host_address }}{% if L.host_contact %} — <a href="{{ L.host_contact }}" rel="noopener">{{ L.host_contact }}</a>{% endif %}. Les données de ProfitOS sont hébergées sur des serveurs situés à Francfort (Allemagne).</p>
+      <p>{{ L.host_name }} — {{ L.host_address }}{% if L.host_contact %} — <a href="{{ L.host_contact }}" rel="noopener">{{ L.host_contact }}</a>{% endif %}. Les données de Veqalio sont hébergées sur des serveurs situés à Francfort (Allemagne).</p>
       <h3>Propriété intellectuelle</h3>
-      <p>La marque ProfitOS, les textes, graphismes, logiciels et interfaces du service sont protégés par le droit de la propriété intellectuelle. Toute reproduction ou exploitation non autorisée est interdite.</p>
+      <p>La marque Veqalio, les textes, graphismes, logiciels et interfaces du service sont protégés par le droit de la propriété intellectuelle. Toute reproduction ou exploitation non autorisée est interdite.</p>
       <h3>Données personnelles</h3>
       <p>Le traitement de vos données est décrit dans la <a href="{{ url_for('privacy_policy') }}">politique de confidentialité</a>.</p>
 
     {% elif legal_page == 'privacy' %}
       <h3>Responsable de traitement</h3>
       <p>{{ v(L.company_name, 'raison sociale') }}{% if L.address %}, {{ L.address }}{% elif not L.prelaunch %}, {{ v('', 'adresse du siège') }}{% endif %}{% if L.prelaunch and not L.siren %} (société en cours d'immatriculation){% endif %}. Contact pour toute question sur vos données : {% if L.privacy_email %}<a href="mailto:{{ L.privacy_email }}">{{ L.privacy_email }}</a>{% else %}{{ v('', 'contact données personnelles') }}{% endif %}.</p>
-      <p>Pour les données que vous importez sur vos propres clients et fournisseurs (factures, coordonnées, relances), ProfitOS agit en <strong>sous-traitant</strong> de votre entreprise, au sens de l'article 28 du RGPD : nous les traitons uniquement pour vous fournir le service, selon vos instructions (voir l'accord de traitement dans les CGV).</p>
+      <p>Pour les données que vous importez sur vos propres clients et fournisseurs (factures, coordonnées, relances), Veqalio agit en <strong>sous-traitant</strong> de votre entreprise, au sens de l'article 28 du RGPD : nous les traitons uniquement pour vous fournir le service, selon vos instructions (voir l'accord de traitement dans les CGV).</p>
       <h3>Données traitées et finalités</h3>
       <ul>
         <li><strong>Compte et accès</strong> (nom, e-mail, rôle, journaux de connexion) : fournir le service et le sécuriser — exécution du contrat et intérêt légitime (sécurité).</li>
@@ -65,7 +65,7 @@
         <li><strong>Abonnement</strong> (formule, paiements via Stripe, factures) : gérer la facturation — exécution du contrat et obligation légale.</li>
         <li><strong>Demandes de démonstration</strong> : vous recontacter — consentement.</li>
       </ul>
-      <p>ProfitOS ne vend pas vos données et ne les utilise pas pour de la publicité. Les comparaisons entre entreprises (indicateur de retard moyen) ne sont calculées qu'avec votre accord, de façon anonymisée et avec au moins 5 entreprises.</p>
+      <p>Veqalio ne vend pas vos données et ne les utilise pas pour de la publicité. Les comparaisons entre entreprises (indicateur de retard moyen) ne sont calculées qu'avec votre accord, de façon anonymisée et avec au moins 5 entreprises.</p>
       <h3>Sous-traitants</h3>
       <div class="legal-table-wrap"><table class="legal-table">
         <thead><tr><th>Prestataire</th><th>Utilisation</th><th>Localisation</th></tr></thead>
@@ -82,19 +82,19 @@
       <h3>Sécurité</h3>
       <p>Isolation des données de chaque entreprise, mots de passe hachés, double authentification disponible, chiffrement des connexions et des identifiants d'intégration, sauvegardes chiffrées, journal des événements de sécurité.</p>
       <h3>Cookies</h3>
-      <p>ProfitOS n'utilise qu'un cookie de session strictement nécessaire à la connexion. Aucun cookie publicitaire ni de mesure d'audience tierce.</p>
+      <p>Veqalio n'utilise qu'un cookie de session strictement nécessaire à la connexion. Aucun cookie publicitaire ni de mesure d'audience tierce.</p>
 
     {% elif legal_page == 'cgu' %}
       <h3>Objet</h3>
-      <p>Les présentes conditions encadrent l'accès et l'utilisation de la plateforme ProfitOS, éditée par {{ v(L.company_name, 'raison sociale') }}. La création d'un compte vaut acceptation de ces conditions.</p>
+      <p>Les présentes conditions encadrent l'accès et l'utilisation de la plateforme Veqalio, éditée par {{ v(L.company_name, 'raison sociale') }}. La création d'un compte vaut acceptation de ces conditions.</p>
       <h3>Compte et accès</h3>
       <p>Vous êtes responsable de la confidentialité de vos identifiants et des actions réalisées avec votre compte. Les droits de chaque utilisateur dépendent de son rôle dans l'organisation et de la formule souscrite. Nous recommandons d'activer la double authentification.</p>
       <h3>Utilisation du service</h3>
-      <p>Vous vous engagez à utiliser ProfitOS conformément à la loi, à n'importer que des données que vous êtes autorisé à traiter, à ne pas envoyer de messages non sollicités par la plateforme, à ne pas compromettre la sécurité du service et à ne pas tenter d'accéder aux données d'une autre organisation.</p>
+      <p>Vous vous engagez à utiliser Veqalio conformément à la loi, à n'importer que des données que vous êtes autorisé à traiter, à ne pas envoyer de messages non sollicités par la plateforme, à ne pas compromettre la sécurité du service et à ne pas tenter d'accéder aux données d'une autre organisation.</p>
       <h3>Aide à la décision</h3>
       <p>Les prévisions, scores et recommandations dépendent des données fournies et des hypothèses affichées. Ils ne remplacent pas l'avis d'un expert-comptable, d'un avocat ou d'un conseiller financier. Vous restez responsable de vos déclarations fiscales et de la tenue de votre comptabilité.</p>
       <h3>Déclarations fiscales et facture électronique</h3>
-      <p>ProfitOS prépare des déclarations (TVA, liasses, impôt sur les sociétés, CVAE, DAS2…) à partir de votre comptabilité et en produit un récapitulatif. Sauf connexion d'un partenaire EDI expressément indiquée dans l'application, <strong>ProfitOS ne transmet pas lui-même les déclarations</strong> : vous les déposez sur impots.gouv.fr ou les faites déposer par votre expert-comptable, et vous restez seul responsable de leur contenu, de leur dépôt dans les délais et du paiement des sommes dues. Les statuts « dépôt déclaré », « justificatif à vérifier » et « dépôt confirmé » reflètent les justificatifs archivés dans ProfitOS et ne signifient jamais que l'administration a accepté la déclaration. Les montants signalés comme indicatifs ne doivent pas être utilisés pour une déclaration officielle sans vérification. Les factures électroniques sont transmises par la plateforme agréée partenaire indiquée dans l'application, selon ses propres conditions.</p>
+      <p>Veqalio prépare des déclarations (TVA, liasses, impôt sur les sociétés, CVAE, DAS2…) à partir de votre comptabilité et en produit un récapitulatif. Sauf connexion d'un partenaire EDI expressément indiquée dans l'application, <strong>Veqalio ne transmet pas lui-même les déclarations</strong> : vous les déposez sur impots.gouv.fr ou les faites déposer par votre expert-comptable, et vous restez seul responsable de leur contenu, de leur dépôt dans les délais et du paiement des sommes dues. Les statuts « dépôt déclaré », « justificatif à vérifier » et « dépôt confirmé » reflètent les justificatifs archivés dans Veqalio et ne signifient jamais que l'administration a accepté la déclaration. Les montants signalés comme indicatifs ne doivent pas être utilisés pour une déclaration officielle sans vérification. Les factures électroniques sont transmises par la plateforme agréée partenaire indiquée dans l'application, selon ses propres conditions.</p>
       <h3>Disponibilité</h3>
       <p>Nous mettons en œuvre des moyens raisonnables pour assurer la disponibilité et la sécurité du service. Des interruptions peuvent intervenir pour maintenance ou incident ; les maintenances planifiées sont annoncées à l'avance lorsque c'est possible.</p>
       <h3>Suspension</h3>
@@ -104,7 +104,7 @@
 
     {% else %}
       <h3>Champ d'application</h3>
-      <p>Les présentes conditions générales de vente s'appliquent aux abonnements payants à ProfitOS souscrits auprès de {{ v(L.company_name, 'raison sociale') }} ({% if L.siren %}SIREN {{ L.siren }}{% elif L.prelaunch %}société en cours d'immatriculation — aucun abonnement payant n'est proposé avant l'immatriculation{% else %}SIREN {{ v('', 'SIREN') }}{% endif %}) par des clients professionnels. Elles prévalent sur tout autre document, sauf conditions particulières signées.</p>
+      <p>Les présentes conditions générales de vente s'appliquent aux abonnements payants à Veqalio souscrits auprès de {{ v(L.company_name, 'raison sociale') }} ({% if L.siren %}SIREN {{ L.siren }}{% elif L.prelaunch %}société en cours d'immatriculation — aucun abonnement payant n'est proposé avant l'immatriculation{% else %}SIREN {{ v('', 'SIREN') }}{% endif %}) par des clients professionnels. Elles prévalent sur tout autre document, sauf conditions particulières signées.</p>
       <h3>Formules et prix</h3>
       <p>Les fonctionnalités, limites et prix de chaque formule sont ceux de la page <a href="{{ url_for('pricing') }}">Tarifs</a> au jour de la souscription. Les prix sont indiqués <strong>hors taxes</strong> ; la TVA au taux en vigueur (20 %) s'ajoute. Toute évolution de prix est notifiée au moins 30 jours à l'avance et ne s'applique qu'à la période suivante.</p>
       <h3>Essai gratuit</h3>
@@ -123,9 +123,9 @@
       <h3>Résiliation et réversibilité</h3>
       <p>Vous pouvez résilier à tout moment depuis le portail Abonnement ; la résiliation prend effet à la fin de la période payée (fin du mois en paiement mensuel, fin de la période de 12 mois en paiement annuel), sans remboursement de la période en cours. Vous pouvez exporter vos données à tout moment (FEC, PDF, Excel/CSV, export RGPD) ; elles restent exportables pendant 30 jours après la fin de l'abonnement, puis sont supprimées.</p>
       <h3>Accord de traitement des données (RGPD art. 28)</h3>
-      <p>Pour les données personnelles que vous importez, ProfitOS agit en sous-traitant : traitement uniquement sur vos instructions et pour fournir le service ; confidentialité des personnes autorisées ; mesures de sécurité décrites dans la politique de confidentialité ; recours aux seuls sous-traitants listés, avec information préalable de tout changement ; assistance pour répondre aux demandes d'exercice des droits ; notification de toute violation de données dans les meilleurs délais et au plus tard 48 heures après sa découverte ; suppression des données en fin de contrat après la période d'export ; mise à disposition des informations nécessaires pour démontrer le respect de ces obligations.</p>
+      <p>Pour les données personnelles que vous importez, Veqalio agit en sous-traitant : traitement uniquement sur vos instructions et pour fournir le service ; confidentialité des personnes autorisées ; mesures de sécurité décrites dans la politique de confidentialité ; recours aux seuls sous-traitants listés, avec information préalable de tout changement ; assistance pour répondre aux demandes d'exercice des droits ; notification de toute violation de données dans les meilleurs délais et au plus tard 48 heures après sa découverte ; suppression des données en fin de contrat après la période d'export ; mise à disposition des informations nécessaires pour démontrer le respect de ces obligations.</p>
       <h3>Responsabilité</h3>
-      <p>ProfitOS est un outil logiciel d'aide à la gestion. Le client reste responsable des données saisies, de ses déclarations et de ses décisions ; les pénalités, majorations et intérêts de retard liés à une déclaration restent à sa charge, y compris lorsque la déclaration a été préparée avec ProfitOS. Sauf faute lourde ou dolosive, la responsabilité de l'éditeur est limitée aux dommages directs et plafonnée au montant payé par le client au cours des 12 mois précédant le fait générateur.</p>
+      <p>Veqalio est un outil logiciel d'aide à la gestion. Le client reste responsable des données saisies, de ses déclarations et de ses décisions ; les pénalités, majorations et intérêts de retard liés à une déclaration restent à sa charge, y compris lorsque la déclaration a été préparée avec Veqalio. Sauf faute lourde ou dolosive, la responsabilité de l'éditeur est limitée aux dommages directs et plafonnée au montant payé par le client au cours des 12 mois précédant le fait générateur.</p>
       <h3>Droit applicable</h3>
       <p>Les présentes conditions sont soumises au droit français. À défaut d'accord amiable, tout litige relève des tribunaux compétents {% if L.court_city %}de {{ L.court_city }}{% else %}du ressort du siège de l'éditeur{% endif %}.</p>
     {% endif %}
@@ -135,7 +135,7 @@
 
 <footer class="landing-footer">
   <div class="landing-shell">
-    <div class="landing-brand">Profit<span>OS</span></div>
+    <div class="landing-brand"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></div>
     <p>La gestion financière de votre entreprise, réunie dans un seul outil.</p>
     <nav aria-label="Informations juridiques">
       <a href="{{ url_for('legal_notice') }}">Mentions légales</a>
@@ -143,7 +143,7 @@
       <a href="{{ url_for('terms_of_use') }}">CGU</a>
       <a href="{{ url_for('terms_of_sale') }}">CGV</a>
     </nav>
-    <span>© ProfitOS</span>
+    <span>© Veqalio</span>
   </div>
 </footer>
 

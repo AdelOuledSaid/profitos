@@ -1,12 +1,12 @@
-# ProfitOS — Guide utilisateur
+# Veqalio — Guide utilisateur
 
 Mis à jour le 21 octobre 2026
 
 ## 1. Présentation
 
-ProfitOS est un logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets. Il réunit facturation, facture électronique, achats, banque, trésorerie et comptabilité dans un seul outil, en français et conforme aux règles fiscales françaises.
+Veqalio est un logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets. Il réunit facturation, facture électronique, achats, banque, trésorerie et comptabilité dans un seul outil, en français et conforme aux règles fiscales françaises.
 
-Ce guide explique, module par module, comment utiliser ProfitOS au quotidien. Les menus cités sont ceux de la barre latérale à gauche de l'écran.
+Ce guide explique, module par module, comment utiliser Veqalio au quotidien. Les menus cités sont ceux de la barre latérale à gauche de l'écran.
 
 **Les grands modules**
 
@@ -44,13 +44,13 @@ Menu **Entreprise & compte → Profil entreprise**. Ces informations apparaissen
 | Dénomination, forme juridique, capital social | Mentions légales des factures |
 | SIRET et ville du greffe (RCS) | Identification de l'entreprise ; le SIRET est contrôlé (clé de validité) |
 | Numéro de TVA intracommunautaire | Obligatoire sauf en franchise en base |
-| Régime de TVA | Normal, ou franchise en base (art. 293 B du CGI) : ProfitOS ajoute alors la mention légale |
+| Régime de TVA | Normal, ou franchise en base (art. 293 B du CGI) : Veqalio ajoute alors la mention légale |
 | TVA sur les débits | À cocher si vous avez opté pour les débits (prestations de services) |
 | Adresse, code postal, ville | Adresse du siège |
 | Conditions de paiement, pénalités de retard, escompte | Mentions obligatoires de bas de facture |
 | IBAN et BIC | Affichés sur la facture pour être payé par virement |
 
-Tant qu'une mention obligatoire manque, ProfitOS vous le signale avant l'émission d'une facture.
+Tant qu'une mention obligatoire manque, Veqalio vous le signale avant l'émission d'une facture.
 
 ### Se repérer dans l'interface
 
@@ -89,14 +89,14 @@ L'essai dure 14 jours avec toutes les fonctions de la formule Pro, sans carte ba
 ### Changer de formule
 
 - **Formule supérieure** : active immédiatement ; la différence est facturée au prorata des jours restants.
-- **Formule inférieure** : appliquée immédiatement ; le montant déjà payé pour le reste du mois est déduit de votre prochaine facture. ProfitOS vérifie d'abord que vos données tiennent dans la nouvelle formule (nombre d'utilisateurs, d'organisations).
+- **Formule inférieure** : appliquée immédiatement ; le montant déjà payé pour le reste du mois est déduit de votre prochaine facture. Veqalio vérifie d'abord que vos données tiennent dans la nouvelle formule (nombre d'utilisateurs, d'organisations).
 - **Paiement annuel** : vous pouvez monter de formule en cours d'année ; le passage à une formule inférieure ou au mensuel se fait à l'échéance annuelle.
 
-Quand vous cliquez sur une fonction non incluse, ProfitOS vous amène directement à la formule qui la contient.
+Quand vous cliquez sur une fonction non incluse, Veqalio vous amène directement à la formule qui la contient.
 
 ### Paiement, factures et résiliation
 
-Le paiement est traité par Stripe ; ProfitOS ne conserve aucune donnée de carte. Le bouton **Gérer mon abonnement** ouvre l'espace sécurisé Stripe : moyen de paiement, factures, résiliation. Après une résiliation, l'accès continue jusqu'à la fin de la période payée. En cas d'échec de paiement, un délai de grâce de 7 jours s'applique avant suspension.
+Le paiement est traité par Stripe ; Veqalio ne conserve aucune donnée de carte. Le bouton **Gérer mon abonnement** ouvre l'espace sécurisé Stripe : moyen de paiement, factures, résiliation. Après une résiliation, l'accès continue jusqu'à la fin de la période payée. En cas d'échec de paiement, un délai de grâce de 7 jours s'applique avant suspension.
 
 ## 4. Tableau de bord
 
@@ -108,7 +108,7 @@ Le tableau de bord répond en un coup d'œil à trois questions : combien j'ai, 
 | Premiers pas | La liste de démarrage, tant qu'elle n'est pas terminée : profil entreprise, banque, factures, reprise de la comptabilité (FEC), IBAN et relances, secteur de la veille, invitation d'un collègue ou de l'expert-comptable |
 | Trésorerie | Solde déclaré et sa date, état (stable, vigilance, alerte), mini-courbe sur 90 jours, solde prévu à 30 et 90 jours, point bas |
 | À encaisser | Total des factures clients échues non payées (émises et importées) |
-| Économies potentielles | Dépenses à revoir repérées par ProfitOS |
+| Économies potentielles | Dépenses à revoir repérées par Veqalio |
 | Gains vérifiés | Résultats confirmés des actions menées (relance payée, économie réalisée) |
 | À traiter en priorité | Les actions les plus utiles du moment, avec un lien vers le Centre d'actions |
 
@@ -121,7 +121,7 @@ Le lien **à mettre à jour** apparaît sous le solde quand il date de plus de 7
 Menu **Trésorerie → Copilote**. Posez une question (« Analyse ma situation financière et
 fiscale du mois et indique-moi les problèmes à résoudre ») ou cliquez **Analyse du mois**.
 
-- ProfitOS calcule d'abord les **faits** sur vos données, numérotés F1, F2… avec leur calcul et
+- Veqalio calcule d'abord les **faits** sur vos données, numérotés F1, F2… avec leur calcul et
   leur source : chiffre d'affaires facturé du mois et du mois précédent, encaissements,
   impayés, achats, factures fournisseurs à payer, solde bancaire, point bas prévu, estimation
   de TVA, échéances et retards fiscaux, montants des constats de Mission Control.
@@ -145,24 +145,24 @@ résultat contrôlé**.
   ? à vérifier, ✗ impossible pour l'instant. Pour chaque « ? » ou « ✗ », le bloc **Ce qui
   manque pour agir** dit précisément quoi faire (relier la banque, ajouter l'e-mail du client,
   attendre telle date, confirmer le statut d'une créance…).
-- **Quatre groupes** : **Action automatisable** (ProfitOS exécute l'action en un clic, ou l'a
+- **Quatre groupes** : **Action automatisable** (Veqalio exécute l'action en un clic, ou l'a
   préparée et vous demande seulement de la valider), **Prêt à traiter manuellement** (vérifié,
   mais l'action se fait sur une autre page), **À vérifier avant d'agir** et **Action
   impossible pour l'instant**.
 - **Montants qualifiés** : chaque montant dit ce qu'il représente (restant dû, écart facturé,
   point bas prévu, volume de mouvements à vérifier…). Le volume des mouvements bancaires est la
   somme des entrées et sorties à examiner : ni une perte, ni une somme à récupérer.
-- **Impayés** : avant de proposer une relance, ProfitOS recalcule le solde, vérifie sur un
+- **Impayés** : avant de proposer une relance, Veqalio recalcule le solde, vérifie sur un
   relevé bancaire de moins de 3 jours qu'aucun virement non rapproché ne pourrait déjà régler
   la facture, contrôle l'e-mail du client, l'absence de blocage de facturation électronique et
   le délai depuis la dernière relance. Au-delà de 6 mois de retard, il demande le **statut de la
   créance** : toujours due, en litige ou douteuse (motif obligatoire). Un litige ou une créance
   douteuse suspend toutes les relances (manuelles et automatiques) jusqu'à nouvelle décision.
-- **Mission bancaire** : pour les mouvements en attente depuis plus de 7 jours, ProfitOS
+- **Mission bancaire** : pour les mouvements en attente depuis plus de 7 jours, Veqalio
   prépare des **propositions de rapprochement** avec leurs preuves (montant, n° de facture, nom
   du client ou du fournisseur, niveau de confiance). Une facture n'est proposée que pour un seul
   mouvement, et une correspondance ambiguë n'est pas proposée. Vous cochez ce que vous validez :
-  ProfitOS revérifie chaque proposition, enregistre le règlement, l'écriture comptable et le
+  Veqalio revérifie chaque proposition, enregistre le règlement, l'écriture comptable et le
   statut de la facture, puis mesure le résultat (mouvements en attente avant → après). Les
   mouvements sans correspondance sûre sont listés avec la raison.
 - **Action en un clic** : au moment du clic, tout est revérifié sur les données du moment ;
@@ -196,7 +196,7 @@ Tout se joue à l'émission : avant, la facture se modifie librement ; après, e
 
 1. **Nouvelle facture** : client, lignes, date d'émission, échéance, nature de l'opération (biens, services ou mixte), date de livraison ou de prestation.
 2. La facture reste un **brouillon** modifiable, sans numéro, tant qu'elle n'est pas émise.
-3. **Envoyer** (ou **Marquer émise**) : ProfitOS attribue le numéro légal, séquentiel et sans trou sur l'année (par exemple FA-2026-014), fige la facture et passe l'écriture de vente en comptabilité.
+3. **Envoyer** (ou **Marquer émise**) : Veqalio attribue le numéro légal, séquentiel et sans trou sur l'année (par exemple FA-2026-014), fige la facture et passe l'écriture de vente en comptabilité.
 4. Le client reçoit un lien pour consulter et télécharger sa facture ; le PDF est au format Factur-X (voir section 6).
 
 Une facture émise ne peut plus être modifiée ni supprimée : c'est la loi. Pour la corriger ou l'annuler, émettez un **avoir** depuis la facture (total ou partiel). Une **facture proforma** peut être générée à tout moment ; elle n'a pas de valeur comptable.
@@ -207,11 +207,11 @@ Une facture émise ne peut plus être modifiée ni supprimée : c'est la loi. Po
 
 ### Factures récurrentes
 
-**Facturation → Récurrentes** pour les abonnements et contrats : client, lignes, fréquence (semaine, mois, trimestre, année), délai de paiement, première date et date de fin facultative. ProfitOS prépare chaque facture en brouillon à la date prévue ; vous la vérifiez puis l'envoyez. Un modèle peut être mis en pause à tout moment. Les prochaines échéances sont reprises dans la prévision de trésorerie.
+**Facturation → Récurrentes** pour les abonnements et contrats : client, lignes, fréquence (semaine, mois, trimestre, année), délai de paiement, première date et date de fin facultative. Veqalio prépare chaque facture en brouillon à la date prévue ; vous la vérifiez puis l'envoyez. Un modèle peut être mis en pause à tout moment. Les prochaines échéances sont reprises dans la prévision de trésorerie.
 
 ### Paiements
 
-Sur une facture, **Règlement** enregistre un paiement total ou partiel (date, montant, moyen) ; **Marquer payée** solde la facture. Chaque règlement passe son écriture en banque. Avec le module Banque, ProfitOS propose de rapprocher chaque virement reçu de la facture correspondante (voir section 8).
+Sur une facture, **Règlement** enregistre un paiement total ou partiel (date, montant, moyen) ; **Marquer payée** solde la facture. Chaque règlement passe son écriture en banque. Avec le module Banque, Veqalio propose de rapprocher chaque virement reçu de la facture correspondante (voir section 8).
 
 ### Relances clients et échéancier
 
@@ -219,18 +219,18 @@ Sur une facture, **Règlement** enregistre un paiement total ou partiel (date, m
 - **Relancer** sur une facture envoie l'e-mail de relance d'un clic.
 - **Facturation → Encaissement et relances** :
   - **QR code de virement** : il est imprimé sur la facture PDF et sur la facture en ligne avec votre IBAN, le reste à payer et le numéro de facture. Votre client le scanne avec l'application de sa banque et le virement est pré-rempli. Renseignez l'IBAN dans le profil de l'entreprise.
-  - **Lien de paiement en ligne** (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». ProfitOS ne manipule jamais les fonds.
+  - **Lien de paiement en ligne** (facultatif) : l'adresse fournie par votre prestataire de paiement (carte, prélèvement…) devient un bouton « Payer en ligne ». Veqalio ne manipule jamais les fonds.
   - **Relances automatiques** (à activer) : un rappel courtois, un rappel ferme puis un dernier avis avant mise en demeure, aux délais que vous choisissez (3, 15 et 30 jours après l'échéance par défaut), chaque matin. Jamais deux relances à moins de 5 jours d'intervalle ; arrêt dès que la facture est réglée, couverte par un avoir, ou refusée ou en litige côté facture électronique. Vous pouvez suspendre les relances d'une facture précise.
 - **Échéancier** affiche sur un calendrier les échéances clients et fournisseurs.
 - **Facturation → Créances** donne l'état de toutes les sommes dues par client.
 
 ## 6. Facture électronique
 
-ProfitOS produit des factures électroniques au format Factur-X et les transmet par une plateforme agréée, comme l'exige la réforme française. Toutes les entreprises doivent pouvoir recevoir des factures électroniques à partir du 1er septembre 2026 ; l'émission devient obligatoire en septembre 2026 pour les grandes entreprises et ETI, en septembre 2027 pour les PME et micro-entreprises.
+Veqalio produit des factures électroniques au format Factur-X et les transmet par une plateforme agréée, comme l'exige la réforme française. Toutes les entreprises doivent pouvoir recevoir des factures électroniques à partir du 1er septembre 2026 ; l'émission devient obligatoire en septembre 2026 pour les grandes entreprises et ETI, en septembre 2027 pour les PME et micro-entreprises.
 
 ### Le format Factur-X
 
-Chaque facture émise est un PDF lisible par une personne, qui contient aussi les données structurées de la facture (fichier XML, profil EN 16931). ProfitOS contrôle ces données avec les règles européennes et françaises avant l'envoi : SIREN du vendeur et de l'acheteur, mentions de paiement, cadre de facturation, taux de TVA, acomptes. Le bouton **Factur-X** d'une facture télécharge le fichier.
+Chaque facture émise est un PDF lisible par une personne, qui contient aussi les données structurées de la facture (fichier XML, profil EN 16931). Veqalio contrôle ces données avec les règles européennes et françaises avant l'envoi : SIREN du vendeur et de l'acheteur, mentions de paiement, cadre de facturation, taux de TVA, acomptes. Le bouton **Factur-X** d'une facture télécharge le fichier.
 
 ### Les nouvelles mentions obligatoires
 
@@ -239,7 +239,7 @@ Chaque facture émise est un PDF lisible par une personne, qui contient aussi le
 - Nature de l'opération : livraison de biens, prestation de services, ou les deux.
 - Option pour le paiement de la TVA d'après les débits, le cas échéant.
 
-ProfitOS demande ces informations au bon moment et bloque l'envoi s'il en manque une.
+Veqalio demande ces informations au bon moment et bloque l'envoi s'il en manque une.
 
 ### Envoyer une facture par la plateforme
 
@@ -279,11 +279,11 @@ Toutes les factures fournisseurs passent par un circuit simple : saisie ou lectu
 
 Trois façons de faire entrer une facture :
 
-- **Importer un PDF** : déposez le PDF (même scanné) ; ProfitOS lit le fournisseur, le numéro, les dates, les montants HT, TVA et TTC, et propose une catégorie. Vous vérifiez avant d'enregistrer.
+- **Importer un PDF** : déposez le PDF (même scanné) ; Veqalio lit le fournisseur, le numéro, les dates, les montants HT, TVA et TTC, et propose une catégorie. Vous vérifiez avant d'enregistrer.
 - **Boîte mail fournisseurs** : une adresse e-mail propre à votre compte ; transférez-y les factures reçues, elles arrivent dans vos achats.
 - **Nouvelle facture** : saisie manuelle.
 
-Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.
+Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). Veqalio signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.
 
 ### Chaîne de traitement des factures fournisseurs
 
@@ -311,7 +311,7 @@ boîte mail, saisie), passe dix étapes dont le résultat est affiché :
 9. **Actions proposées** : valider et comptabiliser, générer une écriture manquante, contester
    auprès du fournisseur, joindre le justificatif, rejeter un doublon, préparer le virement.
 10. **Exécution et contrôle** : après votre validation (propriétaire, administrateur ou
-    comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
+    comptable), Veqalio revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
     et équilibrée et que la facture est validée ; chaque exécution est consignée.
 
 Le bouton **Valider la facture** de la fiche applique les mêmes contrôles : une anomalie
@@ -328,7 +328,7 @@ passée dès l'enregistrement et la chaîne contrôle a posteriori.
 Menu **Dépenses & marges → Contrats fournisseurs**. Enregistrez vos contrats récurrents
 (maintenance, logiciels, téléphonie, location, assurance, énergie…) : montant HT prévu par
 période, tolérance, indice de révision et période de référence, plafond de hausse, dates,
-tacite reconduction et préavis. ProfitOS contrôle ensuite chaque facture du fournisseur des
+tacite reconduction et préavis. Veqalio contrôle ensuite chaque facture du fournisseur des
 12 derniers mois :
 
 - **Écart de prix** : facture HT au-delà du montant prévu, révisé par l'indice officiel du
@@ -373,16 +373,16 @@ Menu **Notes de frais**. Un collaborateur crée une note, ajoute ses lignes (tic
 
 ## 8. Banque
 
-Vos opérations bancaires arrivent dans ProfitOS, soit par connexion à la banque, soit par import de relevés, puis se rapprochent de vos factures en quelques clics. Menu **Données & connexions → Banques connectées** (formule Pro et plus).
+Vos opérations bancaires arrivent dans Veqalio, soit par connexion à la banque, soit par import de relevés, puis se rapprochent de vos factures en quelques clics. Menu **Données & connexions → Banques connectées** (formule Pro et plus).
 
 ### Faire entrer ses opérations
 
-- **Connecter ma banque** : connexion sécurisée en lecture seule à votre banque ; **Synchroniser** récupère les soldes et toutes les opérations passées. Les opérations encore « à venir » (carte à débit différé, virement en cours) sont importées une fois définitives. Le consentement bancaire est à renouveler périodiquement : ProfitOS l'indique quand c'est le cas.
+- **Connecter ma banque** : connexion sécurisée en lecture seule à votre banque ; **Synchroniser** récupère les soldes et toutes les opérations passées. Les opérations encore « à venir » (carte à débit différé, virement en cours) sont importées une fois définitives. Le consentement bancaire est à renouveler périodiquement : Veqalio l'indique quand c'est le cas.
 - **Importer un relevé** (CSV, Excel ou PDF) : choisissez le nom du compte (par exemple « Qonto »), déposez le fichier. Les relevés avec une colonne Montant signée ou deux colonnes Débit et Crédit sont acceptés. Réimporter un relevé déjà importé, ou un relevé qui chevauche le précédent, n'ajoute aucun doublon. Si le relevé contient une colonne Solde, le dernier solde est enregistré.
 
 ### Rapprocher les opérations
 
-Pour chaque encaissement, ProfitOS propose la ou les factures clients correspondantes (montant restant dû, numéro de facture, nom du client), avec un niveau de confiance ; pour chaque sortie, les factures fournisseurs.
+Pour chaque encaissement, Veqalio propose la ou les factures clients correspondantes (montant restant dû, numéro de facture, nom du client), avec un niveau de confiance ; pour chaque sortie, les factures fournisseurs.
 
 1. Vérifiez la proposition et cliquez **Rapprocher**. Vous pouvez saisir un montant partiel, au format français (« 1 234,56 »).
 2. Le paiement est enregistré sur la facture, son écriture passée en banque, et le statut de la facture mis à jour (payée ou partiellement payée).
@@ -392,7 +392,7 @@ Aucun rapprochement n'est fait sans votre validation.
 
 ### Catégoriser les autres opérations
 
-Une opération sans facture (abonnement, frais, impôt) se comptabilise directement depuis la liste des transactions : choisissez une catégorie, un compte comptable et un taux de TVA, puis **Valider**. ProfitOS sépare le HT et la TVA (TVA déductible sur immobilisations pour un compte de classe 2) et retient votre choix : la fois suivante, la même opération est préremplie et se valide en un clic.
+Une opération sans facture (abonnement, frais, impôt) se comptabilise directement depuis la liste des transactions : choisissez une catégorie, un compte comptable et un taux de TVA, puis **Valider**. Veqalio sépare le HT et la TVA (TVA déductible sur immobilisations pour un compte de classe 2) et retient votre choix : la fois suivante, la même opération est préremplie et se valide en un clic.
 
 - **Règles de catégorisation** : « tout libellé contenant URSSAF → Charges sociales », appliqué aux opérations existantes et futures.
 - **Frais bancaires** : un petit écart restant après un rapprochement (5 € maximum) se comptabilise en frais bancaires d'un clic.
@@ -411,7 +411,7 @@ Dans le tableau des comptes bancaires, la colonne **Compte comptable** associe c
 3. Plus les opérations bancaires pas encore comptabilisées.
 4. Écart restant, expliqué par les écritures 512 sans opération bancaire (chèque émis pas encore débité, règlement saisi à la main).
 
-Quand l'écart correspond au solde de la banque avant le premier mouvement importé, ProfitOS indique qu'il manque le solde d'ouverture en comptabilité. La page s'imprime pour votre dossier de clôture.
+Quand l'écart correspond au solde de la banque avant le premier mouvement importé, Veqalio indique qu'il manque le solde d'ouverture en comptabilité. La page s'imprime pour votre dossier de clôture.
 
 ### Utiliser le solde bancaire
 
@@ -419,7 +419,7 @@ Quand l'écart correspond au solde de la banque avant le premier mouvement impor
 
 ## 9. Trésorerie & scénarios
 
-ProfitOS prévoit votre solde jour par jour sur 90 jours, à partir de tout ce qu'il sait déjà, et vous prévient avant une tension. Menu **Trésorerie → Trésorerie & scénarios** (formule Business et plus).
+Veqalio prévoit votre solde jour par jour sur 90 jours, à partir de tout ce qu'il sait déjà, et vous prévient avant une tension. Menu **Trésorerie → Trésorerie & scénarios** (formule Business et plus).
 
 ### 1. Donner le solde de départ
 
@@ -439,7 +439,7 @@ Saisissez votre trésorerie disponible (format « 12 345,67 » accepté) et cliq
 
 Les factures refusées, en litige ou suspendues sont exclues et listées à part. Les flux attendus après 90 jours ne sont pas comptés.
 
-**Habitude de paiement** : quand un client a au moins deux factures entièrement réglées, ProfitOS calcule son retard moyen (par exemple « paie en moyenne 12 jours après l'échéance ») et date ses prochains paiements en conséquence.
+**Habitude de paiement** : quand un client a au moins deux factures entièrement réglées, Veqalio calcule son retard moyen (par exemple « paie en moyenne 12 jours après l'échéance ») et date ses prochains paiements en conséquence.
 
 ### 3. Lire les trois scénarios
 
@@ -463,7 +463,7 @@ Les décaissements sont les mêmes dans les trois scénarios. Chaque scénario a
 
 Section **Flux prévus** : libellé, catégorie (salaires et charges sociales, loyer, impôts, abonnements, remboursement de financement, vente signée, subvention, apport…), montant, fréquence (une fois, semaine, mois, trimestre, année), première échéance et fin facultative.
 
-Si vos relevés couvrent au moins 3 mois, ProfitOS repère les opérations qui reviennent chaque mois avec un montant stable (loyer, URSSAF, salaires…) et les propose : **Ajouter** les intègre à la prévision, **Masquer** les écarte. Les virements d'un client déjà facturé ne sont jamais proposés, puisque ses factures sont déjà comptées.
+Si vos relevés couvrent au moins 3 mois, Veqalio repère les opérations qui reviennent chaque mois avec un montant stable (loyer, URSSAF, salaires…) et les propose : **Ajouter** les intègre à la prévision, **Masquer** les écarte. Les virements d'un client déjà facturé ne sont jamais proposés, puisque ses factures sont déjà comptées.
 
 **Éviter le double comptage** : si vos dépenses importées contiennent déjà les salaires ou le loyer que vous saisissez en flux prévus, décochez « Compter la dépense courante observée » dans les réglages.
 
@@ -483,12 +483,12 @@ Menu **Trésorerie → Veille de votre secteur**. Les indicateurs officiels qui 
 vos coûts et vos contrats, mis à jour chaque matin depuis l'INSEE et la Banque centrale
 européenne.
 
-- **Votre secteur** : ProfitOS le propose d'après les activités de votre profil entreprise ;
+- **Votre secteur** : Veqalio le propose d'après les activités de votre profil entreprise ;
   confirmez-le, changez-le, ou indiquez votre code APE. Les entreprises du bâtiment et des travaux
   publics suivent par exemple les index BT01 et TP01 et le coût de la construction ; toutes
   les entreprises suivent l'inflation, les loyers commerciaux et tertiaires, le taux de dépôt de
   la BCE et l'Euribor 3 mois.
-- **Activité de votre secteur** : selon votre code APE, ProfitOS ajoute l'indice de chiffre
+- **Activité de votre secteur** : selon votre code APE, Veqalio ajoute l'indice de chiffre
   d'affaires de l'INSEE le plus proche de votre métier (base 100 en 2021, mensuel, France
   entière) : commerce de gros, habillement, hôtels, hébergement touristique, restauration,
   restauration rapide, services administratifs et de soutien, conseil en gestion, traduction et
@@ -499,7 +499,7 @@ européenne.
   comparent pas). Ces indices mesurent l'activité, pas les prix : ils ne sont proposés ni pour
   une révision de prix ni dans le suivi des marges.
 - **Fiabilité des séries INSEE** : l'identifiant à 9 chiffres est la référence. Chaque mois,
-  ProfitOS relit les caractéristiques officielles de chaque série (correction, activité, base)
+  Veqalio relit les caractéristiques officielles de chaque série (correction, activité, base)
   dans le fichier de correspondance publié par l'INSEE ; à défaut, il s'appuie sur l'intitulé
   officiel. La fiche d'un indicateur montre ces vérifications. Si les informations se
   contredisent (par exemple « brute » d'un côté et « CVS-CJO » de l'autre, une autre activité,
@@ -514,7 +514,7 @@ européenne.
   l'adresse de sa page sur insee.fr. Un indice non publié par l'INSEE (Syntec, Comité national
   routier, indice contractuel) se saisit à la main dans le **Suivi des marges**.
 - **Révision de prix** : choisissez l'indice, le mois de référence, le mois de révision, la partie
-  fixe et l'arrondi prévus au contrat ; ProfitOS calcule le coefficient et le prix révisé, et peut
+  fixe et l'arrondi prévus au contrat ; Veqalio calcule le coefficient et le prix révisé, et peut
   ajouter l'écart comme ligne d'une facture en brouillon.
 - **Suivi des marges** : choisissez un indice de la veille comme indice de référence ; ses valeurs
   officielles sont reprises automatiquement et chaque contrat à prix ferme affiche la marge en
@@ -526,7 +526,7 @@ européenne.
   (Paramètres), le tableau de bord compare votre délai moyen à celui des entreprises de votre
   secteur dès que 5 autres participantes en font partie, sinon à toutes les participantes.
 
-Si une source renvoie une série inattendue, ProfitOS n'affiche aucune valeur et marque la série
+Si une source renvoie une série inattendue, Veqalio n'affiche aucune valeur et marque la série
 « à vérifier ». Ces informations sont indicatives et ne constituent pas un conseil financier.
 
 ### Opportunity Radar
@@ -537,7 +537,7 @@ chacun avec sa source ; aucune hausse de chiffre d'affaires n'est promise.
 - **Votre secteur et vous** : l'évolution sur un an de votre chiffre d'affaires facturé (HT,
   avoirs déduits) est comparée à celle de l'indice INSEE de chiffre d'affaires de votre code
   APE, sur les trois mêmes mois (la comparaison sur un an neutralise la saisonnalité). Il faut
-  au moins 15 mois de factures dans ProfitOS et un indice publié et non suspendu ; si l'activité
+  au moins 15 mois de factures dans Veqalio et un indice publié et non suspendu ; si l'activité
   de la série n'a pas pu être vérifiée, le constat l'indique (« ? »).
 - **Clients dormants** : clients qui ont acheté (au moins 500 € HT) entre 18 et 6 mois et plus
   rien depuis 6 mois — les plus simples à relancer.
@@ -552,7 +552,7 @@ Comme dans Mission Control, chaque constat peut être suivi, reporté ou écart�
 ### Experts partenaires (Expert Network)
 
 Menu **Actions & croissance → Experts partenaires**. Quand un point demande une intervention
-humaine, faites appel à un professionnel sélectionné par ProfitOS : comptabilité, juridique,
+humaine, faites appel à un professionnel sélectionné par Veqalio : comptabilité, juridique,
 trésorerie et financement, ressources humaines, marketing, informatique. Pour l'expertise
 comptable et le juridique, seuls des professionnels inscrits (Ordre, barreau) sont proposés,
 après vérification de leur inscription.
@@ -567,7 +567,7 @@ après vérification de leur inscription.
 - À l'acceptation, le constat d'origine passe « en contrôle » dans Mission Control : la mission
   est réussie quand le problème disparaît de vos données, ce que la page de la mission indique.
 - Annuler la mission désactive immédiatement l'accès de l'expert. Les honoraires sont convenus
-  et réglés directement avec lui ; ProfitOS ne perçoit aucune commission.
+  et réglés directement avec lui ; Veqalio ne perçoit aucune commission.
 
 ## 11. Aide à la décision
 
@@ -597,7 +597,7 @@ Un report ou un fractionnement reste à confirmer avec le fournisseur ou le part
 
 ### Diagnostic financier
 
-Menu **Trésorerie → Diagnostic financier**. Un score de maîtrise financière sur 100, la décision qui protège le plus votre argent en ce moment, la liste des décisions classées par impact, et une réponse à « peut-on financièrement prendre ce marché ? » pour vos opportunités. La page dit aussi ce que ProfitOS ne sait pas encore, pour que vous complétiez les données manquantes.
+Menu **Trésorerie → Diagnostic financier**. Un score de maîtrise financière sur 100, la décision qui protège le plus votre argent en ce moment, la liste des décisions classées par impact, et une réponse à « peut-on financièrement prendre ce marché ? » pour vos opportunités. La page dit aussi ce que Veqalio ne sait pas encore, pour que vous complétiez les données manquantes.
 
 ### Gisements de cash
 
@@ -625,7 +625,7 @@ La TVA sur encaissements (prestations de services) est gérée : elle devient ex
 
 - **Journaux** : les écritures par journal, numérotées en continu par journal et par année.
 - **Grand livre** : toutes les lignes par compte, filtrables par période, compte ou tiers ; export Excel ou CSV.
-- **Balance** : générale, clients ou fournisseurs, avec soldes d'ouverture, mouvements et soldes ; ProfitOS confirme qu'elle est équilibrée.
+- **Balance** : générale, clients ou fournisseurs, avec soldes d'ouverture, mouvements et soldes ; Veqalio confirme qu'elle est équilibrée.
 - **Lettrage** : rapproche les factures et leurs règlements sur un compte de tiers.
 - **Plan comptable** : le plan comptable général français est préinstallé ; vous pouvez ajouter des comptes (par exemple un 512100 pour une seconde banque) ou en désactiver.
 
@@ -667,25 +667,25 @@ Ces calculs sont des aides à la préparation : ils doivent être validés par v
 
 ### Déclarations fiscales
 
-Menu **Comptabilité → Déclarations fiscales**. ProfitOS calcule et prépare vos déclarations à partir de la comptabilité ; **vous les déposez vous-même** sur impots.gouv.fr (espace professionnel), puis vous archivez l'accusé de réception dans ProfitOS.
+Menu **Comptabilité → Déclarations fiscales**. Veqalio calcule et prépare vos déclarations à partir de la comptabilité ; **vous les déposez vous-même** sur impots.gouv.fr (espace professionnel), puis vous archivez l'accusé de réception dans Veqalio.
 
-1. **ProfitOS calcule** la TVA, les résultats fiscaux et les données déclaratives.
-2. **ProfitOS prépare** : contrôles (SIREN, bilan équilibré, période terminée…), puis **Préparer ma déclaration** fige le contenu et produit un **récapitulatif PDF** avec les cases et montants à reporter.
+1. **Veqalio calcule** la TVA, les résultats fiscaux et les données déclaratives.
+2. **Veqalio prépare** : contrôles (SIREN, bilan équilibré, période terminée…), puis **Préparer ma déclaration** fige le contenu et produit un **récapitulatif PDF** avec les cases et montants à reporter.
 3. **Vous déposez sur impots.gouv.fr** (bouton **Accéder à impots.gouv.fr**) : saisie ou vérification des montants, validation officielle et paiement en ligne.
-4. **Retour dans ProfitOS** : joignez le justificatif de dépôt (PDF ou image de l'accusé de réception), sa date et son numéro. L'échéance est alors marquée comme faite, et la déclaration prend l'un de ces statuts :
+4. **Retour dans Veqalio** : joignez le justificatif de dépôt (PDF ou image de l'accusé de réception), sa date et son numéro. L'échéance est alors marquée comme faite, et la déclaration prend l'un de ces statuts :
    - **Dépôt confirmé par l'accusé officiel** : l'accusé correspond à la déclaration préparée (contrôle automatique), ou a été vérifié et confirmé par le propriétaire, un administrateur ou le comptable ;
    - **Justificatif à vérifier — écarts détectés** : l'accusé ne correspond pas entièrement (autre période, autre montant…). Joignez le bon accusé, ou confirmez le dépôt en expliquant l'écart (explication obligatoire, conservée dans l'historique) ;
    - **Dépôt déclaré — justificatif non vérifié** : l'accusé est archivé mais n'a pas pu être lu (image, scan) ; vérifiez-le puis confirmez le dépôt.
 
    Aucun de ces statuts ne signifie que l'administration a accepté la déclaration : seul un accusé EDI transmis par un partenaire peut le constater (statut « Acceptée »).
 
-**Contrôle de l'accusé** : à l'archivage, ProfitOS lit l'accusé (PDF) et vérifie qu'il porte le bon SIREN, le bon formulaire, la bonne période et le bon montant. Il affiche « justificatif concordant » ou la liste des écarts (mauvais fichier, période ou montant différents), et en déduit le statut ci-dessus. Une image ou un PDF scanné ne peut pas être lu automatiquement : contrôlez-le vous-même. Ce contrôle ne confirme pas l'acceptation par l'administration, que ProfitOS ne peut pas interroger pour un dépôt fait sur impots.gouv.fr : un rejet ou une anomalie vous est signalé dans votre espace professionnel (messagerie sécurisée, compte fiscal).
+**Contrôle de l'accusé** : à l'archivage, Veqalio lit l'accusé (PDF) et vérifie qu'il porte le bon SIREN, le bon formulaire, la bonne période et le bon montant. Il affiche « justificatif concordant » ou la liste des écarts (mauvais fichier, période ou montant différents), et en déduit le statut ci-dessus. Une image ou un PDF scanné ne peut pas être lu automatiquement : contrôlez-le vous-même. Ce contrôle ne confirme pas l'acceptation par l'administration, que Veqalio ne peut pas interroger pour un dépôt fait sur impots.gouv.fr : un rejet ou une anomalie vous est signalé dans votre espace professionnel (messagerie sécurisée, compte fiscal).
 
 **Relances** : un accusé avec écarts est rappelé par e-mail le lendemain puis chaque semaine, et listé dans « Justificatifs à vérifier » (Échéances fiscales). Si une échéance passe sans justificatif archivé, la déclaration apparaît dans « Déclarations en retard » (Échéances fiscales) et le propriétaire est relancé par e-mail le lendemain, puis chaque semaine pendant neuf semaines, avec le rappel de vérifier le compte fiscal. Les déclarations sans montant ni préparation (TVA à néant, acompte nul) ne sont pas relancées.
 
 Tant que la préparation des déclarations n'est pas ouverte sur votre compte (validation des calculs en cours), la page l'indique : les montants restent consultables à titre indicatif.
 
-ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. Préparer à nouveau une déclaration non encore déposée met à jour son récapitulatif ; une fois déposée, seule une déclaration rectificative peut être préparée.
+Veqalio n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. Préparer à nouveau une déclaration non encore déposée met à jour son récapitulatif ; une fois déposée, seule une déclaration rectificative peut être préparée.
 
 | Déclaration | Formulaire | Dépôt sur impots.gouv.fr |
 | --- | --- | --- |
@@ -698,7 +698,7 @@ ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est consi
 | Liasse du régime normal | 2065 + 2050 à 2059 | Non : EDI obligatoire |
 | Valeur ajoutée (CVAE) | 1330-CVAE | Non : EDI obligatoire |
 
-Pour la liasse du régime normal et la CVAE, transmettez le récapitulatif à votre expert-comptable (ou à votre partenaire EDI), puis archivez dans ProfitOS l'accusé de réception qu'il vous remet. Le jour où un partenaire EDI est connecté à ProfitOS, les déclarations peuvent aussi être transmises directement.
+Pour la liasse du régime normal et la CVAE, transmettez le récapitulatif à votre expert-comptable (ou à votre partenaire EDI), puis archivez dans Veqalio l'accusé de réception qu'il vous remet. Le jour où un partenaire EDI est connecté à Veqalio, les déclarations peuvent aussi être transmises directement.
 
 ### Profil fiscal et paiement en ligne
 
@@ -712,21 +712,21 @@ Menu **Comptabilité → Profil fiscal** :
 
 ### DAS2 et dividendes
 
-- **DAS2** (menu Comptabilité → DAS2) : ProfitOS reprend les honoraires, frais d'actes, commissions, droits d'auteur, redevances et jetons de présence comptabilisés dans l'année, TVA comprise, regroupés par bénéficiaire. Ceux qui ont reçu plus de 1 200 € sont cochés d'office. Complétez le SIRET, l'adresse et la profession (repris de la fiche fournisseur quand elle existe) et corrigez le montant si un paiement a eu lieu une autre année : la DAS2 porte sur les sommes **versées** dans l'année civile. Date limite : celle de la liasse pour une clôture au 31 décembre. Dépôt préparé depuis la page Déclarations fiscales, export Excel possible.
-- **Dividendes (2777)** : pour chaque mois où des dividendes ont été payés (débit du compte 457), ProfitOS calcule le prélèvement forfaitaire non libératoire de 12,8 % et les prélèvements sociaux (18,6 % en 2026) dus sur la part versée aux associés personnes physiques, selon la composition du capital du profil fiscal ; vous pouvez saisir la part et les montants versés à des associés dispensés. Le résultat est comparé aux retenues comptabilisées au compte 442. La déclaration se fait et se paie en ligne sur impots.gouv.fr au plus tard le 15 du mois suivant ; le rappel apparaît dans les échéances fiscales.
+- **DAS2** (menu Comptabilité → DAS2) : Veqalio reprend les honoraires, frais d'actes, commissions, droits d'auteur, redevances et jetons de présence comptabilisés dans l'année, TVA comprise, regroupés par bénéficiaire. Ceux qui ont reçu plus de 1 200 € sont cochés d'office. Complétez le SIRET, l'adresse et la profession (repris de la fiche fournisseur quand elle existe) et corrigez le montant si un paiement a eu lieu une autre année : la DAS2 porte sur les sommes **versées** dans l'année civile. Date limite : celle de la liasse pour une clôture au 31 décembre. Dépôt préparé depuis la page Déclarations fiscales, export Excel possible.
+- **Dividendes (2777)** : pour chaque mois où des dividendes ont été payés (débit du compte 457), Veqalio calcule le prélèvement forfaitaire non libératoire de 12,8 % et les prélèvements sociaux (18,6 % en 2026) dus sur la part versée aux associés personnes physiques, selon la composition du capital du profil fiscal ; vous pouvez saisir la part et les montants versés à des associés dispensés. Le résultat est comparé aux retenues comptabilisées au compte 442. La déclaration se fait et se paie en ligne sur impots.gouv.fr au plus tard le 15 du mois suivant ; le rappel apparaît dans les échéances fiscales.
 
 ### IFU, CFE et DECLOYER
 
-- **IFU 2561** (menu Comptabilité → IFU) : récapitulatif annuel des dividendes payés à chaque associé, à déposer et à remettre aux associés avant le 15 février. ProfitOS attribue chaque paiement selon le nom porté sur l'écriture du compte 457, sinon au prorata du capital, et indique les montants à reporter sur la déclaration de revenus de l'associé : 2DC (dividendes éligibles à l'abattement de 40 %), 2CK (prélèvement de 12,8 % retenu) et 2BH (revenus soumis aux prélèvements sociaux). Cochez les associés dispensés du prélèvement. Export Excel.
-- **CFE** (menu Comptabilité → CFE) : saisissez le montant de l'avis (publié en novembre dans votre espace professionnel) et celui de l'année précédente. ProfitOS calcule l'acompte de 50 % du 15 juin (si la CFE précédente atteint 3 000 € et que le paiement n'est pas mensualisé) et le solde du 15 décembre, les ajoute aux échéances fiscales, et passe l'écriture de charge (635110 / 447000) une seule fois par année. La date de création (profil fiscal) gère l'exonération de la première année et la déclaration initiale 1447-C ; cochez « changements » pour être rappelé de la déclaration 1447-M.
-- **DECLOYER** : renseignez dans le profil fiscal les locaux professionnels loués (identifiant du local, adresse, loyer annuel hors taxes et hors charges). La déclaration est jointe à la télédéclaration de la liasse (régime normal ou simplifié) et apparaît sur les pages de la liasse ; ProfitOS vous alerte si des loyers sont comptabilisés sans local renseigné.
+- **IFU 2561** (menu Comptabilité → IFU) : récapitulatif annuel des dividendes payés à chaque associé, à déposer et à remettre aux associés avant le 15 février. Veqalio attribue chaque paiement selon le nom porté sur l'écriture du compte 457, sinon au prorata du capital, et indique les montants à reporter sur la déclaration de revenus de l'associé : 2DC (dividendes éligibles à l'abattement de 40 %), 2CK (prélèvement de 12,8 % retenu) et 2BH (revenus soumis aux prélèvements sociaux). Cochez les associés dispensés du prélèvement. Export Excel.
+- **CFE** (menu Comptabilité → CFE) : saisissez le montant de l'avis (publié en novembre dans votre espace professionnel) et celui de l'année précédente. Veqalio calcule l'acompte de 50 % du 15 juin (si la CFE précédente atteint 3 000 € et que le paiement n'est pas mensualisé) et le solde du 15 décembre, les ajoute aux échéances fiscales, et passe l'écriture de charge (635110 / 447000) une seule fois par année. La date de création (profil fiscal) gère l'exonération de la première année et la déclaration initiale 1447-C ; cochez « changements » pour être rappelé de la déclaration 1447-M.
+- **DECLOYER** : renseignez dans le profil fiscal les locaux professionnels loués (identifiant du local, adresse, loyer annuel hors taxes et hors charges). La déclaration est jointe à la télédéclaration de la liasse (régime normal ou simplifié) et apparaît sur les pages de la liasse ; Veqalio vous alerte si des loyers sont comptabilisés sans local renseigné.
 
 ### Échéances fiscales et automatisations
 
 - **Échéances fiscales** (menu Comptabilité) : les 90 prochains jours — TVA selon votre régime (CA3, ou CA12 et ses acomptes), acomptes et solde d'IS, liasse, CVAE, DAS2, prélèvements sur dividendes, IFU, CFE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail **7 jours puis la veille** de chaque échéance non encore déposée, puis une relance le lendemain et chaque semaine tant qu'aucun justificatif n'est archivé.
 - **Contrôles avant liasse** : IS non comptabilisé, TVA non liquidée, comptes de charges ou de produits de sens anormal, capital non repris, comptes d'attente, exercice non clôturé. Ils s'affichent aussi sur la liasse et lors de la préparation de sa télédéclaration.
-- **Contrôles fiscaux** (menu Comptabilité) : ce qui a été déclaré, rapproché de votre comptabilité actuelle. Une TVA déposée dont les écritures ont changé depuis (régularisation ou rectificative à prévoir), une TVA mal calculée par rapport à sa base, de la TVA sans taux, une période non liquidée, de la TVA à décaisser restée impayée, un chiffre d'affaires sans TVA collectée à justifier (export, exonération…), des acomptes d'IS exigibles non versés ou un excédent d'acomptes à récupérer, une liasse déséquilibrée. Chaque point cite sa source et dit quoi faire ; les écarts à corriger remontent aussi dans Mission Control. Le bouton **Dossier pour l'expert-comptable** produit un document imprimable (contrôles, déclarations et mode de transmission, échéances, cases de revue et de signature) : ProfitOS prépare, votre expert-comptable valide, et la transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr.
-- **Écritures récurrentes** : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : ProfitOS passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.
+- **Contrôles fiscaux** (menu Comptabilité) : ce qui a été déclaré, rapproché de votre comptabilité actuelle. Une TVA déposée dont les écritures ont changé depuis (régularisation ou rectificative à prévoir), une TVA mal calculée par rapport à sa base, de la TVA sans taux, une période non liquidée, de la TVA à décaisser restée impayée, un chiffre d'affaires sans TVA collectée à justifier (export, exonération…), des acomptes d'IS exigibles non versés ou un excédent d'acomptes à récupérer, une liasse déséquilibrée. Chaque point cite sa source et dit quoi faire ; les écarts à corriger remontent aussi dans Mission Control. Le bouton **Dossier pour l'expert-comptable** produit un document imprimable (contrôles, déclarations et mode de transmission, échéances, cases de revue et de signature) : Veqalio prépare, votre expert-comptable valide, et la transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr.
+- **Écritures récurrentes** : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : Veqalio passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.
 - **Suivi des télédéclarations** : avec un partenaire EDI connecté, les statuts sont actualisés toutes les heures et le propriétaire est prévenu en cas de rejet.
 
 ### Export FEC
@@ -827,7 +827,7 @@ Menu **Entreprise & compte → Sécurité du compte**.
 - **Sessions** : la liste de vos appareils connectés ; déconnectez-en un à distance. Une connexion depuis un nouvel appareil vous est signalée par e-mail.
 - **Mot de passe et e-mail** : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.
 - **Protection automatique** : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.
-- **Ce que ProfitOS protège pour vous** : chaque entreprise a sa propre base, les jetons bancaires et secrets sont chiffrés, les liens envoyés (factures, devis, missions d'experts) ne sont jamais conservés en cache, et les sauvegardes quotidiennes sont chiffrées et testées. Le détail des contrôles et de leurs preuves est disponible sur demande (dossier sécurité).
+- **Ce que Veqalio protège pour vous** : chaque entreprise a sa propre base, les jetons bancaires et secrets sont chiffrés, les liens envoyés (factures, devis, missions d'experts) ne sont jamais conservés en cache, et les sauvegardes quotidiennes sont chiffrées et testées. Le détail des contrôles et de leurs preuves est disponible sur demande (dossier sécurité).
 
 ## 15. Données personnelles et export RGPD
 
@@ -851,7 +851,7 @@ Avant de supprimer votre compte, pensez à télécharger vos factures et votre F
 | Un module affiche un cadenas | Il n'est pas inclus dans votre formule ; cliquez dessus pour voir la formule qui l'inclut et en changer. |
 | « Connexion bancaire indisponible » | La connexion automatique n'est pas activée pour votre compte : importez vos relevés (CSV, Excel, PDF), ils fonctionnent de la même façon. |
 | Mon import est refusé (« colonnes manquantes ») | Téléchargez le modèle CSV de la page d'import et reprenez ses en-têtes de colonnes. |
-| Le relevé importé n'ajoute rien | Ses opérations étaient déjà importées : ProfitOS écarte les doublons. |
+| Le relevé importé n'ajoute rien | Ses opérations étaient déjà importées : Veqalio écarte les doublons. |
 | La prévision de trésorerie me semble trop optimiste | Ajoutez les salaires, le loyer et les impôts en flux prévus, ou validez ceux repérés sur vos relevés ; vérifiez que le solde de départ est récent. |
 | Une charge semble comptée deux fois dans la prévision | Décochez « Compter la dépense courante observée » si vos charges récurrentes sont saisies en flux prévus. |
 | L'état de rapprochement montre un écart | Traitez les opérations bancaires non comptabilisées, puis vérifiez les écritures 512 sans mouvement bancaire et le solde d'ouverture. |

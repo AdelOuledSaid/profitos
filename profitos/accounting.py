@@ -1,4 +1,4 @@
-"""Fondations comptables de ProfitOS : plan comptable, journaux et moteur
+"""Fondations comptables de Veqalio : plan comptable, journaux et moteur
 d'écritures en partie double.
 
 Ce module est le SEUL point d'entrée autorisé pour créer des écritures
@@ -293,7 +293,7 @@ PCG_EXTENDED_ACCOUNTS = [
 ]
 
 # --- Correspondance catégories de dépenses -> compte de charge par défaut --
-# Deux systèmes de catégories coexistent dans ProfitOS et sont tous deux
+# Deux systèmes de catégories coexistent dans Veqalio et sont tous deux
 # couverts ici : les catégories textuelles de l'import en masse
 # (_classify_expense_document, profitos/routes/imports.py) et les clés courtes
 # du module Achats/fournisseurs (PURCHASE_CATEGORIES, profitos/routes/invoicing.py).

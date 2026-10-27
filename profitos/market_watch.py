@@ -12,12 +12,12 @@ contrats d'une PME, choisis selon son secteur, plus ceux qu'elle ajoute elle-mê
 
 Garde-fou : chaque série du catalogue porte les mots attendus dans son titre officiel.
 Si le titre renvoyé par la source ne correspond pas (identifiant erroné, série arrêtée ou
-remplacée), les valeurs sont écartées et la série signalée « à vérifier » : ProfitOS
+remplacée), les valeurs sont écartées et la série signalée « à vérifier » : Veqalio
 n'affiche jamais un chiffre dont la provenance n'est pas certaine.
 
 Les données publiques sont partagées entre les organisations (base d'authentification) ;
 le secteur, les indicateurs suivis et les seuils d'alerte de chaque entreprise sont
-enregistrés dans sa propre base. Les montants affichés sont informatifs : ProfitOS ne
+enregistrés dans sa propre base. Les montants affichés sont informatifs : Veqalio ne
 donne aucun conseil d'investissement.
 """
 import csv
@@ -156,7 +156,7 @@ class MarketWatchError(Exception):
 
 # ------------------------------------------------------------------- secteur
 def sector_from_naf(naf):
-    """Code APE / NAF (ex. 4120A, 43.22B) -> secteur ProfitOS, ou None."""
+    """Code APE / NAF (ex. 4120A, 43.22B) -> secteur Veqalio, ou None."""
     digits = re.sub(r'\D', '', naf or '')[:2]
     if len(digits) < 2:
         return None

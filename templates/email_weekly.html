@@ -10,7 +10,7 @@
 {% endif %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
   <tr><td style="background:#111827;padding:28px 32px;">
-    <div style="color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase;">ProfitOS</div>
+    <div style="color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase;">Veqalio</div>
     <div style="color:#ffffff;font-size:22px;font-weight:600;margin-top:6px;">Votre rapport financier de la semaine</div>
   </td></tr>
 
@@ -73,17 +73,17 @@
   {% elif not (w and w.has_signal) %}
   <tr><td style="padding:12px 32px;">
     <div style="padding:16px;background:#f9fafb;border-radius:6px;color:#6b7280;font-size:14px;">
-      Aucune nouveauté détectée cette semaine. ProfitOS continue de surveiller vos factures, dépenses et marchés publics en arrière-plan.
+      Aucune nouveauté détectée cette semaine. Veqalio continue de surveiller vos factures, dépenses et marchés publics en arrière-plan.
     </div>
   </td></tr>
   {% endif %}
 
   <tr><td style="padding:20px 32px 32px;">
-    <a href="{{ app_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">Ouvrir ProfitOS</a>
+    <a href="{{ app_url }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">Ouvrir Veqalio</a>
   </td></tr>
 
   <tr><td style="padding:16px 32px;border-top:1px solid #f0f0f0;">
-    <div style="font-size:12px;color:#9ca3af;">Vous recevez cet e-mail en tant que propriétaire du compte ProfitOS de {{ org.name if org else '' }}. Il est envoyé automatiquement chaque lundi matin ; vous pouvez le désactiver à tout moment dans Paramètres{% if unsubscribe_url %} ou <a href="{{ unsubscribe_url }}" style="color:#6b7280;">vous désinscrire en un clic</a>{% endif %}.</div>
+    <div style="font-size:12px;color:#9ca3af;">Vous recevez cet e-mail en tant que propriétaire du compte Veqalio de {{ org.name if org else '' }}. Il est envoyé automatiquement chaque lundi matin ; vous pouvez le désactiver à tout moment dans Paramètres{% if unsubscribe_url %} ou <a href="{{ unsubscribe_url }}" style="color:#6b7280;">vous désinscrire en un clic</a>{% endif %}.</div>
   </td></tr>
 </table>
 </body></html>

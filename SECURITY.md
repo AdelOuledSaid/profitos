@@ -1,4 +1,4 @@
-# ProfitOS V1.3 — Security baseline
+# Veqalio V1.3 — Security baseline
 
 ## Protections actives
 - Cookies de session HttpOnly, SameSite=Lax et Secure en production.

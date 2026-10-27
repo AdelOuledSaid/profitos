@@ -24,10 +24,10 @@ self.addEventListener('activate', (event) => {
 });
 
 const OFFLINE_HTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Hors ligne - ProfitOS</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Hors ligne - Veqalio</title>
 <style>body{margin:0;background:#081020;color:#f6f8fc;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;text-align:center;padding:24px}
 button{margin-top:16px;background:#f5f8ff;color:#081020;border:0;border-radius:10px;padding:12px 20px;font-weight:900;cursor:pointer}</style>
-</head><body><div><h1>Vous etes hors ligne</h1><p>ProfitOS a besoin d'une connexion pour afficher vos donnees financieres a jour.</p>
+</head><body><div><h1>Vous etes hors ligne</h1><p>Veqalio a besoin d'une connexion pour afficher vos donnees financieres a jour.</p>
 <button id="offline-retry">Reessayer</button></div>
 <script src="/static/offline-retry.js"></script>
 </body></html>`;

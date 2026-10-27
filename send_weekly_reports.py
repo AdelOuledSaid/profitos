@@ -1,4 +1,4 @@
-"""Rapports hebdomadaires ProfitOS — compatibilité.
+"""Rapports hebdomadaires Veqalio — compatibilité.
 
 Le rapport est désormais envoyé automatiquement chaque lundi par la tâche
 planifiée ``weekly_reports`` (profitos/jobs.py, cron Render

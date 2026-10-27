@@ -71,7 +71,7 @@ def test_totp_matches_rfc6238_vector():
     assert totp.totp(secret, at=1111111109) == '081804'
     assert totp.verify(secret, '287082', at=59) is not None
     assert totp.verify(secret, '287082', at=59, last_step=totp.current_step(59)) is None  # anti-rejeu
-    assert totp.provisioning_uri(secret, 'a@b.fr').startswith('otpauth://totp/ProfitOS%3Aa%40b.fr?secret=')
+    assert totp.provisioning_uri(secret, 'a@b.fr').startswith('otpauth://totp/Veqalio%3Aa%40b.fr?secret=')
 
 
 def _enable_2fa(client):

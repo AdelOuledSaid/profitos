@@ -118,7 +118,7 @@ def register(app):
         pdf.add_page()
 
         pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
-        pdf.cell(0,12,'ProfitOS - Rapport mensuel',ln=1)
+        pdf.cell(0,12,'Veqalio - Rapport mensuel',ln=1)
         pdf.set_font('Helvetica','',12); pdf.set_text_color(107,114,128)
         pdf.cell(0,8,pdf_safe(f"{org['name']} - {period}"),ln=1)
         pdf.ln(6)

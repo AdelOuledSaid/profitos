@@ -304,7 +304,7 @@ def _detect(conn, entity_id, today, ac):
                     checks=[V.check('Échéance et préavis renseignés', True,
                                     f"Période en cours jusqu'au {_fr(end)}, préavis de {k['notice_days']} jour(s), "
                                     f"reconduction tacite de {k['renewal_months']} mois.", 'Contrat')],
-                    evidence=[V.evidence('Jours restants', str(left), 'Calcul ProfitOS', today.isoformat())],
+                    evidence=[V.evidence('Jours restants', str(left), 'Calcul Veqalio', today.isoformat())],
                     detail="Sans résiliation avant cette date, le contrat est reconduit automatiquement. Vérifiez s'il sert "
                            "encore et si son prix est compétitif.",
                     action={'kind': 'link', 'label': 'Revoir le contrat', 'endpoint': 'contract_guardian_edit',
@@ -350,7 +350,7 @@ def _detect(conn, entity_id, today, ac):
             gap = round(invoiced - expected, 2)
             checks.append(V.check('Écart au-delà de la tolérance du contrat', True,
                                   f"+{_money(gap)} HT soit +{_pct(gap / expected * 100)} (tolérance {_pct(k['tolerance_pct'])}).",
-                                  'Calcul ProfitOS'))
+                                  'Calcul Veqalio'))
             evidence.append(V.evidence('Montant attendu', _money(expected) + ' HT', 'Contrat'))
             email = _supplier_email(conn, k)
             alts = [{'label': 'Écrire au fournisseur', 'url': _dispute_mailto(email, k, p, expected)}] if email else []

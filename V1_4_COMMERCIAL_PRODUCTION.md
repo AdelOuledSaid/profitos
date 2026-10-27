@@ -1,4 +1,4 @@
-# ProfitOS V1.4 — Commercial Production
+# Veqalio V1.4 — Commercial Production
 
 ## Stripe
 Create three recurring monthly Prices in Stripe and set on Render:

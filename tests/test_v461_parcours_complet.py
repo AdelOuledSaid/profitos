@@ -241,7 +241,7 @@ def test_parcours_complet_navigateur_postgresql(server):
         text = pdf_text(data)
         assert '3310' in text and ('732829320' in text.replace(' ', '')) and '2' in text
 
-        # 8. Dépôt sur impots.gouv.fr (hors ProfitOS) puis accusé avec un montant erroné
+        # 8. Dépôt sur impots.gouv.fr (hors Veqalio) puis accusé avec un montant erroné
         bad = receipt_pdf(['Accuse de reception de votre declaration', 'Declaration de TVA 3310-CA3',
                            f'SIREN : {SIREN_SPACED}', f'Periode du {m2_start:%d/%m/%Y} au {m2_end:%d/%m/%Y}',
                            'Montant a payer : 2 500,00 EUR'])

@@ -65,7 +65,7 @@ def test_pages_have_distinct_titles_and_skip_link(app):
         m = re.search(r'<title>([^<]+)</title>', html)
         titles[url] = m.group(1)
         assert 'Aller au contenu' in html and 'id="contenu"' in html
-    assert titles['/'] == 'Tableau de bord — ProfitOS'
+    assert titles['/'] == 'Tableau de bord — Veqalio'
     assert len(set(titles.values())) == len(titles)
 
 

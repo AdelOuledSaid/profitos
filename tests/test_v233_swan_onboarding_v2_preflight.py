@@ -20,7 +20,7 @@ def test_preflight_checks_current_v2_mutation_and_inputs():
 def test_preflight_is_read_only():
     b=_block()
     assert 'query ProfitOSCompanyOnboardingV2Preflight' in b
-    assert "mutation ProfitOS" not in b
+    assert "mutation Veqalio" not in b
 
 def test_preflight_route_and_csrf_ui_exist():
     assert "/settings/swan/onboarding-v2/preflight" in R

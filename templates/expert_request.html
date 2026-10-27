@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">EXPERT NETWORK</div>
     <h1 class="purchase-title">Demander une mission</h1>
-    <p class="purchase-subtitle">L'expert reçoit un lien personnel vers votre demande et les seuls éléments que vous cochez ci-dessous. Il n'a aucun accès à votre compte ProfitOS.</p>
+    <p class="purchase-subtitle">L'expert reçoit un lien personnel vers votre demande et les seuls éléments que vous cochez ci-dessous. Il n'a aucun accès à votre compte Veqalio.</p>
   </div>
   <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('experts_directory') }}">← Experts</a></div>
 </div>
@@ -32,7 +32,7 @@
     <label class="check"><input type="checkbox" name="share" value="{{ code }}" checked> {{ label }}</label>
     {% endif %}{% endfor %}
   </fieldset>
-  <label class="check"><input type="checkbox" name="consent" value="1" required> J'autorise ProfitOS à transmettre à l'expert choisi les éléments cochés ci-dessus, pour cette mission uniquement. Je peux annuler la mission à tout moment, ce qui désactive son accès.</label>
+  <label class="check"><input type="checkbox" name="consent" value="1" required> J'autorise Veqalio à transmettre à l'expert choisi les éléments cochés ci-dessus, pour cette mission uniquement. Je peux annuler la mission à tout moment, ce qui désactive son accès.</label>
   <button type="submit" class="purchase-primary-btn primary">Envoyer la demande</button>
   {% else %}
   <p class="purchase-muted">Aucun expert partenaire disponible{% if domain %} en {{ domains[domain].label|lower }}{% endif %} pour l'instant. <a class="link" href="{{ url_for('experts_directory') }}">Voir l'annuaire</a></p>

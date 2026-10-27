@@ -29,7 +29,7 @@ ANNUELLE_ITEMS = [
     ("Comptes d'attente (467000/471) soldés ou justifiés", 'accounting_chart'),
     ("Provisions pour risques et charges revues", None),
     ("Créances douteuses ou litigieuses identifiées", None),
-    ("Période clôturée dans ProfitOS une fois tout vérifié", 'accounting_closure'),
+    ("Période clôturée dans Veqalio une fois tout vérifié", 'accounting_closure'),
 ]
 
 def seed_review_items(conn, review_id, review_type):

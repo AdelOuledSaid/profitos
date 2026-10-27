@@ -46,7 +46,7 @@ def test_warnings_are_collected_and_version_not_recorded(tenants, monkeypatch):
     monkeypatch.setattr(rt, '_TENANT_SCHEMA_VERSION', 'v-test')
 
     def fake(org_id=None):
-        rt._migration_warn('[ProfitOS] ATTENTION : migration colonne x.y ignorée (boom)')
+        rt._migration_warn('[Veqalio] ATTENTION : migration colonne x.y ignorée (boom)')
     monkeypatch.setattr(rt, '_migrate_tenant_schema', fake)
     r = rt.migrate_tenant(9003)
     assert r['status'] == 'migrated_with_warnings'
@@ -95,7 +95,7 @@ def test_ensure_tenant_schema_uses_lock_and_set():
     src = (ROOT / 'profitos' / 'runtime.py').read_text(encoding='utf-8')
     assert '_tenant_schema_lock=_threading.Lock()' in src
     assert 'with _tenant_schema_lock:\n                _tenant_schema_checked.add(org_id)' in src
-    assert 'print(f"[ProfitOS] ATTENTION' not in src
+    assert 'print(f"[Veqalio] ATTENTION' not in src
 
 
 # --- Preflight production : stockage et email --------------------------------

@@ -146,7 +146,7 @@ def test_postgres_translation_keeps_money_precision_and_locks():
 
 def test_transactional_emails_are_in_french():
     src = (ROOT / 'profitos/runtime.py').read_text(encoding='utf-8')
-    for english in ('Confirm your ProfitOS account', 'Reset your ProfitOS password', 'Your Weekly Profit Report'):
+    for english in ('Confirm your Veqalio account', 'Reset your Veqalio password', 'Your Weekly Profit Report'):
         assert english not in src
     assert '127.0.0.1:5050' not in src.split('def app_base_url', 1)[1]
     # Le rapport hebdo passe par la tâche planifiée : clients payants + essais valides.

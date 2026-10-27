@@ -23,7 +23,7 @@ READY = dict(SECRETS, **{
     'SWAN_CLIENT_ID': 'swan', 'SWAN_ENVIRONMENT': 'live', 'SWAN_WEBHOOK_SECRET': 's',
     'SWAN_OAUTH_REDIRECT_URI': 'https://app.profitos.fr/compte-pro/oauth/callback',
     'STRIPE_PRICE_STARTER_ID': 'price_1', 'STRIPE_PRICE_PRO_ID': 'price_2', 'STRIPE_PRICE_BUSINESS_ID': 'price_3',
-    'STRIPE_PRICE_MULTI_ID': 'price_4', 'RESEND_FROM_EMAIL': 'ProfitOS <noreply@profitos.fr>',
+    'STRIPE_PRICE_MULTI_ID': 'price_4', 'RESEND_FROM_EMAIL': 'Veqalio <noreply@profitos.fr>',
     'BACKUP_S3_BUCKET': 'b', 'BACKUP_S3_ACCESS_KEY_ID': 'k',
 })   # mentions légales (LEGAL_*) : contrôlées par profitos.legal, testées ailleurs
 

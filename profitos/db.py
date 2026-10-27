@@ -1,5 +1,5 @@
 """
-db.py — Couche d'abstraction base de données pour ProfitOS.
+db.py — Couche d'abstraction base de données pour Veqalio.
 
 Objectif : permettre à app.py de fonctionner SANS AUCUNE MODIFICATION de ses
 requêtes SQL (placeholders `?`, `PRAGMA table_info`, `last_insert_rowid()`,
@@ -35,7 +35,7 @@ PG_APPLICATION_NAME = os.environ.get('PG_APPLICATION_NAME', 'profitos')
 # vraie URL Postgres, on retombe sur SQLite avec un avertissement clair au
 # lieu de planter avec une erreur de connexion cryptique.
 if DATABASE_URL and not DATABASE_URL.startswith(('postgres://', 'postgresql://')):
-    print(f"[ProfitOS] ATTENTION : DATABASE_URL définie mais invalide ({DATABASE_URL[:30]}...) — retombe sur SQLite.")
+    print(f"[Veqalio] ATTENTION : DATABASE_URL définie mais invalide ({DATABASE_URL[:30]}...) — retombe sur SQLite.")
     DATABASE_URL = None
 USE_POSTGRES = bool(DATABASE_URL)
 
@@ -215,7 +215,7 @@ class PGCursorResult:
     def lastrowid(self):
         """Compatibilité sqlite3.Cursor.lastrowid pour PostgreSQL.
 
-        Les tables ProfitOS à identifiant auto-incrémenté utilisent des séquences
+        Les tables Veqalio à identifiant auto-incrémenté utilisent des séquences
         PostgreSQL. Juste après l'INSERT, lastval() renvoie l'identifiant produit
         par la dernière séquence utilisée dans cette session.
         """

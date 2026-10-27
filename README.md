@@ -1,4 +1,4 @@
-# ProfitOS
+# Veqalio
 
 Logiciel de gestion financière en ligne pour les TPE, PME, indépendants et cabinets
 d'expertise comptable : facturation et facture électronique, achats, banque, trésorerie,

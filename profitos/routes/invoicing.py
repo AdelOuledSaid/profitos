@@ -25,7 +25,7 @@ from profitos.weinvoice import (submit_invoice_file, get_invoice_timeline,
 
 
 # --- Facturation électronique : statuts qui retiennent un paiement ou une relance --------------------
-# Le cycle de vie WeInvoice est volontairement séparé de l'état de paiement ProfitOS. Conséquence : une
+# Le cycle de vie WeInvoice est volontairement séparé de l'état de paiement Veqalio. Conséquence : une
 # facture refusée, contestée ou suspendue restait « à payer » (achats) ou « à encaisser » (ventes). Ces
 # helpers rendent la situation visible et bloquent les deux actions risquées : payer par virement SEPA
 # une facture d'achat contestée, et relancer un client qui a refusé la facture.
@@ -102,7 +102,7 @@ def _totals(items):
 
 
 def _g(row, key, default=None):
-    """Lecture tolérante d'un champ (sqlite Row, Row ProfitOS ou dict)."""
+    """Lecture tolérante d'un champ (sqlite Row, Row Veqalio ou dict)."""
     if row is None:
         return default
     try:
@@ -1324,7 +1324,7 @@ def sync_weinvoice_inbound(c, eid, org_id, max_items=None):
         raise WeInvoiceInboundNotConfigured()
     org_remote=settings['weinvoice_company_id']
     # Parcourt toutes les pages WeInvoice. La limite de 100 est celle
-    # d'une page API, pas celle d'une synchronisation ProfitOS.
+    # d'une page API, pas celle d'une synchronisation Veqalio.
     inbound_items=[]; page=1; page_size=100
     while True:
         payload=list_inbound_invoices(org_remote,page=page,page_size=page_size)
@@ -1356,7 +1356,7 @@ def sync_weinvoice_inbound(c, eid, org_id, max_items=None):
         processed+=1
         # Un document terminalement rejeté n'est pas une facture fournisseur
         # importable. Il reste visible chez WeInvoice mais ne doit pas être
-        # compté comme une panne de synchronisation ProfitOS.
+        # compté comme une panne de synchronisation Veqalio.
         status=str(item.get('status') or '').upper()
         regulatory=str(item.get('regulatoryStatusCode') or item.get('cdvCode') or '').strip()
         if status in {'REJECTED','REJETEE','REJETÉE'} or regulatory == '213':
@@ -1682,7 +1682,7 @@ def register(app):
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        # Un devis remis en main propre ou envoyé hors ProfitOS (PDF) peut être accepté ou
+        # Un devis remis en main propre ou envoyé hors Veqalio (PDF) peut être accepté ou
         # refusé directement depuis le brouillon : sinon il ne pouvait jamais être facturé.
         c.execute("UPDATE outgoing_quotes SET status='accepted',accepted_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
@@ -1706,7 +1706,7 @@ def register(app):
             c.close()
             flash("La réponse à ce devis est déjà enregistrée et verrouillée.")
             return redirect(url_for('invoicing_quote_detail',quote_id=quote_id))
-        # Un devis remis en main propre ou envoyé hors ProfitOS (PDF) peut être accepté ou
+        # Un devis remis en main propre ou envoyé hors Veqalio (PDF) peut être accepté ou
         # refusé directement depuis le brouillon : sinon il ne pouvait jamais être facturé.
         c.execute("UPDATE outgoing_quotes SET status='refused',refused_at=? WHERE id=? AND entity_id IS ?",(now(),quote_id,eid))
         c.commit(); c.close()
@@ -2212,7 +2212,7 @@ def register(app):
         fournisseur EN ATTENTE DE VALIDATION — toujours, quel que soit le réglage de
         l'organisation, puisqu'aucun humain n'a encore vu ce document."""
         # Désactivé par défaut tant que le fournisseur d'email entrant n'est pas
-        # explicitement configuré. Ce secret est une barrière ProfitOS additionnelle ;
+        # explicitement configuré. Ce secret est une barrière Veqalio additionnelle ;
         # il ne remplace pas la signature native du fournisseur (Resend/Mailgun/etc.).
         if os.environ.get('SUPPLIER_INBOX_WEBHOOK_ENABLED', '').strip().lower() not in ('1','true','yes','on'):
             return jsonify({'error': 'supplier inbox disabled'}), 503
@@ -2357,7 +2357,7 @@ def register(app):
             reason_label=str(request.form.get('reason_label') or '').strip()
             # WeInvoice n'accepte pas un motif libre comme reasonCode pour un refus ou un litige :
             # le code doit provenir du catalogue réglementaire (Annexe 7 / Annexe A).
-            # Tant que ProfitOS n'expose pas ce catalogue dans l'UI, un motif libre est
+            # Tant que Veqalio n'expose pas ce catalogue dans l'UI, un motif libre est
             # transmis avec le code réglementaire AUTRE et conservé dans reasonLabel.
             if action in {'refuse','dispute'} and reason_code.upper() != 'AUTRE':
                 free_reason=reason_code
@@ -3836,7 +3836,7 @@ def register(app):
                 flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             log_activity('INVOICE_WEINVOICE_SANDBOX_WEBHOOK_TEST', f"Test webhook sandbox demandé pour {inv['invoice_number']} ({remote_id}, CDV {request.form.get('sandbox_status','213')})")
-            flash("Test Sandbox envoyé à WeInvoice. Attendez quelques secondes : le webhook doit mettre à jour ProfitOS automatiquement. N'utilisez « Actualiser le statut WeInvoice » qu'en diagnostic.")
+            flash("Test Sandbox envoyé à WeInvoice. Attendez quelques secondes : le webhook doit mettre à jour Veqalio automatiquement. N'utilisez « Actualiser le statut WeInvoice » qu'en diagnostic.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()
@@ -3905,7 +3905,7 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def invoicing_mark_issued(invoice_id):
-        """Émet une facture brouillon transmise au client hors ProfitOS (courrier, messagerie
+        """Émet une facture brouillon transmise au client hors Veqalio (courrier, messagerie
         personnelle, remise en main propre) : numéro légal, date d'émission, écriture de
         vente et webhook, sans e-mail. Atomique : si un contrôle ou l'écriture comptable
         échoue, la facture reste un brouillon sans numéro."""
@@ -3923,7 +3923,7 @@ def register(app):
             'client_name':issued['client_name'],'total':issued['total'],'due_date':issued['due_date']},
             entity_id=issued['entity_id'])
         c.close()
-        log_activity('INVOICE_ISSUED_MANUALLY',f"Facture {issued['invoice_number']} émise (transmise hors ProfitOS)")
+        log_activity('INVOICE_ISSUED_MANUALLY',f"Facture {issued['invoice_number']} émise (transmise hors Veqalio)")
         flash(f"Facture {issued['invoice_number']} émise. Vous pouvez maintenant enregistrer ses règlements.")
         return redirect(url_for('invoicing_detail',invoice_id=invoice_id))
 
@@ -4938,7 +4938,7 @@ def facturx_xmp(title, doc_type='INVOICE'):
    <dc:title><rdf:Alt><rdf:li xml:lang="x-default">{safe_title}</rdf:li></rdf:Alt></dc:title>
   </rdf:Description>
   <rdf:Description rdf:about="" xmlns:pdf="http://ns.adobe.com/pdf/1.3/">
-   <pdf:Producer>ProfitOS</pdf:Producer>
+   <pdf:Producer>Veqalio</pdf:Producer>
   </rdf:Description>
   <rdf:Description rdf:about="" xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#">
    <fx:DocumentType>{doc_type}</fx:DocumentType>

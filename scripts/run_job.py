@@ -1,4 +1,4 @@
-"""Point d'entrée des tâches planifiées ProfitOS (cron Render).
+"""Point d'entrée des tâches planifiées Veqalio (cron Render).
 
 Usage :
   python scripts/run_job.py --due            # cron horaire : tâches dues (heure de Paris)
@@ -37,19 +37,19 @@ def delegate_to_web(name, force=False, timeout=15):
     base = (os.environ.get('JOBS_TRIGGER_URL') or os.environ.get('APP_BASE_URL') or '').rstrip('/')
     token = trigger_token()
     if not base or not token:
-        print(f'[ProfitOS] ERREUR: {name} nécessite le disque du service web, '
+        print(f'[Veqalio] ERREUR: {name} nécessite le disque du service web, '
               'mais JOBS_TRIGGER_TOKEN / APP_BASE_URL ne sont pas configurés.')
         return False
     url = f'{base}/api/v1/internal/jobs/{name}' + ('?force=1' if force else '')
     try:
         resp = requests.post(url, headers={'Authorization': f'Bearer {token}'}, timeout=timeout)
     except requests.RequestException as exc:
-        print(f'[ProfitOS] ERREUR: déclenchement de {name} impossible ({type(exc).__name__}).')
+        print(f'[Veqalio] ERREUR: déclenchement de {name} impossible ({type(exc).__name__}).')
         return False
     if resp.status_code in (202, 409):
-        print(f"[ProfitOS] {name}: {'démarrée' if resp.status_code == 202 else 'déjà en cours'} dans le service web")
+        print(f"[Veqalio] {name}: {'démarrée' if resp.status_code == 202 else 'déjà en cours'} dans le service web")
         return True
-    print(f'[ProfitOS] ERREUR: le service web a refusé {name} (HTTP {resp.status_code}).')
+    print(f'[Veqalio] ERREUR: le service web a refusé {name} (HTTP {resp.status_code}).')
     return False
 
 
@@ -61,11 +61,11 @@ def _should_delegate(job, local):
 
 
 def _print_report(report):
-    print(f"[ProfitOS] {report['job']} ({report['period']}) : {len(report['ok'])} ok, "
+    print(f"[Veqalio] {report['job']} ({report['period']}) : {len(report['ok'])} ok, "
           f"{len(report['skipped'])} ignorée(s), {len(report['already'])} déjà faite(s), "
           f"{len(report['failed'])} échec(s)")
     for org_id, err in sorted(report['failed'].items()):
-        print(f'[ProfitOS]   ÉCHEC org_{org_id}: {err}')
+        print(f'[Veqalio]   ÉCHEC org_{org_id}: {err}')
 
 
 def main(argv=None, app=None):
@@ -87,7 +87,7 @@ def main(argv=None, app=None):
             print(f"{j.name:28} {when:32} {'[disque] ' if j.needs_disk else ''}{j.description}")
         return 0
     if not args.due and args.job not in jobs.JOBS:
-        print(f"[ProfitOS] ERREUR: tâche inconnue {args.job!r}. Voir --list.")
+        print(f"[Veqalio] ERREUR: tâche inconnue {args.job!r}. Voir --list.")
         return 2
 
     if app is None:
@@ -103,7 +103,7 @@ def main(argv=None, app=None):
             report = jobs.run_job(app, j.name, force=args.force, org_ids=set(args.org) if args.org else None)
         except Exception as exc:  # isolation entre tâches du dispatcher
             logging.getLogger('profitos.jobs').exception('Tâche %s interrompue', j.name)
-            print(f'[ProfitOS] ERREUR: {j.name} interrompue ({type(exc).__name__})')
+            print(f'[Veqalio] ERREUR: {j.name} interrompue ({type(exc).__name__})')
             failures += 1
             continue
         _print_report(report)

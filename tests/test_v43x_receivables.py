@@ -54,7 +54,7 @@ def test_helper_merges_both_sources_deduplicates_and_nets_payments(app):
         c.close()
     by_number = {r['invoice_number']: r for r in rows}
     assert set(by_number) == {number, 'MO-1', 'MO-2'}  # payée exclue, doublon compté une fois
-    assert by_number[number]['source_label'] == 'Facture ProfitOS'
+    assert by_number[number]['source_label'] == 'Facture Veqalio'
     assert by_number[number]['outstanding'] == 1000.0  # 1 200 − 200 de règlement partiel
     assert by_number[number]['days_overdue'] == 20
     assert by_number['MO-1']['source_label'] == 'Importée' and by_number['MO-1']['days_overdue'] == 45
@@ -91,7 +91,7 @@ def test_dashboard_receivables_page_recover_and_forecast_agree(app):
     dash = _txt(client.get('/'))
     assert f'{expected} €' in dash and 'restent à encaisser' in dash
     page = _txt(client.get('/facturation/creances'))
-    assert 'Importée' in page and 'Facture ProfitOS' in page and 'MO-9' in page
+    assert 'Importée' in page and 'Facture Veqalio' in page and 'MO-9' in page
     m = re.search(r'En retard</div><div class="purchase-stat-value">([^<]+)<', page)
     assert m and m.group(1).strip() == '34 500,00 €'
     recover = _txt(client.get('/recover'))

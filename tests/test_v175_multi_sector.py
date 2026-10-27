@@ -13,7 +13,7 @@ def test_landing_is_sme_positioned():
 def test_manifest_is_not_construction_only():
     t=(ROOT/'static/manifest.json').read_text(encoding='utf-8')
     assert 'Construction' not in t
-    assert 'SMEs' in t
+    assert 'PME' in t  # v491 : description traduite (« SMEs » → « PME »)
 
 def test_financial_brain_uses_selected_index():
     t=(ROOT/'profitos/routes/financial_brain.py').read_text(encoding='utf-8')

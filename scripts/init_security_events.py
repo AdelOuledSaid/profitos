@@ -1,5 +1,5 @@
 r"""
-ProfitOS V1.3.5 - Initialisation sûre de la table security_events.
+Veqalio V1.3.5 - Initialisation sûre de la table security_events.
 
 Usage depuis la racine du projet :
     python scripts\init_security_events.py

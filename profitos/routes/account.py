@@ -112,7 +112,7 @@ def register(app):
                 acsec.dummy_password_check(pw)
                 if check_recipient_rate('signup_existing',email):
                     acsec.notify_user(existing,'Tentative de création de compte',
-                        "Quelqu'un a essayé de créer un compte ProfitOS avec votre adresse e-mail, qui possède déjà un compte. "
+                        "Quelqu'un a essayé de créer un compte Veqalio avec votre adresse e-mail, qui possède déjà un compte. "
                         "Si c'était vous, connectez-vous ou utilisez « Mot de passe oublié ». Sinon, vous pouvez ignorer ce message.",
                         cta_label='Me connecter',cta_endpoint='login')
                 log_security_event('SIGNUP_EXISTING_EMAIL','BLOCKED',user_id=existing['id'],target='account')
@@ -335,7 +335,7 @@ def register(app):
             log_security_event('PASSWORD_RESET','SUCCESS',user_id=u['id'],target='account')
             acsec.revoke_all_sessions(u['id'])
             acsec.notify_user(u,'Mot de passe modifié',
-                "Le mot de passe de votre compte ProfitOS vient d'être modifié. Si vous n'êtes pas à l'origine "
+                "Le mot de passe de votre compte Veqalio vient d'être modifié. Si vous n'êtes pas à l'origine "
                 "de ce changement, réinitialisez-le immédiatement et contactez le support.",
                 cta_label='Réinitialiser mon mot de passe',cta_endpoint='forgot_password')
             # La session courante, si elle existe, ne doit pas survivre au changement.
@@ -426,7 +426,7 @@ def register(app):
     @require_area('settings')
     def settings():
         if request.method=='POST':
-            currency='EUR'; locale='fr-FR'  # ProfitOS fonctionne en euros et en français
+            currency='EUR'; locale='fr-FR'  # Veqalio fonctionne en euros et en français
             notif=1 if request.form.get('notifications_enabled')=='on' else 0
             slack_url=request.form.get('slack_webhook_url','').strip() or None; teams_url=request.form.get('teams_webhook_url','').strip() or None
             if slack_url and not validate_webhook_url(slack_url): flash('Webhook Slack invalide ou non autorisé.'); return redirect(request.url)
@@ -535,7 +535,7 @@ def register(app):
     @login_required
     @require_area('settings')
     def test_notification():
-        notify_org(f"🔔 Test ProfitOS depuis {current_org()['name']} — les notifications fonctionnent.")
+        notify_org(f"🔔 Test Veqalio depuis {current_org()['name']} — les notifications fonctionnent.")
         flash("Notification de test envoyée (si un webhook est configuré et joignable).")
         return redirect(url_for('settings'))
 
@@ -751,14 +751,14 @@ def register(app):
         inviter=current_user()
         link=f"{app_base_url()}{url_for('team_invitation',token=raw_token)}"
         intro=(f"{inviter['full_name'] or inviter['email']} ({inviter['email']}) vous invite à rejoindre l'organisation "
-               f"« {org['name']} » sur ProfitOS avec le rôle « {ROLE_LABELS.get(role,role)} ». ")
+               f"« {org['name']} » sur Veqalio avec le rôle « {ROLE_LABELS.get(role,role)} ». ")
         intro+=("Connectez-vous avec cette adresse e-mail pour accepter l'invitation." if existing_user
                 else "Cliquez ci-dessous pour créer votre compte et rejoindre l'organisation.")
         html=render_template('email_transactional.html',title='Invitation à rejoindre une organisation',
             intro=intro,cta_label="Voir l'invitation",cta_url=link,
             footer="Ce lien est valable 7 jours. Si vous ne connaissez pas l'expéditeur, ignorez ce message : rien ne sera fait sans votre accord.")
         # Objet fixe : jamais le nom d'organisation choisi par l'expéditeur (anti-hameçonnage).
-        return send_email(email,"Invitation à rejoindre une organisation sur ProfitOS",html,dry_run=dry_run,kind='invite')
+        return send_email(email,"Invitation à rejoindre une organisation sur Veqalio",html,dry_run=dry_run,kind='invite')
 
     @app.route('/team/invite',methods=['POST'])
     @login_required
@@ -1105,7 +1105,7 @@ def register(app):
     def billing_checkout():
         from profitos.legal import is_prelaunch
         if is_prelaunch():
-            flash("Le paiement en ligne ouvre au lancement officiel de ProfitOS. Votre essai continue normalement.")
+            flash("Le paiement en ligne ouvre au lancement officiel de Veqalio. Votre essai continue normalement.")
             return redirect(url_for('billing'))
         # Défense en profondeur : la facturation ne peut être pilotée que par le propriétaire.
         if current_role()!='OWNER':
@@ -1301,7 +1301,7 @@ def register(app):
     @require_area('billing')
     @rate_limit(6,60)
     def billing_change_plan():
-        """Montée ou descente de formule, et passage mensuel -> annuel, sans quitter ProfitOS.
+        """Montée ou descente de formule, et passage mensuel -> annuel, sans quitter Veqalio.
         Montée : immédiate, différence au prorata facturée tout de suite (refusée si le
         paiement échoue). Descente (abonnement mensuel) : immédiate, le trop-payé est déduit
         de la prochaine facture. Un abonnement annuel ne descend qu'à son échéance (CGV)."""

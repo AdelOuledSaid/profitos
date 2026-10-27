@@ -46,7 +46,7 @@ def register(app):
     # ------------------------------------------------------------------
     # API publique en lecture seule, authentifiée par clé API (Bearer token).
     # Permet à un outil externe (ERP, logiciel de facturation...) de lire les
-    # données ProfitOS d'une organisation. Écriture non disponible dans cette
+    # données Veqalio d'une organisation. Écriture non disponible dans cette
     # première version — volontairement, pour limiter la surface de risque.
     # ------------------------------------------------------------------
 
@@ -522,7 +522,7 @@ def register(app):
         return render_template('api_keys.html',keys=keys,new_key=None)
 
     # ------------------------------------------------------------------
-    # Webhooks sortants : ProfitOS notifie une URL choisie par le client
+    # Webhooks sortants : Veqalio notifie une URL choisie par le client
     # quand un événement métier se produit (facture envoyée/payée, achat
     # créé/payé). Voir profitos/webhooks_outbound.py pour le moteur de
     # livraison, la signature HMAC et la protection SSRF.
@@ -597,7 +597,7 @@ def register(app):
             c.close(); abort(404)
         events = (sub['events'] or '').split(',')
         test_event = events[0] if events else 'invoice.sent'
-        deliver_webhook(c, test_event, {'test': True, 'message': 'Ceci est un envoi de test depuis ProfitOS.'},
+        deliver_webhook(c, test_event, {'test': True, 'message': 'Ceci est un envoi de test depuis Veqalio.'},
                          only_subscription_id=sub_id,entity_id=eid)
         c.close()
         flash(f"Test envoyé ({test_event}) — consultez le journal des livraisons ci-dessous pour le résultat.")

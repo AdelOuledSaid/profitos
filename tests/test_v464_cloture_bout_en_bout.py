@@ -1,5 +1,5 @@
 """v464 — Clôture comptable de bout en bout, sur deux exercices, par les écrans de
-ProfitOS : écritures, IS, à-nouveaux, verrouillage, export FEC contrôlé (A47 A-1),
+Veqalio : écritures, IS, à-nouveaux, verrouillage, export FEC contrôlé (A47 A-1),
 affectation du résultat, exercice suivant déficitaire, et cohérence des liasses N / N+1.
 Montants calculés à la main (docs/validation-fiscale.md, dossier I)."""
 import uuid

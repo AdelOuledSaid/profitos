@@ -3,7 +3,7 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">DIAGNOSTIC FINANCIER</div>
 <h1 class="purchase-title">Quelle décision protège le plus votre argent ?</h1>
-<p class="purchase-subtitle">ProfitOS croise vos créances à encaisser, vos économies potentielles, les marchés publics, le suivi des marges et le solde bancaire enregistré dans Trésorerie &amp; scénarios. Aucune donnée financière manquante n'est inventée.</p>
+<p class="purchase-subtitle">Veqalio croise vos créances à encaisser, vos économies potentielles, les marchés publics, le suivi des marges et le solde bancaire enregistré dans Trésorerie &amp; scénarios. Aucune donnée financière manquante n'est inventée.</p>
 
 <div class="purchase-stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0;">
   <div class="purchase-stat">
@@ -85,10 +85,10 @@
 </section>
 
 <section class="purchase-panel brain-gaps" style="margin-top:20px;">
-  <div class="purchase-eyebrow" style="margin-bottom:8px;color:#ffc149;">QUALITÉ DES DONNÉES</div><h2 style="color:#fff;">Ce que ProfitOS ne sait pas encore</h2>
+  <div class="purchase-eyebrow" style="margin-bottom:8px;color:#ffc149;">QUALITÉ DES DONNÉES</div><h2 style="color:#fff;">Ce que Veqalio ne sait pas encore</h2>
   {% if brain.cash_balance is not none %}<div class="bullet">✓ Solde bancaire utilisé : <strong>{{ brain.cash_balance|fr_number }}&nbsp;€</strong>{% if brain.cash_as_of %} au {{ brain.cash_as_of|fr_date }}{% endif %}.</div>{% endif %}
   {% for x in brain.data_gaps %}<div class="bullet warntext">⚠ {{ x }}</div>{% else %}<div class="bullet">✓ Aucun manque bloquant détecté sur les données financières actuellement requises.</div>{% endfor %}
-  <p class="purchase-muted">Ces limites empêchent volontairement ProfitOS de produire un faux GO/NO-GO ou une fausse prévision de trésorerie.</p>
+  <p class="purchase-muted">Ces limites empêchent volontairement Veqalio de produire un faux GO/NO-GO ou une fausse prévision de trésorerie.</p>
 </section>
 </div>
 {% endblock %}

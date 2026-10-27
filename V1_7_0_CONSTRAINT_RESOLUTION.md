@@ -1,4 +1,4 @@
-# ProfitOS V1.7.0 — Constraint Resolution Engine
+# Veqalio V1.7.0 — Constraint Resolution Engine
 
 V1.7.0 extends AI CFO Planner when no tested plan satisfies the user's financing ceiling.
 

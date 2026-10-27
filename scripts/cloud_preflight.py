@@ -1,4 +1,4 @@
-"""ProfitOS — validation cloud + migrations (preDeploy Render).
+"""Veqalio — validation cloud + migrations (preDeploy Render).
 
 Usage:
   python scripts/cloud_preflight.py                  # vérifications seules
@@ -167,16 +167,16 @@ def main(argv=None):
 
     from profitos import db as dbmod
     env = os.environ.get('PROFITOS_ENV', 'development')
-    print(f'[ProfitOS] env={env} backend={dbmod.backend_name()}')
+    print(f'[Veqalio] env={env} backend={dbmod.backend_name()}')
 
     if _is_production():
         errors = production_errors(database_configured=dbmod.database_url_configured())
         if errors:
             for err in errors:
-                print(f'[ProfitOS] ERREUR: {err}')
+                print(f'[Veqalio] ERREUR: {err}')
             return 1
         for warn in prelaunch_warnings():
-            print(f'[ProfitOS] AVERTISSEMENT (pré-lancement): {warn}')
+            print(f'[Veqalio] AVERTISSEMENT (pré-lancement): {warn}')
 
     from profitos.runtime import init_auth_db, database_readiness, migrate_all_tenant_schemas
     init_auth_db()
@@ -184,31 +184,31 @@ def main(argv=None):
     ensure_ops_tables()  # job_runs + préférence rapport hebdomadaire
     ok, backend, err = database_readiness()
     if not ok:
-        print(f'[ProfitOS] ERREUR base {backend}: {err}')
+        print(f'[Veqalio] ERREUR base {backend}: {err}')
         return 1
-    print(f'[ProfitOS] base {backend}: OK')
+    print(f'[Veqalio] base {backend}: OK')
 
     if args.init_tenants:
         started = time.monotonic()
         report = migrate_all_tenant_schemas(force=args.force_migrate)
         elapsed = time.monotonic() - started
-        print(f"[ProfitOS] schéma tenant v{report['version']} : "
+        print(f"[Veqalio] schéma tenant v{report['version']} : "
               f"{len(report['migrated'])} migré(s), {len(report['up_to_date'])} déjà à jour, "
               f"{len(report['failed'])} échec(s) en {elapsed:.1f}s")
         for org_id, warnings in sorted(report['warnings'].items()):
             for w in warnings:
-                print(f'[ProfitOS] AVERTISSEMENT migration org_{org_id}: {w}')
+                print(f'[Veqalio] AVERTISSEMENT migration org_{org_id}: {w}')
         if report['failed']:
             for org_id, reason in sorted(report['failed'].items()):
-                print(f'[ProfitOS] ÉCHEC migration org_{org_id}: {reason}')
-            print('[ProfitOS] preflight: ÉCHEC (migrations tenant)')
+                print(f'[Veqalio] ÉCHEC migration org_{org_id}: {reason}')
+            print('[Veqalio] preflight: ÉCHEC (migrations tenant)')
             return 1
 
     stripe_errors = stripe_config_errors(os.environ)
     if stripe_errors:  # hors production : simple avertissement
-        print('[ProfitOS] AVERTISSEMENT Stripe: ' + ' ; '.join(stripe_errors))
+        print('[Veqalio] AVERTISSEMENT Stripe: ' + ' ; '.join(stripe_errors))
 
-    print('[ProfitOS] preflight: OK')
+    print('[Veqalio] preflight: OK')
     return 0
 
 

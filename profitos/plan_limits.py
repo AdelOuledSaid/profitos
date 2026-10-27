@@ -1,4 +1,4 @@
-"""Limites commerciales centralisées par plan ProfitOS.
+"""Limites commerciales centralisées par plan Veqalio.
 
 None signifie "illimité".
 Les contrôles doivent toujours être faits côté serveur.

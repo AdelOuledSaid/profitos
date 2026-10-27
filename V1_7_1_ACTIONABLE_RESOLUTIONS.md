@@ -1,4 +1,4 @@
-# ProfitOS V1.7.1 — Actionable Constraint Resolutions
+# Veqalio V1.7.1 — Actionable Constraint Resolutions
 
 - Clarifies the mixed strategy wording: the financing ceiling is increased, rather than implying a separate unexplained financing amount.
 - Each resolution now exposes explicit target values for decision amount and financing ceiling.

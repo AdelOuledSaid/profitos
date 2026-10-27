@@ -102,7 +102,7 @@ def register(app):
         # « Complété » = toutes les mentions nécessaires pour facturer, pas seulement le nom.
         has_company=bool(_cp) and not missing_mandatory_fields(dict(_cp))
         has_invoices=bool(c2.execute("SELECT 1 FROM invoices LIMIT 1").fetchone() or c2.execute("SELECT 1 FROM outgoing_invoices WHERE COALESCE(status,'draft')!='draft' LIMIT 1").fetchone())
-        # v475 : démarrage en 10 minutes — les étapes qui rendent ProfitOS utile dès la
+        # v475 : démarrage en 10 minutes — les étapes qui rendent Veqalio utile dès la
         # première semaine (banque, comptabilité reprise, IBAN pour le paiement, relances, veille).
         def _exists(sql):
             try:
@@ -451,7 +451,7 @@ def register(app):
     @requires_active_plan
     @require_area('grow')
     def partners():
-        """Radar de partenaires : répertoire partagé opt-in entre organisations ProfitOS.
+        """Radar de partenaires : répertoire partagé opt-in entre organisations Veqalio.
         Aucune donnée n'est visible pour les autres tant que l'organisation n'a pas activé
         explicitement le partage — action volontaire, jamais activée par défaut."""
         org=current_org(); ac=auth_cx()
@@ -471,7 +471,7 @@ def register(app):
                                 contact_email=excluded.contact_email,opted_in=1,updated_at=excluded.updated_at''',
                     (org['id'],comp['name'],comp['department'],comp['activities'],contact,now())); ac.commit()
                 log_activity('PARTNER_DIRECTORY_OPT_IN','Profil rendu visible pour le radar de partenaires')
-                flash('Votre profil est maintenant visible par les autres organisations ProfitOS dans le radar de partenaires.')
+                flash('Votre profil est maintenant visible par les autres organisations Veqalio dans le radar de partenaires.')
             elif action=='opt_out':
                 ac.execute('UPDATE partner_directory SET opted_in=0,updated_at=? WHERE organization_id=?',(now(),org['id'])); ac.commit()
                 log_activity('PARTNER_DIRECTORY_OPT_OUT','Profil retiré du radar de partenaires')
@@ -608,7 +608,7 @@ def register(app):
             # une adresse humaine afin qu'une réponse ne parte jamais vers noreply@.
             confirmation_html=render_template('email_demo_confirmation.html',full_name=full_name,
                 company=company,reply_email=reply_email)
-            if check_recipient_rate('demo_ack',email): send_email(email,'Votre demande de démonstration ProfitOS',confirmation_html,reply_to=reply_email,kind='system')
+            if check_recipient_rate('demo_ack',email): send_email(email,'Votre demande de démonstration Veqalio',confirmation_html,reply_to=reply_email,kind='system')
 
             return render_template('demo_thanks.html',contact_email=reply_email)
         return render_template('demo_request.html',form={})
@@ -659,7 +659,7 @@ def register(app):
                 {'name':'Créances impayées priorisées','desc':"Score de risque calculé sur montant, retard et historique — pour savoir quoi relancer en premier."},
                 {'name':'Retenues contractuelles','desc':"Suivi des montants retenus et de leur date de libération, avec relance dédiée."},
                 {'name':'Simulateur de caution','desc':"Estime le coût de remplacer une retenue en numéraire par une caution bancaire."},
-                {'name':'Rapprochement bancaire','desc':"Importez un relevé bancaire : ProfitOS propose les correspondances avec les factures ouvertes."},
+                {'name':'Rapprochement bancaire','desc':"Importez un relevé bancaire : Veqalio propose les correspondances avec les factures ouvertes."},
                 {'name':'Relances e-mail et SMS','desc':"Rédigées automatiquement, jamais envoyées sans votre validation explicite."},
                 {'name':'Portail client public','desc':"Lien sécurisé permettant à un client de consulter le statut de sa facture, sans compte."},
             ]},
@@ -701,8 +701,8 @@ def register(app):
                 {'name':'Isolation stricte des données','desc':"Chaque organisation est cloisonnée : aucune donnée financière n'est partagée entre elles, sauf votre retard moyen de paiement si vous activez vous-même le benchmark anonymisé."},
             ]},
             {'icon':'🔗','color':'blue','title':'Intégrations & accès','features':[
-                {'name':'API en lecture seule','desc':"Connectez vos propres outils à vos données ProfitOS."},
-                {'name':'Application installable','desc':"Ajoutez ProfitOS à votre écran d'accueil, comme une vraie application."},
+                {'name':'API en lecture seule','desc':"Connectez vos propres outils à vos données Veqalio."},
+                {'name':'Application installable','desc':"Ajoutez Veqalio à votre écran d'accueil, comme une vraie application."},
                 {'name':'Marque personnalisée','desc':"Logo et couleur d'accent adaptables à votre identité visuelle, sur les plans concernés."},
                 {'name':'Thème clair ou sombre','desc':"Au choix, selon votre préférence."},
             ]},
@@ -769,7 +769,7 @@ def register(app):
     def _recover_filtered_rows():
         """Applique les filtres/recherche de la query string RECOVER (filter, q, min_amount,
         max_amount, date_from, date_to). Partagé entre l'écran RECOVER et son export."""
-        # Vue unique : factures émises dans ProfitOS + factures importées.
+        # Vue unique : factures émises dans Veqalio + factures importées.
         from profitos.receivables import open_receivables
         c=cx()
         try:

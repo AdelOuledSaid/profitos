@@ -135,7 +135,7 @@ def test_preflight_rejects_placeholder_legal_identity():
     import importlib.util
     spec = importlib.util.spec_from_file_location('cloud_preflight', ROOT / 'scripts/cloud_preflight.py')
     pf = importlib.util.module_from_spec(spec); spec.loader.exec_module(pf)
-    env = {'LEGAL_COMPANY_NAME': 'ProfitOS', 'LEGAL_FORM': 'SAS', 'LEGAL_SIREN': '123456789',
+    env = {'LEGAL_COMPANY_NAME': 'Veqalio', 'LEGAL_FORM': 'SAS', 'LEGAL_SIREN': '123456789',
            'LEGAL_ADDRESS': '15 RUE Roger Paris', 'LEGAL_PUBLICATION_DIRECTOR': 'Jean',
            'LEGAL_CONTACT_EMAIL': 'contact@profitos.fr'}
     errors = ' '.join(pf.check_legal(env))

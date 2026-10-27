@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Tarifs · ProfitOS</title>
+  <title>Tarifs · Veqalio</title>
   <link rel="stylesheet" href="{{ asset_url('style.css') }}">
   <link rel="stylesheet" href="{{ asset_url('billing-v178.css') }}">
 </head>
 <body>
 <div class="pricing-public">
   <header class="pricing-top">
-    <div class="brand">Profit<span>OS</span></div>
+    <div class="brand"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></div>
     <div class="pricing-top-actions">
       <a class="secondary button" href="{{ url_for('help_center') }}">Guide</a>
       <a class="secondary button" href="{{ url_for('login') }}">Se connecter</a>
@@ -19,9 +19,9 @@
   </header>
 
   <section class="pricing-hero">
-    <div class="eyebrow green">TARIFS PROFITOS</div>
+    <div class="eyebrow green">TARIFS VEQALIO</div>
     <h1>Un pilotage financier complet, adapté à la taille de votre entreprise.</h1>
-    <p>Commencez avec le cœur de ProfitOS : facturation, achats, cash, impayés et économies. Passez à Pro, Business ou Multi-sociétés lorsque vos volumes, vos équipes ou vos besoins d'automatisation augmentent.</p>
+    <p>Commencez avec le cœur de Veqalio : facturation, achats, cash, impayés et économies. Passez à Pro, Business ou Multi-sociétés lorsque vos volumes, vos équipes ou vos besoins d'automatisation augmentent.</p>
     <div class="billing-pills"><span class="billing-pill"><strong>✓</strong> 14 jours d'essai gratuit avec toutes les fonctions Pro</span><span class="billing-pill"><strong>✓</strong> Sans carte bancaire</span><span class="billing-pill"><strong>✓</strong> Mensuel sans engagement</span><span class="billing-pill"><strong>✓</strong> Annuel : 2 mois offerts</span></div>
     <nav class="billing-period" aria-label="Périodicité de paiement" style="margin:22px auto 0;">
       <a href="{{ url_for('pricing') }}" class="{{ 'is-active' if period=='month' else '' }}"{% if period=='month' %} aria-current="true"{% endif %}>Mensuel <small>sans engagement</small></a>
@@ -74,7 +74,7 @@
   <tr><td>Extractions IA de documents / mois</td>{% for key in ('STARTER','PRO','BUSINESS','MULTI') %}<td>{{ plan_limits[key].ai_extractions_per_month|fr_number }}</td>{% endfor %}</tr>
   </tbody></table></div><p class="billing-tax-note">Analyse financière avancée = diagnostic financier, trésorerie &amp; scénarios et simulateur de décision, calculés par des règles d'analyse explicites (pas d'IA générative). Multi-sociétés : jusqu'à 25 organisations rattachées au même abonnement.</p></section>
 
-  <section class="pricing-cta"><h2>Vous préférez voir ProfitOS sur un cas concret ?</h2><p>Réservez une démonstration personnalisée ou commencez directement votre essai gratuit.</p><a class="button" href="{{ url_for('request_demo') }}">Demander une démo</a></section>
-  <p class="muted" style="margin-top:34px;text-align:center;"><a class="link" href="{{ url_for('home') }}">← Retour à ProfitOS</a></p>
+  <section class="pricing-cta"><h2>Vous préférez voir Veqalio sur un cas concret ?</h2><p>Réservez une démonstration personnalisée ou commencez directement votre essai gratuit.</p><a class="button" href="{{ url_for('request_demo') }}">Demander une démo</a></section>
+  <p class="muted" style="margin-top:34px;text-align:center;"><a class="link" href="{{ url_for('home') }}">← Retour à Veqalio</a></p>
 </div>
 </body></html>

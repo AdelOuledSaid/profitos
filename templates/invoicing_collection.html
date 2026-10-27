@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">FACTURATION</div>
     <h1 class="purchase-title">Encaissement et relances</h1>
-    <p class="purchase-subtitle">Facilitez le paiement de vos factures et laissez ProfitOS relancer vos clients en retard, avec le ton qui convient à chaque étape.</p>
+    <p class="purchase-subtitle">Facilitez le paiement de vos factures et laissez Veqalio relancer vos clients en retard, avec le ton qui convient à chaque étape.</p>
   </div>
   <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('invoicing_list') }}">← Factures</a></div>
 </div>
@@ -17,7 +17,7 @@
   {% if not iban_ok %}<div class="flash" role="alert">Renseignez un IBAN valide dans le <a class="link" href="{{ url_for('company') }}">profil de l'entreprise</a> pour afficher le virement et son QR code sur vos factures.</div>{% endif %}
   <label class="check"><input type="checkbox" name="qr" value="1" {{ 'checked' if settings.qr }}> QR code de virement SEPA sur la facture PDF et la facture en ligne : votre client le scanne avec l'application de sa banque, le virement est pré-rempli (bénéficiaire, IBAN, reste à payer, numéro de facture).</label>
   <label>Lien de paiement en ligne (facultatif)<input name="link" value="{{ settings.link }}" maxlength="300" placeholder="https://… (lien de paiement de votre prestataire : carte, prélèvement…)"></label>
-  <p class="purchase-muted" style="font-size:12px;">Le bouton « Payer en ligne » renvoie vers votre propre prestataire de paiement. ProfitOS ne manipule jamais les fonds ; enregistrez le règlement à réception (ou laissez le rapprochement bancaire le faire).</p>
+  <p class="purchase-muted" style="font-size:12px;">Le bouton « Payer en ligne » renvoie vers votre propre prestataire de paiement. Veqalio ne manipule jamais les fonds ; enregistrez le règlement à réception (ou laissez le rapprochement bancaire le faire).</p>
 </section>
 
 <section class="purchase-panel" style="margin-top:14px;">

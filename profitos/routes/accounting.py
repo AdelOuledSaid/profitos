@@ -414,7 +414,7 @@ def register(app):
     @app.route('/comptabilite/export-fec/telecharger/<token>')
     def accounting_fec_download(token):
         """Téléchargement public authentifié par token — utilisé par le lien envoyé à
-        l'expert-comptable. Aucune connexion ProfitOS requise. Régénère le FEC à la
+        l'expert-comptable. Aucune connexion Veqalio requise. Régénère le FEC à la
         demande (jamais de fichier stocké)."""
         ac = auth_cx()
         mapping = ac.execute(
@@ -833,7 +833,7 @@ def register(app):
                 else:
                     c.execute("""INSERT INTO tax_declaration_preparations(entity_id,declaration_type,period_start,period_end,collected_amount,deductible_amount,balance_amount,entry_count,snapshot_max_entry_id,checks_json,prepared_at,prepared_by,status,validated_at,validated_by,notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(eid,declaration_type,date_from,date_to)+values)
                 c.commit(); c.close()
-                flash("Préparation fiscale enregistrée dans ProfitOS. Aucune télédéclaration DGFiP n'a été effectuée.")
+                flash("Préparation fiscale enregistrée dans Veqalio. Aucune télédéclaration DGFiP n'a été effectuée.")
                 return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to,declaration_type=declaration_type))
             if action in ('lock','file') and not all(x['ok'] for x in checks):
                 c.close(); flash("Impossible de verrouiller/déclarer : des contrôles TVA restent en anomalie.")
@@ -860,7 +860,7 @@ def register(app):
                     c.execute("""INSERT INTO vat_declarations(entity_id,period_start,period_end,collected_amount,deductible_amount,balance_amount,entry_count,snapshot_max_entry_id,prepared_at,prepared_by,status,locked_at,locked_by,filed_at,filed_by,filing_reference,notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                               (eid,date_from,date_to)+params)
             c.commit(); c.close()
-            flash("Dossier TVA mis à jour. ProfitOS prépare et trace le dossier mais ne télédéclare pas auprès de l'administration.")
+            flash("Dossier TVA mis à jour. Veqalio prépare et trace le dossier mais ne télédéclare pas auprès de l'administration.")
             return redirect(url_for('vat_summary',date_from=date_from,date_to=date_to))
 
         sales_lines = c.execute(

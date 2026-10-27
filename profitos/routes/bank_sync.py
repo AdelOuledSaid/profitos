@@ -314,14 +314,14 @@ def _sync_powens(c, row):
         aid = str(a.get("id") or "")
         if not aid:
             continue
-        # A provider account already attached to another ProfitOS entity must
+        # A provider account already attached to another Veqalio entity must
         # never be silently reassigned by a synchronization.
         existing_account = c.execute(
             "SELECT entity_id FROM bank_accounts WHERE provider=? AND provider_account_id=?",
             ("powens", aid),
         ).fetchone()
         if existing_account and existing_account["entity_id"] != entity_id:
-            raise RuntimeError("Compte bancaire déjà rattaché à une autre entité ProfitOS.")
+            raise RuntimeError("Compte bancaire déjà rattaché à une autre entité Veqalio.")
         synced_account_ids.add(aid)
         balance = a.get("balance")
         try:
@@ -394,7 +394,7 @@ def _sync_powens(c, row):
             ("powens", tid),
         ).fetchone()
         if existing_tx and existing_tx["entity_id"] != entity_id:
-            raise RuntimeError("Transaction bancaire déjà rattachée à une autre entité ProfitOS.")
+            raise RuntimeError("Transaction bancaire déjà rattachée à une autre entité Veqalio.")
         if t.get("deleted"):
             # Opération supprimée par la banque (doublon, annulation) : retirée si rien n'y
             # est rattaché, sinon marquée « deleted » pour rester visible et corrigeable.

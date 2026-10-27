@@ -1,4 +1,4 @@
-# ProfitOS — Production checklist
+# Veqalio — Production checklist
 
 Procédure détaillée : `DEPLOIEMENT_PRODUCTION.md`.
 

@@ -1,4 +1,4 @@
-# ProfitOS v1.0 RC1 — Checklist Render
+# Veqalio v1.0 RC1 — Checklist Render
 
 ## Obligatoire
 - `PROFITOS_ENV=production`

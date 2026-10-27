@@ -1,4 +1,4 @@
-# ProfitOS V1.3.3 — Secure Tokens & Account Recovery
+# Veqalio V1.3.3 — Secure Tokens & Account Recovery
 
 ## Changements
 
@@ -13,7 +13,7 @@ Les colonnes historiques `verification_token` et `reset_token` sont conservées
 pour éviter une migration de schéma risquée ; leur contenu est désormais un hash.
 
 ### Compatibilité V1.3.2
-Pendant cette version, ProfitOS accepte aussi les anciens tokens plaintext déjà
+Pendant cette version, Veqalio accepte aussi les anciens tokens plaintext déjà
 émis avant le déploiement. Dès qu'un nouveau token est généré, il remplace
 l'ancien par un hash.
 

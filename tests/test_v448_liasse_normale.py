@@ -156,7 +156,7 @@ def test_2057_loan_split_follows_schedule(app):
     l = liasse_normale(c, date(2026, 1, 1), date(2026, 12, 31))
     c.close()
     vh = next(d for d in l['dettes'] if d['box'] == 'VH')
-    assert vh['brut'] == 12000  # aucune échéance réglée dans ProfitOS
+    assert vh['brut'] == 12000  # aucune échéance réglée dans Veqalio
     assert vh['un_an'] + vh['un_cinq'] + vh['plus_cinq'] == 12000
     assert 2000 <= vh['un_an'] <= 3000 and vh['plus_cinq'] == 0
 

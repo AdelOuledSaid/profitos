@@ -1,7 +1,7 @@
 {
   "name": "profitos-mobile",
   "version": "1.0.0",
-  "description": "ProfitOS — enveloppe native Capacitor autour de l'application web existante",
+  "description": "Veqalio — enveloppe native Capacitor autour de l'application web existante",
   "private": true,
   "scripts": {
     "sync": "npx cap sync",

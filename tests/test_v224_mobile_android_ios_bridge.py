@@ -43,7 +43,7 @@ def test_ios_cloud_build_generates_syncs_and_compiles_simulator():
     assert 'xcodebuild' in IOS
     assert '-sdk iphonesimulator' in IOS
     assert 'CODE_SIGNING_ALLOWED=NO' in IOS
-    assert 'ProfitOS-iOS-Simulator' in IOS
+    assert 'Veqalio-iOS-Simulator' in IOS
 
 
 def test_ios_docs_do_not_claim_app_store_readiness():

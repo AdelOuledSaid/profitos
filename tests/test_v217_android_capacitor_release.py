@@ -8,7 +8,7 @@ PLAY = (ROOT / "mobile" / "GOOGLE_PLAY.md").read_text(encoding="utf-8")
 
 def test_debug_apk_is_always_built_and_uploaded():
     assert "./gradlew assembleDebug --no-daemon" in WORKFLOW
-    assert "ProfitOS-Android-Debug-APK" in WORKFLOW
+    assert "Veqalio-Android-Debug-APK" in WORKFLOW
     assert "app-debug.apk" in WORKFLOW
 
 
@@ -35,12 +35,12 @@ def test_keystore_and_alias_are_verified_before_release():
 def test_signed_aab_is_checked_and_uploaded():
     assert "Verify release AAB exists" in WORKFLOW
     assert "app/build/outputs/bundle/release/app-release.aab" in WORKFLOW
-    assert "ProfitOS-Android-Release-AAB" in WORKFLOW
+    assert "Veqalio-Android-Release-AAB" in WORKFLOW
 
 
 def test_cloud_build_is_documented_without_local_node_requirement():
     assert "aucun Node.js ni Android Studio" in README
-    assert "Actions > Build ProfitOS Android > Run workflow" in README
+    assert "Actions > Build Veqalio Android > Run workflow" in README
     assert "quatre secrets GitHub" in README
 
 

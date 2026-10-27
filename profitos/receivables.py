@@ -1,6 +1,6 @@
 """Vue unique des créances clients ouvertes.
 
-ProfitOS connaît deux sources de factures clients :
+Veqalio connaît deux sources de factures clients :
 
 - les factures émises dans Facturation (table ``outgoing_invoices``) — règlements partiels
   (``outgoing_invoice_payments``) et avoirs émis (``outgoing_credit_notes``) déduits ;
@@ -12,8 +12,8 @@ Toutes les pages qui affichent un « reste à encaisser » passent désormais pa
 :func:`open_receivables`, ce qui garantit des totaux identiques partout.
 
 Règles :
-- une facture importée dont le numéro est celui d'une facture émise dans ProfitOS (même entité)
-  n'est comptée qu'une fois : la facture ProfitOS fait foi (elle porte les règlements réels) ;
+- une facture importée dont le numéro est celui d'une facture émise dans Veqalio (même entité)
+  n'est comptée qu'une fois : la facture Veqalio fait foi (elle porte les règlements réels) ;
 - le retard est calculé à la lecture (Europe/Paris), jamais lu d'une valeur stockée ;
 - les retenues contractuelles importées sont échues à leur date de libération.
 """
@@ -23,7 +23,7 @@ ALL_ENTITIES = object()
 
 SOURCE_OUTGOING = 'outgoing'
 SOURCE_IMPORTED = 'imported'
-SOURCE_LABELS = {SOURCE_OUTGOING: 'Facture ProfitOS', SOURCE_IMPORTED: 'Importée'}
+SOURCE_LABELS = {SOURCE_OUTGOING: 'Facture Veqalio', SOURCE_IMPORTED: 'Importée'}
 
 
 def paris_today():
@@ -148,7 +148,7 @@ def open_receivables(c, entity_id=ALL_ENTITIES, today=None, current=False):
         f"SELECT * FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND {ef}", ep).fetchall()
     for r in imported:
         if (r['entity_id'], _num_key(r['invoice_number'])) in known_numbers and _num_key(r['invoice_number']):
-            continue  # déjà comptée via la facture émise dans ProfitOS
+            continue  # déjà comptée via la facture émise dans Veqalio
         total = _f(r['amount'])
         paid = _f(r['paid_amount'])
         remaining = round(max(0.0, total - paid), 2)
@@ -211,7 +211,7 @@ def by_customer(rows):
 
 
 def detail_url(row):
-    """Lien vers la fiche de la créance (facture ProfitOS ou facture importée)."""
+    """Lien vers la fiche de la créance (facture Veqalio ou facture importée)."""
     from flask import url_for
     if row['source'] == SOURCE_OUTGOING:
         return url_for('invoicing_detail', invoice_id=row['id'])

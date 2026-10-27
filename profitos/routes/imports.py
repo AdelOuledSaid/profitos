@@ -866,7 +866,7 @@ def register(app):
             record_usage('imports_per_month',organization_id=org['id'])
 
             if urgent['n']:
-                notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
+                notify_org(f"🔴 Veqalio · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
             msg=f"Factures analysées · {pluralize(signals, 'créance à relancer détectée', 'créances à relancer détectées')}."
             if retentions: msg+=f" Dont {pluralize(retentions, 'retenue de garantie détectée', 'retenues de garantie détectées')}."
             flash(msg)

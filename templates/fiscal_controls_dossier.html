@@ -16,11 +16,11 @@
   <tr><td>Entreprise</td><td>{{ identity.get('name') or '—' }}{% if identity.get('siret') %} — SIRET {{ identity.siret }}{% endif %}</td></tr>
   <tr><td>Exercice clos</td><td>du {{ r.closed.start|fr_date }} au {{ r.closed.end|fr_date }}{% if not r.closed_active %} (aucune écriture){% endif %}</td></tr>
   <tr><td>Exercice en cours</td><td>du {{ r.current.start|fr_date }} au {{ r.current.end|fr_date }}</td></tr>
-  <tr><td>Établi le</td><td>{{ r.today|fr_date }}, à partir des écritures enregistrées dans ProfitOS à cette date</td></tr>
+  <tr><td>Établi le</td><td>{{ r.today|fr_date }}, à partir des écritures enregistrées dans Veqalio à cette date</td></tr>
   <tr><td>Synthèse</td><td>{{ r.counts.blocked }} écart(s) à corriger, {{ r.counts.to_check }} point(s) à vérifier, {{ r.counts.ok }} contrôle(s) conforme(s)</td></tr>
-  {% if r.is %}<tr><td>IS de l'exercice clos (calcul ProfitOS)</td><td>IS dû {{ r.is.is_du|fr_number(2) }} €, acomptes {{ r.is.acomptes_verses|fr_number(2) }} €, solde {{ r.is.solde|fr_number(2) }} €</td></tr>{% endif %}
+  {% if r.is %}<tr><td>IS de l'exercice clos (calcul Veqalio)</td><td>IS dû {{ r.is.is_du|fr_number(2) }} €, acomptes {{ r.is.acomptes_verses|fr_number(2) }} €, solde {{ r.is.solde|fr_number(2) }} €</td></tr>{% endif %}
 </table>
-<p class="muted">ProfitOS prépare les déclarations et calcule les montants à partir de la comptabilité ; il ne les transmet pas seul. La transmission officielle passe par un partenaire EDI agréé ou par l'entreprise sur impots.gouv.fr, et seul un accusé de l'administration constate l'acceptation. Ce dossier ne remplace pas la revue de l'expert-comptable.</p>
+<p class="muted">Veqalio prépare les déclarations et calcule les montants à partir de la comptabilité ; il ne les transmet pas seul. La transmission officielle passe par un partenaire EDI agréé ou par l'entreprise sur impots.gouv.fr, et seul un accusé de l'administration constate l'acceptation. Ce dossier ne remplace pas la revue de l'expert-comptable.</p>
 
 {% for s in r.sections %}
 <h2>{{ loop.index }}. {{ s.title }} — {{ lv[s.level] }}</h2>
@@ -45,7 +45,7 @@
   <tr><td>{{ d.form }}{% if d.corrective %} (rectificative){% endif %} — {{ d.start|fr_date }} → {{ d.end|fr_date }}</td>
     <td>{{ d.status }}<br><span class="muted">{{ d.transmission }}{% if d.amount %} — montant {{ d.amount|fr_number(0) }} €{% endif %}</span></td></tr>
 {% else %}
-  <tr><td>—</td><td>Aucune déclaration préparée ou déposée dans ProfitOS sur la période.</td></tr>
+  <tr><td>—</td><td>Aucune déclaration préparée ou déposée dans Veqalio sur la période.</td></tr>
 {% endfor %}
 </table>
 

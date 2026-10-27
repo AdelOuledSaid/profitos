@@ -23,3 +23,6 @@ a{color:inherit}
 .demo-flash{grid-column:1/-1;padding:12px 14px;border:1px solid rgba(61,220,132,.4);border-radius:10px;background:rgba(21,82,67,.28);color:#ccefe2;font-size:13px}
 @media(max-width:860px){.demo-shell{padding-top:22px}.demo-layout{grid-template-columns:1fr;gap:22px}.demo-intro{position:relative;top:auto;padding:0}.demo-intro h1{font-size:40px}.demo-card{padding:23px}}
 @media(max-width:620px){.demo-shell{width:min(100% - 24px,1080px)}.demo-topbar{margin-bottom:22px}.demo-brand{font-size:24px}.demo-back{font-size:12px}.demo-intro h1{font-size:34px;letter-spacing:-1.2px}.demo-intro>p{font-size:15px}.demo-form{grid-template-columns:1fr}.demo-form .full,.demo-submit,.demo-privacy{grid-column:1}.demo-card{padding:19px;border-radius:16px}}
+
+/* Logo Veqalio (v491) : V posé sur le signe égal */
+.brand-mark{display:inline-block;width:.86em;height:.86em;vertical-align:-.1em;margin-right:.28em;overflow:visible}.brand-mark path{fill:none;stroke:currentColor;stroke-width:9;stroke-linecap:round;stroke-linejoin:round}.brand-mark rect{fill:#3ddc84}

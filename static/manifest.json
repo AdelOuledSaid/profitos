@@ -1,7 +1,7 @@
 {
-  "name": "ProfitOS",
-  "short_name": "ProfitOS",
-  "description": "Financial Operating System for SMEs — Recover cash. Cut waste. Control cash flow. Decide better.",
+  "name": "Veqalio",
+  "short_name": "Veqalio",
+  "description": "Pilotage financier des PME : trésorerie, factures, comptabilité et fiscalité, chaque chiffre vérifié.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

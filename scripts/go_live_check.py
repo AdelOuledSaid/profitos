@@ -97,7 +97,7 @@ def check_email(env):
     s = 'E-mails (Resend)'
     if not (_v(env, 'RESEND_API_KEY') or _v(env, 'SMTP_HOST')):
         return [_item(s, FAIL, 'Aucun fournisseur', 'RESEND_API_KEY (ou SMTP_HOST) : sans lui, ni vérification de compte ni relances.')]
-    sender = _v(env, 'RESEND_FROM_EMAIL') or 'ProfitOS <noreply@profitos.fr>'
+    sender = _v(env, 'RESEND_FROM_EMAIL') or 'Veqalio <noreply@profitos.fr>'
     domain = sender.rsplit('@', 1)[-1].strip('> ').lower()
     bad = domain in ('example.com', 'resend.dev', 'localhost') or not domain
     return [_item(s, OK, 'Fournisseur configuré'),

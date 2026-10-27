@@ -304,7 +304,7 @@ def register(app):
             # sensibles utilisent ensuite l'impersonation avec le project token.
             session['swan_user_id'] = user_id
             log_activity('SWAN_USER_CONNECTED_SANDBOX', f'Utilisateur Swan Sandbox lié {user_id}')
-            flash("Utilisateur Swan (environnement de test) connecté à ProfitOS.")
+            flash("Utilisateur Swan (environnement de test) connecté à Veqalio.")
         except ValueError as e:
             flash(f"Connexion utilisateur Swan impossible : {e}")
         return redirect(url_for('swan_settings'))

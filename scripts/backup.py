@@ -1,4 +1,4 @@
-"""ProfitOS — sauvegarde chiffrée de la base et des documents clients.
+"""Veqalio — sauvegarde chiffrée de la base et des documents clients.
 
 Usage :
     python scripts/backup.py                 # base + documents
@@ -326,9 +326,9 @@ def main(argv=None):
         result = run_backup(include_db=not args.no_db, include_uploads=not args.no_uploads,
                             backup_dir=args.dir, keep=args.keep)
     except BackupError as exc:
-        print(f'[ProfitOS] ERREUR sauvegarde : {exc}')
+        print(f'[Veqalio] ERREUR sauvegarde : {exc}')
         return 1
-    print(f"[ProfitOS] sauvegarde {result['stamp']} : {', '.join(result['files'])} "
+    print(f"[Veqalio] sauvegarde {result['stamp']} : {', '.join(result['files'])} "
           f"(S3 : {result['uploaded']} fichier(s), rotation : {len(result['pruned'])} supprimée(s))")
     return 0
 
