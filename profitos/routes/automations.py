@@ -98,6 +98,46 @@ def register(app):
                                jobs=AUTOMATIC_JOBS, runs=runs, today=today)
 
 
+    def _fiscal_review():
+        from profitos import fiscal_controls as FC
+        eid = _eid()
+        c = cx()
+        try:
+            return FC.review(c, eid, paris_today())
+        finally:
+            c.close()
+
+    @app.route('/comptabilite/controles-fiscaux')
+    @login_required
+    def fiscal_controls():
+        return render_template('fiscal_controls.html', r=_fiscal_review())
+
+    @app.route('/comptabilite/controles-fiscaux/dossier')
+    @login_required
+    def fiscal_controls_dossier():
+        from flask import make_response
+        from profitos.entities import resolve_entity
+        r = _fiscal_review()
+        c = cx()
+        try:
+            try:
+                identity = dict(resolve_entity(c, _eid()))
+            except Exception:
+                identity = {}
+        finally:
+            c.close()
+        if not identity.get('name'):
+            ac = auth_cx()
+            try:
+                row = ac.execute('SELECT name FROM organizations WHERE id=?', (session.get('org_id'),)).fetchone()
+                identity['name'] = row['name'] if row else ''
+            finally:
+                ac.close()
+        resp = make_response(render_template('fiscal_controls_dossier.html', r=r, identity=identity))
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+
+
 MANDATE_ROLES = ('OWNER', 'ADMIN')
 
 

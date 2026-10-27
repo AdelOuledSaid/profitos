@@ -40,7 +40,7 @@ SHARE_ITEMS = {'identite': "Identité de l'entreprise (dénomination, SIREN, adr
                'constat': 'Le constat de Mission Control et ses preuves (contrôles, montants, sources)'}
 LINK_DAYS = 90
 # Constats Mission Control pour lesquels un expert peut être utile -> domaine proposé.
-KIND_DOMAINS = {'fiscal': 'comptabilite', 'dossier': 'comptabilite', 'banque': 'comptabilite', 'pieces': 'comptabilite',
+KIND_DOMAINS = {'fiscal': 'comptabilite', 'fiscal_controle': 'comptabilite', 'dossier': 'comptabilite', 'banque': 'comptabilite', 'pieces': 'comptabilite',
                 'impaye': 'juridique', 'contrat_ecart': 'juridique', 'contrat_preavis': 'juridique',
                 'contrat_hors_periode': 'juridique', 'tresorerie': 'tresorerie', 'radar_dependance': 'marketing',
                 'radar_secteur': 'marketing', 'radar_dormant': 'marketing'}

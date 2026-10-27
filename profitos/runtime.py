@@ -929,8 +929,8 @@ MODULE_AREAS={
     'profitos.routes.gocardless_baas':'banking',
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
     'profitos.routes.decision_simulator':'pilotage','profitos.routes.money_hunter':'pilotage',
-    'profitos.routes.market_watch':'pilotage','profitos.routes.mission_control':'pilotage',
-    'profitos.routes.contract_guardian':'invoicing','profitos.routes.opportunity_radar':'pilotage',
+    'profitos.routes.market_watch':'pilotage','profitos.routes.mission_control':'pilotage','profitos.routes.copilot':'pilotage',
+    'profitos.routes.contract_guardian':'invoicing','profitos.routes.purchase_pipeline':'invoicing','profitos.routes.opportunity_radar':'pilotage',
     'profitos.routes.cabinet':'cabinet',
 }
 ENDPOINT_AREAS={
@@ -3737,6 +3737,11 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-27','title':"Contrôles fiscaux : TVA déclarée comparée à vos écritures, acomptes d'IS, liasse et clôture, avec un dossier imprimable à faire valider par l'expert-comptable"},
+    {'date':'2026-10-27','title':"Sécurité : liens des missions d'experts jamais mis en cache, contrôle de sécurité avant ouverture et dossier sécurité (preuves, restauration, incident, sous-traitants)"},
+    {'date':'2026-10-27','title':"Copilote : analyse du mois à partir de vos données, chaque chiffre sourcé et vérifié, problèmes à résoudre et actions"},
+    {'date':'2026-10-27','title':"La validation d'une facture fournisseur depuis sa fiche passe par les contrôles de la chaîne de traitement"},
+    {'date':'2026-10-27','title':"Chaîne de traitement des achats : chaque facture fournisseur contrôlée en dix étapes (mentions, doublons, contrat, écriture, TVA, trésorerie), validée puis vérifiée"},
     {'date':'2026-10-26','title':"Experts partenaires : faites appel à un professionnel vérifié depuis Mission Control, avec un dossier factuel partagé sur autorisation, devis, suivi et résultat contrôlé"},
     {'date':'2026-10-26','title':"Mission Control résout : rapprochements bancaires proposés avec preuves et validés en un clic, statut des créances anciennes, « ce qui manque » explicite, montants qualifiés"},
     {'date':'2026-10-26','title':"Opportunity Radar : votre chiffre d'affaires comparé à l'indice INSEE de votre secteur, clients dormants ou en croissance, dépendance client et appels d'offres"},

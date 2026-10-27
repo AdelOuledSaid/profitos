@@ -63,6 +63,7 @@ AMOUNT_LABELS = {
     'hausse_sans_contrat': 'Hausse constatée TTC', 'doublon': 'Montant en double possible TTC',
     'radar_dormant': 'Achats HT entre 18 et 6 mois', 'radar_croissance': "Hausse d'achats HT sur 6 mois",
     'radar_dependance': "Chiffre d'affaires HT du client sur 12 mois",
+    'fiscal_controle': 'Écart constaté',
 }
 
 

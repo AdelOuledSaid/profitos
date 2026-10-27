@@ -148,8 +148,6 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def expert_mission_action(mission_id):
-        if current_role() == 'LECTURE':
-            abort(403)
         op = request.form.get('op')
         user = current_user()['email']
         org = current_org()

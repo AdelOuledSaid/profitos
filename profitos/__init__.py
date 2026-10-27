@@ -189,6 +189,8 @@ def create_app(config_object=None):
     from .routes import once_done as once_done_routes
     from .routes import opportunity_radar as opportunity_radar_routes
     from .routes import expert_network as expert_network_routes
+    from .routes import purchase_pipeline as purchase_pipeline_routes
+    from .routes import copilot as copilot_routes
     account.register(app)
     from .routes import security as security_routes
     security_routes.register(app)
@@ -206,6 +208,8 @@ def create_app(config_object=None):
     once_done_routes.register(app)
     opportunity_radar_routes.register(app)
     expert_network_routes.register(app)
+    purchase_pipeline_routes.register(app)
+    copilot_routes.register(app)
     cash_intelligence.register(app)
     decision_simulator.register(app)
     invoicing.register(app)
@@ -353,7 +357,7 @@ def create_app(config_object=None):
 
 
 _PUBLIC_TOKEN_PREFIXES = ('/facture/', '/devis/', '/export-download/', '/comptabilite/export-fec/telecharger/',
-                          '/invitation/', '/collaboration-comptable/accepter/')
+                          '/invitation/', '/collaboration-comptable/accepter/', '/expert/mission/')
 _PUBLIC_TOKEN_ENDPOINTS = ('public_invoice_view', 'public_invoice_pdf', 'public_quote_view', 'public_quote_pdf',
                            'export_download', 'accounting_fec_download')
 

@@ -185,6 +185,8 @@ suspendra alors l'indicateur.
 
 ## 6. Vérifications après déploiement
 
+- `python scripts/security_check.py` : aucun point bloquant (en-têtes, cookie, liens secrets, 2FA des
+  administrateurs, journal de sécurité, sauvegardes) — voir `docs/securite.md`
 - `GET /healthz` = 200, `GET /readyz` = 200 avec `database=postgresql`, `GET /ops/health`
 - inscription, vérification d'email reçue (Resend), connexion, mot de passe oublié reçu
 - deux organisations : aucune fuite de données

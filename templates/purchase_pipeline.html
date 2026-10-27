@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% macro row(a, selectable=false) %}{% set p = a.purchase %}
+<tr>
+  {% if selectable %}<td><input type="checkbox" name="purchase_id" value="{{ p.id }}" {{ 'checked' if a.level == 'pret' }} aria-label="Valider la facture {{ p.invoice_number }}"></td>{% endif %}
+  <td><a class="link" href="{{ url_for('purchase_pipeline_detail', purchase_id=p.id) }}">{{ p.invoice_number }}</a><br><span class="purchase-muted">{{ p.supplier_name }} · {{ p.issue_date|fr_date }}</span></td>
+  <td class="num">{{ p.total|fr_number(2) }} €</td>
+  <td><span class="pp-steps" aria-label="Étapes">{% for s in a.steps[:7] %}<span class="pp-dot {{ s.level }}" title="{{ s.n }}. {{ s.name }}">{{ s.n }}</span>{% endfor %}</span></td>
+  <td>{% if a.issues %}{% for i in a.issues[:2] %}<span class="{{ 'mc-ko' if i.ok is sameas false else 'mc-warn' }}">{{ '✗' if i.ok is sameas false else '?' }}</span> {{ i.step }} : {{ i.label }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% if a.issues|length > 2 %}<br><span class="purchase-muted">+ {{ a.issues|length - 2 }} autre(s)</span>{% endif %}{% else %}<span class="mc-ok">✓</span> Conforme{% endif %}</td>
+</tr>{% endmacro %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CHAÎNE DE TRAITEMENT DES ACHATS</div>
+    <h1 class="purchase-title">Factures fournisseurs, de la réception au paiement</h1>
+    <p class="purchase-subtitle">Chaque facture passe dix étapes : réception, mentions obligatoires, doublons, contrat, écriture comptable, TVA, trésorerie, anomalies, actions proposées, exécution contrôlée. Rien n'est validé sans vous ; tout est revérifié au moment de l'exécution.</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('purchase_list') }}">← Achats</a></div>
+</div>
+<div class="mc-kpis">
+  <div class="mc-kpi"><b>{{ groups.ready|length }}</b><span>Prête(s) à valider</span></div>
+  <div class="mc-kpi"><b>{{ groups.blocked|length }}</b><span>Bloquée(s)</span></div>
+  <div class="mc-kpi"><b>{{ groups.check|length }}</b><span>À vérifier</span></div>
+  <div class="mc-kpi"><b>{{ groups.ok|length }}</b><span>Conforme(s)</span></div>
+</div>
+{% if groups.ready %}
+<form method="post" class="purchase-panel mc-section">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2>Prêtes à valider ({{ groups.ready|length }})</h2>
+  <p class="purchase-muted" style="font-size:12px;">Toutes les vérifications bloquantes sont passées. Les factures entièrement conformes sont pré-cochées ; celles qui portent un point « ? » (TVA particulière, justificatif…) sont à cocher après examen. La validation passe l'écriture d'achat, puis ProfitOS contrôle qu'elle est bien enregistrée et équilibrée.</p>
+  <div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>Valider</th><th>Facture</th><th class="num">TTC</th><th>Étapes 1 à 7</th><th>Points d'attention</th></tr></thead>
+  <tbody>{% for a in groups.ready %}{{ row(a, true) }}{% endfor %}</tbody></table></div>
+  {% if can_validate %}<button type="submit" class="purchase-primary-btn primary" style="margin-top:10px;">Valider et comptabiliser les factures cochées</button>
+  {% else %}<p class="purchase-muted">Seul un propriétaire, administrateur ou comptable peut valider.</p>{% endif %}
+</form>
+{% endif %}
+{% for key, label in (('blocked', 'Bloquées'), ('check', 'À vérifier'), ('ok', 'Conformes')) %}{% if groups[key] %}
+<section class="purchase-panel mc-section">
+  <h2>{{ label }} ({{ groups[key]|length }})</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table"><thead><tr><th>Facture</th><th class="num">TTC</th><th>Étapes 1 à 7</th><th>Points d'attention</th></tr></thead>
+  <tbody>{% for a in groups[key] %}{{ row(a) }}{% endfor %}</tbody></table></div>
+</section>
+{% endif %}{% endfor %}
+{% if not total %}<section class="purchase-panel"><p style="margin:0;">Aucune facture fournisseur à suivre (en attente, non réglée ou des 4 derniers mois).</p></section>{% endif %}
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Légende des étapes : <span class="pp-dot pret">✓</span> vérifiée, <span class="pp-dot a_verifier">?</span> à vérifier, <span class="pp-dot bloque">✗</span> bloquante. Les points de TVA (autoliquidation, carburant, services) sont signalés avec la règle applicable ; ils restent à confirmer avec votre expert-comptable dans les cas particuliers.</p>
+</div>
+{% endblock %}

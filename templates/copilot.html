@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">COPILOTE</div>
+    <h1 class="purchase-title">Votre situation, chiffres à l'appui</h1>
+    <p class="purchase-subtitle">Tous les chiffres sont calculés par ProfitOS sur vos données et numérotés (F1, F2…) avec leur source. L'IA ne fait que rédiger à partir de ces faits ; une réponse qui contient un chiffre non justifié est écartée.</p>
+  </div>
+</div>
+
+<form method="post" class="purchase-panel stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Votre question<textarea name="question" rows="2" maxlength="1000" placeholder="{{ preset }}">{{ question or '' }}</textarea></label>
+  <div class="mc-actions">
+    <button type="submit" class="purchase-primary-btn primary">Demander</button>
+    <button type="submit" name="question" value="{{ preset }}" class="purchase-nav-btn">Analyse du mois</button>
+  </div>
+  {% if not ai_configured %}<p class="purchase-muted" style="font-size:12px;margin:0;">L'IA n'est pas configurée sur ce serveur : le copilote affiche le rapport calculé.</p>
+  {% else %}<p class="purchase-muted" style="font-size:12px;margin:0;">Pour rédiger, les faits chiffrés ci-dessous (pas vos documents) sont transmis au service d'IA configuré ; chaque question compte dans le quota IA de votre formule.</p>{% endif %}
+</form>
+
+{% if note %}<div class="flash" role="status" style="margin-top:12px;">{{ note }}</div>{% endif %}
+
+<section class="purchase-panel mc-section">
+  <h2>{{ 'Réponse' if answer else 'Synthèse du mois' }}</h2>
+  {% if answer %}
+    <div class="cp-answer">{{ answer|replace('\n\n', '\n')|e|replace('\n', '<br>'|safe) }}</div>
+    <p class="purchase-muted" style="font-size:12px;">Rédigé par l'IA à partir des faits ci-dessous ; chaque chiffre a été vérifié.</p>
+  {% else %}
+    <ul class="mw-news">{% for l in report %}<li>{{ l }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+<section class="purchase-panel mc-section">
+  <h2>Problèmes à résoudre ({{ dossier.problems|length }})</h2>
+  {% if dossier.problems %}
+  <ol class="mw-news">{% for p in dossier.problems[:12] %}{% set f = links.get(p.key) %}
+    <li><strong>{{ p.title }}</strong>{% if p.amount is not none %} — {{ p.amount_label }} : {{ p.amount|fr_number(2) }} €{% if p.fact %} [{{ p.fact }}]{% endif %}{% endif %}
+      <span class="purchase-muted">({{ {'critique': 'critique', 'important': 'important', 'info': 'information'}[p.severity] }})</span>
+      {% if p.missing %}<br><span class="purchase-muted">Ce qui manque : {% for m in p.missing[:2] %}{{ m.label }}{% if m.fix %} — {{ m.fix }}{% endif %}{% if not loop.last %} ; {% endif %}{% endfor %}</span>{% endif %}
+      {% if f and (f.main_link or f.can_run) %}<br><a class="link" href="{{ url_for('mission_control') }}">{{ p.action or 'Traiter dans Mission Control' }} →</a>{% endif %}
+    </li>{% endfor %}</ol>
+  {% else %}<p class="purchase-muted">Mission Control ne signale aucun problème ouvert.</p>{% endif %}
+</section>
+
+<section class="purchase-panel mc-section">
+  <h2>Faits et calculs</h2>
+  <div class="purchase-table-wrap"><table class="purchase-table">
+    <thead><tr><th>N°</th><th>Fait</th><th>Valeur</th><th>Calcul</th><th>Source</th></tr></thead>
+    <tbody>{% for f in dossier.facts %}<tr><td>{{ f.id }}</td><td>{{ f.label }}</td><td><strong>{{ f.value }}</strong></td><td class="purchase-muted">{{ f.calc }}</td><td class="purchase-muted">{{ f.source }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if dossier.missing %}<p class="mc-note">Non disponible : {% for m in dossier.missing %}{{ m.label }}{% if not loop.last %}, {% endif %}{% endfor %} (le copilote ne remplace pas une donnée manquante).</p>{% endif %}
+</section>
+<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Le copilote informe ; il ne remplace ni votre expert-comptable ni un conseil juridique. Les montants de TVA sont des estimations d'après la comptabilité.</p>
+</div>
+{% endblock %}

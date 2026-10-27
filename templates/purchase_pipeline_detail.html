@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}{% set p = a.purchase %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">CHAÎNE DE TRAITEMENT · FACTURE FOURNISSEUR</div>
+    <h1 class="purchase-title">{{ p.supplier_name }} — {{ p.invoice_number }}</h1>
+    <p class="purchase-subtitle">{{ p.total|fr_number(2) }} € TTC du {{ p.issue_date|fr_date }}{% if p.due_date %}, échéance {{ p.due_date|fr_date }}{% endif %} · {{ {'pending': 'en attente de validation', 'approved': 'validée', 'rejected': 'rejetée'}.get(p.validation_status or 'approved') }}</p>
+  </div>
+  <div class="actionbuttons"><a class="purchase-nav-btn" href="{{ url_for('purchase_pipeline') }}">← Chaîne</a><a class="purchase-nav-btn" href="{{ url_for('purchase_detail', purchase_id=p.id) }}">Fiche de la facture</a></div>
+</div>
+
+{% if actions %}
+<section class="purchase-panel">
+  <h2>Actions proposées</h2>
+  <div class="mc-actions">
+  {% for x in actions %}
+    {% if x.kind == 'execute' %}
+      {% if x.allowed and can_validate %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="op" value="{{ x.op }}"><button type="submit" class="purchase-primary-btn primary">{{ x.label }}</button></form>
+      {% else %}<p class="pp-disabled"><strong>{{ x.label }}</strong> : {{ 'réservé aux propriétaires, administrateurs et comptables.' if x.allowed else 'impossible tant que les anomalies ci-dessous (étapes en rouge) ne sont pas levées.' }}</p>{% endif %}
+    {% else %}<a class="purchase-nav-btn" href="{{ x.url }}">{{ x.label }}</a>{% endif %}
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<ol class="pp-list">
+{% for s in a.steps %}
+  <li class="purchase-panel pp-step {{ s.level }}">
+    <div class="mc-head"><h2><span class="pp-dot {{ s.level }}">{{ s.n }}</span> {{ s.name }}</h2>{% if s.summary %}<span class="purchase-muted">{{ s.summary }}</span>{% endif %}</div>
+    <ul class="mc-checks">{% for ch in s.checks %}
+      <li><span class="{{ 'mc-ok' if ch.ok is sameas true else ('mc-ko' if ch.ok is sameas false else 'mc-warn') }}">{{ '✓' if ch.ok is sameas true else ('✗' if ch.ok is sameas false else '?') }}</span><span><strong>{{ ch.label }}</strong>{% if ch.detail %} — {{ ch.detail }}{% endif %}{% if ch.source %} <span class="purchase-muted">({{ ch.source }})</span>{% endif %}{% if ch.fix and ch.ok is not sameas true %}<br><em>À faire : {{ ch.fix }}</em>{% endif %}</span></li>
+    {% endfor %}</ul>
+    {% if s.n == 5 %}
+      <div class="purchase-table-wrap"><table class="purchase-table">
+        <thead><tr><th>Compte</th><th>Libellé</th><th class="num">Débit</th><th class="num">Crédit</th></tr></thead>
+        <tbody>{% for l in (a.entry_lines if a.entry else a.proposed_entry) %}<tr><td>{{ l.account_code }}</td><td>{{ l.label or l.auxiliary_name or '' }}</td><td class="num">{% if l.debit %}{{ l.debit|fr_number(2) }}{% endif %}</td><td class="num">{% if l.credit %}{{ l.credit|fr_number(2) }}{% endif %}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      <p class="purchase-muted" style="font-size:12px;margin:4px 0 0;">{{ 'Écriture enregistrée.' if a.entry else 'Écriture préparée : elle sera passée à la validation.' }}</p>
+    {% endif %}
+    {% if s.n == 10 and a.log %}
+      <ul class="mw-news">{% for l in a.log[:10] %}<li><span class="{{ 'mc-ok' if l.ok else 'mc-ko' }}">{{ '✓' if l.ok else '✗' }}</span> {{ l.at|fr_date }} — {{ l.actor }} — {{ l.action }} : {{ l.result }}</li>{% endfor %}</ul>
+    {% endif %}
+  </li>
+{% endfor %}
+</ol>
+</div>
+{% endblock %}

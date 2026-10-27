@@ -278,6 +278,22 @@
 </table></div>
 <p><strong>Rapport du lundi</strong> : chaque lundi matin, le propriétaire reçoit par e-mail « Votre semaine » : factures clients échues et attendues sous 7 jours, factures fournisseurs à régler, échéances fiscales des deux semaines à venir, pièces demandées par l'expert-comptable et indicateurs de la veille en alerte, suivis des nouveautés (retards, économies, appels d'offres). Il se désactive dans les paramètres ou d'un clic depuis l'e-mail.</p>
 <p>Le lien <strong>à mettre à jour</strong> apparaît sous le solde quand il date de plus de 7 jours : la prévision part de ce montant, il faut donc le tenir à jour (voir Trésorerie).</p>
+<h3 id="copilote">Copilote</h3>
+<p>Menu <strong>Trésorerie → Copilote</strong>. Posez une question (« Analyse ma situation financière et
+fiscale du mois et indique-moi les problèmes à résoudre ») ou cliquez <strong>Analyse du mois</strong>.</p>
+<ul>
+<li>ProfitOS calcule d'abord les <strong>faits</strong> sur vos données, numérotés F1, F2… avec leur calcul et
+  leur source : chiffre d'affaires facturé du mois et du mois précédent, encaissements,
+  impayés, achats, factures fournisseurs à payer, solde bancaire, point bas prévu, estimation
+  de TVA, échéances et retards fiscaux, montants des constats de Mission Control.</li>
+<li>L'IA rédige la réponse <strong>uniquement à partir de ces faits</strong>, en citant le fait utilisé. Chaque
+  chiffre de la réponse est vérifié : un chiffre absent des faits ou une référence inexistante
+  fait écarter la réponse, et le rapport calculé est affiché avec la raison.</li>
+<li>Sans IA configurée (ou au-delà du quota IA de votre formule), le copilote affiche directement
+  le rapport calculé.</li>
+<li>La liste <strong>Problèmes à résoudre</strong> vient de Mission Control, avec ce qui manque et l'action.</li>
+<li>Seuls les faits chiffrés sont transmis au service d'IA, pas vos documents.</li>
+</ul>
 <h3 id="mission-control">Mission Control</h3>
 <p>Menu <strong>Trésorerie → Mission Control</strong>. Un seul écran pour ce qui demande votre attention :
 impayés clients, factures fournisseurs à régler, tension de trésorerie, mouvements bancaires
@@ -428,6 +444,42 @@ résultat contrôlé</strong>.</p>
 <li><strong>Nouvelle facture</strong> : saisie manuelle.</li>
 </ul>
 <p>Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.</p>
+<h3 id="chaine-de-traitement-des-factures-fournisseurs">Chaîne de traitement des factures fournisseurs</h3>
+<p>Menu <strong>Facturation → Achats → Chaîne de traitement</strong> (ou <strong>Contrôles en 10 étapes</strong> sur une
+facture). Chaque facture fournisseur, quelle que soit son origine (facture électronique, PDF,
+boîte mail, saisie), passe dix étapes dont le résultat est affiché :</p>
+<ol>
+<li><strong>Réception</strong> : origine et justificatif (sans PDF ni original électronique, la TVA n'est
+   pas déductible) ; statut de la facture électronique.</li>
+<li><strong>Mentions obligatoires</strong> : numéro et date, fournisseur identifié (SIRET ou n° de TVA sur sa
+   fiche), HT + TVA = TTC, taux de TVA plausible, échéance cohérente.</li>
+<li><strong>Doublons</strong> : même numéro chez le même fournisseur (bloquant), même montant à moins de
+   10 jours (à vérifier).</li>
+<li><strong>Contrat fournisseur</strong> : comparaison au contrat enregistré, révisé par son indice.</li>
+<li><strong>Écriture comptable</strong> : écriture préparée (charge, TVA déductible, fournisseur) ou déjà
+   passée et contrôlée ; période comptable ouverte.</li>
+<li><strong>TVA</strong> : traitement applicable — TVA déductible, pas de TVA (franchise, exonération),
+   <strong>autoliquidation</strong> (fournisseur d'un autre pays sans TVA, sous-traitance du bâtiment),
+   <strong>carburant</strong> (80 % pour un véhicule de tourisme, 100 % pour un utilitaire), <strong>services</strong>
+   (TVA déductible au paiement, sauf option du fournisseur pour les débits). Les cas
+   particuliers sont signalés avec la règle et restent à confirmer avec votre expert-comptable ;
+   l'autoliquidation n'est pas passée automatiquement.</li>
+<li><strong>Trésorerie</strong> : échéance intégrée à la prévision, solde bancaire suffisant.</li>
+<li><strong>Anomalies</strong> : synthèse des points bloquants et à vérifier.</li>
+<li><strong>Actions proposées</strong> : valider et comptabiliser, générer une écriture manquante, contester
+   auprès du fournisseur, joindre le justificatif, rejeter un doublon, préparer le virement.</li>
+<li><strong>Exécution et contrôle</strong> : après votre validation (propriétaire, administrateur ou
+    comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
+    et équilibrée et que la facture est validée ; chaque exécution est consignée.</li>
+</ol>
+<p>Le bouton <strong>Valider la facture</strong> de la fiche applique les mêmes contrôles : une anomalie
+bloquante (doublon, montants incohérents, écart au contrat, période close…) empêche la
+validation, avec la raison ; le résultat est consigné au journal de la chaîne.
+Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
+moment de la validation est refusée avec la raison. Mission Control signale les factures
+prêtes, à vérifier ou bloquées. Pour que les contrôles aient lieu <strong>avant</strong> la comptabilisation,
+activez la validation des factures d'achat dans les paramètres : sans elle, l'écriture est
+passée dès l'enregistrement et la chaîne contrôle a posteriori.</p>
 <h3 id="contrats-fournisseurs-contract-guardian">Contrats fournisseurs (Contract Guardian)</h3>
 <p>Menu <strong>Dépenses &amp; marges → Contrats fournisseurs</strong>. Enregistrez vos contrats récurrents
 (maintenance, logiciels, téléphonie, location, assurance, énergie…) : montant HT prévu par
@@ -944,6 +996,7 @@ après vérification de leur inscription.</p>
 <ul>
 <li><strong>Échéances fiscales</strong> (menu Comptabilité) : les 90 prochains jours — TVA selon votre régime (CA3, ou CA12 et ses acomptes), acomptes et solde d'IS, liasse, CVAE, DAS2, prélèvements sur dividendes, IFU, CFE — avec le montant estimé et l'état de dépôt de chaque déclaration. Le propriétaire reçoit un rappel par e-mail <strong>7 jours puis la veille</strong> de chaque échéance non encore déposée, puis une relance le lendemain et chaque semaine tant qu'aucun justificatif n'est archivé.</li>
 <li><strong>Contrôles avant liasse</strong> : IS non comptabilisé, TVA non liquidée, comptes de charges ou de produits de sens anormal, capital non repris, comptes d'attente, exercice non clôturé. Ils s'affichent aussi sur la liasse et lors de la préparation de sa télédéclaration.</li>
+<li><strong>Contrôles fiscaux</strong> (menu Comptabilité) : ce qui a été déclaré, rapproché de votre comptabilité actuelle. Une TVA déposée dont les écritures ont changé depuis (régularisation ou rectificative à prévoir), une TVA mal calculée par rapport à sa base, de la TVA sans taux, une période non liquidée, de la TVA à décaisser restée impayée, un chiffre d'affaires sans TVA collectée à justifier (export, exonération…), des acomptes d'IS exigibles non versés ou un excédent d'acomptes à récupérer, une liasse déséquilibrée. Chaque point cite sa source et dit quoi faire ; les écarts à corriger remontent aussi dans Mission Control. Le bouton <strong>Dossier pour l'expert-comptable</strong> produit un document imprimable (contrôles, déclarations et mode de transmission, échéances, cases de revue et de signature) : ProfitOS prépare, votre expert-comptable valide, et la transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr.</li>
 <li><strong>Écritures récurrentes</strong> : loyers, abonnements, dotations mensuelles… Enregistrez le modèle (comptes, montants, fréquence mensuelle, trimestrielle ou annuelle, première et dernière échéance) : ProfitOS passe l'écriture chaque matin à l'échéance, rattrape les échéances passées, et ne passe jamais deux fois la même.</li>
 <li><strong>Suivi des télédéclarations</strong> : avec un partenaire EDI connecté, les statuts sont actualisés toutes les heures et le propriétaire est prévenu en cas de rejet.</li>
 </ul>
@@ -1074,6 +1127,7 @@ expert-comptable.</p>
 <li><strong>Sessions</strong> : la liste de vos appareils connectés ; déconnectez-en un à distance. Une connexion depuis un nouvel appareil vous est signalée par e-mail.</li>
 <li><strong>Mot de passe et e-mail</strong> : changer de mot de passe déconnecte vos autres appareils ; un changement d'e-mail se confirme depuis la nouvelle adresse.</li>
 <li><strong>Protection automatique</strong> : après 10 mots de passe erronés, le compte est verrouillé temporairement ; une session inactive se ferme d'elle-même.</li>
+<li><strong>Ce que ProfitOS protège pour vous</strong> : chaque entreprise a sa propre base, les jetons bancaires et secrets sont chiffrés, les liens envoyés (factures, devis, missions d'experts) ne sont jamais conservés en cache, et les sauvegardes quotidiennes sont chiffrées et testées. Le détail des contrôles et de leurs preuves est disponible sur demande (dossier sécurité).</li>
 </ul>
 <h2 id="donnees-personnelles-et-export-rgpd">15. Données personnelles et export RGPD</h2>
 <p>Vos données vous appartiennent : vous pouvez les télécharger à tout moment et supprimer votre compte vous-même.</p>

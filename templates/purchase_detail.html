@@ -99,6 +99,7 @@
   </section>
 
   <div style="margin-top:24px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <a class="purchase-nav-btn" href="{{ url_for('purchase_pipeline_detail', purchase_id=p.id) }}">Contrôles en 10 étapes</a>
     {% if p.validation_status=='pending' and current_role() in ('OWNER','ADMIN','COMPTABLE') %}
     <form method="post" action="{{ url_for('purchase_validate',purchase_id=p.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

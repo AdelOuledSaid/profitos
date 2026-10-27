@@ -209,6 +209,31 @@ dépréciation d'un client douteux 2 000.
 | Dépôt simulé affiché « Acceptée » et compté comme déposé | échéance cochée sans dépôt réel | libellé « (simulation) », exclu des dépôts réels |
 | v461 — CA3 en retard d'un jour non relancée | la recherche des retards (63 jours en arrière) ne voyait que les deux périodes voisines de son point de départ : relance seulement au bout d'un mois | toutes les périodes dont l'échéance tombe dans la fenêtre |
 
+## 5 bis. Contrôles croisés déclaré ↔ comptabilisé (v490)
+
+Écran **Comptabilité → Contrôles fiscaux** (`profitos/fiscal_controls.py`, tests
+`tests/test_v490_controles_fiscaux.py`). Chaque contrôle est « conforme », « à vérifier » ou
+« écart à corriger », cite sa source et indique l'action :
+
+| Contrôle | Règle | Niveau en cas d'écart |
+| --- | --- | --- |
+| TVA déclarée ↔ écritures | lignes 16, 19 et 20 de la dernière version de chaque CA3 (hors simulation) comparées aux écritures actuelles de la période, tolérance 1 € | écart à corriger si déposée (régularisation ou rectificative) ; à vérifier si seulement préparée |
+| Base × taux | TVA du 445710 par taux comparée à base × taux sur l'exercice, tolérance 1 % (au moins 1 €) | à vérifier |
+| TVA non ventilée | TVA sans taux mémorisé | à vérifier |
+| Liquidation | comptes 445710, 445620, 445660 soldés avant le mois en cours | écart à corriger |
+| TVA à décaisser | solde du 445510 au-delà de la dernière liquidation | à vérifier |
+| CA ↔ base taxée | comptes 70 comparés aux bases taxées, tolérance 2 % (au moins 1 000 €) | à vérifier (export, exonération, autoliquidation, encaissements) |
+| Acomptes d'IS | acomptes exigibles depuis 5 jours (calculés sur l'IS de l'exercice clos) comparés au compte 444 ; pas de comparaison sur le seul premier acompte, calculé sur N-2 | à vérifier |
+| Excédent d'acomptes | solde d'IS négatif sur l'exercice clos | à vérifier (remboursement avec le 2572) |
+| Liasse | équilibre du bilan, comptes rattachés par défaut | écart / à vérifier |
+| Clôture | pré-contrôles existants (IS non comptabilisé, comptes d'attente…) | à vérifier |
+
+Le **dossier de contrôle fiscal** (`/comptabilite/controles-fiscaux/dossier`, imprimable,
+jamais mis en cache) reprend ces contrôles avec une case de revue par ligne, la liste des
+déclarations avec leur **mode de transmission** (préparée par ProfitOS, déposée par
+l'entreprise sur impots.gouv.fr, transmise par le partenaire EDI, simulation) et un bloc de
+validation signé par l'expert-comptable.
+
 ## 6. Parcours complet dans un navigateur, sur PostgreSQL (v461)
 
 `tests/test_v461_parcours_complet.py` enchaîne tout le parcours d'un client dans Chromium

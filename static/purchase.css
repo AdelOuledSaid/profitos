@@ -508,3 +508,21 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .mc-head h3{min-width:0;overflow-wrap:anywhere}
 .mc-decision input[name=note]{min-width:0;flex:1 1 180px}
 .mc-decision select{max-width:100%}
+
+/* Chaîne de traitement des achats (v486) */
+.pp-steps{display:inline-flex;gap:3px;flex-wrap:wrap}
+.pp-dot{display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;border:1px solid currentColor}
+.pp-dot.pret{color:#4cc38a}.pp-dot.a_verifier{color:#e8a33d}.pp-dot.bloque{color:#e5484d}
+.pp-list{list-style:none;padding:0;margin:12px 0;display:grid;gap:10px}
+.pp-step h2{font-size:15px;margin:0;display:flex;gap:8px;align-items:center}
+.pp-step.bloque{border-left:4px solid #e5484d}.pp-step.a_verifier{border-left:4px solid #e8a33d}.pp-step.pret{border-left:4px solid #4cc38a}
+.pp-disabled{flex-basis:100%;margin:0;font-size:13px;color:#e8a33d;white-space:normal}
+.pp-list{grid-template-columns:minmax(0,1fr)}
+.pp-list>li{min-width:0}
+.cp-answer{font-size:14px;line-height:1.55}
+/* Contrôles fiscaux (v490) */
+.fc-scope{font-size:13px;margin:8px 0 4px;padding:8px 10px;border:1px solid var(--border,#294064);border-radius:8px}
+.fc-level{font-size:11px;font-weight:600;border:1px solid currentColor;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+.fc-pret{color:#4cc38a}.fc-a_verifier{color:#e8a33d}.fc-bloque{color:#e5484d}
+.fc-checks li>div{min-width:0;overflow-wrap:anywhere}
+.fc-detail{font-size:13px;opacity:.9;margin-top:2px}
