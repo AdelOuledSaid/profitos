@@ -86,6 +86,7 @@ trentaine de modules de routes ; la logique métier vit dans des modules Python 
 | Once & Done | `once_done` (dossier entreprise vérifié, saisie unique rangée à sa place d'origine, démarches pré-remplies) et `routes/once_done` |
 | Opportunity Radar | `opportunity_radar` (secteur comparé sur un an à l'indice INSEE, clients dormants et en croissance, dépendance, appels d'offres) et `routes/opportunity_radar` (page `/opportunites`, point d'entrée `radar`) |
 | Expert Network | `expert_network` (annuaire partagé vérifié, missions par entreprise, dossier figé avec consentement, liens expert hachés et expirables) et `routes/expert_network` (`/experts`, `/expert/mission/<lien>`, `/admin/experts`) |
+| Chaîne des achats | `purchase_pipeline` (moteur d'automatisation : dix étapes par facture fournisseur, actions validées, exécution recalculée et contrôlée, journal) et `routes/purchase_pipeline` |
 | Comptabilité | `accounting` (écritures, immobilisations, cessions), `ledger` (exercices, balance, clôture), `reviews`, `plaquette` |
 | Liasses | `liasse` (2033-A/B), `liasse_2033_annexes` (2033-B fiscal à 2033-G), `liasse_normal` (2050 à 2059-E), `liasse_annexes` (2054 à 2056 codés, 2059-A à G, 2065) |
 | Impôts | `vat_return` (CA3, CA12), `corporate_tax` (IS, CVAE, calendrier, profil fiscal, mandat), `tiers_declarations` (DAS2, 2777, IFU), `local_taxes` (CFE, DECLOYER) |

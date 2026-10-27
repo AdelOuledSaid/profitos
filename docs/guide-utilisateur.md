@@ -268,6 +268,41 @@ Trois façons de faire entrer une facture :
 
 Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.
 
+### Chaîne de traitement des factures fournisseurs
+
+Menu **Facturation → Achats → Chaîne de traitement** (ou **Contrôles en 10 étapes** sur une
+facture). Chaque facture fournisseur, quelle que soit son origine (facture électronique, PDF,
+boîte mail, saisie), passe dix étapes dont le résultat est affiché :
+
+1. **Réception** : origine et justificatif (sans PDF ni original électronique, la TVA n'est
+   pas déductible) ; statut de la facture électronique.
+2. **Mentions obligatoires** : numéro et date, fournisseur identifié (SIRET ou n° de TVA sur sa
+   fiche), HT + TVA = TTC, taux de TVA plausible, échéance cohérente.
+3. **Doublons** : même numéro chez le même fournisseur (bloquant), même montant à moins de
+   10 jours (à vérifier).
+4. **Contrat fournisseur** : comparaison au contrat enregistré, révisé par son indice.
+5. **Écriture comptable** : écriture préparée (charge, TVA déductible, fournisseur) ou déjà
+   passée et contrôlée ; période comptable ouverte.
+6. **TVA** : traitement applicable — TVA déductible, pas de TVA (franchise, exonération),
+   **autoliquidation** (fournisseur d'un autre pays sans TVA, sous-traitance du bâtiment),
+   **carburant** (80 % pour un véhicule de tourisme, 100 % pour un utilitaire), **services**
+   (TVA déductible au paiement, sauf option du fournisseur pour les débits). Les cas
+   particuliers sont signalés avec la règle et restent à confirmer avec votre expert-comptable ;
+   l'autoliquidation n'est pas passée automatiquement.
+7. **Trésorerie** : échéance intégrée à la prévision, solde bancaire suffisant.
+8. **Anomalies** : synthèse des points bloquants et à vérifier.
+9. **Actions proposées** : valider et comptabiliser, générer une écriture manquante, contester
+   auprès du fournisseur, joindre le justificatif, rejeter un doublon, préparer le virement.
+10. **Exécution et contrôle** : après votre validation (propriétaire, administrateur ou
+    comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
+    et équilibrée et que la facture est validée ; chaque exécution est consignée.
+
+Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
+moment de la validation est refusée avec la raison. Mission Control signale les factures
+prêtes, à vérifier ou bloquées. Pour que les contrôles aient lieu **avant** la comptabilisation,
+activez la validation des factures d'achat dans les paramètres : sans elle, l'écriture est
+passée dès l'enregistrement et la chaîne contrôle a posteriori.
+
 ### Contrats fournisseurs (Contract Guardian)
 
 Menu **Dépenses & marges → Contrats fournisseurs**. Enregistrez vos contrats récurrents

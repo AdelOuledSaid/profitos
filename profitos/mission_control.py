@@ -23,7 +23,7 @@ BANK_PENDING_DAYS = 7
 
 KIND_LABELS = {'contrat_preavis': 'Contrats fournisseurs', 'contrat_ecart': 'Contrats fournisseurs',
                'contrat_hors_periode': 'Contrats fournisseurs', 'hausse_sans_contrat': 'Hausses de prix',
-               'doublon': 'Doublons possibles', 'dossier': 'Dossier entreprise',
+               'doublon': 'Doublons possibles', 'dossier': 'Dossier entreprise', 'achat_traitement': 'Chaîne des achats',
                'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
                'banque': 'Banque', 'fiscal': 'Échéances fiscales', 'pieces': 'Pièces justificatives',
                'veille': 'Veille de votre secteur', 'controle_indisponible': 'Contrôles'}
@@ -572,6 +572,11 @@ def _contract_kinds():
     return CG.KINDS
 
 
+def detect_purchase_pipeline(c, eid, today):
+    from profitos import purchase_pipeline as PP
+    return PP.detect(c, eid, today)
+
+
 def detect_dossier(c, eid, today):
     from profitos import once_done as OD
     return OD.detect(c, eid, today)
@@ -581,7 +586,8 @@ def detect_dossier(c, eid, today):
 DETECTORS = [('impaye', 'impayés clients', detect_receivables), ('fournisseur', 'paiements fournisseurs', detect_payables),
              ('banque', 'mouvements bancaires', detect_bank_pending), ('fiscal', 'échéances fiscales', detect_fiscal),
              ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch),
-             (_contract_kinds, 'contrats fournisseurs', detect_contracts), ('dossier', 'dossier entreprise', detect_dossier)]
+             (_contract_kinds, 'contrats fournisseurs', detect_contracts), ('dossier', 'dossier entreprise', detect_dossier),
+             ('achat_traitement', 'chaîne des achats', detect_purchase_pipeline)]
 
 
 def compute(c, eid, today, cash=None, accounting=True):

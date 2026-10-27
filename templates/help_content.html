@@ -428,6 +428,39 @@ résultat contrôlé</strong>.</p>
 <li><strong>Nouvelle facture</strong> : saisie manuelle.</li>
 </ul>
 <p>Les factures électroniques reçues par la plateforme arrivent aussi ici (section 6). ProfitOS signale une facture qui ressemble à une facture déjà enregistrée (même fournisseur, numéro ou montant) pour éviter de la payer deux fois.</p>
+<h3 id="chaine-de-traitement-des-factures-fournisseurs">Chaîne de traitement des factures fournisseurs</h3>
+<p>Menu <strong>Facturation → Achats → Chaîne de traitement</strong> (ou <strong>Contrôles en 10 étapes</strong> sur une
+facture). Chaque facture fournisseur, quelle que soit son origine (facture électronique, PDF,
+boîte mail, saisie), passe dix étapes dont le résultat est affiché :</p>
+<ol>
+<li><strong>Réception</strong> : origine et justificatif (sans PDF ni original électronique, la TVA n'est
+   pas déductible) ; statut de la facture électronique.</li>
+<li><strong>Mentions obligatoires</strong> : numéro et date, fournisseur identifié (SIRET ou n° de TVA sur sa
+   fiche), HT + TVA = TTC, taux de TVA plausible, échéance cohérente.</li>
+<li><strong>Doublons</strong> : même numéro chez le même fournisseur (bloquant), même montant à moins de
+   10 jours (à vérifier).</li>
+<li><strong>Contrat fournisseur</strong> : comparaison au contrat enregistré, révisé par son indice.</li>
+<li><strong>Écriture comptable</strong> : écriture préparée (charge, TVA déductible, fournisseur) ou déjà
+   passée et contrôlée ; période comptable ouverte.</li>
+<li><strong>TVA</strong> : traitement applicable — TVA déductible, pas de TVA (franchise, exonération),
+   <strong>autoliquidation</strong> (fournisseur d'un autre pays sans TVA, sous-traitance du bâtiment),
+   <strong>carburant</strong> (80 % pour un véhicule de tourisme, 100 % pour un utilitaire), <strong>services</strong>
+   (TVA déductible au paiement, sauf option du fournisseur pour les débits). Les cas
+   particuliers sont signalés avec la règle et restent à confirmer avec votre expert-comptable ;
+   l'autoliquidation n'est pas passée automatiquement.</li>
+<li><strong>Trésorerie</strong> : échéance intégrée à la prévision, solde bancaire suffisant.</li>
+<li><strong>Anomalies</strong> : synthèse des points bloquants et à vérifier.</li>
+<li><strong>Actions proposées</strong> : valider et comptabiliser, générer une écriture manquante, contester
+   auprès du fournisseur, joindre le justificatif, rejeter un doublon, préparer le virement.</li>
+<li><strong>Exécution et contrôle</strong> : après votre validation (propriétaire, administrateur ou
+    comptable), ProfitOS revérifie tout, passe l'écriture, puis contrôle qu'elle est enregistrée
+    et équilibrée et que la facture est validée ; chaque exécution est consignée.</li>
+</ol>
+<p>Les factures prêtes peuvent être validées par lot ; une facture qui n'est plus conforme au
+moment de la validation est refusée avec la raison. Mission Control signale les factures
+prêtes, à vérifier ou bloquées. Pour que les contrôles aient lieu <strong>avant</strong> la comptabilisation,
+activez la validation des factures d'achat dans les paramètres : sans elle, l'écriture est
+passée dès l'enregistrement et la chaîne contrôle a posteriori.</p>
 <h3 id="contrats-fournisseurs-contract-guardian">Contrats fournisseurs (Contract Guardian)</h3>
 <p>Menu <strong>Dépenses &amp; marges → Contrats fournisseurs</strong>. Enregistrez vos contrats récurrents
 (maintenance, logiciels, téléphonie, location, assurance, énergie…) : montant HT prévu par
