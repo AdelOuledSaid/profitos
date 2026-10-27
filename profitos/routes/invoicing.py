@@ -1652,7 +1652,8 @@ def register(app):
             cta_url=link,
             footer="Vous pouvez accepter ou refuser ce devis depuis la page sécurisée."
         )
-        result=send_email(q['client_email'],f"Devis {q['quote_number']} — {org['name']}",html,on_behalf_of_org=org)
+        result=send_email(q['client_email'],f"Devis {q['quote_number']} — {org['name']}",html,on_behalf_of_org=org,
+                          ref={'type':'quote','id':quote_id,'entity_id':eid})
 
         if result.get('dry_run'):
             flash(f"Service e-mail non configuré — devis non envoyé réellement (mode simulation) à {q['client_email']}.")
@@ -3407,10 +3408,12 @@ def register(app):
         einvoice_events=c.execute("SELECT * FROM einvoice_events WHERE invoice_id=? AND entity_id IS ? ORDER BY id DESC LIMIT 50",(invoice_id,inv['entity_id'])).fetchall()
         from profitos import invoice_payment as _IP
         collection=_IP.load(c,inv['entity_id'])
+        from profitos import email_delivery as _ED
+        email_status=_ED.latest_for_invoice(c,invoice_id,inv['entity_id'])
         c.close()
         issued=inv['status'] in ('sent','partially_paid','paid')
         public_url=f"{app_base_url()}{url_for('public_invoice_view',token=inv['public_token'])}" if issued and inv['public_token'] else None
-        return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),
+        return render_template('invoicing_detail.html',inv=inv,items=items,display_status=_display_status(inv),email_status=email_status,
                                auto_reminders_on=collection['auto_reminders'],
                                auto_reminders_excluded=inv['id'] in collection['excluded'],
                                einvoice_hold=_einvoice_hold(inv),
@@ -3881,7 +3884,8 @@ def register(app):
             intro=f"Voici votre facture {inv['invoice_number']} de {org['name']}, d'un montant de {fr_number(inv['total'],2)} € TTC.",
             cta_label='Consulter la facture',cta_url=link,footer='')
         try:
-            result=send_email(inv['client_email'],f"Facture {inv['invoice_number']} — {org['name']}",html,on_behalf_of_org=org)
+            result=send_email(inv['client_email'],f"Facture {inv['invoice_number']} — {org['name']}",html,on_behalf_of_org=org,
+                              ref={'type':'outgoing_invoice','id':invoice_id,'entity_id':inv['entity_id']})
         except Exception:
             app.logger.exception('Envoi de la facture %s impossible', invoice_id)
             result={'sent':False,'error':'exception'}
@@ -3893,6 +3897,8 @@ def register(app):
             c.commit()
             log_activity('INVOICE_SENT',f"Facture {inv['invoice_number']} envoyée à {inv['client_email']}")
             flash(prefix+f"Facture envoyée à {inv['client_email']}.")
+        elif result.get('suppressed'):
+            flash(prefix+result['error'])
         else:
             log_ops_event('INVOICE_EMAIL_FAILED',outcome='ERROR',detail=f"facture {invoice_id}: {str(result.get('error') or '')[:200]}")
             flash(prefix+"L'e-mail n'a pas pu être envoyé. Réessayez dans quelques minutes ou transmettez la facture (PDF) par un autre moyen.")
@@ -4801,7 +4807,8 @@ def send_invoice_reminder(c, inv, org, step=None, base_url=None):
     html = render_template('email_transactional.html', title=subject, intro=intro,
                            cta_label='Voir et régler la facture', cta_url=link, footer='')
     try:
-        result = send_email(inv['client_email'], subject, html,on_behalf_of_org=org)
+        result = send_email(inv['client_email'], subject, html,on_behalf_of_org=org,
+                            ref={'type': 'invoice_reminder', 'id': inv['id'], 'entity_id': inv['entity_id']})
     except Exception:
         current_app.logger.exception('Relance de la facture %s impossible', inv['id'])
         result = {'sent': False, 'error': 'exception'}
@@ -4822,6 +4829,18 @@ def reminder_blocker(c, inv):
         return f"Cette facture est {hold} côté facturation électronique : régularisez-la avant de relancer le client."
     if not inv['client_email']:
         return "Aucun e-mail client renseigné pour cette facture."
+    try:
+        from profitos import email_delivery as ED
+        ac = auth_cx()
+        try:
+            sup = ED.suppressed(ac, inv['client_email'])
+        finally:
+            ac.close()
+    except Exception:
+        sup = None
+    if sup:
+        return ("Le client ne reçoit plus les e-mails à cette adresse (" + ("signalement comme spam" if sup['reason'] == 'plainte'
+                else "adresse rejetée") + ") : corrigez-la dans « E-mails non distribués » avant de relancer.")
     if _invoice_balance(c, inv) <= 0.005:
         return "Cette facture est entièrement réglée ou couverte par un avoir et ne peut pas être relancée."
     from profitos.mission_control import reminder_hold

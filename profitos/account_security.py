@@ -64,6 +64,23 @@ CREATE TABLE IF NOT EXISTS outbound_email_log(
 );
 CREATE INDEX IF NOT EXISTS idx_outbound_email_org ON outbound_email_log(organization_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_outbound_email_rcpt ON outbound_email_log(recipient_hash,kind,created_at);
+CREATE TABLE IF NOT EXISTS email_messages(
+    provider_id TEXT PRIMARY KEY,
+    organization_id INTEGER,
+    entity_id INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS email_suppressions(
+    email TEXT PRIMARY KEY,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    organization_id INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS email_webhook_events(
+    event_id TEXT PRIMARY KEY,
+    received_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS swan_account_bindings(
     swan_account_id TEXT PRIMARY KEY,
     organization_id INTEGER NOT NULL,

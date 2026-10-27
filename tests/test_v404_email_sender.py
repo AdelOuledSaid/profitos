@@ -114,5 +114,5 @@ def test_simulated_send_is_logged_as_ops_warning(env, monkeypatch, caplog):
 def test_customer_facing_call_sites_send_on_behalf_of_org():
     inv = (ROOT / 'profitos/routes/invoicing.py').read_text(encoding='utf-8')
     act = (ROOT / 'profitos/routes/actions.py').read_text(encoding='utf-8')
-    assert inv.count('html,on_behalf_of_org=org)') == 3
+    assert inv.count('html,on_behalf_of_org=org') == 3   # facture, relance, devis (v492 : + ref de suivi)
     assert 'on_behalf_of_org=current_org()' in act

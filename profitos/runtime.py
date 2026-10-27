@@ -930,7 +930,7 @@ MODULE_AREAS={
     'profitos.routes.cash_intelligence':'pilotage','profitos.routes.financial_brain':'pilotage',
     'profitos.routes.decision_simulator':'pilotage','profitos.routes.money_hunter':'pilotage',
     'profitos.routes.market_watch':'pilotage','profitos.routes.mission_control':'pilotage','profitos.routes.copilot':'pilotage',
-    'profitos.routes.contract_guardian':'invoicing','profitos.routes.purchase_pipeline':'invoicing','profitos.routes.opportunity_radar':'pilotage',
+    'profitos.routes.contract_guardian':'invoicing','profitos.routes.email_failures':'invoicing','profitos.routes.purchase_pipeline':'invoicing','profitos.routes.opportunity_radar':'pilotage',
     'profitos.routes.cabinet':'cabinet',
 }
 ENDPOINT_AREAS={
@@ -1026,7 +1026,7 @@ def csrf_token():
 
 def csrf_protect():
     if request.method in ('POST','PUT','PATCH','DELETE'):
-        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox','/webhooks/swan'):
+        if request.path in ('/billing/webhook','/webhooks/weinvoice/client-onboarding','/webhooks/weinvoice/invoice-status','/webhooks/supplier-inbox','/webhooks/swan','/webhooks/resend'):
             return
         # Les routes /api/v1/* s'authentifient par clé API (Authorization: Bearer),
         # jamais par cookie de session — un navigateur ne rejoue jamais un en-tête
@@ -3260,7 +3260,21 @@ def _append_footer(html, footer):
     return html[:idx]+footer+html[idx:] if idx!=-1 else html+footer
 
 
-def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, on_behalf_of_org=None, headers=None):
+def _record_delivery(on_behalf_of_org, email_id, to_email, subject, ref):
+    """Suivi de distribution (v492) : organisation déduite de l'expéditeur ou de la session."""
+    org_id=None
+    if on_behalf_of_org is not None:
+        org_id=on_behalf_of_org if isinstance(on_behalf_of_org,int) else _row_get(on_behalf_of_org,'id')
+    if not org_id:
+        try:
+            org_id=session.get('org_id')
+        except RuntimeError:
+            org_id=None
+    from profitos import email_delivery as _ED
+    _ED.record_send(org_id, email_id, to_email, subject, ref)
+
+
+def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, on_behalf_of_org=None, headers=None, ref=None):
     """Envoie un email transactionnel.
 
     ``kind='system'`` : e-mail de compte (vérification, réinitialisation, sécurité),
@@ -3278,6 +3292,10 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, 
     vers l'organisation (et non noreply), pied de page avec ses mentions.
     En cas d'échec, 'error' contient un message générique en français ; le
     détail technique reste dans les logs (adresse masquée).
+
+    ref : document lié ({'type','id','entity_id'}) pour le suivi de distribution (v492).
+    Une adresse rejetée définitivement ou qui s'est plainte (webhook Resend) n'est plus
+    utilisée pour les envois externes.
 
     La clé Resend reste uniquement dans les variables d'environnement Render.
     """
@@ -3304,6 +3322,20 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, 
 
     if kind!='system':
         try:
+            from profitos import email_delivery as _ED
+            _ac=auth_cx()
+            try:
+                _sup=_ED.suppressed(_ac,to_email)
+            finally:
+                _ac.close()
+        except Exception:
+            _sup=None
+        if _sup:
+            return {'sent':False,'blocked':True,'provider':'suppression','suppressed':True,
+                    'error':("Cette adresse ne reçoit plus les e-mails ("+("signalement comme spam" if _sup['reason']=='plainte' else "adresse rejetée")+
+                             ") : corrigez-la dans « E-mails non distribués » avant de renvoyer."),
+                    'to':to_email,'subject':subject}
+        try:
             blocked=check_outbound_email_quota(kind or 'external', to_email, record=True)
         except RuntimeError:
             blocked=None  # hors requête (tâches planifiées) : pas de session à contrôler
@@ -3326,6 +3358,8 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, 
                 params['headers'] = headers
             result=resend.Emails.send(params)
             email_id = result.get('id') if isinstance(result,dict) else getattr(result,'id',None)
+            if kind!='system':
+                _record_delivery(on_behalf_of_org, email_id, to_email, subject, ref)
             return {'sent':True,'provider':'resend','id':email_id,'to':to_email,'subject':subject}
         except Exception as exc:
             _email_log_failure('Resend email failed for %s (%s)', to_email, exc)
@@ -3737,6 +3771,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-27','title':"E-mails non distribués : chaque facture et relance suivie jusqu'à la boîte du client, adresse rejetée signalée et corrigée en une fois"},
     {'date':'2026-10-27','title':"ProfitOS devient Veqalio : nouveau nom et nouveau logo, rien ne change pour vos données, vos accès ni vos intégrations"},
     {'date':'2026-10-27','title':"Contrôles fiscaux : TVA déclarée comparée à vos écritures, acomptes d'IS, liasse et clôture, avec un dossier imprimable à faire valider par l'expert-comptable"},
     {'date':'2026-10-27','title':"Sécurité : liens des missions d'experts jamais mis en cache, contrôle de sécurité avant ouverture et dossier sécurité (preuves, restauration, incident, sous-traitants)"},

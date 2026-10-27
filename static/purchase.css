@@ -526,3 +526,10 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .fc-pret{color:#4cc38a}.fc-a_verifier{color:#e8a33d}.fc-bloque{color:#e5484d}
 .fc-checks li>div{min-width:0;overflow-wrap:anywhere}
 .fc-detail{font-size:13px;opacity:.9;margin-top:2px}
+/* Distribution des e-mails (v492) */
+.ef-status{font-size:13px;margin:12px 0 0;padding:8px 10px;border:1px solid var(--border,#294064);border-radius:8px;overflow-wrap:anywhere}
+.ef-status.ef-failed{border-color:#e5484d}
+.ef-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:10px}
+.ef-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;flex:1 1 240px;min-width:0}
+.ef-status a,.purchase-page .pp-list a{color:#3ddc84}
+[data-theme="light"] .ef-status a,[data-theme="light"] .purchase-page .pp-list a{color:#0f7a48}

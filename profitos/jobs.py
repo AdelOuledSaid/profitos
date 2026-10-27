@@ -830,7 +830,7 @@ def invoice_reminders(org, ctx):
     from profitos.mission_control import probable_bank_payment
     today = paris_today()
     c = tenant_cx_direct(org['id'])
-    sent, failed, held = 0, 0, 0
+    sent, failed, held, undeliverable = 0, 0, 0, 0
     try:
         for eid in _entity_ids(c):
             settings = IP.load(c, eid)
@@ -859,11 +859,15 @@ def invoice_reminders(org, ctx):
                 result = send_invoice_reminder(c, inv, org, step=step, base_url=_app_url())
                 if result.get('sent') and not result.get('dry_run'):
                     sent += 1
+                elif result.get('suppressed'):
+                    undeliverable += 1   # adresse rejetée ou plainte : signalé dans Mission Control
                 else:
                     failed += 1
     finally:
         c.close()
     note = f', {held} suspendue(s) : virement à rapprocher' if held else ''
+    if undeliverable:
+        note += f', {undeliverable} suspendue(s) : adresse e-mail non distribuable'
     if not sent and not failed:
         return '0 relance' + note
     return f'{sent} relance(s) envoyée(s)' + (f', {failed} échec(s)' if failed else '') + note

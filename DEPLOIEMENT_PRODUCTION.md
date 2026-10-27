@@ -195,6 +195,11 @@ clients et le préfixe des virements SEPA.
 Render, domaine d'envoi Resend (SPF/DKIM), URL des webhooks Stripe et WeInvoice, et une
 redirection 301 depuis l'ancien domaine.
 
+## 5 ter. Webhook Resend (v492)
+
+Créer le webhook dans Resend (`https://app.profitos.fr/webhooks/resend`) et renseigner
+`RESEND_WEBHOOK_SECRET` (`whsec_…`) sur le service web : voir `RESEND_SETUP.md`.
+
 ## 6. Vérifications après déploiement
 
 - `python scripts/security_check.py` : aucun point bloquant (en-têtes, cookie, liens secrets, 2FA des
