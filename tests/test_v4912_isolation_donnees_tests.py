@@ -26,3 +26,32 @@ def test_preflight_accepte_un_chemin_linux_depuis_windows():
     assert cp.check_upload_dir({'PROFITOS_UPLOAD_DIR': '/var/data/uploads'}) == []
     # chemin relatif refusé (selon le dossier courant, l'alerte « /tmp » peut s'y ajouter)
     assert 'PROFITOS_UPLOAD_DIR doit être un chemin absolu.' in cp.check_upload_dir({'PROFITOS_UPLOAD_DIR': 'uploads'})
+
+
+def test_un_seul_fichier_de_log_par_processus(monkeypatch):
+    """v492.1 — create_app répété (tests) n'ouvre qu'une fois logs/profitos.log : sous Windows,
+    des centaines de gestionnaires sur le même fichier faisaient échouer la rotation."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from profitos import create_app
+    from profitos.config import DevelopmentConfig
+    monkeypatch.setenv('PROFITOS_FILE_LOG', '1')
+    logger = logging.getLogger('profitos')
+    before = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+    try:
+        create_app(DevelopmentConfig)
+        create_app(DevelopmentConfig)
+        create_app(DevelopmentConfig)
+        files = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+        assert len(files) - len(before) <= 1
+        assert len({h.baseFilename for h in files}) == len(files)
+    finally:
+        for h in logger.handlers[:]:
+            if isinstance(h, RotatingFileHandler) and h not in before:
+                logger.removeHandler(h)
+                h.close()
+
+
+def test_pas_de_fichier_de_log_pendant_les_tests():
+    import os
+    assert os.environ.get('PROFITOS_FILE_LOG') == '0'

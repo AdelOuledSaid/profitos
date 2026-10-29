@@ -124,12 +124,19 @@ def _configure_logging(app):
         # Logs JSON OPS / jobs / migrations visibles dans les logs Render (stderr).
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
     app.logger.setLevel(logging.INFO)
-    if not _env_is_production():
+    # Fichier de log local (développement) : un seul gestionnaire par processus. Le logger
+    # « profitos » est partagé par toutes les applications créées dans le processus (tests) :
+    # en ajouter un à chaque create_app ouvrait le fichier des centaines de fois, et sous
+    # Windows la rotation échouait (WinError 32, fichier utilisé par un autre processus).
+    if not _env_is_production() and os.environ.get('PROFITOS_FILE_LOG', '1') != '0':
         log_dir = Path(app.root_path).parent / 'logs'
-        log_dir.mkdir(exist_ok=True)
-        handler = RotatingFileHandler(log_dir / 'profitos.log', maxBytes=2_000_000, backupCount=3, encoding='utf-8')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-        app.logger.addHandler(handler)
+        log_path = str((log_dir / 'profitos.log').resolve())
+        if not any(isinstance(h, RotatingFileHandler) and getattr(h, 'baseFilename', None) == log_path
+                   for h in app.logger.handlers):
+            log_dir.mkdir(exist_ok=True)
+            handler = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=3, encoding='utf-8', delay=True)
+            handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+            app.logger.addHandler(handler)
 
 
 def create_app(config_object=None):
