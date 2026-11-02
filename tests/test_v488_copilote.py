@@ -1,6 +1,7 @@
 """v488 — Copilote : faits calculés et sourcés, rédaction par l'IA contrôlée (aucun chiffre
 inventé), rapport calculé sans IA, problèmes issus de Mission Control."""
 import re
+import pytest
 from datetime import timedelta
 
 import profitos.runtime as rt
@@ -9,7 +10,10 @@ from profitos.accounting import paris_today
 from test_v470_encaissement import app, flashes, issue_invoice, post, signup  # noqa: F401
 from test_v480_mission_control import bank, cash, overdue  # noqa: F401
 
-T = paris_today()
+@pytest.fixture(autouse=True)
+def refresh_test_date():
+    global T
+    T = paris_today()
 
 
 def text(html):

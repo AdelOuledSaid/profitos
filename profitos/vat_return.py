@@ -5,7 +5,7 @@ Les montants viennent des écritures de la période (comptes 4457x, 44562, 44566
 44551 « TVA à décaisser » ou 44567 « Crédit de TVA à reporter » ; elle est exclue des
 calculs pour que la déclaration reste lisible après liquidation.
 
-ProfitOS ne télédéclare pas : les montants se reportent sur impots.gouv.fr (espace
+Veqalio ne télédéclare pas : les montants se reportent sur impots.gouv.fr (espace
 professionnel) ou sont transmis par l'expert-comptable.
 """
 from datetime import date, timedelta

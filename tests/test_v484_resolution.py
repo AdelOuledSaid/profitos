@@ -131,7 +131,7 @@ def test_mission_bancaire_resolue(app):
                       (-960.0, 'VIR MATERIAUX SUD MS-77', 11), (-45.0, 'PRLV TELECOM', 12)])
     html, text = page(cl)
     assert 'Examiner 3 proposition(s) de rapprochement' in text and 'Action automatisable' in text
-    assert 'Préparé par ProfitOS, à valider' in text
+    assert 'Préparé par Veqalio, à valider' in text
     html = cl.get('/mission-control/banque').get_data(as_text=True)
     t = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', html)).replace(' ', ' ').replace('\xa0', ' ')
     assert 'Propositions de rapprochement (3)' in t and 'À traiter manuellement (1)' in t

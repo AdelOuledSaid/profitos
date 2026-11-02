@@ -1,4 +1,4 @@
-# ProfitOS V1.7.3 — Financial Consistency Guard
+# Veqalio V1.7.3 — Financial Consistency Guard
 
 Cette version clarifie et verrouille la cohérence entre réserve cible, financement et point bas.
 

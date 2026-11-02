@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre',
           'décembre']
-SYSTEM = ("Tu es le copilote financier de ProfitOS pour une PME française. Tu réponds en français, de façon brève et "
+SYSTEM = ("Tu es le copilote financier de Veqalio pour une PME française. Tu réponds en français, de façon brève et "
           "concrète, UNIQUEMENT à partir des faits numérotés fournis (F1, F2…) et de la liste des problèmes vérifiés. "
           "Règles absolues : n'invente aucun chiffre, ne fais aucun calcul nouveau (n'additionne, ne soustrais et ne "
           "compare pas de montants qui ne figurent pas tels quels dans les faits), cite le fait utilisé entre crochets "
@@ -85,10 +85,10 @@ def build(c, eid, today, cash=None, accounting=True, findings=None):
 
     try:
         cur, n = _sales(c, eid, m_start, today)
-        F.add('Ventes', f"Chiffre d'affaires facturé HT — {period}", _money(cur), cur, 'Factures émises ProfitOS',
+        F.add('Ventes', f"Chiffre d'affaires facturé HT — {period}", _money(cur), cur, 'Factures émises Veqalio',
               f"Somme HT des {n} facture(s) émise(s) du mois, acomptes déjà facturés et avoirs déduits")
         last, n2 = _sales(c, eid, p_start, p_end)
-        F.add('Ventes', f"Chiffre d'affaires facturé HT — {prev} (mois complet)", _money(last), last, 'Factures émises ProfitOS',
+        F.add('Ventes', f"Chiffre d'affaires facturé HT — {prev} (mois complet)", _money(last), last, 'Factures émises Veqalio',
               f"Même calcul sur le mois précédent ({n2} facture(s))")
     except Exception as exc:
         c.rollback()

@@ -1,4 +1,4 @@
-# ProfitOS V1.4.1 — Plans, Trial & Billing Flow
+# Veqalio V1.4.1 — Plans, Trial & Billing Flow
 
 Paid plans: Starter 49 EUR/month, Pro 99 EUR/month, Business 249 EUR/month.
 

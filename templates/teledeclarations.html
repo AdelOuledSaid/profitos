@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">FISCALITÉ</div>
     <h1 class="purchase-title">Déclarations fiscales</h1>
-    <p class="purchase-subtitle">ProfitOS calcule et prépare vos déclarations de TVA, de résultat, d'impôt sur les sociétés et d'honoraires à partir de votre comptabilité, puis suit leur dépôt et archive les accusés de réception.</p>
+    <p class="purchase-subtitle">Veqalio calcule et prépare vos déclarations de TVA, de résultat, d'impôt sur les sociétés et d'honoraires à partir de votre comptabilité, puis suit leur dépôt et archive les accusés de réception.</p>
   </div>
 </div>
 
@@ -14,12 +14,12 @@
 <div class="flash" role="status">Partenaire EDI connecté : les déclarations déposées sont réellement transmises à l'administration fiscale.</div>
 {% else %}
 <ol class="filing-steps">
-  <li><strong>ProfitOS calcule</strong> la TVA, les résultats fiscaux et les données déclaratives.</li>
-  <li><strong>ProfitOS prépare</strong> le récapitulatif, les contrôles et le PDF avec les cases à remplir.</li>
+  <li><strong>Veqalio calcule</strong> la TVA, les résultats fiscaux et les données déclaratives.</li>
+  <li><strong>Veqalio prépare</strong> le récapitulatif, les contrôles et le PDF avec les cases à remplir.</li>
   <li><strong>Vous déposez sur impots.gouv.fr</strong> : saisie ou vérification des montants et validation officielle.</li>
-  <li><strong>Retour dans ProfitOS</strong> : archivage de l'accusé de réception et suivi du dépôt.</li>
+  <li><strong>Retour dans Veqalio</strong> : archivage de l'accusé de réception et suivi du dépôt.</li>
 </ol>
-<div class="flash" role="status">ProfitOS n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. La liasse du régime normal (2050) et la CVAE (1330) ne se déposent pas sur impots.gouv.fr (EDI obligatoire) : transmettez-les par votre expert-comptable.</div>
+<div class="flash" role="status">Veqalio n'effectue pas lui-même la transmission : une déclaration n'est considérée comme déposée qu'après l'archivage du justificatif officiel. La liasse du régime normal (2050) et la CVAE (1330) ne se déposent pas sur impots.gouv.fr (EDI obligatoire) : transmettez-les par votre expert-comptable.</div>
 {% endif %}
 
 <p class="purchase-muted">Régime de TVA : <strong>{{ {'ca3_mensuelle': 'CA3 mensuelle', 'ca3_trimestrielle': 'CA3 trimestrielle', 'ca12': 'CA12 annuelle', 'franchise': 'franchise en base'}.get(vat_filing, vat_filing) }}</strong> · Paiement : <strong>{{ 'mandat de prélèvement enregistré' if mandate_ok else 'aucun mandat enregistré' }}</strong> — <a class="link" href="{{ url_for('fiscal_profile') }}">modifier dans le profil fiscal</a>.</p>

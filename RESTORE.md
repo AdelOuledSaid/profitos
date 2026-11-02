@@ -1,4 +1,4 @@
-# ProfitOS — Sauvegardes et restauration
+# Veqalio — Sauvegardes et restauration
 
 ## Ce qui est sauvegardé
 

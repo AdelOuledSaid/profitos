@@ -3,7 +3,7 @@
 ## Principe
 
 Mission Control détecte et vérifie un problème ; quand une intervention humaine est utile,
-l'entreprise demande une mission à un expert de l'annuaire privé de ProfitOS. L'expert
+l'entreprise demande une mission à un expert de l'annuaire privé de Veqalio. L'expert
 reçoit un **dossier factuel figé** (seulement les éléments cochés par l'entreprise, avec son
 consentement explicite), propose un devis, échange et remet son livrable depuis un **lien
 personnel** ; le résultat est ensuite **contrôlé dans les données** : le constat d'origine
@@ -18,7 +18,7 @@ doit disparaître de Mission Control.
 
 ## Annuaire
 
-Tenu par l'opérateur de ProfitOS sur `/admin/experts` (adresses autorisées dans
+Tenu par l'opérateur de Veqalio sur `/admin/experts` (adresses autorisées dans
 `PLATFORM_ADMIN_EMAILS`, adresse vérifiée exigée). Un expert n'est proposé aux entreprises
 que s'il est **actif** et, pour l'expertise comptable et le conseil juridique, si son **numéro
 d'inscription** (Ordre des experts-comptables, barreau) a été vérifié manuellement dans

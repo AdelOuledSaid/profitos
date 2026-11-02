@@ -1,4 +1,4 @@
-# ProfitOS V1.7.8 — Billing & Pricing Refresh
+# Veqalio V1.7.8 — Billing & Pricing Refresh
 
 Cette évolution modernise les pages Billing et Tarifs sans modifier les prix, les quotas, les contrôles de plan ni le workflow Stripe.
 

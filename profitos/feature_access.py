@@ -268,7 +268,7 @@ def _api_guard():
         return None
     if not org_has_access(row):
         return jsonify({"error": "subscription_inactive",
-                        "message": "Abonnement ProfitOS inactif : l'API est suspendue."}), 402
+                        "message": "Abonnement Veqalio inactif : l'API est suspendue."}), 402
     if not feature_enabled(effective_plan(row), "api"):
         return jsonify({"error": "plan_feature_unavailable",
                         "message": "L'API n'est pas incluse dans votre formule actuelle."}), 403

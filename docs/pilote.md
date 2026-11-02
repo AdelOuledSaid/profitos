@@ -1,6 +1,6 @@
-# ProfitOS — Programme pilote
+# Veqalio — Programme pilote
 
-Objectif : qu'une entreprise réelle utilise ProfitOS pendant un cycle complet, avec son
+Objectif : qu'une entreprise réelle utilise Veqalio pendant un cycle complet, avec son
 expert-comptable, pour vérifier que le produit tient ses promesses avant la mise en vente.
 
 ## Profil recherché
@@ -8,7 +8,7 @@ expert-comptable, pour vérifier que le produit tient ses promesses avant la mis
 - TPE ou PME française, à l'impôt sur les sociétés, TVA mensuelle (CA3) ou régime
   simplifié ;
 - un dirigeant disponible 30 minutes par semaine ;
-- un expert-comptable d'accord pour comparer ses chiffres à ceux de ProfitOS.
+- un expert-comptable d'accord pour comparer ses chiffres à ceux de Veqalio.
 
 ## Ce que le pilote reçoit
 
@@ -21,8 +21,8 @@ expert-comptable, pour vérifier que le produit tient ses promesses avant la mis
 | Semaine | Étape | Critère de réussite |
 | --- | --- | --- |
 | 1 | Démarrage : profil entreprise, profil fiscal, import du FEC ou des à-nouveaux, connexion ou import bancaire | Balance d'ouverture identique à celle du cabinet |
-| 1–4 | Utilisation courante : factures émises, achats, rapprochement bancaire | Toutes les factures du mois émises depuis ProfitOS ; rapprochement à jour |
-| 4 | Première TVA : CA3 préparée dans ProfitOS, comparée à celle du cabinet, déposée, accusé archivé | Écart nul (ou expliqué) ; statut « dépôt confirmé » |
+| 1–4 | Utilisation courante : factures émises, achats, rapprochement bancaire | Toutes les factures du mois émises depuis Veqalio ; rapprochement à jour |
+| 4 | Première TVA : CA3 préparée dans Veqalio, comparée à celle du cabinet, déposée, accusé archivé | Écart nul (ou expliqué) ; statut « dépôt confirmé » |
 | 5–8 | Deuxième mois, relances, échéancier, clôture mensuelle | Aucune échéance manquée ; relances reçues au bon moment |
 | Fin | Bilan avec le dirigeant et le cabinet | Grille ci-dessous remplie |
 
@@ -33,11 +33,11 @@ Pendant le pilote, ouvrir la préparation des déclarations pour cette seule ent
 
 | Question | Réponse |
 | --- | --- |
-| Les chiffres de ProfitOS correspondent-ils à ceux du cabinet (TVA, balance) ? | |
+| Les chiffres de Veqalio correspondent-ils à ceux du cabinet (TVA, balance) ? | |
 | Combien de temps gagné par mois, estimé par le dirigeant ? | |
-| Quelles tâches restent faites hors de ProfitOS, et pourquoi ? | |
+| Quelles tâches restent faites hors de Veqalio, et pourquoi ? | |
 | Incidents rencontrés (erreurs, blocages, incompréhensions) | |
-| Le dirigeant recommanderait-il ProfitOS ? Paierait-il le prix affiché ? | |
+| Le dirigeant recommanderait-il Veqalio ? Paierait-il le prix affiché ? | |
 | Avis du cabinet | |
 
 Tout écart de calcul trouvé pendant le pilote est corrigé, ajouté aux dossiers de

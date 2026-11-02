@@ -236,7 +236,7 @@ def register(app):
         if draft.startswith('Objet :'):
             first_line,_,rest=draft.partition('\n')
             return first_line.replace('Objet :','',1).strip(),rest.lstrip('\n')
-        return 'ProfitOS — relance',draft
+        return 'Veqalio — relance',draft
 
     @app.route('/actions/<int:aid>/send',methods=['POST'])
     @login_required

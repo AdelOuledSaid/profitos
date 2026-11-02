@@ -1,4 +1,4 @@
-# ProfitOS V1.7.4 — Before/After Decision Intelligence + Professional Landing
+# Veqalio V1.7.4 — Before/After Decision Intelligence + Professional Landing
 
 ## Decision Planner
 - Distinguishes the raw initial scenario from the optimized plan.

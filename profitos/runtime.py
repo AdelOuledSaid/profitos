@@ -1001,7 +1001,7 @@ def _seconds_limit_string(max_calls, per_seconds):
     return f"{int(max_calls)} per {int(per_seconds)} seconds"
 
 def rate_limit(max_calls, per_seconds):
-    """Compatibilité avec les décorateurs historiques de ProfitOS.
+    """Compatibilité avec les décorateurs historiques de Veqalio.
 
     Seules les requêtes POST sont comptabilisées, comme dans l'ancienne
     implémentation. L'état est désormais partagé entre workers/instances
@@ -2476,13 +2476,13 @@ def _migrate_tenant_schema(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} TEXT'); c.commit()
         except Exception as e:
-            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+            _migration_warn(f"[Veqalio] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
 
     try:
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice achats ignoré ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index WeInvoice achats ignoré ({e})")
 
     # Lot F final — suivi/preuve des transmissions e-reporting existantes
     for col, decl in (
@@ -2492,7 +2492,7 @@ def _migrate_tenant_schema(org_id=None):
         try:
             cols=[r['name'] for r in c.execute('PRAGMA table_info(ereporting_transmissions)').fetchall()]
             if col not in cols: c.execute(f'ALTER TABLE ereporting_transmissions ADD COLUMN {col} {decl}')
-        except Exception as e: _migration_warn(f"[ProfitOS] ATTENTION : migration e-reporting final {col} ignorée ({e})")
+        except Exception as e: _migration_warn(f"[Veqalio] ATTENTION : migration e-reporting final {col} ignorée ({e})")
     try: c.commit()
     except Exception: pass
 
@@ -2502,7 +2502,7 @@ def _migrate_tenant_schema(org_id=None):
         try:
             cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_invoices)').fetchall()]
             if col not in cols: c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}')
-        except Exception as e: _migration_warn(f"[ProfitOS] ATTENTION : migration e-reporting {col} ignorée ({e})")
+        except Exception as e: _migration_warn(f"[Veqalio] ATTENTION : migration e-reporting {col} ignorée ({e})")
     try: c.commit()
     except Exception: pass
 
@@ -2519,12 +2519,12 @@ def _migrate_tenant_schema(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE outgoing_credit_notes ADD COLUMN {col} {decl}')
         except Exception as e:
-            _migration_warn(f"[ProfitOS] ATTENTION : migration avoir électronique {col} ignorée ({e})")
+            _migration_warn(f"[Veqalio] ATTENTION : migration avoir électronique {col} ignorée ({e})")
     try:
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_weinvoice_remote ON outgoing_credit_notes(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice avoirs ignoré ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index WeInvoice avoirs ignoré ({e})")
 
     # V220 — rattache les actions historiques à l'entité de leur source quand elle est connue.
     try:
@@ -2537,7 +2537,7 @@ def _migrate_tenant_schema(org_id=None):
         c.execute('CREATE INDEX IF NOT EXISTS idx_analytical_tags_entity ON analytical_tags(entity_id)')
         c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : migration multi-entités V220 ignorée ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : migration multi-entités V220 ignorée ({e})")
 
     # Pass 24 — migration des anciens budgets achats globaux vers la société
     # principale, puis clé composite (catégorie, entité). SQLite ne permet pas
@@ -2561,7 +2561,7 @@ def _migrate_tenant_schema(org_id=None):
             c.commit()
     except Exception as e:
         c.rollback()
-        _migration_warn(f"[ProfitOS] ATTENTION : migration purchase_budgets v24 ignorée ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : migration purchase_budgets v24 ignorée ({e})")
 
     # Pass 14 — métadonnées typées des factures d'acompte/finales.
     for col, decl in (('invoice_kind', "TEXT DEFAULT 'standard'"),
@@ -2574,7 +2574,7 @@ def _migrate_tenant_schema(org_id=None):
             if col not in cols:
                 c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}'); c.commit()
         except Exception as e:
-            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
+            _migration_warn(f"[Veqalio] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
     # WeInvoice multi-entités : entity_key=0 représente la société mère.
     # L'ancienne configuration globale est reprise seulement pour la société mère.
     try:
@@ -2585,7 +2585,7 @@ def _migrate_tenant_schema(org_id=None):
                     (legacy['weinvoice_status'] or 'disconnected',legacy['weinvoice_last_check_at'],legacy['weinvoice_last_error'],legacy['weinvoice_company_id'],legacy['weinvoice_kyb_status'] or 'not_started',legacy['weinvoice_onboarded_at'],now(),now()))
                 c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : migration WeInvoice multi-entités ignorée ({e})")
 
     # v1.8.9 — clôture comptable isolée par entité. L'ancienne clôture globale est reprise
     # uniquement pour la société mère (entity_key=0). Ce bloc se trouvait par erreur dans
@@ -2606,7 +2606,7 @@ def _migrate_tenant_schema(org_id=None):
         c.execute("CREATE INDEX IF NOT EXISTS ix_recurring_templates_due ON recurring_invoice_templates(entity_id,status,next_run_date)")
         c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : index facturation récurrente ignoré ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index facturation récurrente ignoré ({e})")
 
     # Lot F production — l'index dépend de colonnes absentes des anciens tenants.
     # Il doit donc être créé APRES la migration douce ci-dessus.
@@ -2614,7 +2614,7 @@ def _migrate_tenant_schema(org_id=None):
         c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_weinvoice_remote ON purchase_invoices(entity_id,weinvoice_invoice_id)')
         c.commit()
     except Exception as e:
-        _migration_warn(f"[ProfitOS] ATTENTION : index WeInvoice achats non créé ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index WeInvoice achats non créé ({e})")
     # v383 — idempotence forte des frais bancaires : une seule écriture
     # bank_fee par mouvement et par entité, y compris sous requêtes concurrentes.
     try:
@@ -2624,7 +2624,7 @@ def _migrate_tenant_schema(org_id=None):
         c.commit()
     except Exception as e:
         c.rollback()
-        _migration_warn(f"[ProfitOS] ATTENTION : index unique bank_fee non créé ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index unique bank_fee non créé ({e})")
     # La société mère a entity_id NULL : un index (entity_id, …) laisse passer les doublons
     # (NULL ≠ NULL en SQL). Index sur COALESCE pour garantir une seule écriture par
     # mouvement bancaire, catégorisation comme frais, même sous double clic simultané.
@@ -2668,7 +2668,7 @@ def _migrate_tenant_schema(org_id=None):
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {decl}'); c.commit()
         except Exception as e:
             c.rollback()
-            _migration_warn(f"[ProfitOS] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
+            _migration_warn(f"[Veqalio] ATTENTION : migration colonne {table}.{col} ignorée ({e})")
     try:
         # Dépôts faits par l'entreprise : l'ancien statut unique « filed » est réparti selon le
         # contrôle de l'accusé (concordant → confirmed, écarts → to_verify, sinon declared).
@@ -2678,7 +2678,7 @@ def _migrate_tenant_schema(org_id=None):
         c.commit()
     except Exception as e:
         c.rollback()
-        _migration_warn(f"[ProfitOS] ATTENTION : reprise des statuts de dépôt ignorée ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : reprise des statuts de dépôt ignorée ({e})")
     try:
         # fiscal_year porte la série : '<type>:<année>' (invoice:2026, credit:2026, delivery:2026).
         c.execute("""CREATE TABLE IF NOT EXISTS invoice_number_sequences(
@@ -2697,7 +2697,7 @@ def _migrate_tenant_schema(org_id=None):
         c.commit()
     except Exception as e:
         c.rollback()
-        _migration_warn(f"[ProfitOS] ATTENTION : tables de numérotation/auxiliaires non créées ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : tables de numérotation/auxiliaires non créées ({e})")
     # Un numéro de facture définitif est unique par entité. Les brouillons n'ont plus de
     # numéro (NULL) : index partiel. Si des doublons historiques existent, l'index n'est
     # pas créé (message en log) — à corriger manuellement avant de relancer.
@@ -2708,7 +2708,7 @@ def _migrate_tenant_schema(org_id=None):
         c.commit()
     except Exception as e:
         c.rollback()
-        _migration_warn(f"[ProfitOS] ATTENTION : index unique des numéros de facture non créé ({e})")
+        _migration_warn(f"[Veqalio] ATTENTION : index unique des numéros de facture non créé ({e})")
 
     try:
         dbmod.upgrade_real_columns(c)
@@ -3118,7 +3118,7 @@ def check_outbound_email_quota(kind, recipient=None, record=False):
     try:
         u=c.execute('SELECT email_verified FROM users WHERE id=?',(uid,)).fetchone()
         if not u or not u['email_verified']:
-            return ("Confirmez d'abord votre adresse e-mail pour envoyer des e-mails depuis ProfitOS "
+            return ("Confirmez d'abord votre adresse e-mail pour envoyer des e-mails depuis Veqalio "
                     "(lien « Renvoyer l'e-mail de vérification » dans Paramètres).")
         org=c.execute('SELECT plan,status FROM organizations WHERE id=?',(oid,)).fetchone()
         paid=bool(org and (org['status'] in ('ACTIVE_PAID','PAST_DUE')))
@@ -3248,7 +3248,7 @@ def _org_sender_context(org):
         '<div style="max-width:640px;margin:8px auto 24px;padding:0 16px;font-family:-apple-system,Segoe UI,Roboto,'
         'Helvetica,Arial,sans-serif;font-size:12px;color:#6b7280;">'
         + ' — '.join(str(escape(x)) for x in parts if x)
-        + '<br>Message envoyé via ProfitOS. Pour toute question, répondez directement à cet email.</div>'
+        + '<br>Message envoyé via Veqalio. Pour toute question, répondez directement à cet email.</div>'
     )
     return clean_name,reply_to,footer
 
@@ -3274,7 +3274,7 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, 
     3. dry-run local sinon (journalisé en avertissement OPS EMAIL_SIMULATED).
 
     on_behalf_of_org : organisation (dict/Row ou id) au nom de laquelle on écrit
-    à SON client final -> expéditeur « <Organisation> via ProfitOS », reply-to
+    à SON client final -> expéditeur « <Organisation> via Veqalio », reply-to
     vers l'organisation (et non noreply), pied de page avec ses mentions.
     En cas d'échec, 'error' contient un message générique en français ; le
     détail technique reste dans les logs (adresse masquée).
@@ -3283,14 +3283,14 @@ def send_email(to_email, subject, html, dry_run=None, reply_to=None, kind=None, 
     """
     resend_key=os.environ.get('RESEND_API_KEY','').strip()
     smtp_host=os.environ.get('SMTP_HOST','').strip()
-    from_email=os.environ.get('RESEND_FROM_EMAIL','ProfitOS <noreply@profitos.fr>').strip()
+    from_email=os.environ.get('RESEND_FROM_EMAIL','Veqalio <noreply@profitos.fr>').strip()
     smtp_from=os.environ.get('SMTP_FROM',from_email)
     headers=dict(headers or {})
 
     if on_behalf_of_org is not None:
         display,org_reply_to,footer=_org_sender_context(on_behalf_of_org)
-        from_email=f"{display} via ProfitOS <{_sender_address(from_email)}>"
-        smtp_from=f"{display} via ProfitOS <{_sender_address(smtp_from)}>"
+        from_email=f"{display} via Veqalio <{_sender_address(from_email)}>"
+        smtp_from=f"{display} via Veqalio <{_sender_address(smtp_from)}>"
         reply_to=reply_to or org_reply_to
         html=_append_footer(html,footer)
 
@@ -3491,7 +3491,7 @@ def sync_buyer_signals(org_id, invoices_rows):
     """Met à jour les signaux de risque acheteur partagés entre organisations, à partir
     des factures en retard de CETTE organisation. Agrégation anonymisée : les autres
     organisations ne voient jamais QUI a signalé quoi, seulement un compte et une moyenne."""
-    # RGPD : la mutualisation des retards de paiement entre clients ProfitOS fait de ProfitOS
+    # RGPD : la mutualisation des retards de paiement entre clients Veqalio fait de Veqalio
     # un responsable de traitement distinct (art. 28.10) et peut viser des personnes physiques.
     # Désactivée tant qu'une base contractuelle (opt-in + clause CGV) n'est pas en place.
     if os.environ.get('BUYER_SIGNALS_ENABLED','0').strip()!='1':
@@ -3522,7 +3522,7 @@ def _upsert_buyer_signals(c, org_id, by_customer):
             (key,org_id,customer,len(days_list),avg,now()))
 
 def buyer_risk_lookup(customer_name, exclude_org_id):
-    """Cherche si d'autres organisations ProfitOS (que la sienne) ont aussi signalé
+    """Cherche si d'autres organisations Veqalio (que la sienne) ont aussi signalé
     ce même acheteur en retard de paiement. Retourne None si aucun autre signal."""
     key=norm(customer_name)
     if not key: return None
@@ -3666,10 +3666,10 @@ def send_accountant_export(org, email, dry_run=None):
         (token_digest(token),org['id'],'recover',now())); c.commit(); c.close()
     base=app_base_url()
     link=f"{base}{url_for('export_download',token=token)}"
-    html=render_template('email_transactional.html',title=f"Export ProfitOS — {org['name']}",
+    html=render_template('email_transactional.html',title=f"Export Veqalio — {org['name']}",
         intro=f"Voici le lien pour télécharger l'export des créances de {org['name']}, toujours à jour au moment du clic.",
         cta_label='Télécharger l\'export',cta_url=link,footer='Ce lien est valable 7 jours. Si vous n\'êtes pas concerné(e), ignorez ce message.')
-    return send_email(email,f"Export ProfitOS — {org['name']}",html,dry_run=dry_run)
+    return send_email(email,f"Export Veqalio — {org['name']}",html,dry_run=dry_run)
 
 def _grant_stripe_month_credit(org, months=1):
     """Crédite le solde client Stripe de 'months' mois de la formule actuelle
@@ -3683,7 +3683,7 @@ def _grant_stripe_month_credit(org, months=1):
         org['stripe_customer_id'],
         amount=-int(plan['price_eur'])*100*int(months),
         currency='eur',
-        description=f"Parrainage ProfitOS : {int(months)} mois offert{'s' if int(months) > 1 else ''}",
+        description=f"Parrainage Veqalio : {int(months)} mois offert{'s' if int(months) > 1 else ''}",
         idempotency_key=f"profitos-referral-credit-{org['id']}-{_row_get(org,'referral_credit_months',0)}-{months}-{datetime.now(timezone.utc):%Y%m%d}",
     )
     return True
@@ -3737,6 +3737,7 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-10-27','title':"ProfitOS devient Veqalio : nouveau nom et nouveau logo, rien ne change pour vos données, vos accès ni vos intégrations"},
     {'date':'2026-10-27','title':"Contrôles fiscaux : TVA déclarée comparée à vos écritures, acomptes d'IS, liasse et clôture, avec un dossier imprimable à faire valider par l'expert-comptable"},
     {'date':'2026-10-27','title':"Sécurité : liens des missions d'experts jamais mis en cache, contrôle de sécurité avant ouverture et dossier sécurité (preuves, restauration, incident, sous-traitants)"},
     {'date':'2026-10-27','title':"Copilote : analyse du mois à partir de vos données, chaque chiffre sourcé et vérifié, problèmes à résoudre et actions"},
@@ -3755,7 +3756,7 @@ CHANGELOG_ENTRIES=[
     {'date':'2026-10-21','title':"« Votre semaine » dans le rapport du lundi ; suivi des marges et révision de prix branchés sur la veille"},
     {'date':'2026-10-21','title':"Faites-vous payer plus vite : QR code de virement et lien de paiement sur vos factures, relances automatiques en trois étapes"},
     {'date':'2026-10-21','title':"Veille de votre secteur : indicateurs officiels (INSEE, BCE) choisis selon votre activité, alertes, révision de prix et indicateurs de votre métier"},
-    {'date':'2026-10-19','title':"Conditions d'utilisation : rôle de ProfitOS dans les déclarations fiscales précisé (préparation, dépôt par vous, statuts)"},
+    {'date':'2026-10-19','title':"Conditions d'utilisation : rôle de Veqalio dans les déclarations fiscales précisé (préparation, dépôt par vous, statuts)"},
     {'date':'2026-10-19','title':"Relances : une CA3 en retard est signalée dès le lendemain de l'échéance (et non plus après un mois)"},
     {'date':'2026-10-19','title':"Calculs fiscaux fiabilisés : CVAE (taux arrondi, barème et contribution 2025, plafonnement), acomptes d'IS (dispense sous 3 000 €, exercice long ramené à 12 mois), exercices de plus ou de moins de 12 mois"},
     {'date':'2026-10-19','title':"Sécurité du module fiscal : données fiscales réservées aux rôles habilités, montants et dates contrôlés"},
@@ -3909,9 +3910,9 @@ def send_verification_email(user, dry_run=None):
     base=app_base_url()
     link=f"{base}{url_for('verify_email',token=token)}"
     html=render_template('email_transactional.html',title='Confirmez votre adresse e-mail',
-        intro='Cliquez sur le bouton ci-dessous pour confirmer l’adresse e-mail de votre compte ProfitOS. Ce lien est valable 24 heures.',
-        cta_label='Confirmer mon adresse',cta_url=link,footer='Si vous n’avez pas créé de compte ProfitOS, vous pouvez ignorer ce message.')
-    return send_email(user['email'],'Confirmez votre compte ProfitOS',html,dry_run=dry_run,kind='system')
+        intro='Cliquez sur le bouton ci-dessous pour confirmer l’adresse e-mail de votre compte Veqalio. Ce lien est valable 24 heures.',
+        cta_label='Confirmer mon adresse',cta_url=link,footer='Si vous n’avez pas créé de compte Veqalio, vous pouvez ignorer ce message.')
+    return send_email(user['email'],'Confirmez votre compte Veqalio',html,dry_run=dry_run,kind='system')
 
 def send_reset_email(user, dry_run=None):
     token=gen_token()
@@ -3925,7 +3926,7 @@ def send_reset_email(user, dry_run=None):
     html=render_template('email_transactional.html',title='Réinitialisez votre mot de passe',
         intro='Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien est valable 1 heure.',
         cta_label='Choisir un nouveau mot de passe',cta_url=link,footer='Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : votre mot de passe reste inchangé.')
-    return send_email(user['email'],'Réinitialisation de votre mot de passe ProfitOS',html,dry_run=dry_run,kind='system')
+    return send_email(user['email'],'Réinitialisation de votre mot de passe Veqalio',html,dry_run=dry_run,kind='system')
 
 def extract_document_text(path):
     ext=path.suffix.lower()

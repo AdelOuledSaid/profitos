@@ -1,6 +1,6 @@
-# ProfitOS — Production réglementaire
+# Veqalio — Production réglementaire
 
-Référence technique de la production fiscale de ProfitOS : ce qui est calculé, à partir de
+Référence technique de la production fiscale de Veqalio : ce qui est calculé, à partir de
 quelles données et selon quelles règles, comment les déclarations sont déposées et suivies,
 et quelles sont les limites connues. Destinée à l'équipe et aux experts-comptables qui
 valident les calculs. Le mode d'emploi pour les clients est dans `guide-utilisateur.md`.
@@ -10,10 +10,10 @@ chaque année.
 
 ## 1. Principe
 
-1. **ProfitOS calcule** à partir de la comptabilité (balance de l'exercice, écritures,
+1. **Veqalio calcule** à partir de la comptabilité (balance de l'exercice, écritures,
    immobilisations, emprunts) et du **profil fiscal** (régimes, associés, filiales, locaux,
    mandat de prélèvement).
-2. **ProfitOS prépare** : contrôles bloquants et avertissements, contenu figé (empreinte
+2. **Veqalio prépare** : contrôles bloquants et avertissements, contenu figé (empreinte
    SHA-256), récapitulatif PDF case par case.
 3. **Le dépôt** est fait par l'entreprise sur impots.gouv.fr (EFI) ou, pour les
    déclarations qui l'exigent, par EDI (expert-comptable ou partenaire EDI).
@@ -92,7 +92,7 @@ l'expert-comptable.
   long), à-nouveaux du premier jour comptés en ouverture.
 - 2054 à 2056 : codes de cases officiels quand ils sont établis avec certitude ; sinon,
   présentation par rubrique.
-- 2059-A / 2033-C : cessions d'immobilisations enregistrées dans ProfitOS (court terme ;
+- 2059-A / 2033-C : cessions d'immobilisations enregistrées dans Veqalio (court terme ;
   long terme pour les titres de participation détenus depuis deux ans au moins).
 - 2059-B et 2059-D présentés à néant (cas normal d'une société à l'IS) ; 2059-C depuis le
   stock de moins-values à long terme saisi.

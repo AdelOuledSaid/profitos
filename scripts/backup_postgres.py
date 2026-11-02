@@ -1,5 +1,5 @@
 """
-ProfitOS V1.3.6 - Sauvegarde logique PostgreSQL.
+Veqalio V1.3.6 - Sauvegarde logique PostgreSQL.
 
 Usage:
     python scripts/backup_postgres.py

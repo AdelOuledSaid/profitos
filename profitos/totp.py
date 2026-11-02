@@ -62,7 +62,7 @@ def verify(secret_b32, code, at=None, window=1, last_step=None):
     return None
 
 
-def provisioning_uri(secret_b32, account_name, issuer='ProfitOS'):
+def provisioning_uri(secret_b32, account_name, issuer='Veqalio'):
     label = quote(f'{issuer}:{account_name}')
     return (f'otpauth://totp/{label}?secret={secret_b32}&issuer={quote(issuer)}'
             f'&algorithm=SHA1&digits={DIGITS}&period={PERIOD}')

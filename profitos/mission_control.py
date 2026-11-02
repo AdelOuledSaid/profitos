@@ -1,5 +1,5 @@
 """Mission Control (v480) : détecter les problèmes, vérifier, préparer l'action, contrôler
-le résultat. Chaque détecteur lit les données de ProfitOS et produit des constats au
+le résultat. Chaque détecteur lit les données de Veqalio et produit des constats au
 format du moteur de vérification (profitos/verification.py).
 
 Contrôles par type de constat :
@@ -199,7 +199,7 @@ def detect_receivables(c, eid, today):
         dec = decision(c, eid, r['source'], r['id'])
         checks = [V.check('Solde restant dû recalculé', True,
                           f"{_fr_money(r['outstanding'])} sur {_fr_money(r['total'])} (règlements et avoirs déduits).",
-                          'Factures et règlements ProfitOS')]
+                          'Factures et règlements Veqalio')]
         bank_c, candidate = _bank_check(c, probe, r['outstanding'], bank, today)
         checks.append(bank_c)
         # Statut de la créance : une décision est demandée au-delà de 6 mois, et un litige bloque la relance.
@@ -217,7 +217,7 @@ def detect_receivables(c, eid, today):
             checks.append(V.check('Statut de la créance confirmé', None,
                                   f"Impayée depuis {r['days_overdue']} jours : au-delà de 6 mois, une relance simple ne suffit "
                                   "plus et la facture peut être contestée, déjà réglée autrement ou difficile à recouvrer.",
-                                  'Calcul ProfitOS',
+                                  'Calcul Veqalio',
                                   fix="Indiquez ci-dessous si elle est toujours due, en litige ou douteuse ; si elle a été "
                                       "payée hors banque, enregistrez le règlement sur la facture."))
         elif dec and dec['status'] == 'due':
@@ -225,7 +225,7 @@ def detect_receivables(c, eid, today):
                                   f"Toujours due, confirmé le {_fr_date(dec['decided_at'])} par {dec['decided_by']}.",
                                   'Décision enregistrée'))
         evidence = [V.evidence('Échéance', _fr_date(r['due_date']), f"Facture {r['invoice_number'] or ''}".strip()),
-                    V.evidence('Retard', f"{r['days_overdue']} jour(s)", 'Calcul ProfitOS', today.isoformat())]
+                    V.evidence('Retard', f"{r['days_overdue']} jour(s)", 'Calcul Veqalio', today.isoformat())]
         action, alternatives = None, []
         if candidate:
             alternatives.append({'label': 'Rapprocher le virement', 'endpoint': 'mission_control_bank'})
@@ -481,12 +481,12 @@ def detect_bank_pending(c, eid, today):
     if proposals:
         checks.append(V.check('Correspondances vérifiées', True,
                               f"{len(proposals)} rapprochement(s) proposé(s) avec preuves (montant, n° de facture, nom) ; "
-                              f"{len(unmatched)} mouvement(s) sans correspondance sûre.", 'Calcul ProfitOS'))
+                              f"{len(unmatched)} mouvement(s) sans correspondance sûre.", 'Calcul Veqalio'))
         action = {'kind': 'prepare', 'label': f'Examiner {len(proposals)} proposition(s) de rapprochement',
                   'endpoint': 'mission_control_bank', 'area': 'banking'}
     else:
         checks.append(V.check('Correspondances vérifiées', None,
-                              "Aucun mouvement ne correspond de façon sûre à une facture ouverte.", 'Calcul ProfitOS',
+                              "Aucun mouvement ne correspond de façon sûre à une facture ouverte.", 'Calcul Veqalio',
                               fix="Comptabilisez, rapprochez ou ignorez ces mouvements sur la page Banque."))
         action = {'kind': 'link', 'label': 'Traiter les mouvements', 'endpoint': 'banking'}
     return [V.finding('banque:a_traiter', MODULE, 'banque', 'important' if n >= 20 else 'info',

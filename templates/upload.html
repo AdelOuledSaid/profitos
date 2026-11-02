@@ -38,11 +38,11 @@
       </div>
     </form>
     {% if kind=='invoices' %}
-    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : numéro de facture, client, montant, échéance. Pour les PDF, ProfitOS extrait automatiquement ces champs, y compris sur les documents scannés.</p>
+    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : numéro de facture, client, montant, échéance. Pour les PDF, Veqalio extrait automatiquement ces champs, y compris sur les documents scannés.</p>
     {% elif kind=='bank-statement' %}
-    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : date et montant (une colonne Montant signée, ou deux colonnes Débit / Crédit). Le libellé aide à désambiguïser en cas de montants identiques. Pour un PDF, ProfitOS extrait les lignes contenant une date et un montant.</p>
+    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : date et montant (une colonne Montant signée, ou deux colonnes Débit / Crédit). Le libellé aide à désambiguïser en cas de montants identiques. Pour un PDF, Veqalio extrait les lignes contenant une date et un montant.</p>
     {% elif kind=='expenses' %}
-    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Factures fournisseurs, URSSAF, TVA, impôts/taxes, paie et autres dépenses, y compris les documents scannés. ProfitOS extrait le fournisseur ou l'organisme, le montant, la date/échéance et attribue automatiquement une catégorie.</p>
+    <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Factures fournisseurs, URSSAF, TVA, impôts/taxes, paie et autres dépenses, y compris les documents scannés. Veqalio extrait le fournisseur ou l'organisme, le montant, la date/échéance et attribue automatiquement une catégorie.</p>
     {% else %}
     <p class="purchase-muted" style="font-size:12px;margin-top:16px;">Minimum : fournisseur, montant, date.</p>
     {% endif %}

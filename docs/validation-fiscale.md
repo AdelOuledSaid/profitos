@@ -1,6 +1,6 @@
-# ProfitOS — Validation des calculs fiscaux
+# Veqalio — Validation des calculs fiscaux
 
-Ce document décrit comment les calculs fiscaux de ProfitOS sont validés avant d'ouvrir la
+Ce document décrit comment les calculs fiscaux de Veqalio sont validés avant d'ouvrir la
 préparation des déclarations aux clients, et sert de **grille de validation** pour
 l'expert-comptable.
 
@@ -49,7 +49,7 @@ vérifier qu'un test échoue) :
 ## 4. Dossiers de référence
 
 Huit dossiers sont passés en écritures dans `tests/test_v458_dossiers_reference.py`
-(A à C) et `tests/test_v460_dossiers_reference_2.py` (D à H), et les résultats de ProfitOS
+(A à C) et `tests/test_v460_dossiers_reference_2.py` (D à H), et les résultats de Veqalio
 comparés aux montants calculés à la main ci-dessous (tolérance 1 €), à partir des notices
 officielles (3310-CA3, 2571, 2572, 1329-AC et 1329-DEF 2026) et du BOFiP.
 
@@ -230,7 +230,7 @@ dépréciation d'un client douteux 2 000.
 
 Le **dossier de contrôle fiscal** (`/comptabilite/controles-fiscaux/dossier`, imprimable,
 jamais mis en cache) reprend ces contrôles avec une case de revue par ligne, la liste des
-déclarations avec leur **mode de transmission** (préparée par ProfitOS, déposée par
+déclarations avec leur **mode de transmission** (préparée par Veqalio, déposée par
 l'entreprise sur impots.gouv.fr, transmise par le partenaire EDI, simulation) et un bloc de
 validation signé par l'expert-comptable.
 
@@ -289,7 +289,7 @@ d'une autre entreprise) : le test échoue sur cette page.
 ## 7. Grille de validation par l'expert-comptable
 
 À remplir sur **au moins trois dossiers réels** (un par régime : simplifié, normal, et un
-exercice déficitaire ou avec cession), en comparant ProfitOS à la liasse et aux
+exercice déficitaire ou avec cession), en comparant Veqalio à la liasse et aux
 déclarations établies par le cabinet.
 
 | Contrôle | Dossier 1 | Dossier 2 | Dossier 3 |

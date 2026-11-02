@@ -1,6 +1,6 @@
-# ProfitOS V1.7.6 — Multi-Sector
+# Veqalio V1.7.6 — Multi-Sector
 
-ProfitOS is positioned as a Financial Operating System for SMEs, not as a BTP-only product.
+Veqalio is positioned as a Financial Operating System for SMEs, not as a BTP-only product.
 
 - New organizations use a neutral reference-index default (`INDICE`).
 - Financial Brain reads the organization-selected reference index instead of hard-coding BT01.

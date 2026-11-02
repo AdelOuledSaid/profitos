@@ -10,7 +10,7 @@ from profitos import once_done as OD
 from profitos.accounting import paris_today
 from test_v470_encaissement import app, flashes, issue_invoice, post, signup  # noqa: F401
 
-T = paris_today()
+
 
 
 def text(html):
@@ -90,6 +90,7 @@ def test_fiche_fournisseur(app):
 
 
 def test_mise_en_demeure(app):
+    T = paris_today()
     cl, org = signup(app)
     complete(cl)
     inv = issue_invoice(cl, price='1000')
@@ -109,6 +110,7 @@ def test_mise_en_demeure(app):
 
 
 def test_resiliation_liee_au_contrat(app):
+    T = paris_today()
     cl, org = signup(app)
     complete(cl)
     c = rt.tenant_cx_direct(org)

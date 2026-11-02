@@ -11,7 +11,7 @@
   <a class="purchase-nav-btn" href="{{ url_for('fiscal_controls_dossier') }}">Dossier pour l'expert-comptable</a>
 </div>
 
-<p class="fc-scope"><strong>ProfitOS prépare, il ne transmet pas seul.</strong> La transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr ; seul un accusé de l'administration constate l'acceptation. Les montants restent à valider par votre expert-comptable.</p>
+<p class="fc-scope"><strong>Veqalio prépare, il ne transmet pas seul.</strong> La transmission officielle passe par un partenaire EDI agréé ou par vous sur impots.gouv.fr ; seul un accusé de l'administration constate l'acceptation. Les montants restent à valider par votre expert-comptable.</p>
 
 <div class="mc-kpis">
   <div class="mc-kpi"><b>{{ r.counts.blocked }}</b><span>Écart(s) à corriger</span></div>
@@ -46,7 +46,7 @@
       <tr><td>{{ d.form }}{% if d.corrective %} (rectificative){% endif %}</td><td>{{ d.start|fr_date }} → {{ d.end|fr_date }}</td>
         <td>{{ d.status }}</td><td>{{ d.transmission }}</td></tr>{% endfor %}
     </tbody></table></div>
-  {% else %}<p class="purchase-muted">Aucune déclaration préparée ou déposée dans ProfitOS sur cette période.</p>{% endif %}
+  {% else %}<p class="purchase-muted">Aucune déclaration préparée ou déposée dans Veqalio sur cette période.</p>{% endif %}
 </section>
 
 <section class="purchase-panel mc-section">

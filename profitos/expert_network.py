@@ -6,7 +6,7 @@ l'entreprise a cochés, avec son consentement explicite) → devis, acceptation,
 livrable → le résultat est contrôlé sur les données (le constat d'origine doit disparaître).
 
 Principes :
-- annuaire privé, tenu par l'opérateur de ProfitOS ; un expert d'une profession réglementée
+- annuaire privé, tenu par l'opérateur de Veqalio ; un expert d'une profession réglementée
   (expertise comptable, conseil juridique) n'est proposé qu'avec son numéro d'inscription,
   vérifié manuellement par l'opérateur ;
 - l'expert n'a pas de compte ni d'accès aux données : un lien personnel, secret (seule son

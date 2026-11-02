@@ -87,7 +87,7 @@ def test_local_rotation_keeps_last_n(tmp_path):
 
 
 def test_backup_dir_defaults_to_persistent_disk():
-    assert bk.default_backup_dir({'PROFITOS_UPLOAD_DIR': '/var/data/uploads'}) == Path('/var/data/backups')
+    assert bk.default_backup_dir({'PROFITOS_UPLOAD_DIR': '/var/data/uploads'}) == Path('/var/data/uploads').resolve().parent / 'backups'
     assert bk.default_backup_dir({'BACKUP_DIR': '/x'}) == Path('/x')
 
 

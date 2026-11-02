@@ -1,4 +1,4 @@
-"""Copie une installation locale SQLite ProfitOS vers PostgreSQL.
+"""Copie une installation locale SQLite Veqalio vers PostgreSQL.
 
 Pré-requis :
   DATABASE_URL=postgresql://...

@@ -1,6 +1,6 @@
 """Chaîne de traitement des factures fournisseurs (v486) : moteur d'automatisation central.
 
-Pour chaque facture fournisseur, ProfitOS enchaîne dix étapes et montre le résultat de
+Pour chaque facture fournisseur, Veqalio enchaîne dix étapes et montre le résultat de
 chacune (format du moteur de vérification, profitos/verification.py) :
 
  1. Réception         — origine (facture électronique, PDF, boîte mail, saisie) et justificatif
@@ -167,7 +167,7 @@ def analyse(c, eid, purchase_id, today, ac=None):
         checks.append(V.check('Taux de TVA plausible', True if known else None,
                               f"Taux apparent {_pct(rate)}." + ('' if known else ' Ce n\'est pas un taux français unique : '
                                                                 'plusieurs taux sur la facture, ou erreur de saisie.'),
-                              'Calcul ProfitOS', fix=None if known else 'Vérifiez la ventilation de la TVA sur la facture.'))
+                              'Calcul Veqalio', fix=None if known else 'Vérifiez la ventilation de la TVA sur la facture.'))
     steps.append(_step(2, checks))
 
     # 3. Doublons
@@ -279,7 +279,7 @@ def analyse(c, eid, purchase_id, today, ac=None):
                               "la TVA est due par votre entreprise (autoliquidation) et déductible en même temps.",
                               'Fiche fournisseur et facture',
                               fix="Passez la TVA autoliquidée (TVA due 4452 / TVA déductible 445662) et déclarez-la sur la CA3 ; "
-                                  "ProfitOS ne la passe pas automatiquement : à confirmer avec votre expert-comptable."))
+                                  "Veqalio ne la passe pas automatiquement : à confirmer avec votre expert-comptable."))
     elif country and country != 'FR' and vat > 0.005:
         checks.append(V.check('TVA facturée par un fournisseur étranger', None,
                               f"Fournisseur {country} avec {_money(vat)} de TVA : en principe, pas de TVA française facturée "
@@ -376,7 +376,7 @@ def analyse(c, eid, purchase_id, today, ac=None):
     if status == 'approved' and due_left > 0.005 and p.get('due_date') and not blocking:
         actions.append({'op': 'pay', 'label': 'Préparer le virement', 'kind': 'link', 'allowed': True, 'endpoint': 'purchase_sepa_batch'})
     steps.append(_step(9, [V.check('Actions proposées', True,
-                                   ', '.join(a['label'] for a in actions) if actions else 'Aucune action nécessaire.', 'ProfitOS')]))
+                                   ', '.join(a['label'] for a in actions) if actions else 'Aucune action nécessaire.', 'Veqalio')]))
 
     # 10. Exécution et contrôle (journal)
     log = log_entries(c, eid, purchase_id)

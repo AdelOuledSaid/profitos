@@ -51,7 +51,7 @@ def level(checks):
     return READY
 
 
-# Nature de l'action : exécutée par ProfitOS en un clic, préparée par ProfitOS puis validée
+# Nature de l'action : exécutée par Veqalio en un clic, préparée par Veqalio puis validée
 # par une personne, ou à faire soi-même sur une autre page.
 ACTION_KINDS = ('execute', 'prepare', 'link')
 
@@ -97,7 +97,7 @@ def can_execute(f):
 
 
 def automatable(f):
-    """ProfitOS peut résoudre le constat lui-même (directement, ou après validation humaine)."""
+    """Veqalio peut résoudre le constat lui-même (directement, ou après validation humaine)."""
     return (f.get('action') or {}).get('kind') in ('execute', 'prepare')
 
 

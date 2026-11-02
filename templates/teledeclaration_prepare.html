@@ -59,13 +59,13 @@
   </form>
   {% else %}
   <ol class="filing-steps">
-    <li><strong>ProfitOS calcule</strong> les montants à partir de votre comptabilité (ci-dessus).</li>
-    <li><strong>ProfitOS prépare</strong> le récapitulatif PDF avec les cases à remplir.</li>
+    <li><strong>Veqalio calcule</strong> les montants à partir de votre comptabilité (ci-dessus).</li>
+    <li><strong>Veqalio prépare</strong> le récapitulatif PDF avec les cases à remplir.</li>
     <li><strong>Vous déposez</strong> {% if channel == 'efi' %}sur impots.gouv.fr : saisie ou vérification des montants et validation officielle.{% else %}par votre expert-comptable ou un partenaire EDI.{% endif %}</li>
-    <li><strong>Vous archivez</strong> l'accusé de réception dans ProfitOS, qui suit le dépôt.</li>
+    <li><strong>Vous archivez</strong> l'accusé de réception dans Veqalio, qui suit le dépôt.</li>
   </ol>
   <div class="flash" role="status">{% if channel == 'efi' %}ℹ {{ guide }}{% else %}⚠ {{ guide }}{% endif %}</div>
-  <p class="purchase-muted" style="font-size:12px;">ProfitOS n'effectue pas lui-même la transmission : le dépôt n'est confirmé qu'après l'archivage du justificatif officiel.</p>
+  <p class="purchase-muted" style="font-size:12px;">Veqalio n'effectue pas lui-même la transmission : le dépôt n'est confirmé qu'après l'archivage du justificatif officiel.</p>
   {% if prepared %}<p>Déjà préparée le {{ prepared.submitted_at|fr_datetime_paris }} : <a class="link" href="{{ url_for('teledeclaration_detail', decl_id=prepared.id) }}">ouvrir le suivi</a>. La préparer à nouveau met à jour le récapitulatif.</p>{% endif %}
   <form method="post" action="{{ url_for('teledeclaration_prepare_manual') }}" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

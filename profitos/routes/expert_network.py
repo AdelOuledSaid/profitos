@@ -109,7 +109,7 @@ def register(app):
                 org = current_org()
                 link = f"{app_base_url().rstrip('/')}{url_for('expert_public', token=token)}"
                 res = _mail(e['email'], f"Demande de mission — {org['name']}",
-                            f"{org['name']} vous propose une mission ({EN.DOMAINS[e['domain']]['label']}) via ProfitOS : "
+                            f"{org['name']} vous propose une mission ({EN.DOMAINS[e['domain']]['label']}) via Veqalio : "
                             f"« {request.form.get('title', '')[:120]} ». Consultez le dossier et proposez un devis depuis ce lien "
                             f"personnel, valable {EN.LINK_DAYS} jours.", 'Voir la demande', link, org=org)
                 log_activity('EXPERT_MISSION_SENT', f"Mission envoyée à {e['name']} : {request.form.get('title', '')[:100]}")
@@ -148,6 +148,8 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def expert_mission_action(mission_id):
+        if current_role() == 'LECTURE':
+            abort(403)
         op = request.form.get('op')
         user = current_user()['email']
         org = current_org()
@@ -271,7 +273,7 @@ def register(app):
         finally:
             tc.close()
         return render_template('expert_public.html', m=m, e=e, org_name=org['name'] if org else '', token=token,
-                               share_items=EN.SHARE_ITEMS, title='Mission ProfitOS')
+                               share_items=EN.SHARE_ITEMS, title='Mission Veqalio')
 
     # ------------------------------------------------------------------ administration de l'annuaire
     @app.route('/admin/experts', methods=['GET', 'POST'])

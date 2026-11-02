@@ -1,4 +1,4 @@
-# ProfitOS — Cloud Deployment
+# Veqalio — Cloud Deployment
 
 La cible de production est **Render** : procédure complète, variables et tâches planifiées
 dans `DEPLOIEMENT_PRODUCTION.md`. Sauvegardes et restauration : `RESTORE.md`.

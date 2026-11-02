@@ -19,7 +19,7 @@ def test_vat_snapshot_uses_real_accounting_vat_accounts_and_entity():
 def test_vat_workflow_has_prepare_lock_file_and_reopen_without_fake_telefiling():
     for action in ("'prepare'","'lock'","'file'","'reopen'"):
         assert action in ACC
-    assert "ProfitOS prépare et trace le dossier mais ne télédéclare pas" in ACC
+    assert "Veqalio prépare et trace le dossier mais ne télédéclare pas" in ACC
     assert 'filing_reference' in ACC
 
 def test_vat_lock_requires_consistency_checks_and_detects_stale_snapshot():

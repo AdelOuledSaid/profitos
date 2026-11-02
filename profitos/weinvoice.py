@@ -267,7 +267,7 @@ def find_client_by_siren(siren):
 
     ATTENTION — hypothèse : aucune confirmation que /v1/clients accepte un filtre
     de requête (ex. ?siren=...). Cette fonction récupère la liste et filtre côté
-    ProfitOS, en gérant à la fois une réponse en tableau brut et une réponse
+    Veqalio, en gérant à la fois une réponse en tableau brut et une réponse
     paginée ({'data': [...]} ou {'items': [...]}), sans supposer laquelle des deux
     formes est la bonne.
     """
@@ -397,9 +397,9 @@ def onboard_company_and_store_status(company_row, signatory_name, signatory_qual
 
 
 def record_formal_agreement(signatory_name, signatory_quality, ip_address, user_id=None, entity_id=None):
-    """Enregistre une preuve RÉELLE d'accord formel dans ProfitOS avant tout envoi
+    """Enregistre une preuve RÉELLE d'accord formel dans Veqalio avant tout envoi
     à WeInvoice — signatory_name/quality saisis explicitement par un utilisateur
-    authentifié de ProfitOS, avec horodatage et adresse IP. proof_ref est un jeton
+    authentifié de Veqalio, avec horodatage et adresse IP. proof_ref est un jeton
     aléatoire non devinable (secrets.token_urlsafe) qui référence CET
     enregistrement précis, conservé en base tenant — ce n'est jamais une valeur
     inventée sans donnée réelle derrière.
@@ -643,7 +643,7 @@ def invoice_status_from_timeline(data):
 
     WeInvoice peut conserver ``invoice.status=IN_PROGRESS`` alors que la timeline
     contient déjà un événement métier plus précis (par ex. invoice.status.in_dispute).
-    Dans ce cas, l'événement métier doit prévaloir pour l'affichage ProfitOS.
+    Dans ce cas, l'événement métier doit prévaloir pour l'affichage Veqalio.
     """
     invoice = data.get('invoice') if isinstance(data, dict) else None
     invoice = invoice if isinstance(invoice, dict) else {}

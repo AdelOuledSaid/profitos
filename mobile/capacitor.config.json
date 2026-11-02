@@ -1,6 +1,6 @@
 {
   "appId": "fr.profitos.app",
-  "appName": "ProfitOS",
+  "appName": "Veqalio",
   "webDir": "www",
   "server": {
     "url": "https://app.profitos.fr",

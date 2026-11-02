@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Fonctionnalités · ProfitOS</title>
-  <meta name="description" content="Toutes les fonctionnalités de ProfitOS : recouvrement, économies, prévision de trésorerie, simulation de décisions, pilotage d'équipe et sécurité des données.">
+  <title>Fonctionnalités · Veqalio</title>
+  <meta name="description" content="Toutes les fonctionnalités de Veqalio : recouvrement, économies, prévision de trésorerie, simulation de décisions, pilotage d'équipe et sécurité des données.">
   <meta name="theme-color" content="#07101f">
   <link rel="icon" href="{{ url_for('static',filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="ProfitOS">
-  <meta property="og:title" content="Fonctionnalités · ProfitOS">
-  <meta property="og:description" content="Toutes les fonctionnalités de ProfitOS, organisées par usage.">
+  <meta property="og:site_name" content="Veqalio">
+  <meta property="og:title" content="Fonctionnalités · Veqalio">
+  <meta property="og:description" content="Toutes les fonctionnalités de Veqalio, organisées par usage.">
   <meta property="og:image" content="{{ url_for('static',filename='icons/icon-512.png',_external=True) }}">
   <link rel="stylesheet" href="{{ asset_url('landing.css') }}">
 </head>
 <body class="landing-body">
 <header class="landing-header">
-  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="ProfitOS accueil">Profit<span>OS</span></a>
+  <a class="landing-brand" href="{{ url_for('home') }}" aria-label="Veqalio accueil"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></a>
   <nav class="landing-nav" aria-label="Navigation principale">
     <div class="landing-nav-links">
       <a href="{{ url_for('home') }}">Accueil</a>
@@ -68,5 +68,5 @@
   </div>
 </section>
 
-<footer class="landing-footer"><div class="landing-shell"><div class="landing-brand">Profit<span>OS</span></div><p>Financial Operating System pour toutes les entreprises.</p><nav><a href="{{ url_for('home') }}">Accueil</a><a href="{{ url_for('pricing') }}">Tarifs</a><a href="{{ url_for('request_demo') }}">Démo</a><a href="{{ url_for('login') }}">Connexion</a></nav><span>© ProfitOS</span></div></footer>
+<footer class="landing-footer"><div class="landing-shell"><div class="landing-brand"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></div><p>Financial Operating System pour toutes les entreprises.</p><nav><a href="{{ url_for('home') }}">Accueil</a><a href="{{ url_for('pricing') }}">Tarifs</a><a href="{{ url_for('request_demo') }}">Démo</a><a href="{{ url_for('login') }}">Connexion</a></nav><span>© Veqalio</span></div></footer>
 </body></html>

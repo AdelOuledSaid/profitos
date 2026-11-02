@@ -1,4 +1,4 @@
-# ProfitOS — Liste de contrôle avant la mise en vente
+# Veqalio — Liste de contrôle avant la mise en vente
 
 État au 20 octobre 2026. Chaque ligne indique la preuve disponible et ce qui reste à faire.
 Une case n'est cochée que lorsque la preuve existe.

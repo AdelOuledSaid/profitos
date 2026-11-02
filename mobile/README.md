@@ -1,8 +1,8 @@
-# Application mobile ProfitOS — guide de finalisation
+# Application mobile Veqalio — guide de finalisation
 
 Ce dossier `mobile/` contient le point de départ d'une vraie application
 native (iOS + Android), construite avec Capacitor autour de l'application
-web ProfitOS déjà en ligne. Pour Android, le chemin recommandé est désormais
+web Veqalio déjà en ligne. Pour Android, le chemin recommandé est désormais
 le workflow GitHub Actions `.github/workflows/android-capacitor.yml` : il
 génère le projet natif dans le cloud et produit un APK Debug sans imposer
 Node.js ni Android Studio sur le PC de l'utilisateur. La publication Play
@@ -10,7 +10,7 @@ Store reste une étape séparée, après test réel de l'APK.
 
 ## Ce que fait cette approche
 
-Capacitor ne réécrit pas ProfitOS en une nouvelle application séparée. Il
+Capacitor ne réécrit pas Veqalio en une nouvelle application séparée. Il
 enveloppe l'application web déjà hébergée (`https://app.profitos.fr`) dans
 une coquille native légère — un `WebView` plein écran, sans barre
 d'adresse ni interface de navigateur, qui a accès aux API natives du
@@ -19,7 +19,7 @@ la plus rapide pour obtenir une présence App Store / Play Store sans
 réécrire l'application en React Native ou Flutter.
 
 **Conséquence importante** : l'app mobile chargera toujours la version
-*en ligne* de ProfitOS. Une mise à jour du site web se répercute
+*en ligne* de Veqalio. Une mise à jour du site web se répercute
 immédiatement dans l'app, sans repasser par une validation Apple/Google —
 sauf si tu changes du code natif lui-même (icônes, plugins, permissions).
 
@@ -27,7 +27,7 @@ sauf si tu changes du code natif lui-même (icônes, plugins, permissions).
 
 - **Android via GitHub Actions (recommandé)** : aucun Node.js ni Android Studio
   requis sur le PC. Il faut seulement déposer le projet sur GitHub et lancer
-  l'action `Build ProfitOS Android`.
+  l'action `Build Veqalio Android`.
 - **Développement Android local (facultatif)** : Node.js + Android Studio.
 - **Pour iOS** : un Mac avec Xcode installé (obligatoire — Apple ne permet
   pas de compiler une app iOS ailleurs que sur macOS), et un compte
@@ -39,14 +39,14 @@ sauf si tu changes du code natif lui-même (icônes, plugins, permissions).
 ## Build Android dans GitHub (recommandé)
 
 1. Pousser le projet sur la branche `main`.
-2. Ouvrir **Actions > Build ProfitOS Android > Run workflow**.
-3. Sans secret de signature, le workflow produit `ProfitOS-Android-Debug-APK`,
+2. Ouvrir **Actions > Build Veqalio Android > Run workflow**.
+3. Sans secret de signature, le workflow produit `Veqalio-Android-Debug-APK`,
    à installer sur un vrai téléphone Android pour les tests.
 4. Pour produire l'AAB Release, configurer ensemble les quatre secrets GitHub :
    `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
    `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
 5. Le workflow refuse une configuration partielle, vérifie le keystore et
-   l'alias avec `keytool`, puis produit `ProfitOS-Android-Release-AAB`.
+   l'alias avec `keytool`, puis produit `Veqalio-Android-Release-AAB`.
 
 La génération d'un AAB ne signifie pas que l'application est publiée. Avant
 Google Play, tester au minimum l'authentification, les écrans principaux, la
@@ -70,7 +70,7 @@ npx capacitor-assets generate --iconBackgroundColor '#081020' --splashBackground
 ```
 
 Cette commande lit `static/icons/icon-512.png` (déjà présent dans le
-projet ProfitOS) et génère automatiquement toutes les tailles nécessaires
+projet Veqalio) et génère automatiquement toutes les tailles nécessaires
 pour iOS et Android — pas besoin de les créer à la main.
 
 ### Ajouter les plateformes natives
@@ -117,7 +117,7 @@ npx cap sync
 ## Ce qui est déjà réglé dans la configuration
 
 - **Icône, splash screen, nom de l'app** — `capacitor.config.json` a déjà
-  `appName: "ProfitOS"` et les couleurs du splash screen configurées.
+  `appName: "Veqalio"` et les couleurs du splash screen configurées.
   Lance `npx capacitor-assets generate` (voir plus haut) pour générer
   toutes les tailles d'icônes à partir de `static/icons/icon-512.png`.
 - **Navigation vers les domaines externes** — Powens (connexion bancaire),

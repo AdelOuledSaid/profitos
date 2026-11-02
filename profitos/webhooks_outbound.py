@@ -1,7 +1,7 @@
-"""Webhooks sortants de ProfitOS : notifie les systèmes du client (son propre
+"""Webhooks sortants de Veqalio : notifie les systèmes du client (son propre
 ERP, une automatisation Zapier/Make, un système comptable maison...) quand un
-événement métier se produit dans ProfitOS — l'inverse des webhooks entrants
-(WeInvoice, Stripe) que ProfitOS reçoit déjà.
+événement métier se produit dans Veqalio — l'inverse des webhooks entrants
+(WeInvoice, Stripe) que Veqalio reçoit déjà.
 
 Événements pris en charge : invoice.sent, invoice.paid, purchase.created,
 purchase.paid — branchés aux mêmes points d'insertion que la génération

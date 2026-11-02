@@ -1,5 +1,5 @@
 """v458 — Dossiers comptables de référence. Chaque dossier est passé en écritures puis les
-résultats de ProfitOS sont comparés à des montants calculés à la main, indépendamment du
+résultats de Veqalio sont comparés à des montants calculés à la main, indépendamment du
 code (détail des calculs : docs/validation-fiscale.md). Tolérance : 1 € (arrondis à
 l'euro des formulaires)."""
 from datetime import date

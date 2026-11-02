@@ -150,6 +150,53 @@ def record_usage(metric, organization_id=None, amount=1, period=None):
         c.close()
 
 
+
+def reserve_quota_atomic(metric, organization_id, plan, amount=1, period=None):
+    """R?serve atomiquement un quota. Retourne le compteur ou None si refus?."""
+    org_id = _resolve_org_id(organization_id)
+    if not org_id:
+        raise RuntimeError("Organisation introuvable pour le compteur de quota.")
+
+    amount = int(amount)
+    if amount <= 0:
+        raise ValueError("Le montant de r?servation doit ?tre positif.")
+
+    period = period or _month_key()
+    limit = plan_limit(plan, metric)
+
+    c = auth_cx()
+    try:
+        _ensure_usage_table(c)
+
+        if limit is not None and amount > int(limit):
+            return None
+
+        row = c.execute(
+            """
+            INSERT INTO plan_usage(
+                organization_id, period, metric, usage_count, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, period, metric)
+            DO UPDATE SET
+                usage_count = plan_usage.usage_count + excluded.usage_count,
+                updated_at = excluded.updated_at
+            WHERE ? IS NULL
+               OR plan_usage.usage_count + excluded.usage_count <= ?
+            RETURNING usage_count
+            """,
+            (org_id, period, metric, amount, now(), limit, limit),
+        ).fetchone()
+
+        c.commit()
+        return int(row["usage_count"]) if row else None
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
 def _ai_quota_org(organization_id=None):
     """Organisation qui porte le quota IA : l'organisation explicite, sinon celle
     fixée par un flux sans session (g.ai_quota_org_id), sinon l'organisation
@@ -187,12 +234,18 @@ def consume_ai_extraction_quota(organization_id=None):
     org = _ai_quota_org(organization_id)
     if not org:
         return None
-    state = quota_state(AI_EXTRACTION_METRIC, organization_id=org["id"], plan=effective_plan(org))
-    if not state["allowed"]:
+    plan = effective_plan(org)
+    result = reserve_quota_atomic(
+        AI_EXTRACTION_METRIC,
+        organization_id=org["id"],
+        plan=plan,
+    )
+    if result is None:
+        state = quota_state(AI_EXTRACTION_METRIC, organization_id=org["id"], plan=plan)
         raise AIQuotaExceeded(
             f"Le quota mensuel d'extractions automatiques par IA de votre formule "
             f"({state['limit']} documents par mois) est atteint. Saisissez ce document "
             "manuellement, ou passez à une formule supérieure depuis la page Facturation. "
             "Le quota est remis à zéro le 1er du mois."
         )
-    return record_usage(AI_EXTRACTION_METRIC, organization_id=org["id"])
+    return result

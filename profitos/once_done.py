@@ -1,6 +1,6 @@
 """Once & Done (v482) : un dossier entreprise unique et vérifié, réutilisé par les démarches.
 
-Chaque information n'est saisie qu'une fois, là où ProfitOS la range déjà (profil
+Chaque information n'est saisie qu'une fois, là où Veqalio la range déjà (profil
 entreprise, profil fiscal, veille de secteur), puis réutilisée par tous les documents.
 Le dossier vérifie chaque donnée (clés SIRET / TVA / IBAN, formats) et leur cohérence
 entre les écrans ; un document n'est préparé que si toutes les données qu'il utilise
@@ -18,7 +18,7 @@ from profitos.fr_identifiers import fr_vat_is_valid, iban_is_valid, siren_is_val
 
 MODULE = 'once_done'
 STORE_KEY = 'once-done'
-ONCE_FIELDS = ('telephone',)          # seules informations sans autre place dans ProfitOS
+ONCE_FIELDS = ('telephone',)          # seules informations sans autre place dans Veqalio
 
 
 def _store(c, eid):

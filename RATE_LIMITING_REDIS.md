@@ -1,4 +1,4 @@
-# ProfitOS V1.3.2 — Rate Limiting + Render Key Value
+# Veqalio V1.3.2 — Rate Limiting + Render Key Value
 
 ## Objectif
 
@@ -23,7 +23,7 @@ Le `render.yaml` crée une ressource :
 
 ## Limites conservées
 
-Les limites historiques ProfitOS restent identiques et ne concernent que les POST, notamment login, signup, forgot/reset password, DCE et synchronisations coûteuses.
+Les limites historiques Veqalio restent identiques et ne concernent que les POST, notamment login, signup, forgot/reset password, DCE et synchronisations coûteuses.
 
 ## Fallback
 

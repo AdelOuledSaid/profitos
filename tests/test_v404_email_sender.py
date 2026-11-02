@@ -56,7 +56,7 @@ def _install(monkeypatch, fake):
     mod.Emails = fake.Emails
     monkeypatch.setitem(sys.modules, 'resend', mod)
     monkeypatch.setenv('RESEND_API_KEY', 're_test')
-    monkeypatch.setenv('RESEND_FROM_EMAIL', 'ProfitOS <noreply@profitos.fr>')
+    monkeypatch.setenv('RESEND_FROM_EMAIL', 'Veqalio <noreply@profitos.fr>')
 
 
 def test_mask_email():
@@ -72,7 +72,7 @@ def test_on_behalf_of_org_sets_sender_reply_to_and_footer(env, monkeypatch):
         r = rt.send_email('client@exemple.fr', 'Facture FA-1', '<html><body><p>Bonjour</p></body></html>', on_behalf_of_org=org)
     assert r['sent']
     params = fake.sent[0]
-    assert params['from'] == 'Menuiserie Dupont via ProfitOS <noreply@profitos.fr>'
+    assert params['from'] == 'Menuiserie Dupont via Veqalio <noreply@profitos.fr>'
     assert params['reply_to'] == 'patron@dupont.fr'
     assert 'Dupont SARL' in params['html'] and '3 rue des Lilas 69001 Lyon' in params['html']
     assert 'SIRET 12345678900011' in params['html']
@@ -86,8 +86,8 @@ def test_explicit_reply_to_wins_and_plain_sends_unchanged(env, monkeypatch):
         rt.send_email('x@y.fr', 's', '<p>a</p>', reply_to='compta@dupont.fr', on_behalf_of_org=77)
         rt.send_email('x@y.fr', 's', '<p>a</p>')
     assert fake.sent[0]['reply_to'] == 'compta@dupont.fr'
-    assert fake.sent[0]['from'].startswith('Menuiserie Dupont via ProfitOS')
-    assert fake.sent[1]['from'] == 'ProfitOS <noreply@profitos.fr>'
+    assert fake.sent[0]['from'].startswith('Menuiserie Dupont via Veqalio')
+    assert fake.sent[1]['from'] == 'Veqalio <noreply@profitos.fr>'
     assert 'reply_to' not in fake.sent[1]
 
 

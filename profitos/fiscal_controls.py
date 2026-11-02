@@ -12,7 +12,7 @@ ce qui a été déclaré et ce que dit la comptabilité aujourd'hui :
 - clôture : pré-contrôles existants.
 
 Chaque contrôle suit le moteur de vérification (ok True / None à vérifier / False bloquant),
-cite sa source et dit quoi faire. ProfitOS **prépare** ; la transmission officielle se fait
+cite sa source et dit quoi faire. Veqalio **prépare** ; la transmission officielle se fait
 par un partenaire EDI agréé ou par l'entreprise sur impots.gouv.fr, et seul un accusé EDI
 constate l'acceptation (voir docs/validation-fiscale.md).
 """
@@ -281,8 +281,8 @@ def declarations(c, eid, since):
         if r['mode'] == 'simulation':
             transmission = "Simulation : rien n'a été transmis"
         elif r['mode'] == 'manual':
-            transmission = ("Déposée par l'entreprise sur impots.gouv.fr (ProfitOS a préparé le récapitulatif)"
-                            if r['status'] in FILED else "Préparée par ProfitOS, pas encore déposée")
+            transmission = ("Déposée par l'entreprise sur impots.gouv.fr (Veqalio a préparé le récapitulatif)"
+                            if r['status'] in FILED else "Préparée par Veqalio, pas encore déposée")
         else:
             transmission = "Transmise par le partenaire EDI agréé"
         meta = TYPES.get(r['decl_type'], {})

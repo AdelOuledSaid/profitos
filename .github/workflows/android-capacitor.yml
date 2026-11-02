@@ -55,7 +55,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ProfitOS-Android-Debug-APK
+          name: Veqalio-Android-Debug-APK
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -141,7 +141,7 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ProfitOS-Android-Release-AAB
+          name: Veqalio-Android-Release-AAB
           path: mobile/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30

@@ -219,7 +219,7 @@ def render_document(doc, watermark=None, compliance=None, attachments=None, xmp=
     pdf = _new_pdf(watermark=watermark, footer=doc.get('footer'), compliance=compliance)
     if title:
         pdf.set_title(title)
-    pdf.set_creator('ProfitOS')
+    pdf.set_creator('Veqalio')
     seller = doc.get('seller') or {}
     pdf.add_page()
 

@@ -248,3 +248,5 @@
 [data-theme="light"] .decision-verdict.warning{border-left-color:#c97a00}
 [data-theme="light"] .decision-verdict.good{border-left-color:#178a4c}
 [data-theme="light"] .decision-verdict.danger{border-left-color:#d33a4a}
+
+[data-theme="light"] .brand-mark rect{fill:#0f8a52}

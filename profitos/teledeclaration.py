@@ -384,7 +384,7 @@ class PartnerConnector:
     """Connecteur HTTP JSON vers le partenaire EDI.
 
     Contrat attendu (à aligner sur l'API du partenaire retenu) :
-      POST {EDI_PARTNER_API_URL}/declarations      corps = contenu canonique ProfitOS
+      POST {EDI_PARTNER_API_URL}/declarations      corps = contenu canonique Veqalio
            → 201 {"id": "...", "status": "deposited"}
       GET  {EDI_PARTNER_API_URL}/declarations/{id}
            → 200 {"status": "deposited|acknowledged|accepted|rejected",

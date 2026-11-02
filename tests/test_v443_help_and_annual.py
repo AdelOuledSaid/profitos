@@ -18,7 +18,7 @@ def test_help_center_is_public_and_complete():
     r = client.get('/aide')
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert 'Guide utilisateur ProfitOS' in html
+    assert 'Guide utilisateur Veqalio' in html
     for anchor in ('#presentation', '#facturation-clients', '#banque', '#tresorerie-scenarios', '#questions-frequentes-et-depannage'):
         assert f'href="{anchor}"' in html
     assert 'class="help-cycle"' in html and 'mailto:' in html

@@ -141,7 +141,7 @@ def test_request_reuses_one_physical_connection_and_releases_at_teardown(fake_po
     dbmod.init_app(app)
     with app.test_request_context('/'):
         raws = set()
-        for _ in range(12):  # ~ une page ProfitOS : 11-14 cx()/close()
+        for _ in range(12):  # ~ une page Veqalio : 11-14 cx()/close()
             c = dbmod.PGConnection(schema='org_3')
             c.execute('SELECT 1')
             raws.add(c._conn)

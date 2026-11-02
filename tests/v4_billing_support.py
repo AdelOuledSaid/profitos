@@ -2,6 +2,7 @@
 
 Chaque test obtient une base auth SQLite et des bases tenant isolées dans un
 répertoire temporaire, et un faux module Stripe (aucun appel réseau)."""
+import uuid
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -152,7 +153,8 @@ def make_org(name="Acme", plan="TRIAL", status="ACTIVE", trial_days=10, parent=N
 
 def make_user(org_id, role="OWNER", email=None, name="Utilisateur"):
     c = runtime.auth_cx()
-    email = email or f"{role.lower()}-{org_id}-{datetime.now().timestamp()}@example.fr"
+    # uuid plutôt que l'heure : sous Windows, deux appels rapprochés donnent la même heure
+    email = email or f"{role.lower()}-{org_id}-{uuid.uuid4().hex[:12]}@example.fr"
     c.execute(
         "INSERT INTO users(email,password_hash,full_name,is_active,email_verified,created_at,updated_at) "
         "VALUES(?,?,?,1,1,?,?)", (email, "x", name, runtime.now(), runtime.now()))
@@ -180,7 +182,7 @@ def org_row(org_id):
 
 
 def post_event(client, event_type, obj, event_id=None):
-    payload = {"id": event_id or f"evt_{datetime.now().timestamp()}", "type": event_type,
+    payload = {"id": event_id or f"evt_{uuid.uuid4().hex}", "type": event_type,
                "livemode": False, "data": {"object": obj}}
     return client.post("/billing/webhook", data=json.dumps(payload),
                        headers={"Stripe-Signature": "t=1,v1=test"}, content_type="application/json")

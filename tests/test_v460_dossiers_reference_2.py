@@ -121,7 +121,7 @@ def test_dossier_d_ca3_credit_reporte(app):
 
 
 def test_dossier_d_mois_precedent_non_liquide(app):
-    """Sans liquidation de janvier, le crédit ne peut pas être reporté : ProfitOS le signale
+    """Sans liquidation de janvier, le crédit ne peut pas être reporté : Veqalio le signale
     au lieu de préparer silencieusement une CA3 de février sans la ligne 22."""
     c = tenant(app)
     dossier_d_january(c)

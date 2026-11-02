@@ -50,7 +50,7 @@
     <label>Date de résiliation (si résilié)<input type="date" name="terminated_on" value="{{ values.get('terminated_on') or '' }}"></label>
   </div>
   <label>Notes<textarea name="notes" rows="2" maxlength="1000">{{ values.get('notes') or '' }}</textarea></label>
-  <p class="purchase-muted" style="font-size:12px;margin:0;">Reprenez les chiffres du contrat signé : prix, formule de révision, durée et préavis. ProfitOS compare ensuite chaque facture du fournisseur au montant prévu, révisé par l'indice officiel le cas échéant.</p>
+  <p class="purchase-muted" style="font-size:12px;margin:0;">Reprenez les chiffres du contrat signé : prix, formule de révision, durée et préavis. Veqalio compare ensuite chaque facture du fournisseur au montant prévu, révisé par l'indice officiel le cas échéant.</p>
   <button type="submit" class="purchase-primary-btn primary">Enregistrer</button>
 </form>
 {% if contract %}

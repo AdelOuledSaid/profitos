@@ -360,7 +360,7 @@ def detect_recurring(conn, entity_id, today, existing_keys=(), dismissed=()):
     4 derniers, montant stable à ±15 %, écart de 25 à 35 jours) : proposées comme flux
     prévus, jamais ajoutées sans validation."""
     rows = _bank_tx_rows(conn, entity_id, today - timedelta(days=125))
-    # Encaissements d'un client déjà facturé dans ProfitOS : ses factures sont comptées dans
+    # Encaissements d'un client déjà facturé dans Veqalio : ses factures sont comptées dans
     # la prévision, une recette récurrente en plus les compterait deux fois.
     from profitos.runtime import norm
     clients = set()

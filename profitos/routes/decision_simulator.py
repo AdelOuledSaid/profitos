@@ -602,7 +602,7 @@ def _cfo_answer(question, simulation):
         return f"Je recommande J+{b['decision_day']} car, parmi les plans compatibles testés, il minimise d'abord le financement requis ({fr_number(b['financing'])} €), puis le délai et la complexité. Point bas avant financement : {fr_number(b['minimum_before_financing'])} € ; après financement : {fr_number(b['minimum_after_financing'])} €."
     if any(w in low for w in ('financement','emprunt','dette')):
         return f"Le plan recommandé nécessite {fr_number(b['financing'])} € de financement pour préserver {fr_number(o['reserve'])} € de réserve."
-    return f"Plan recommandé : {o['label']}. Point bas après financement {fr_number(b['minimum_after_financing'])} €, trésorerie J+90 après financement {fr_number(b['end_90_after_financing'])} €. ProfitOS répond uniquement avec les données et scénarios actuellement connus."
+    return f"Plan recommandé : {o['label']}. Point bas après financement {fr_number(b['minimum_after_financing'])} €, trésorerie J+90 après financement {fr_number(b['end_90_after_financing'])} €. Veqalio répond uniquement avec les données et scénarios actuellement connus."
 
 def register(app):
     @app.route('/decision-simulator')

@@ -83,7 +83,7 @@ temporairement (sinon Checkout refuse la session).
 3. Activez **Stripe Tax** (Paramètres → Taxes) et l'enregistrement TVA France.
 4. Configurez le **Billing Portal** (Paramètres → Facturation → Portail client) :
    moyen de paiement, factures et résiliation (le changement de formule se fait
-   dans ProfitOS).
+   dans Veqalio).
 5. Récupérez les clés API (`sk_test_…`, `pk_test_…`).
 6. Webhook : Développeurs → Webhooks → endpoint `https://votre-domaine/billing/webhook`
    avec les événements `checkout.session.completed`,

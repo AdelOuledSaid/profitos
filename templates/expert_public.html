@@ -1,7 +1,7 @@
 {% extends "_public_base.html" %}
 {% from "_expert_dossier.html" import dossier %}
 {% block content %}
-<div class="purchase-eyebrow" style="margin-top:12px;">MISSION PROPOSÉE VIA PROFITOS</div>
+<div class="purchase-eyebrow" style="margin-top:12px;">MISSION PROPOSÉE VIA VEQALIO</div>
 <h1 class="purchase-title" style="font-size:24px;">{{ m.title }}</h1>
 <p class="purchase-subtitle">De la part de <strong>{{ org_name }}</strong> pour {{ e.name }} · {{ m.domain_label }} · <strong>{{ m.status_label }}</strong></p>
 {% for msg in get_flashed_messages() %}<div class="flash" role="status">{{ msg }}</div>{% endfor %}

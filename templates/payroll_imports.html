@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Paie — Silae / PayFit</h1>
-<p class="muted">Import d'OD de paie uniquement. ProfitOS ne calcule ni bulletins, ni cotisations, ni DSN. Aucune écriture n'est comptabilisée avant validation explicite.</p>
+<p class="muted">Import d'OD de paie uniquement. Veqalio ne calcule ni bulletins, ni cotisations, ni DSN. Aucune écriture n'est comptabilisée avant validation explicite.</p>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 <form method="post" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -30,7 +30,7 @@ def test_wrong_password_keeps_email(app):
     _post(client, '/login', {'email': 'personne@example.com', 'password': 'mauvais'})
     html = client.get('/login').get_data(as_text=True)
     assert 'value="personne@example.com"' in html
-    assert html.count('PROFITOS') == 0
+    assert html.count('VEQALIO') == 0
 
 
 def test_error_pages_for_visitors_have_no_app_menu(app):

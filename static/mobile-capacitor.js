@@ -1,6 +1,6 @@
-/* ProfitOS native bridge for Capacitor shells (Android/iOS).
+/* Veqalio native bridge for Capacitor shells (Android/iOS).
    No-op in a normal browser. Push registration uses the authenticated
-   ProfitOS session and the existing CSRF-protected mobile API. */
+   Veqalio session and the existing CSRF-protected mobile API. */
 (function () {
   'use strict';
 
@@ -44,10 +44,10 @@
 
     await push.addListener('registration', function (event) {
       if (event && event.value) {
-        storeToken(event.value, platform).catch(function (err) { console.warn('ProfitOS push token:', err); });
+        storeToken(event.value, platform).catch(function (err) { console.warn('Veqalio push token:', err); });
       }
     });
-    await push.addListener('registrationError', function (err) { console.warn('ProfitOS push registration:', err); });
+    await push.addListener('registrationError', function (err) { console.warn('Veqalio push registration:', err); });
     await push.addListener('pushNotificationActionPerformed', function (event) {
       var target = safeNotificationTarget(event);
       if (target) window.location.assign(target);
@@ -62,6 +62,6 @@
 
   window.ProfitOSMobile = {nativePlatform: nativePlatform, initPush: initPush};
   document.addEventListener('DOMContentLoaded', function () {
-    initPush().catch(function (err) { console.warn('ProfitOS mobile bridge:', err); });
+    initPush().catch(function (err) { console.warn('Veqalio mobile bridge:', err); });
   });
 }());

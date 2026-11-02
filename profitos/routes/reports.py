@@ -95,7 +95,7 @@ def register(app):
             return redirect(url_for('impact'))
 
         try:
-            from fpdf import FPDF
+            from fpdf import FPDF, XPos, YPos
         except ImportError:
             flash("La génération du rapport PDF est momentanément indisponible. Réessayez plus tard ou contactez le support.")
             return redirect(url_for('impact'))
@@ -118,9 +118,9 @@ def register(app):
         pdf.add_page()
 
         pdf.set_font('Helvetica','B',20); pdf.set_text_color(17,24,39)
-        pdf.cell(0,12,'ProfitOS - Rapport mensuel',ln=1)
+        pdf.cell(0,12,'Veqalio - Rapport mensuel',new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         pdf.set_font('Helvetica','',12); pdf.set_text_color(107,114,128)
-        pdf.cell(0,8,pdf_safe(f"{org['name']} - {period}"),ln=1)
+        pdf.cell(0,8,pdf_safe(f"{org['name']} - {period}"),new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         pdf.ln(6)
 
         def kpi(label,value,color):
@@ -134,40 +134,40 @@ def register(app):
         kpi('grow',f"{grow['n']} opportunites",(22,163,74))
         pdf.ln(14)
         pdf.set_font('Helvetica','',10); pdf.set_text_color(75,85,99)
-        pdf.cell(0,6,pdf_safe(f"Impact verifie a date : {fr_number(verified['t'])} EUR"),ln=1)
+        pdf.cell(0,6,pdf_safe(f"Impact verifie a date : {fr_number(verified['t'])} EUR"),new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         pdf.ln(6)
 
         def section(title):
-            pdf.set_font('Helvetica','B',13); pdf.set_text_color(17,24,39); pdf.cell(0,10,title,ln=1)
+            pdf.set_font('Helvetica','B',13); pdf.set_text_color(17,24,39); pdf.cell(0,10,title,new_x=XPos.LMARGIN,new_y=YPos.NEXT)
             pdf.set_draw_color(229,231,235); pdf.line(pdf.get_x(),pdf.get_y(),pdf.get_x()+180,pdf.get_y()); pdf.ln(3)
 
         section('Relances clients - créances prioritaires')
         if top_recover:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for r in top_recover:
-                pdf.cell(0,7,pdf_safe(f"- {r['customer']} (#{r['invoice_number']}) - {fr_number(r['outstanding'])} EUR - {r['days_overdue']} j de retard"),ln=1)
+                pdf.cell(0,7,pdf_safe(f"- {r['customer']} (#{r['invoice_number']}) - {fr_number(r['outstanding'])} EUR - {r['days_overdue']} j de retard"),new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune creance en retard.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune creance en retard.',new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         pdf.ln(4)
 
         section('Économies détectées')
         if top_save:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for s in top_save:
-                pdf.cell(0,7,pdf_safe(f"- {s['title']} - {fr_number(s['value'])} EUR/an"),ln=1)
+                pdf.cell(0,7,pdf_safe(f"- {s['title']} - {fr_number(s['value'])} EUR/an"),new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune économie détectée.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucune économie détectée.',new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         pdf.ln(4)
 
         section('Marchés publics - opportunités')
         if top_grow:
             pdf.set_font('Helvetica','',10); pdf.set_text_color(31,41,55)
             for g in top_grow:
-                pdf.cell(0,7,pdf_safe(f"- {g['title']} - {g['buyer'] or ''}"),ln=1)
+                pdf.cell(0,7,pdf_safe(f"- {g['title']} - {g['buyer'] or ''}"),new_x=XPos.LMARGIN,new_y=YPos.NEXT)
         else:
-            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun marché public ouvert.',ln=1)
+            pdf.set_font('Helvetica','I',10); pdf.set_text_color(156,163,175); pdf.cell(0,7,'Aucun marché public ouvert.',new_x=XPos.LMARGIN,new_y=YPos.NEXT)
 
-        pdf_bytes=bytes(pdf.output(dest='S'))
+        pdf_bytes=bytes(pdf.output())
         filename=f"profitos-rapport-{datetime.now(timezone.utc).strftime('%Y-%m')}.pdf"
 
         record_usage('reports_per_month',organization_id=org['id'])

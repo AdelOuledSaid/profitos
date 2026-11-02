@@ -73,7 +73,7 @@ def _clamp(value, low=0, high=100):
 
 
 def _intelligence(kind, amount, confidence, days_overdue=0, deadline=None):
-    """Score explicable V1.6.1 fondé uniquement sur les données ProfitOS."""
+    """Score explicable V1.6.1 fondé uniquement sur les données Veqalio."""
     amount = max(0.0, _safe_float(amount))
     confidence = _confidence(confidence)
 
@@ -209,7 +209,7 @@ def build_money_brief():
 
     V1.6 reste volontairement déterministe et explicable : aucun montant n'est
     inventé. Les recommandations utilisent uniquement les factures, signaux SAVE
-    et opportunités GROW déjà stockés dans ProfitOS.
+    et opportunités GROW déjà stockés dans Veqalio.
     """
     c = cx()
     try:
@@ -306,7 +306,7 @@ def build_money_brief():
         recommendations.append({
             'kind': 'SAVE',
             'title': row['title'],
-            'detail': row['details'] or 'Économie potentielle détectée par ProfitOS',
+            'detail': row['details'] or 'Économie potentielle détectée par Veqalio',
             'amount': amount,
             'amount_label': save_nature_label(row['title']),
             'confidence': score,

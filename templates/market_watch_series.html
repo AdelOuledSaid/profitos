@@ -43,6 +43,6 @@
   <tbody>{% for r in rows %}<tr><td>{{ r.label }}</td><td class="num">{{ r.value|fr_number(2 if defn.unit == '%' else 1) }}</td><td class="num">{% if r.change is not none %}{{ '+' if r.change > 0 }}{{ r.change|fr_number(2) }}{{ ' pt' if defn.unit == '%' else ' %' }}{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% else %}<p class="purchase-muted">Aucune valeur pour l'instant.</p>{% endif %}
-<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Données publiques{% if meta.last_update %} publiées le {{ meta.last_update|fr_date }}{% endif %}{% if meta.fetched_at %}, relues par ProfitOS le {{ meta.fetched_at|fr_datetime_paris }}{% endif %}. Information indicative, sans conseil financier.</p>
+<p class="purchase-muted" style="font-size:12px;margin-top:10px;">Données publiques{% if meta.last_update %} publiées le {{ meta.last_update|fr_date }}{% endif %}{% if meta.fetched_at %}, relues par Veqalio le {{ meta.fetched_at|fr_datetime_paris }}{% endif %}. Information indicative, sans conseil financier.</p>
 </div>
 {% endblock %}

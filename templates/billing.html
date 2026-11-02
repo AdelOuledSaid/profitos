@@ -5,7 +5,7 @@
   <section class="billing-hero">
     <div class="eyebrow green">FORMULES &amp; FACTURATION</div>
     <h1>Choisissez le niveau de pilotage financier adapté à votre entreprise.</h1>
-    <p class="billing-lead">ProfitOS réunit recouvrement, trésorerie, économies, marge et aide à la décision dans un même système. Commencez avec l'essentiel, puis augmentez les volumes et l'automatisation lorsque votre équipe grandit.</p>
+    <p class="billing-lead">Veqalio réunit recouvrement, trésorerie, économies, marge et aide à la décision dans un même système. Commencez avec l'essentiel, puis augmentez les volumes et l'automatisation lorsque votre équipe grandit.</p>
     <div class="billing-pills">
       <span class="billing-pill"><strong>✓</strong> 14 jours d'essai avec toutes les fonctions Pro</span>
       <span class="billing-pill"><strong>✓</strong> Sans carte bancaire pendant l'essai</span>
@@ -38,7 +38,7 @@
         <p class="muted">Vous pouvez reprendre un abonnement lorsque vous le souhaitez. Vos données sont conservées et vos exports restent disponibles.</p>
       {% elif sub_state=='TRIAL_EXPIRED' %}
         <h2>Essai gratuit terminé{% if org.trial_ends_at %} le {{ org.trial_ends_at|fr_date }}{% endif %}</h2>
-        <p class="muted">Choisissez une formule pour continuer à utiliser ProfitOS. Vos données sont conservées et vos exports restent disponibles.</p>
+        <p class="muted">Choisissez une formule pour continuer à utiliser Veqalio. Vos données sont conservées et vos exports restent disponibles.</p>
       {% else %}
         <h2>Formule {{ plan_name }} — inactive</h2>
         <p class="muted">Aucun abonnement actif n'est associé à cette organisation.</p>
@@ -243,7 +243,7 @@
   </section>
 
   <section class="billing-trust">
-    <div class="panel"><div class="eyebrow green">SÉCURITÉ</div><h3>Paiement sécurisé par Stripe</h3><p class="muted">ProfitOS ne stocke pas vos données de carte bancaire. Le statut de l'abonnement est confirmé par webhook signé Stripe.</p></div>
+    <div class="panel"><div class="eyebrow green">SÉCURITÉ</div><h3>Paiement sécurisé par Stripe</h3><p class="muted">Veqalio ne stocke pas vos données de carte bancaire. Le statut de l'abonnement est confirmé par webhook signé Stripe.</p></div>
     <div class="panel"><div class="eyebrow green">FLEXIBILITÉ</div><h3>Sans engagement en mensuel</h3><p class="muted">Changez de formule à tout moment depuis cette page. Moyen de paiement, factures et résiliation : depuis « Gérer mon abonnement ».</p></div>
     <div class="panel"><div class="eyebrow green">ÉVOLUTIF</div><h3>Changez de niveau avec votre usage</h3><p class="muted">Les quotas sont centralisés et contrôlés côté serveur pour rester cohérents avec votre formule.</p></div>
   </section>

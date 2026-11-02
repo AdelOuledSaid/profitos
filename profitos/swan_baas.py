@@ -168,7 +168,7 @@ def initiate_sepa_credit_transfer_sandbox(project_token, user_id, account_id, be
     et ne considère jamais le paiement comme exécuté avant validation Swan.
     """
     if current_environment() != 'sandbox':
-        raise ValueError("Les virements ProfitOS sont bloqués hors Swan Sandbox.")
+        raise ValueError("Les virements Veqalio sont bloqués hors Swan Sandbox.")
     import re
     beneficiary_name = (beneficiary_name or '').strip()
     iban = re.sub(r'\s+', '', (iban or '')).upper()
@@ -560,10 +560,10 @@ def request_card(token, swan_account_id, holder_name, environment=None):
 
 
 # ---------------------------------------------------------------------------
-# Rattachement des comptes Swan aux organisations ProfitOS.
+# Rattachement des comptes Swan aux organisations Veqalio.
 #
 # Un projet Swan (SWAN_CLIENT_ID) contient les comptes de TOUS les clients
-# ProfitOS : sans rattachement explicite, chaque organisation verrait — et pourrait
+# Veqalio : sans rattachement explicite, chaque organisation verrait — et pourrait
 # débiter — les comptes des autres. Un compte n'est visible et utilisable que s'il
 # a été rattaché à l'organisation lors de SON parcours (demande de compte ou
 # onboarding créé depuis cette organisation).

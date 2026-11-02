@@ -97,7 +97,7 @@ def list_recurring_entries(conn, entity_id):
     return out
 
 
-def generate_due_entries(conn, entity_id, today, created_by='ProfitOS (automatique)'):
+def generate_due_entries(conn, entity_id, today, created_by='Veqalio (automatique)'):
     """Passe toutes les écritures récurrentes échues jusqu'à today (rattrapage inclus).
     Une période close (date de verrouillage) arrête le modèle concerné avec une erreur
     explicite, sans bloquer les autres."""
@@ -145,7 +145,7 @@ def deactivate_recurring_entry(conn, entity_id, template_id):
 # ----------------------------------------------------------------- échéancier fiscal
 def upcoming_deadlines(conn, entity_id, today, horizon_days=45):
     """Échéances fiscales des prochains jours, avec l'état de dépôt de la déclaration
-    correspondante dans ProfitOS."""
+    correspondante dans Veqalio."""
     from profitos import ledger as L
     from profitos import corporate_tax as CT
     from profitos.liasse_normal import liasse_normale
@@ -281,7 +281,7 @@ def overdue_declarations(conn, entity_id=None, today=None, lookback_days=63):
         if not it.get('type') or it['date'] >= today or it.get('deposited'):
             continue
         # Pas de relance pour une déclaration sans montant ni préparation (TVA à néant, acompte
-        # nul) : ProfitOS ne peut pas savoir si elle a été déposée hors de l'application.
+        # nul) : Veqalio ne peut pas savoir si elle a été déposée hors de l'application.
         if not it.get('amount') and not it.get('prepared') and it['type'] not in ('LIASSE', 'TVA_CA12'):
             continue
         if it['type'] in ('LIASSE', 'TVA_CA12') and not it.get('prepared') and not _has_entries(conn, entity_id, it['start'], it['end']):
@@ -316,7 +316,7 @@ def precontrols(conn, fy_start, fy_end, entity_id=None, today=None):
                 "Comptabilisez l'IS depuis l'écran « Impôt sur les sociétés et CVAE ».")
         next_day = (fy_end + timedelta(days=1)).isoformat()
         if last_opening_date(conn, next_day, entity_id) != next_day:
-            add('info', "L'exercice n'est pas encore clôturé dans ProfitOS (à-nouveaux non générés).")
+            add('info', "L'exercice n'est pas encore clôturé dans Veqalio (à-nouveaux non générés).")
     vat_left = sum(b['closing'] for c, b in bal.items() if c.startswith(('44566', '44562', '4457')))
     if abs(vat_left) >= 1:
         add('warning', 'Comptes de TVA déductible / collectée non soldés à la clôture',

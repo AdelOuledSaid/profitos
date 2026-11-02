@@ -82,8 +82,8 @@ def test_administration_reservee(app, monkeypatch):
     t = text(cl.get('/admin/experts').get_data(as_text=True))
     assert 'Maître Durand' in t and 'Barreau de Lyon ✓' in t
     t = text(cl.get('/experts').get_data(as_text=True))
-    assert 'Maître Durand' in t and 'Barreau : n° Barreau de Lyon — inscription vérifiée par ProfitOS le' in t
-    assert 'ProfitOS ne perçoit aucune commission' in t
+    assert 'Maître Durand' in t and 'Barreau : n° Barreau de Lyon — inscription vérifiée par Veqalio le' in t
+    assert 'Veqalio ne perçoit aucune commission' in t
 
 
 # ------------------------------------------------------- mission de bout en bout
@@ -122,7 +122,7 @@ def test_mission_depuis_mission_control(app, monkeypatch):
     # Côté expert : dossier figé, limité aux éléments autorisés.
     ex = expert_client(app)
     t = text(ex.get(f'/expert/mission/{token}').get_data(as_text=True))
-    assert 'Recouvrement facture' in t and 'Constat vérifié par ProfitOS' in t and 'impayée depuis 40 jour(s)' in t
+    assert 'Recouvrement facture' in t and 'Constat vérifié par Veqalio' in t and 'impayée depuis 40 jour(s)' in t
     assert 'SIREN : 732829320' in t and 'IBAN' not in t                    # pas de coordonnées bancaires transmises
     assert ex.get('/expert/mission/faux-jeton').status_code == 404
     # Devis.

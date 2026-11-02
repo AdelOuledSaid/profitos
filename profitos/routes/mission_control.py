@@ -129,6 +129,8 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def mission_control_execute():
+        if current_role() == 'LECTURE':
+            abort(403)
         key = request.form.get('key') or ''
         c = cx()
         try:
@@ -164,6 +166,8 @@ def register(app):
     @requires_paid_plan
     @require_area('pilotage')
     def mission_control_track():
+        if current_role() == 'LECTURE':
+            abort(403)
         key = request.form.get('key') or ''
         op = request.form.get('op')
         user = current_user()['email']
@@ -257,6 +261,8 @@ def register(app):
     @requires_paid_plan
     @require_area('invoicing')
     def mission_control_decision():
+        if current_role() == 'LECTURE':
+            abort(403)
         """Décision humaine sur une créance ancienne : toujours due, en litige ou douteuse."""
         source = request.form.get('source') if request.form.get('source') in ('outgoing', 'imported') else None
         status = request.form.get('status') or ''

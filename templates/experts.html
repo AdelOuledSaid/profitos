@@ -5,7 +5,7 @@
   <div>
     <div class="purchase-eyebrow">EXPERT NETWORK</div>
     <h1 class="purchase-title">Experts partenaires</h1>
-    <p class="purchase-subtitle">Quand un point demande une intervention humaine, faites appel à un professionnel sélectionné. ProfitOS lui transmet un dossier factuel — uniquement ce que vous autorisez —, suit le devis, les échanges et le livrable, puis contrôle le résultat dans vos données.</p>
+    <p class="purchase-subtitle">Quand un point demande une intervention humaine, faites appel à un professionnel sélectionné. Veqalio lui transmet un dossier factuel — uniquement ce que vous autorisez —, suit le devis, les échanges et le livrable, puis contrôle le résultat dans vos données.</p>
   </div>
   <div class="actionbuttons"><a class="purchase-primary-btn primary" href="{{ url_for('expert_request') }}">Demander une mission</a></div>
 </div>
@@ -33,7 +33,7 @@
       {% if e.specialties %}<p style="margin:2px 0;font-size:13px;"><strong>{{ e.specialties }}</strong></p>{% endif %}
       {% if e.description %}<p class="purchase-muted" style="margin:2px 0;font-size:13px;">{{ e.description }}</p>{% endif %}
       <ul class="mc-checks">
-        {% if d.regulated %}<li><span class="mc-ok">✓</span><span>{{ d.registry }} : n° {{ e.registration_number }} — inscription vérifiée par ProfitOS le {{ e.registration_verified_at|fr_date }}</span></li>{% endif %}
+        {% if d.regulated %}<li><span class="mc-ok">✓</span><span>{{ d.registry }} : n° {{ e.registration_number }} — inscription vérifiée par Veqalio le {{ e.registration_verified_at|fr_date }}</span></li>{% endif %}
         {% if e.insurance %}<li><span class="mc-ok">✓</span><span>Assurance : {{ e.insurance }}</span></li>{% endif %}
         {% if e.ratings %}<li><span class="mc-ok">✓</span><span>{{ e.rating_avg|fr_number(1) }} / 5 sur {{ e.ratings }} mission(s) évaluée(s)</span></li>{% endif %}
       </ul>
@@ -42,6 +42,6 @@
   {% else %}<p class="purchase-muted" style="font-size:13px;">Aucun expert partenaire pour l'instant dans ce domaine.</p>{% endif %}
 </section>
 {% endfor %}
-<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les experts sont sélectionnés par ProfitOS ; pour l'expertise comptable et le conseil juridique, seuls des professionnels inscrits (Ordre des experts-comptables, barreau) sont proposés, après vérification de leur inscription. Les honoraires sont convenus et réglés directement avec l'expert : ProfitOS ne perçoit aucune commission sur les missions.</p>
+<p class="purchase-muted" style="font-size:12px;margin-top:12px;">Les experts sont sélectionnés par Veqalio ; pour l'expertise comptable et le conseil juridique, seuls des professionnels inscrits (Ordre des experts-comptables, barreau) sont proposés, après vérification de leur inscription. Les honoraires sont convenus et réglés directement avec l'expert : Veqalio ne perçoit aucune commission sur les missions.</p>
 </div>
 {% endblock %}

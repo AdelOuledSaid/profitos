@@ -1,4 +1,4 @@
-# ProfitOS — Architecture
+# Veqalio — Architecture
 
 ## Vue d'ensemble
 

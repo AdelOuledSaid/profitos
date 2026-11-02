@@ -1,4 +1,4 @@
-# ProfitOS — Open Banking Powens V1
+# Veqalio — Open Banking Powens V1
 
 Variables Render à ajouter :
 - `POWENS_DOMAIN` : sous-domaine Powens, sans `.biapi.pro`
@@ -8,7 +8,7 @@ Variables Render à ajouter :
 Dans la console Powens, autoriser comme callback :
 `https://app.profitos.fr/banking/callback`
 
-Le module ne stocke pas le token bancaire permanent dans la base ProfitOS.
+Le module ne stocke pas le token bancaire permanent dans la base Veqalio.
 Il conserve uniquement l'identifiant utilisateur Powens et génère un jeton côté serveur lorsque nécessaire.
 
 Par sécurité, le solde bancaire synchronisé n'écrase pas automatiquement le solde utilisé par les moteurs financiers.

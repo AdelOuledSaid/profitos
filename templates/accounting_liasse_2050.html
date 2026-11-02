@@ -132,7 +132,7 @@
       <tbody>{% for r in l.dettes %}{% if r.brut %}<tr><td class="ca3-box">{{ r.box }}</td><td>{{ r.label }}</td><td class="num">{{ r.brut|fr_number(0) }}</td><td class="num">{{ r.un_an|fr_number(0) }}</td><td class="num">{{ r.un_cinq|fr_number(0) }}</td><td class="num">{{ r.plus_cinq|fr_number(0) }}</td></tr>{% endif %}{% endfor %}</tbody>
     </table></div>
   </div>
-  <p class="purchase-muted" style="font-size:12px;">Les emprunts sont ventilés selon leur échéancier dans ProfitOS ; les autres créances et dettes sont présumées à moins d'un an.</p>
+  <p class="purchase-muted" style="font-size:12px;">Les emprunts sont ventilés selon leur échéancier dans Veqalio ; les autres créances et dettes sont présumées à moins d'un an.</p>
 </section>
 
 <section class="purchase-panel" id="fiscal" style="margin-top:14px;">
@@ -212,7 +212,7 @@
   <p class="purchase-muted" style="font-size:12px;">Le stock antérieur se saisit dans les paramètres de l'<a class="link" href="{{ url_for('accounting_corporate_tax', exercice=choice) }}">impôt sur les sociétés</a>.</p>
 
   <h2 style="margin-top:18px;">2059-D — Réserve spéciale des plus-values à long terme</h2>
-  <p class="purchase-muted">Néant : aucune dotation à la réserve spéciale n'est suivie dans ProfitOS. Si la société en détient une, reportez-la à la main.</p>
+  <p class="purchase-muted">Néant : aucune dotation à la réserve spéciale n'est suivie dans Veqalio. Si la société en détient une, reportez-la à la main.</p>
 </section>
 
 <section class="purchase-panel" id="capital" style="margin-top:14px;">

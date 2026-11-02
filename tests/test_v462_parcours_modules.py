@@ -72,10 +72,10 @@ def balance(cur, org_id, prefix, upto=None, journal_not=None, journal=None, sinc
     params = [prefix + '%']
     if upto:
         sql += ' AND e.entry_date<=%s'
-        params.append(upto)
+        params.append(upto.isoformat() if isinstance(upto, date) else upto)
     if since:
         sql += ' AND e.entry_date>=%s'
-        params.append(since)
+        params.append(since.isoformat() if isinstance(since, date) else since)
     if journal:
         sql += ' AND e.journal_code=%s'
         params.append(journal)
@@ -119,7 +119,7 @@ def test_parcours_facturation_banque_cloture_fec(server):
         submit(page, 'form:has(input[name=closed_until])')
         assert 'clôturée jusqu' in page.inner_text('main')
         # Résultat N-1 = 30 000 − 10 000 = 20 000, porté en 120000 dans les à-nouveaux.
-        cur.execute(f"SELECT COUNT(*) FROM {S}.accounting_entries WHERE journal_code='AN' AND entry_date=%s", (today.replace(month=1, day=1),))
+        cur.execute(f"SELECT COUNT(*) FROM {S}.accounting_entries WHERE journal_code='AN' AND entry_date=%s", (today.replace(month=1, day=1).isoformat(),))
         assert cur.fetchone()[0] >= 1
         an = lambda prefix: balance(cur, org_id, prefix, journal='AN')
         assert an('120') == -20000 and an('101') == -5000

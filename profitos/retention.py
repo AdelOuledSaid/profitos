@@ -67,7 +67,7 @@ def _log(msg, *args):
         from flask import current_app
         current_app.logger.info(msg, *args)
     except Exception:
-        print('[ProfitOS] ' + (msg % args if args else msg))
+        print('[Veqalio] ' + (msg % args if args else msg))
 
 
 def _table_exists(c, table):

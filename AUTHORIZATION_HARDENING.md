@@ -1,10 +1,10 @@
-# ProfitOS V1.3.1 — Authorization & Session Hardening
+# Veqalio V1.3.1 — Authorization & Session Hardening
 
 ## Changements
 
 - La base `memberships` est désormais la source de vérité des rôles à chaque requête protégée.
 - Une rétrogradation ou suppression d’un membre prend effet dès la requête suivante, sans attendre une reconnexion.
-- Si l’accès à l’organisation active est supprimé mais que l’utilisateur appartient encore à une autre organisation, ProfitOS bascule vers une organisation encore autorisée.
+- Si l’accès à l’organisation active est supprimé mais que l’utilisateur appartient encore à une autre organisation, Veqalio bascule vers une organisation encore autorisée.
 - Les actions Stripe Checkout / Customer Portal exigent explicitement la permission `billing`.
 - La modification du profil entreprise exige OWNER ou ADMIN.
 - La synchronisation BOAMP passe de GET à POST avec CSRF et rate limiting.

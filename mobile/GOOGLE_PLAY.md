@@ -22,10 +22,10 @@ accessible sans connexion, pas un fichier joint.*
 
 ---
 
-**Politique de confidentialité — ProfitOS**
+**Politique de confidentialité — Veqalio**
 *Dernière mise à jour : [DATE]*
 
-ProfitOS (ci-après « nous ») propose une application de gestion
+Veqalio (ci-après « nous ») propose une application de gestion
 financière et comptable pour les petites et moyennes entreprises.
 
 **Données que nous collectons**
@@ -91,13 +91,13 @@ est un point de départ, pas une soumission automatique.*
 
 ## Fiche Google Play — brouillon
 
-**Nom de l'app** : ProfitOS
+**Nom de l'app** : Veqalio
 
 **Description courte** (80 caractères max) :
 > Facturation, comptabilité et trésorerie pour les PME françaises.
 
 **Description longue** (brouillon, à retravailler) :
-> ProfitOS centralise la gestion financière de votre entreprise :
+> Veqalio centralise la gestion financière de votre entreprise :
 > facturation client, suivi des achats fournisseurs, notes de frais,
 > comptabilité complète (plan comptable, lettrage, FEC), et pilotage de
 > trésorerie.

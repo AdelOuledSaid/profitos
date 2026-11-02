@@ -170,7 +170,7 @@ def register(app):
         acsec.bump_auth_version_keep_current(user['id'])
         log_security_event('PASSWORD_CHANGED', 'SUCCESS', target='account')
         acsec.notify_user(user, 'Mot de passe modifié',
-                          "Le mot de passe de votre compte ProfitOS vient d'être modifié et vos autres appareils ont été déconnectés. "
+                          "Le mot de passe de votre compte Veqalio vient d'être modifié et vos autres appareils ont été déconnectés. "
                           "Si vous n'êtes pas à l'origine de ce changement, réinitialisez-le immédiatement.",
                           cta_label='Réinitialiser mon mot de passe', cta_endpoint='forgot_password')
         flash('Mot de passe modifié. Vos autres appareils ont été déconnectés.')
@@ -200,12 +200,12 @@ def register(app):
         if not taken:
             link = f"{app_base_url()}{url_for('account_email_confirm', token=token)}"
             html = render_template('email_transactional.html', title='Confirmez votre nouvelle adresse e-mail',
-                                   intro="Cliquez ci-dessous pour confirmer cette adresse comme nouvel identifiant de votre compte ProfitOS. Ce lien est valable 24 heures.",
+                                   intro="Cliquez ci-dessous pour confirmer cette adresse comme nouvel identifiant de votre compte Veqalio. Ce lien est valable 24 heures.",
                                    cta_label='Confirmer cette adresse', cta_url=link,
                                    footer="Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.")
-            send_email(new_email, 'Confirmez votre nouvelle adresse e-mail ProfitOS', html, kind='system')
+            send_email(new_email, 'Confirmez votre nouvelle adresse e-mail Veqalio', html, kind='system')
             acsec.notify_user(user, "Changement d'adresse e-mail demandé",
-                              "Une demande de changement de l'adresse e-mail de votre compte ProfitOS a été faite. "
+                              "Une demande de changement de l'adresse e-mail de votre compte Veqalio a été faite. "
                               "Elle ne prendra effet qu'après confirmation depuis la nouvelle adresse. "
                               "Si vous n'êtes pas à l'origine de cette demande, changez votre mot de passe.",
                               cta_label='Sécuriser mon compte', cta_endpoint='forgot_password')
@@ -235,7 +235,7 @@ def register(app):
         c.commit(); c.close()
         log_security_event('EMAIL_CHANGED', 'SUCCESS', user_id=u['id'], target='account')
         acsec.notify_user({'id': u['id'], 'email': old_email}, 'Adresse e-mail modifiée',
-                          "L'adresse e-mail de votre compte ProfitOS a été modifiée. Si vous n'êtes pas à l'origine de ce changement, contactez immédiatement le support.")
+                          "L'adresse e-mail de votre compte Veqalio a été modifiée. Si vous n'êtes pas à l'origine de ce changement, contactez immédiatement le support.")
         flash('Nouvelle adresse e-mail confirmée.')
         return redirect(url_for('account_security') if session.get('user_id') == u['id'] else url_for('login'))
 
@@ -271,7 +271,7 @@ def register(app):
             acsec.bump_auth_version_keep_current(user['id'])
             log_security_event('2FA_ENABLED', 'SUCCESS', target='account')
             acsec.notify_user(user, 'Double authentification activée',
-                              "La double authentification est désormais active sur votre compte ProfitOS.")
+                              "La double authentification est désormais active sur votre compte Veqalio.")
             return render_template('two_factor_codes.html', codes=codes)
         c.close()
         return render_template('two_factor_setup.html', secret_grouped=totp_mod.grouped(secret),
@@ -291,7 +291,7 @@ def register(app):
         c.commit(); c.close()
         log_security_event('2FA_DISABLED', 'SUCCESS', target='account')
         acsec.notify_user(user, 'Double authentification désactivée',
-                          "La double authentification a été désactivée sur votre compte ProfitOS. Si ce n'était pas vous, changez votre mot de passe.",
+                          "La double authentification a été désactivée sur votre compte Veqalio. Si ce n'était pas vous, changez votre mot de passe.",
                           cta_label='Sécuriser mon compte', cta_endpoint='forgot_password')
         flash('Double authentification désactivée.')
         return redirect(url_for('account_security'))

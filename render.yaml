@@ -1,4 +1,4 @@
-# ProfitOS — Blueprint Render (production). Procédure : DEPLOIEMENT_PRODUCTION.md
+# Veqalio — Blueprint Render (production). Procédure : DEPLOIEMENT_PRODUCTION.md
 #
 # Les noms de plans ci-dessous sont à confirmer dans le tableau de bord Render
 # (grille tarifaire en vigueur) avant la synchronisation du Blueprint.
@@ -16,9 +16,9 @@ envVarGroups:
       - key: PROFITOS_SECRET_KEY
         generateValue: true
       - key: APP_BASE_URL
-        value: https://app.profitos.fr
+        value: https://veqalio.com
       - key: RESEND_FROM_EMAIL
-        value: ProfitOS <noreply@profitos.fr>
+        value: Veqalio <contact@veqalio.com>
       # Jeton du déclenchement interne des tâches « disque » (cron -> web).
       - key: JOBS_TRIGGER_TOKEN
         generateValue: true

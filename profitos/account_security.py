@@ -252,7 +252,7 @@ def register_login_failure(user):
         c.close()
     if locked:
         notify_user(user, 'Compte temporairement verrouillé',
-                    f"Plusieurs tentatives de connexion infructueuses ont eu lieu sur votre compte ProfitOS. "
+                    f"Plusieurs tentatives de connexion infructueuses ont eu lieu sur votre compte Veqalio. "
                     f"Par sécurité, la connexion est bloquée pendant {LOCK_DURATION_MINUTES} minutes. "
                     f"Si ce n'était pas vous, nous vous conseillons de changer votre mot de passe.",
                     cta_label='Réinitialiser mon mot de passe', cta_endpoint='forgot_password')
@@ -276,9 +276,9 @@ def notify_user(user, title, intro, cta_label=None, cta_endpoint=None):
     try:
         cta_url = f"{app_base_url()}{url_for(cta_endpoint)}" if cta_endpoint else None
         html = render_template('email_transactional.html', title=title, intro=intro,
-                               cta_label=cta_label or 'Ouvrir ProfitOS', cta_url=cta_url or app_base_url(),
-                               footer="Message de sécurité automatique envoyé par ProfitOS.")
-        return send_email(user['email'], f'ProfitOS — {title}', html, kind='system')
+                               cta_label=cta_label or 'Ouvrir Veqalio', cta_url=cta_url or app_base_url(),
+                               footer="Message de sécurité automatique envoyé par Veqalio.")
+        return send_email(user['email'], f'Veqalio — {title}', html, kind='system')
     except Exception:
         current_app.logger.exception('Security notification failed user_id=%s', _row_get(user, 'id'))
         return {'sent': False}
@@ -420,7 +420,7 @@ def _register_device(user):
     if not known and has_any:
         agent = (request.headers.get('User-Agent') or 'navigateur inconnu')[:120]
         notify_user(user, 'Nouvelle connexion à votre compte',
-                    f"Une connexion à votre compte ProfitOS vient d'avoir lieu depuis un nouvel appareil ({agent}). "
+                    f"Une connexion à votre compte Veqalio vient d'avoir lieu depuis un nouvel appareil ({agent}). "
                     "Si c'était vous, aucune action n'est nécessaire. Sinon, changez immédiatement votre mot de passe.",
                     cta_label='Sécuriser mon compte', cta_endpoint='forgot_password')
 

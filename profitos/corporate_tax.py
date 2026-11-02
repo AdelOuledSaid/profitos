@@ -197,7 +197,7 @@ def _round_rate(rate):
 def cvae_rate(turnover12, year):
     if year >= 2030:
         return 0.0
-    # Avant 2024 : barème 2024 (ProfitOS ne traite pas les impositions antérieures).
+    # Avant 2024 : barème 2024 (Veqalio ne traite pas les impositions antérieures).
     sched = CVAE_SCHEDULE.get(year) or CVAE_SCHEDULE[2024 if year < 2024 else 2029]
     r1, r2, base3, r3, rmax = sched
     ca = float(turnover12 or 0)

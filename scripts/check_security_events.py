@@ -1,5 +1,5 @@
 r"""
-ProfitOS V1.3.5 - Vérification locale du journal security_events.
+Veqalio V1.3.5 - Vérification locale du journal security_events.
 
 Usage (CMD Windows):
     python scripts\check_security_events.py
@@ -71,7 +71,7 @@ def main():
         print("La table security_events existe, mais aucun événement n'est encore enregistré.")
         return 0
 
-    print("\n20 derniers événements de sécurité ProfitOS")
+    print("\n20 derniers événements de sécurité Veqalio")
     print("-" * 105)
     print(f"{'ID':<6} {'EVENT':<25} {'OUTCOME':<10} {'USER':<8} {'ORG':<8} {'TARGET':<18} CREATED_AT")
     print("-" * 105)

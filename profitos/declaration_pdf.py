@@ -1,5 +1,5 @@
-"""Récapitulatif PDF d'une déclaration préparée par ProfitOS : montants case par case,
-paiement, mode de dépôt et rappel que ProfitOS ne transmet pas lui-même la déclaration.
+"""Récapitulatif PDF d'une déclaration préparée par Veqalio : montants case par case,
+paiement, mode de dépôt et rappel que Veqalio ne transmet pas lui-même la déclaration.
 Même convention fpdf2 que la plaquette (Helvetica, texte ramené en latin-1)."""
 from profitos.plaquette import _safe as _plaquette_safe
 
@@ -39,7 +39,7 @@ def render_declaration_pdf(row, payload, meta, guide, filing_url):
     else:
         period = f"Période du {fr_date(row['period_start'])} au {fr_date(row['period_end'])}"
     pdf.multi_cell(width, 5, _safe(period + (' — déclaration rectificative' if payload.get('corrective') else '')), new_x='LMARGIN', new_y='NEXT')
-    pdf.multi_cell(width, 5, _safe(f"Préparé par ProfitOS le {fr_date(str(payload.get('generated_at') or '')[:10])} — "
+    pdf.multi_cell(width, 5, _safe(f"Préparé par Veqalio le {fr_date(str(payload.get('generated_at') or '')[:10])} — "
                                    f"empreinte {row['payload_hash'][:16]}"))
     pdf.ln(3)
 
@@ -49,7 +49,7 @@ def render_declaration_pdf(row, payload, meta, guide, filing_url):
     pdf.set_font('Helvetica', '', 9)
     pdf.multi_cell(width, 5, _safe(guide + (f" ({filing_url})" if payload.get('filing') == 'efi' else '')), fill=True, new_x='LMARGIN', new_y='NEXT')
     pdf.multi_cell(width, 5, _safe("Reportez les montants ci-dessous, vérifiez-les et validez la déclaration. Archivez ensuite "
-                                   "l'accusé de réception dans ProfitOS : le dépôt n'est confirmé qu'avec ce justificatif."),
+                                   "l'accusé de réception dans Veqalio : le dépôt n'est confirmé qu'avec ce justificatif."),
                    fill=True)
     pdf.ln(4)
 
@@ -106,7 +106,7 @@ def render_declaration_pdf(row, payload, meta, guide, filing_url):
                                            f"{fr_number(r.get('rent') or 0, 0)} EUR"))
 
     pdf.ln(6); pdf.set_font('Helvetica', 'I', 8); pdf.set_text_color(107, 114, 128)
-    pdf.multi_cell(width, 4, _safe("ProfitOS calcule et prépare cette déclaration à partir de votre comptabilité ; il ne la "
+    pdf.multi_cell(width, 4, _safe("Veqalio calcule et prépare cette déclaration à partir de votre comptabilité ; il ne la "
                                    "transmet pas à l'administration. Vous restez responsable des montants déclarés : faites-les "
                                    "valider par votre expert-comptable en cas de doute."))
     out = pdf.output()

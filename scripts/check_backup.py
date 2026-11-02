@@ -1,5 +1,5 @@
 """
-ProfitOS V1.3.6 - Vérification d'une sauvegarde PostgreSQL custom-format.
+Veqalio V1.3.6 - Vérification d'une sauvegarde PostgreSQL custom-format.
 
 Usage:
     python scripts/check_backup.py backups/profitos_YYYYMMDDTHHMMSSZ.dump

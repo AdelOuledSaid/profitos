@@ -39,7 +39,7 @@ def test_inviting_existing_unverified_account_never_touches_it(app, monkeypatch)
     # La session de la victime reste valide.
     assert victim_client.get('/compte/securite').status_code == 200
     # Objet fixe (pas le nom d'organisation choisi par l'expéditeur), lien d'acceptation.
-    assert sent and sent[0]['subject'] == 'Invitation à rejoindre une organisation sur ProfitOS'
+    assert sent and sent[0]['subject'] == 'Invitation à rejoindre une organisation sur Veqalio'
     assert '/invitation/' in sent[0]['html'] and '/reset-password/' not in sent[0]['html']
 
 

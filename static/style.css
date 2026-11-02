@@ -137,3 +137,6 @@ a.is-readonly{pointer-events:auto}
 
 /* v447 : longs mots sans espace (URL, a/b/c) coupés plutôt que de déborder sur mobile */
 label,.purchase-muted,.flash{overflow-wrap:break-word}
+
+/* Logo Veqalio (v491) : V posé sur le signe égal */
+.brand-mark{display:inline-block;width:.86em;height:.86em;vertical-align:-.1em;margin-right:.28em;overflow:visible}.brand-mark path{fill:none;stroke:currentColor;stroke-width:9;stroke-linecap:round;stroke-linejoin:round}.brand-mark rect{fill:#3ddc84}

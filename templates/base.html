@@ -10,10 +10,12 @@
   <link rel="stylesheet" href="{{ asset_url('purchase.css') }}">
   <link rel="manifest" href="{{ url_for('static',filename='manifest.json') }}">
   <meta name="theme-color" content="#081020">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static',filename='icons/favicon.svg') }}">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static',filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static',filename='icons/apple-touch-icon.png') }}">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ProfitOS">
+  <meta name="apple-mobile-web-app-title" content="Veqalio">
   <script src="{{ asset_url('app.js') }}" defer></script>
 </head>
 <body{% if request.endpoint=='home' %} data-tour-auto="1"{% endif %}{% if auth_user and auth_org and current_role()=='LECTURE' %} data-readonly="1"{% endif %}>
@@ -24,12 +26,12 @@
 
 <header class="mobilebar">
   <button type="button" class="navtoggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Ouvrir le menu"><span></span><span></span><span></span></button>
-  <a class="brand" href="{{ url_for('home') }}">Profit<span>OS</span></a>
+  <a class="brand" href="{{ url_for('home') }}"><svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span></a>
 </header>
 <div class="navscrim" data-nav-close hidden></div>
 <aside class="sidebar" id="sidebar">
   {% if branding and branding.accent_color %}<div style="height:4px;background:{{ branding.accent_color }};margin:-28px -22px 18px;border-radius:0;"></div>{% endif %}
-  <div class="brand">{% if branding and branding.logo_url and branding.logo_url.startswith('data:image/') %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}Profit<span>OS</span>{% endif %}</div>
+  <div class="brand">{% if branding and branding.logo_url and branding.logo_url.startswith('data:image/') %}<img src="{{ branding.logo_url }}" alt="Logo" style="max-height:36px;max-width:100%;display:block;">{% else %}<svg class="brand-mark" viewBox="0 0 84 84" aria-hidden="true" focusable="false"><path d="M14 14 L42 46 L70 14"/><rect x="14" y="56" width="56" height="8" rx="4"/><rect x="14" y="70" width="56" height="8" rx="4"/></svg>Veqal<span>io</span>{% endif %}</div>
   <div class="subbrand">Pilotage financier</div>
   {% if auth_user %}
   <form method="post" action="{{ url_for('logout') }}" class="sidebar-quick-logout">

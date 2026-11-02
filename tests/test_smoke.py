@@ -55,5 +55,6 @@ def test_password_policy():
     assert password_error('12345678901')
     # v4xx : 12 caractères minimum et liste des mots de passe courants.
     assert password_error('ProfitOS2026')  # nom du produit + année : liste des mots de passe courants
+    assert password_error('Veqalio2026')   # nouveau nom du produit (v491)
     assert password_error('password1234')
     assert password_error('Brume-Cactus-Velo-48') is None

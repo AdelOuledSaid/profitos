@@ -1,4 +1,4 @@
-# ProfitOS — Déploiement en production (Render)
+# Veqalio — Déploiement en production (Render)
 
 Document de référence unique. Les anciens fichiers (`CLOUD_DEPLOYMENT.md`,
 `RENDER_RC1_CHECKLIST.md`, `PRODUCTION_CHECKLIST.md`) renvoient ici.
@@ -146,7 +146,7 @@ sans clé secrète, secret de webhook et au moins un tarif) : `STRIPE_SECRET_KEY
 `SWAN_OAUTH_REDIRECT_URI`, `SWAN_WEBHOOK_SECRET`, `SWAN_ENABLE_ACCOUNT_CARD_REQUESTS`.
 
 **Déclarations fiscales** : `EDI_PARTNER_ENABLED` (0 par défaut : les déclarations sont
-préparées dans ProfitOS et déposées par l'entreprise sur impots.gouv.fr), `EDI_PARTNER_API_URL`
+préparées dans Veqalio et déposées par l'entreprise sur impots.gouv.fr), `EDI_PARTNER_API_URL`
 (https obligatoire), `EDI_PARTNER_API_KEY` ; `EDI_SIMULATION_ENABLED=1` réactive le dépôt EDI
 simulé (tests uniquement, jamais en production réelle).
 `FISCAL_DECLARATIONS_ENABLED` (0 par défaut : préparation des déclarations fermée aux clients
@@ -182,6 +182,18 @@ suspendra alors l'indicateur.
 **Autres intégrations** : `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GOOGLE_DRIVE_CLIENT_ID`,
 `GOOGLE_DRIVE_CLIENT_SECRET`, `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET`,
 `SUPPLIER_INBOX_DOMAIN`, `SUPPLIER_INBOX_WEBHOOK_ENABLED`, `SUPPLIER_INBOX_WEBHOOK_SECRET`.
+
+## 5 bis. Nouvelle marque Veqalio (v491)
+
+Le nom affiché est désormais **Veqalio**. Restent volontairement inchangés, pour ne rien casser :
+le package Python `profitos`, les variables `PROFITOS_*`, le cookie de session (personne n'est
+déconnecté), le domaine `app.profitos.fr`, les en-têtes `X-ProfitOS-*` des webhooks envoyés aux
+clients et le préfixe des virements SEPA.
+
+À faire sur Render : mettre à jour le nom affiché de l'expéditeur dans `RESEND_FROM_EMAIL`
+(`Veqalio <noreply@…>`). Le jour où le domaine change : `APP_BASE_URL`, domaine personnalisé
+Render, domaine d'envoi Resend (SPF/DKIM), URL des webhooks Stripe et WeInvoice, et une
+redirection 301 depuis l'ancien domaine.
 
 ## 6. Vérifications après déploiement
 

@@ -1,4 +1,4 @@
-# ProfitOS V1.3.6 — Production Monitoring & Backup Readiness
+# Veqalio V1.3.6 — Production Monitoring & Backup Readiness
 
 ## Monitoring
 Nouveau endpoint :

@@ -29,7 +29,7 @@
     {% if inv.status=='draft' %}<a class="purchase-nav-btn" href="{{ url_for('invoicing_edit',invoice_id=inv.id) }}">Modifier le brouillon</a>{% endif %}
     {% if inv.status=='draft' %}
     <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn primary" data-confirm="Émettre et envoyer cette facture ? Elle recevra un numéro définitif et ne pourra plus être modifiée.">Émettre et envoyer</button></form>
-    <form method="post" action="{{ url_for('invoicing_mark_issued',invoice_id=inv.id) }}" title="Pour une facture transmise par courrier ou par votre propre messagerie : elle est émise et comptabilisée, sans e-mail envoyé par ProfitOS."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Marquer cette facture comme émise ? Elle recevra un numéro définitif, sera comptabilisée et ne pourra plus être modifiée.">Marquer comme émise (envoyée hors ProfitOS)</button></form>
+    <form method="post" action="{{ url_for('invoicing_mark_issued',invoice_id=inv.id) }}" title="Pour une facture transmise par courrier ou par votre propre messagerie : elle est émise et comptabilisée, sans e-mail envoyé par Veqalio."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Marquer cette facture comme émise ? Elle recevra un numéro définitif, sera comptabilisée et ne pourra plus être modifiée.">Marquer comme émise (envoyée hors Veqalio)</button></form>
     <form method="post" action="{{ url_for('invoicing_cancel',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary" data-confirm="Annuler ce brouillon de facture ?">Annuler le brouillon</button></form>
     {% elif inv.status in ('sent','partially_paid') %}
     <form method="post" action="{{ url_for('invoicing_send',invoice_id=inv.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="purchase-primary-btn secondary">Renvoyer par e-mail</button></form>
@@ -116,7 +116,7 @@
   {% if is_public_buyer %}
   <section class="purchase-panel" style="margin-top:20px;">
     <p class="purchase-status-warn" style="font-weight:700;">Acheteur public : dépôt sur Chorus Pro obligatoire</p>
-    <p class="purchase-muted" style="font-size:13px;">Les factures adressées à l'État, aux collectivités territoriales et aux établissements publics doivent être déposées sur le portail Chorus Pro (ordonnance n° 2014-697). Munissez-vous du SIRET de la structure destinataire, du code service et, le cas échéant, du numéro d'engagement (bon de commande). ProfitOS ne dépose pas la facture sur Chorus Pro à votre place.</p>
+    <p class="purchase-muted" style="font-size:13px;">Les factures adressées à l'État, aux collectivités territoriales et aux établissements publics doivent être déposées sur le portail Chorus Pro (ordonnance n° 2014-697). Munissez-vous du SIRET de la structure destinataire, du code service et, le cas échéant, du numéro d'engagement (bon de commande). Veqalio ne dépose pas la facture sur Chorus Pro à votre place.</p>
   </section>
   {% endif %}
 
@@ -237,7 +237,7 @@
   </section>
   {% endif %}
 
-  <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via ProfitOS. La conformité réglementaire de l'échange dépend de sa transmission effective par une plateforme agréée et du statut retourné par celle-ci.</p>
+  <p class="purchase-muted" style="margin-top:16px;font-size:11px;">Document généré via Veqalio. La conformité réglementaire de l'échange dépend de sa transmission effective par une plateforme agréée et du statut retourné par celle-ci.</p>
 </div>
 {% endblock %}
 

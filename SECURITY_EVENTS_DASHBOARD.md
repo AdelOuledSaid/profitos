@@ -1,4 +1,4 @@
-# ProfitOS V1.3.5 — Security Events Dashboard
+# Veqalio V1.3.5 — Security Events Dashboard
 
 URL:
 `/settings/security-events`

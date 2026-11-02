@@ -4,7 +4,7 @@ facture, et relances automatiques par étapes.
 Paiement : QR code de virement SEPA (norme EPC069-12, reconnu par les applications
 bancaires européennes) avec l'IBAN de l'émetteur, le reste à payer et le numéro de
 facture en référence ; lien de paiement en ligne de l'entreprise (carte, prélèvement…
-chez son propre prestataire) affiché comme bouton « Payer en ligne ». ProfitOS ne
+chez son propre prestataire) affiché comme bouton « Payer en ligne ». Veqalio ne
 manipule jamais les fonds.
 
 Relances : un premier rappel courtois, un rappel ferme, puis un dernier avis avant
