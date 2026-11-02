@@ -156,7 +156,7 @@ services:
       - key: POWENS_CLIENT_SECRET
         sync: false
       - key: POWENS_REDIRECT_URI
-        value: https://app.profitos.fr/banking/callback
+        value: https://veqalio.com/banking/callback
       # Facturation électronique WeInvoice (sandbox tant que WEINVOICE_ENV != production).
       - key: WEINVOICE_ENV
         value: sandbox

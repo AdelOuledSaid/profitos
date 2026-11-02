@@ -64,3 +64,15 @@ def test_go_live_indique_la_vraie_route_du_webhook_stripe():
     assert '/webhooks/stripe' not in src and '/billing/webhook' in src
     routes = (ROOT / 'profitos' / 'routes' / 'account.py').read_text(encoding='utf-8')
     assert "@app.route('/billing/webhook',methods=['POST'])" in routes
+
+
+def test_retour_powens_suit_le_domaine_public(monkeypatch):
+    """v493.3 — en production, l'adresse de retour Powens suit APP_BASE_URL (elle était figée
+    sur app.profitos.fr, l'ancien domaine)."""
+    from profitos.routes import bank_sync
+    monkeypatch.delenv('POWENS_REDIRECT_URI', raising=False)
+    monkeypatch.setenv('PROFITOS_ENV', 'production')
+    monkeypatch.setenv('APP_BASE_URL', 'https://veqalio.com/')
+    assert bank_sync._callback_url() == 'https://veqalio.com/banking/callback'
+    monkeypatch.setenv('POWENS_REDIRECT_URI', 'https://autre.exemple/retour')
+    assert bank_sync._callback_url() == 'https://autre.exemple/retour'

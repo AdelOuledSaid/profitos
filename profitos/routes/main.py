@@ -38,7 +38,7 @@ def register(app):
 
     def _support_email():
         return ((os.environ.get('LEGAL_CONTACT_EMAIL') or os.environ.get('DEMO_REPLY_EMAIL') or '').strip()
-                or 'contact@profitos.fr')
+                or 'contact@veqalio.com')
     app.jinja_env.globals['support_email']=_support_email
     from profitos.legal import is_prelaunch as _is_prelaunch
     app.jinja_env.globals['prelaunch']=_is_prelaunch
@@ -564,7 +564,7 @@ def register(app):
         if request.method=='POST':
             # Champ piège invisible : un robot le remplit, un humain non.
             if (request.form.get('website') or '').strip():
-                return render_template('demo_thanks.html',contact_email=os.environ.get('DEMO_REPLY_EMAIL','contact@profitos.fr'))
+                return render_template('demo_thanks.html',contact_email=os.environ.get('DEMO_REPLY_EMAIL','contact@veqalio.com'))
             def field(name,limit):
                 return re.sub(r'[\r\n<>]',' ',request.form.get(name,'')).strip()[:limit]
             full_name=field('full_name',80)
@@ -595,7 +595,7 @@ def register(app):
             ac.execute('INSERT INTO demo_requests(full_name,company,siren,email,phone,sector,company_size,primary_need,message,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                 (full_name,company,siren,email,phone,sector,company_size,primary_need,message,'NOUVEAU',now())); ac.commit(); ac.close()
             admin_email=os.environ.get('DEMO_NOTIFY_EMAIL','').strip()
-            reply_email=os.environ.get('DEMO_REPLY_EMAIL','contact@profitos.fr').strip() or 'contact@profitos.fr'
+            reply_email=os.environ.get('DEMO_REPLY_EMAIL','contact@veqalio.com').strip() or 'contact@veqalio.com'
 
             # 1) Notification commerciale complète vers l'administrateur.
             if admin_email:

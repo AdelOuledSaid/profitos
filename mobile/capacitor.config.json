@@ -3,7 +3,7 @@
   "appName": "Veqalio",
   "webDir": "www",
   "server": {
-    "url": "https://app.profitos.fr",
+    "url": "https://veqalio.com",
     "cleartext": false,
     "allowNavigation": [
       "*.powens.com",

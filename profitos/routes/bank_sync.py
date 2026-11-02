@@ -267,7 +267,12 @@ def _callback_url():
     if configured:
         return configured
     if os.environ.get("PROFITOS_ENV", "").lower() == "production":
-        return "https://app.profitos.fr/banking/callback"
+        # Suit le domaine public (APP_BASE_URL) au lieu d'une adresse figée : sinon le retour
+        # Powens après connexion bancaire restait sur l'ancien domaine (v493.3).
+        base = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+        if base:
+            return f"{base}/banking/callback"
+        return "https://veqalio.com/banking/callback"
     return url_for("banking_callback", _external=True)
 
 
