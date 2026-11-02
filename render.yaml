@@ -104,6 +104,8 @@ services:
         value: 12
       - key: RESEND_API_KEY
         sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue

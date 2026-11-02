@@ -26,7 +26,7 @@ KIND_LABELS = {'contrat_preavis': 'Contrats fournisseurs', 'contrat_ecart': 'Con
                'doublon': 'Doublons possibles', 'dossier': 'Dossier entreprise', 'achat_traitement': 'Chaîne des achats',
                'impaye': 'Impayés clients', 'fournisseur': 'Paiements fournisseurs', 'tresorerie': 'Trésorerie',
                'banque': 'Banque', 'fiscal': 'Échéances fiscales', 'pieces': 'Pièces justificatives',
-               'veille': 'Veille de votre secteur', 'fiscal_controle': 'Contrôles fiscaux', 'controle_indisponible': 'Contrôles'}
+               'veille': 'Veille de votre secteur', 'fiscal_controle': 'Contrôles fiscaux', 'email_non_distribue': 'E-mails non distribués', 'controle_indisponible': 'Contrôles'}
 
 
 def _fr_money(x):
@@ -165,6 +165,19 @@ def set_decision(c, eid, source, invoice_id, status, note, user, today):
     c.commit()
 
 
+def _email_suppressed(email):
+    try:
+        from profitos import email_delivery as ED
+        from profitos.runtime import auth_cx
+        ac = auth_cx()
+        try:
+            return bool(ED.suppressed(ac, email))
+        finally:
+            ac.close()
+    except Exception:
+        return False
+
+
 def reminder_hold(c, inv):
     """Raison de ne pas relancer une facture émise (litige ou créance douteuse déclarés), ou None."""
     try:
@@ -236,6 +249,11 @@ def detect_receivables(c, eid, today):
             checks.append(V.check('E-mail du client renseigné', bool(inv['client_email']),
                                   inv['client_email'] or 'Aucun e-mail sur la facture.', 'Facture',
                                   fix=None if inv['client_email'] else "Ajoutez l'e-mail du client sur la facture."))
+            if inv['client_email'] and _email_suppressed(inv['client_email']):
+                checks.append(V.check('Adresse e-mail joignable', False,
+                                      'Les derniers e-mails à cette adresse ont été rejetés ou signalés comme spam.',
+                                      'Retour de distribution Resend',
+                                      fix="Corrigez l'adresse dans « E-mails non distribués », puis relancez."))
             hold = r.get('einvoice_hold')
             checks.append(V.check('Pas de blocage de facturation électronique', not hold,
                                   f"Facture {hold} côté facturation électronique." if hold else 'Aucun blocage.',
@@ -582,6 +600,11 @@ def detect_fiscal_controls(c, eid, today):
     return FC.detect(c, eid, today)
 
 
+def detect_email_delivery(c, eid, today):
+    from profitos import email_delivery as ED
+    return ED.detect(c, eid, today)
+
+
 def detect_dossier(c, eid, today):
     from profitos import once_done as OD
     return OD.detect(c, eid, today)
@@ -593,7 +616,8 @@ DETECTORS = [('impaye', 'impayés clients', detect_receivables), ('fournisseur',
              ('pieces', 'pièces demandées', detect_documents), ('veille', 'veille de secteur', detect_watch),
              (_contract_kinds, 'contrats fournisseurs', detect_contracts), ('dossier', 'dossier entreprise', detect_dossier),
              ('achat_traitement', 'chaîne des achats', detect_purchase_pipeline),
-             ('fiscal_controle', 'contrôles fiscaux', detect_fiscal_controls)]
+             ('fiscal_controle', 'contrôles fiscaux', detect_fiscal_controls),
+             ('email_non_distribue', 'distribution des e-mails', detect_email_delivery)]
 
 
 def compute(c, eid, today, cash=None, accounting=True):

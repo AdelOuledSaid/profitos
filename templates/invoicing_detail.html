@@ -17,6 +17,9 @@
     <div class="heroScore">{{ inv.total|fr_number(2) }}&nbsp;€<span>TTC</span></div>
   </div>
 
+  {% if email_status %}
+  <p class="ef-status{% if email_status.failed %} ef-failed{% endif %}">{{ email_status.kind_label }} envoyée à {{ email_status.recipient }} le {{ email_status.sent_at|fr_date }} : <strong>{{ email_status.label }}</strong>{% if email_status.detail %} ({{ email_status.detail }}){% endif %}.{% if email_status.failed %} Les relances vers cette adresse sont suspendues. <a href="{{ url_for('email_failures') }}">Corriger l'adresse</a>{% endif %}</p>
+  {% endif %}
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:20px 0;">
     <a class="purchase-nav-btn" href="{{ url_for('invoicing_pdf',invoice_id=inv.id) }}">Télécharger le PDF</a>
     {% if inv.status!='draft' and inv.status!='paid' and gocardless_enabled() %}

@@ -92,7 +92,9 @@ def test_secteur_conditions(app):
 
 def test_clients_dormants_croissance_dependance(app):
     cl, org = signup(app)
-    sale(org, ym(-12), 'Ancien Client', 2500.0, '732829320')
+    # ym(-13) et non ym(-12) : une vente du 10 il y a 12 mois tombait dans la fenêtre des
+    # 12 derniers mois quand le test tournait avant le 10 du mois (v493).
+    sale(org, ym(-13), 'Ancien Client', 2500.0, '732829320')
     sale(org, ym(-9), 'ANCIEN CLIENT SARL', 500.0, '732829320')          # même SIREN : même client
     sale(org, ym(-10), 'Petit Client', 100.0)                            # sous le seuil
     sale(org, ym(-9), 'Grand Compte', 2000.0)
