@@ -33,10 +33,10 @@ exécutées par le service web, déclenchées par le cron via
      (voir `STRIPE_SETUP.md`), WeInvoice, Powens, Anthropic, Google Drive/Dropbox,
      GoCardless, Swan, Twilio selon les intégrations utilisées ;
    - cron `profitos-jobs` : `RESEND_API_KEY`, `POWENS_*`, `SENTRY_DSN`.
-3. **Domaine** : Settings → Custom Domains → `app.profitos.fr` (CNAME vers
+3. **Domaine** : Settings → Custom Domains → `veqalio.com` (CNAME vers
    `profitos.onrender.com`), certificat TLS automatique. Tant que le domaine n'est pas
    actif, définir `JOBS_TRIGGER_URL=https://profitos.onrender.com` sur le cron.
-4. **Resend** : vérifier le domaine `profitos.fr` (SPF, DKIM, DMARC — voir `RESEND_SETUP.md`).
+4. **Resend** : vérifier le domaine `veqalio.com` (SPF, DKIM, DMARC — voir `RESEND_SETUP.md`).
 5. **PostgreSQL** : vérifier que le PITR est actif (base → Recovery), noter la rétention.
 6. **Sauvegardes hors site** : créer un bucket S3 compatible (autre compte, versionnage,
    cycle de vie 35 jours) et renseigner `BACKUP_S3_*`. Conserver `BACKUP_PASSPHRASE` dans
@@ -44,7 +44,7 @@ exécutées par le service web, déclenchées par le cron via
 7. **CI** : le dépôt GitHub doit être connecté à Render ; `autoDeployTrigger: checksPass`
    ne déploie que si le workflow `Tests` (`.github/workflows/tests.yml`) est vert.
    Si votre compte Render ne propose pas cette option, mettre `commit` dans `render.yaml`.
-8. **Supervision externe** : sonde HTTP toutes les minutes sur `https://app.profitos.fr/readyz`
+8. **Supervision externe** : sonde HTTP toutes les minutes sur `https://veqalio.com/readyz`
    (UptimeRobot, Better Stack…) avec alerte email/SMS ; Render fait déjà son propre health
    check sur `/readyz`. Activer les notifications Render d'échec de déploiement et d'échec du
    cron (Settings → Notifications).
@@ -187,13 +187,19 @@ suspendra alors l'indicateur.
 
 Le nom affiché est désormais **Veqalio**. Restent volontairement inchangés, pour ne rien casser :
 le package Python `profitos`, les variables `PROFITOS_*`, le cookie de session (personne n'est
-déconnecté), le domaine `app.profitos.fr`, les en-têtes `X-ProfitOS-*` des webhooks envoyés aux
+déconnecté), les en-têtes `X-ProfitOS-*` des webhooks envoyés aux
 clients et le préfixe des virements SEPA.
 
-À faire sur Render : mettre à jour le nom affiché de l'expéditeur dans `RESEND_FROM_EMAIL`
-(`Veqalio <noreply@…>`). Le jour où le domaine change : `APP_BASE_URL`, domaine personnalisé
-Render, domaine d'envoi Resend (SPF/DKIM), URL des webhooks Stripe et WeInvoice, et une
-redirection 301 depuis l'ancien domaine.
+Domaine **veqalio.com** (v493) : `APP_BASE_URL=https://veqalio.com` et
+`RESEND_FROM_EMAIL=Veqalio <contact@veqalio.com>` (render.yaml). Au basculement : domaine
+personnalisé `veqalio.com` sur Render, domaine `veqalio.com` vérifié dans Resend (SPF, DKIM,
+DMARC), URL des webhooks Stripe, WeInvoice et Resend mises à jour, et une redirection 301 de
+`app.profitos.fr` vers `veqalio.com` pour les liens déjà envoyés (factures, relances).
+
+## 5 ter. Webhook Resend (v492)
+
+Créer le webhook dans Resend (`https://veqalio.com/webhooks/resend`) et renseigner
+`RESEND_WEBHOOK_SECRET` (`whsec_…`) sur le service web : voir `RESEND_SETUP.md`.
 
 ## 6. Vérifications après déploiement
 

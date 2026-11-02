@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="purchase-page">
+<div class="purchase-toolbar">
+  <div>
+    <div class="purchase-eyebrow">VENTES · DISTRIBUTION DES E-MAILS</div>
+    <h1 class="purchase-title">E-mails non distribués</h1>
+    <p class="purchase-subtitle">Adresses de clients dont les derniers e-mails ont été rejetés ou signalés comme spam, encore utilisées par une facture non réglée. Tant qu'elles ne sont pas corrigées, les factures et relances vers ces adresses sont suspendues.</p>
+  </div>
+</div>
+
+{% if not rows %}
+<section class="purchase-panel"><p class="purchase-muted">Aucune adresse en échec : tous les e-mails récents ont été acceptés par les messageries de vos clients.</p></section>
+{% endif %}
+
+{% for r in rows %}
+<section class="purchase-panel mc-section">
+  <h2>{{ r.client }}</h2>
+  <p class="fc-detail"><strong>{{ r.recipient }}</strong> — {{ r.label }}{% if r.detail %} : {{ r.detail }}{% endif %}</p>
+  <p class="mc-evidence">Dernier envoi : « {{ r.subject or '—' }} », le {{ r.at|fr_date(True) }}. Source : retour de distribution Resend.</p>
+  <ul class="pp-list">
+    {% for i in r.invoices %}<li><a href="{{ url_for('invoicing_detail', invoice_id=i.id) }}">Facture {{ i.invoice_number or i.id }}</a> — {{ i.total|fr_number(2) }} € TTC</li>{% endfor %}
+  </ul>
+  {% if can_edit %}
+  <form method="post" class="ef-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="old" value="{{ r.recipient }}">
+    <label>Nouvelle adresse du client
+      <input type="email" name="new" required maxlength="254" autocomplete="off" placeholder="adresse@client.fr">
+    </label>
+    <button type="submit">Corriger l'adresse</button>
+  </form>
+  <p class="purchase-muted">La correction s'applique aux factures non réglées ci-dessus et à la fiche client. L'ancienne adresse reste bloquée.</p>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

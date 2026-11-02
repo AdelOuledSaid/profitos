@@ -19,6 +19,20 @@ def _month_key():
 
 
 def _ensure_usage_table(c):
+    """Crée la table des compteurs si besoin. Deux créations simultanées (premiers usages
+    en parallèle) font échouer l'une d'elles sous PostgreSQL (« duplicate key … pg_type ») :
+    la table existe alors bien, l'erreur est ignorée (v493)."""
+    try:
+        _create_usage_table(c)
+    except Exception:
+        try:
+            c.rollback()
+        except Exception:
+            pass
+        c.execute('SELECT 1 FROM plan_usage WHERE 1=0').fetchall()   # relève l'erreur si la table manque vraiment
+
+
+def _create_usage_table(c):
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS plan_usage (
@@ -152,14 +166,14 @@ def record_usage(metric, organization_id=None, amount=1, period=None):
 
 
 def reserve_quota_atomic(metric, organization_id, plan, amount=1, period=None):
-    """R?serve atomiquement un quota. Retourne le compteur ou None si refus?."""
+    """Réserve atomiquement un quota. Retourne le compteur, ou None si la réservation est refusée."""
     org_id = _resolve_org_id(organization_id)
     if not org_id:
         raise RuntimeError("Organisation introuvable pour le compteur de quota.")
 
     amount = int(amount)
     if amount <= 0:
-        raise ValueError("Le montant de r?servation doit ?tre positif.")
+        raise ValueError("Le montant de réservation doit être positif.")
 
     period = period or _month_key()
     limit = plan_limit(plan, metric)

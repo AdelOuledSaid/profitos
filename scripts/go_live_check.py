@@ -86,7 +86,7 @@ def check_stripe(env):
                  'Clé live' if key.startswith(('sk_live_', 'rk_live_')) else 'Clé de test',
                  '' if key.startswith(('sk_live_', 'rk_live_')) else 'Remplacez par la clé secrète live (sk_live_…).')]
     out.append(_item(s, OK if _v(env, 'STRIPE_WEBHOOK_SECRET').startswith('whsec_') else FAIL, 'Secret du webhook',
-                     "STRIPE_WEBHOOK_SECRET du point de terminaison live (/webhooks/stripe)."))
+                     "STRIPE_WEBHOOK_SECRET du point de terminaison live (https://veqalio.com/billing/webhook)."))
     prices = [n for n in ('STRIPE_PRICE_STARTER_ID', 'STRIPE_PRICE_PRO_ID', 'STRIPE_PRICE_BUSINESS_ID', 'STRIPE_PRICE_MULTI_ID') if _v(env, n)]
     out.append(_item(s, OK if len(prices) == 4 else (WARN if prices else FAIL), f'Tarifs configurés : {len(prices)} sur 4',
                      '' if len(prices) == 4 else 'Les tarifs live ont des identifiants différents des tarifs de test.'))
@@ -97,7 +97,7 @@ def check_email(env):
     s = 'E-mails (Resend)'
     if not (_v(env, 'RESEND_API_KEY') or _v(env, 'SMTP_HOST')):
         return [_item(s, FAIL, 'Aucun fournisseur', 'RESEND_API_KEY (ou SMTP_HOST) : sans lui, ni vérification de compte ni relances.')]
-    sender = _v(env, 'RESEND_FROM_EMAIL') or 'Veqalio <noreply@profitos.fr>'
+    sender = _v(env, 'RESEND_FROM_EMAIL') or 'Veqalio <contact@veqalio.com>'
     domain = sender.rsplit('@', 1)[-1].strip('> ').lower()
     bad = domain in ('example.com', 'resend.dev', 'localhost') or not domain
     return [_item(s, OK, 'Fournisseur configuré'),

@@ -1,4 +1,4 @@
-name: Build ProfitOS iOS
+name: Build Veqalio iOS
 
 on:
   workflow_dispatch:

@@ -70,6 +70,9 @@ import tempfile
 _TEST_DATA = Path(tempfile.mkdtemp(prefix='veqalio-tests-'))
 atexit.register(shutil.rmtree, _TEST_DATA, True)
 os.environ['PROFITOS_UPLOAD_DIR'] = str(_TEST_DATA / 'uploads')
+# Pas de fichier logs/profitos.log pendant les tests (v492.1) : sous Windows, plusieurs
+# processus (serveur de dev, tests) se disputaient sa rotation.
+os.environ['PROFITOS_FILE_LOG'] = '0'
 if not _PG_TEST_URL.startswith(('postgres://', 'postgresql://')):
     import profitos.runtime as _rt_isolation
     _rt_isolation.AUTH_DB = _TEST_DATA / 'profitos_auth.db'

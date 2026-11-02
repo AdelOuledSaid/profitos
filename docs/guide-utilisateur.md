@@ -241,6 +241,10 @@ Chaque facture émise est un PDF lisible par une personne, qui contient aussi le
 
 Veqalio demande ces informations au bon moment et bloque l'envoi s'il en manque une.
 
+### E-mails non distribués
+
+Veqalio suit chaque facture, relance ou devis envoyé par e-mail : la fiche facture indique s'il a été **remis**, **retardé**, **rejeté** (adresse inexistante) ou **signalé comme spam** par le destinataire. Une adresse rejetée ou signalée n'est plus utilisée : les relances automatiques vers elle sont suspendues et Mission Control affiche « *client* ne reçoit plus vos e-mails », avec le montant des factures non réglées concernées. Menu **Facturation → E-mails non distribués** (lien depuis la fiche facture et Mission Control) : saisissez la nouvelle adresse, elle remplace l'ancienne sur les factures non réglées et la fiche client ; renvoyez ensuite la facture. Un rejet temporaire (boîte pleine) ne bloque rien.
+
 ### Envoyer une facture par la plateforme
 
 1. Émettez la facture (section 5).

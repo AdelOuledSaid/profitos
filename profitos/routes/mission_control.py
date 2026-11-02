@@ -11,7 +11,7 @@ from profitos.accounting import paris_today
 # n'est pas rattaché à un domaine dans MODULE_AREAS).
 LINK_AREAS = {'once_done': None, 'purchase_pipeline': 'invoicing', 'mission_control_bank': 'banking', 'invoicing_client_detail': 'invoicing', 'invoicing_clients': 'invoicing', 'grow': 'grow', 'contract_guardian_edit': 'invoicing', 'contract_guardian_new': 'invoicing', 'purchase_recurring': 'invoicing',
               'invoicing_detail': 'invoicing', 'purchase_detail': 'invoicing', 'purchase_sepa_batch': 'invoicing',
-              'accounting_document_requests': 'accounting', 'banking': 'banking', 'fiscal_controls': 'accounting'}
+              'accounting_document_requests': 'accounting', 'banking': 'banking', 'fiscal_controls': 'accounting', 'email_failures': 'invoicing'}
 SNOOZE_DAYS = 7
 
 
@@ -263,7 +263,7 @@ def register(app):
     def mission_control_decision():
         if current_role() == 'LECTURE':
             abort(403)
-        """Décision humaine sur une créance ancienne : toujours due, en litige ou douteuse."""
+        # Décision humaine sur une créance ancienne : toujours due, en litige ou douteuse.
         source = request.form.get('source') if request.form.get('source') in ('outgoing', 'imported') else None
         status = request.form.get('status') or ''
         try:

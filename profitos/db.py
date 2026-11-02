@@ -528,8 +528,15 @@ class SQLiteCursorResult:
 
 
 
+_LEFT_CALL = re.compile(r'\bLEFT\s*\(', re.I)
+
+
 def _quote_sqlite_left(sql):
-    """Quote LEFT function calls outside SQL literals and comments."""
+    """Met LEFT( entre guillemets ("LEFT"(…)) hors des chaînes et des commentaires : selon
+    la version de SQLite, LEFT (mot réservé des jointures) n'est pas accepté comme nom de
+    fonction. Sortie immédiate pour les requêtes sans appel à LEFT (presque toutes)."""
+    if not _LEFT_CALL.search(sql):
+        return sql
     out = []
     i = 0
     n = len(sql)

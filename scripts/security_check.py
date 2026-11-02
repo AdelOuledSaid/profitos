@@ -100,6 +100,14 @@ def check_rate_limit(env):
                   'est affaiblie si plusieurs instances tournent.')]
 
 
+def check_email_webhook(env):
+    if not (env.get('RESEND_API_KEY') or '').strip():
+        return []
+    ok = (env.get('RESEND_WEBHOOK_SECRET') or '').strip().startswith('whsec_')
+    return [_item('E-mails', OK if ok else WARN, 'Retours de distribution Resend (RESEND_WEBHOOK_SECRET)',
+                  '' if ok else "Sans webhook, les e-mails rejetés passent pour reçus : configurez-le (RESEND_SETUP.md).")]
+
+
 def check_accounts(ac, env):
     s = 'Comptes et accès'
     out = []
@@ -137,7 +145,7 @@ def check_security_log(ac):
 
 def run(env=None, app=None, ac=None):
     env = dict(os.environ if env is None else env)
-    items = check_secrets(env) + check_rate_limit(env)
+    items = check_secrets(env) + check_rate_limit(env) + check_email_webhook(env)
     if app is None:
         from profitos import create_app
         from profitos.config import ProductionConfig

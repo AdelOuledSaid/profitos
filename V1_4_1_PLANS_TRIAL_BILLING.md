@@ -10,7 +10,7 @@ Required production variables:
 - STRIPE_PRICE_BUSINESS_ID
 - APP_BASE_URL=https://app.profitos.fr
 
-Webhook: https://app.profitos.fr/billing/webhook
+Webhook: https://veqalio.com/billing/webhook
 
 Subscribe to: checkout.session.completed, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted, invoice.payment_failed, invoice.payment_succeeded.
 
