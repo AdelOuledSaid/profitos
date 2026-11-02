@@ -190,10 +190,6 @@ def create_client(company_row, signatory_name, signatory_quality, proof_ref, sig
         },
     }
     headers = {'Authorization': f'Bearer {token}'}
-    # DIAGNOSTIC TEMPORAIRE — à retirer une fois le premier onboarding confirmé
-    # réussi. Log les clés ET valeurs réellement envoyées (aucune donnée secrète
-    # ici, juste le profil entreprise), visible dans les logs Render.
-    log_ops_event('WEINVOICE_CLIENT_PAYLOAD_DEBUG', 'INFO', detail=str(payload))
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
     except requests.RequestException as e:
