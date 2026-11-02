@@ -86,7 +86,7 @@ def check_stripe(env):
                  'Clé live' if key.startswith(('sk_live_', 'rk_live_')) else 'Clé de test',
                  '' if key.startswith(('sk_live_', 'rk_live_')) else 'Remplacez par la clé secrète live (sk_live_…).')]
     out.append(_item(s, OK if _v(env, 'STRIPE_WEBHOOK_SECRET').startswith('whsec_') else FAIL, 'Secret du webhook',
-                     "STRIPE_WEBHOOK_SECRET du point de terminaison live (/webhooks/stripe)."))
+                     "STRIPE_WEBHOOK_SECRET du point de terminaison live (https://veqalio.com/billing/webhook)."))
     prices = [n for n in ('STRIPE_PRICE_STARTER_ID', 'STRIPE_PRICE_PRO_ID', 'STRIPE_PRICE_BUSINESS_ID', 'STRIPE_PRICE_MULTI_ID') if _v(env, n)]
     out.append(_item(s, OK if len(prices) == 4 else (WARN if prices else FAIL), f'Tarifs configurés : {len(prices)} sur 4',
                      '' if len(prices) == 4 else 'Les tarifs live ont des identifiants différents des tarifs de test.'))

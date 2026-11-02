@@ -55,3 +55,12 @@ def test_un_seul_fichier_de_log_par_processus(monkeypatch):
 def test_pas_de_fichier_de_log_pendant_les_tests():
     import os
     assert os.environ.get('PROFITOS_FILE_LOG') == '0'
+
+
+def test_go_live_indique_la_vraie_route_du_webhook_stripe():
+    """v493.1 — le contrôle de mise en vente renvoyait vers /webhooks/stripe, une route qui
+    n'existe pas : Stripe aurait reçu une 404 et les abonnements payés ne s'activaient pas."""
+    src = (ROOT / 'scripts' / 'go_live_check.py').read_text(encoding='utf-8')
+    assert '/webhooks/stripe' not in src and '/billing/webhook' in src
+    routes = (ROOT / 'profitos' / 'routes' / 'account.py').read_text(encoding='utf-8')
+    assert "@app.route('/billing/webhook',methods=['POST'])" in routes
