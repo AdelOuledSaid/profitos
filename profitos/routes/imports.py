@@ -1,3 +1,4 @@
+import secrets
 from profitos.runtime import *
 from profitos.accounting import paris_today as _paris_today
 from profitos.plan_usage import quota_state, record_usage
@@ -760,77 +761,146 @@ def register(app):
                 return redirect(request.url)
             entity_filter='entity_id=?' if entity_id else 'entity_id IS NULL'
             entity_params=(entity_id,) if entity_id else ()
-            previous_rows={r['invoice_number']:{'amount':r['amount'],'customer':r['customer']}
-                for r in c.execute(f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',entity_params).fetchall()}
-            # Ne remplace que les factures de CETTE entité — importer pour une filiale
-            # ne doit jamais effacer les données déjà importées pour une autre.
-            c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=_paris_today(); signals=0; retentions=0
-            # Nettoie les liens publics devenus orphelins (leur facture a été supprimée
-            # ci-dessus), sans jamais toucher aux tokens des factures d'autres entités
-            # qui, elles, existent toujours.
-            ac_clean=auth_cx()
-            still_existing_ids={r['id'] for r in c.execute('SELECT id FROM invoices').fetchall()}
-            org_tokens=ac_clean.execute('SELECT token,invoice_local_id FROM public_invoice_tokens WHERE organization_id=?',(org['id'],)).fetchall()
-            for tok in org_tokens:
-                if tok['invoice_local_id'] not in still_existing_ids:
-                    ac_clean.execute('DELETE FROM public_invoice_tokens WHERE token=?',(tok['token'],))
-            ac_clean.commit(); ac_clean.close()
-            for _,r in df.iterrows():
-                amount=parse_amount(r[m['amount']])
-                if amount is None: continue
-                paid=money(r[m['paid']]) if 'paid' in m else 0
-                issue=parse_date(r[m['issue']]) if 'issue' in m else None
-                status=str(r[m['status']]) if 'status' in m else ('paid' if paid>=amount else 'unpaid')
-                itype_raw=norm(str(r[m['itype']])) if 'itype' in m and str(r[m['itype']]).strip().lower()!='nan' else ''
-                is_retention=any(k in itype_raw for k in RETENTION_KEYWORDS)
-                release=parse_date(r[m['release']]) if 'release' in m else None
-                due=parse_date(r[m['due']])
-                if is_retention:
-                    kind='RETENTION'; ref_date=release or due
-                    days=max(0,(today-ref_date).days) if ref_date and ref_date<=today else 0
-                    retentions+=1
-                else:
-                    kind='STANDARD'; ref_date=due
-                    days=max(0,(today-due).days) if due else 0
-                score=invoice_score(amount,days,paid) if norm(status)!='paid' and days>0 else 0
-                signals+=score>0
-                email_val=str(r[m['email']]).strip() if 'email' in m and str(r[m['email']]).strip().lower()!='nan' else None
-                phone_val=str(r[m['phone']]).strip() if 'phone' in m and str(r[m['phone']]).strip().lower()!='nan' else None
-                c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone,entity_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                    (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val,entity_id))
-                local_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-                token=register_public_invoice_token(org['id'],local_id)
-                c.execute('UPDATE invoices SET public_token=? WHERE id=?',(token,local_id))
-            c.commit()
-
-            snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
-            today_iso=today.isoformat()
-            # Historique DSO isolé par entité. entity_key évite les particularités
-            # SQL des contraintes UNIQUE contenant NULL pour la société mère.
-            entity_key=str(entity_id) if entity_id else '__ROOT__'
-            c.execute('''INSERT INTO dso_entity_snapshots(
-                           snapshot_date,entity_key,entity_id,avg_days_overdue,
-                           total_outstanding,invoice_count,created_at)
-                         VALUES(?,?,?,?,?,?,?)
-                         ON CONFLICT(snapshot_date,entity_key) DO UPDATE SET
-                           entity_id=excluded.entity_id,
-                           avg_days_overdue=excluded.avg_days_overdue,
-                           total_outstanding=excluded.total_outstanding,
-                           invoice_count=excluded.invoice_count,
-                           created_at=excluded.created_at''',
-                (today_iso,entity_key,entity_id,snap['avg_d'] or 0,
-                 snap['total'] or 0,snap['n'] or 0,now()))
-            # Compatibilité avec l'historique racine existant pendant la transition.
-            if not entity_id:
-                c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
-                             VALUES(?,?,?,?,?)
-                             ON CONFLICT(snapshot_date) DO UPDATE SET
+            created_tokens=[]
+            try:
+                # Lock before reading or replacing existing invoices.
+                c.execute('BEGIN IMMEDIATE')
+                previous_rows={
+                    r['invoice_number']: {
+                        'amount': r['amount'],
+                        'customer': r['customer']
+                    }
+                    for r in c.execute(
+                        f'SELECT invoice_number,amount,customer FROM invoices WHERE {entity_filter}',
+                        entity_params
+                    ).fetchall()
+                }
+                old_tokens=[
+                    row['public_token']
+                    for row in c.execute(
+                        f'SELECT public_token FROM invoices WHERE {entity_filter}',
+                        entity_params
+                    ).fetchall()
+                    if row['public_token']
+                ]
+                c.execute(f'DELETE FROM invoices WHERE {entity_filter}',entity_params); today=_paris_today(); signals=0; retentions=0
+                for _,r in df.iterrows():
+                    amount=parse_amount(r[m['amount']])
+                    if amount is None: continue
+                    paid=money(r[m['paid']]) if 'paid' in m else 0
+                    issue=parse_date(r[m['issue']]) if 'issue' in m else None
+                    status=str(r[m['status']]) if 'status' in m else ('paid' if paid>=amount else 'unpaid')
+                    itype_raw=norm(str(r[m['itype']])) if 'itype' in m and str(r[m['itype']]).strip().lower()!='nan' else ''
+                    is_retention=any(k in itype_raw for k in RETENTION_KEYWORDS)
+                    release=parse_date(r[m['release']]) if 'release' in m else None
+                    due=parse_date(r[m['due']])
+                    if is_retention:
+                        kind='RETENTION'; ref_date=release or due
+                        days=max(0,(today-ref_date).days) if ref_date and ref_date<=today else 0
+                        retentions+=1
+                    else:
+                        kind='STANDARD'; ref_date=due
+                        days=max(0,(today-due).days) if due else 0
+                    score=invoice_score(amount,days,paid) if norm(status)!='paid' and days>0 else 0
+                    signals+=score>0
+                    email_val=str(r[m['email']]).strip() if 'email' in m and str(r[m['email']]).strip().lower()!='nan' else None
+                    phone_val=str(r[m['phone']]).strip() if 'phone' in m and str(r[m['phone']]).strip().lower()!='nan' else None
+                    c.execute('INSERT INTO invoices(invoice_number,customer,amount,paid_amount,issue_date,due_date,status,days_overdue,score,created_at,kind,retention_release_date,customer_email,customer_phone,entity_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (str(r[m['num']]),str(r[m['customer']]),amount,paid,issue.isoformat() if issue else None,due.isoformat() if due else None,status,days,score,now(),kind,release.isoformat() if release else None,email_val,phone_val,entity_id))
+                    local_id=c.execute('SELECT last_insert_rowid()').fetchone()[0]
+                    token=secrets.token_urlsafe(20)
+                    ac_new=auth_cx()
+                    try:
+                        ac_new.execute(
+                            'INSERT INTO public_invoice_tokens(token,organization_id,invoice_local_id,created_at) VALUES(?,?,?,?)',
+                            (token,org['id'],local_id,now())
+                        )
+                        ac_new.commit()
+                        created_tokens.append(token)
+                    except Exception:
+                        # Only remove the token attempted by this request.
+                        ac_cleanup=auth_cx()
+                        try:
+                            ac_cleanup.execute(
+                                'DELETE FROM public_invoice_tokens WHERE token=? AND organization_id=?',
+                                (token,org['id'])
+                            )
+                            ac_cleanup.commit()
+                        finally:
+                            ac_cleanup.close()
+                        raise
+                    finally:
+                        ac_new.close()
+                    try:
+                        c.execute('UPDATE invoices SET public_token=? WHERE id=?',(token,local_id))
+                    except Exception:
+                        ac_cleanup=auth_cx()
+                        try:
+                            for created_token in created_tokens:
+                                ac_cleanup.execute(
+                                    'DELETE FROM public_invoice_tokens WHERE token=? AND organization_id=?',
+                                    (created_token,org['id'])
+                                )
+                            ac_cleanup.commit()
+                        finally:
+                            ac_cleanup.close()
+                        raise
+                # Factures et statistiques DSO : une seule validation.
+                snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
+                today_iso=today.isoformat()
+                # Historique DSO isolé par entité. entity_key évite les particularités
+                # SQL des contraintes UNIQUE contenant NULL pour la société mère.
+                entity_key=str(entity_id) if entity_id else '__ROOT__'
+                c.execute('''INSERT INTO dso_entity_snapshots(
+                               snapshot_date,entity_key,entity_id,avg_days_overdue,
+                               total_outstanding,invoice_count,created_at)
+                             VALUES(?,?,?,?,?,?,?)
+                             ON CONFLICT(snapshot_date,entity_key) DO UPDATE SET
+                               entity_id=excluded.entity_id,
                                avg_days_overdue=excluded.avg_days_overdue,
                                total_outstanding=excluded.total_outstanding,
                                invoice_count=excluded.invoice_count,
                                created_at=excluded.created_at''',
-                    (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
-            c.commit()
+                    (today_iso,entity_key,entity_id,snap['avg_d'] or 0,
+                     snap['total'] or 0,snap['n'] or 0,now()))
+                # Compatibilité avec l'historique racine existant pendant la transition.
+                if not entity_id:
+                    c.execute('''INSERT INTO dso_snapshots(snapshot_date,avg_days_overdue,total_outstanding,invoice_count,created_at)
+                                 VALUES(?,?,?,?,?)
+                                 ON CONFLICT(snapshot_date) DO UPDATE SET
+                                   avg_days_overdue=excluded.avg_days_overdue,
+                                   total_outstanding=excluded.total_outstanding,
+                                   invoice_count=excluded.invoice_count,
+                                   created_at=excluded.created_at''',
+                        (today_iso,snap['avg_d'] or 0,snap['total'] or 0,snap['n'] or 0,now()))
+                c.commit()
+
+            except Exception:
+                c.rollback()
+                c.close()
+                ac_cleanup=auth_cx()
+                try:
+                    for created_token in created_tokens:
+                        ac_cleanup.execute(
+                            'DELETE FROM public_invoice_tokens WHERE token=? AND organization_id=?',
+                            (created_token,org['id'])
+                        )
+                    ac_cleanup.commit()
+                finally:
+                    ac_cleanup.close()
+                raise
+
+            # Delete only tokens belonging to invoices replaced by this import.
+            ac_clean=auth_cx()
+            try:
+                for old_token in old_tokens:
+                    ac_clean.execute(
+                        'DELETE FROM public_invoice_tokens WHERE token=? AND organization_id=?',
+                        (old_token,org['id'])
+                    )
+                ac_clean.commit()
+            finally:
+                ac_clean.close()
 
             urgent=c.execute(f"SELECT COUNT(*) n,COALESCE(SUM(MAX(amount-paid_amount,0)),0) t FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND score>=90 AND {entity_filter}",entity_params).fetchone()
             overdue_rows=c.execute(f"SELECT customer,days_overdue,status FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchall()
@@ -866,7 +936,7 @@ def register(app):
             record_usage('imports_per_month',organization_id=org['id'])
 
             if urgent['n']:
-                notify_org(f"🔴 ProfitOS · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
+                notify_org(f"🔴 Veqalio · {urgent['n']} facture(s) en retard critique détectée(s) — {fr_number(urgent['t'])} € à risque élevé.")
             msg=f"Factures analysées · {pluralize(signals, 'créance à relancer détectée', 'créances à relancer détectées')}."
             if retentions: msg+=f" Dont {pluralize(retentions, 'retenue de garantie détectée', 'retenues de garantie détectées')}."
             flash(msg)

@@ -1,5 +1,5 @@
 """
-db.py — Couche d'abstraction base de données pour ProfitOS.
+db.py — Couche d'abstraction base de données pour Veqalio.
 
 Objectif : permettre à app.py de fonctionner SANS AUCUNE MODIFICATION de ses
 requêtes SQL (placeholders `?`, `PRAGMA table_info`, `last_insert_rowid()`,
@@ -35,7 +35,7 @@ PG_APPLICATION_NAME = os.environ.get('PG_APPLICATION_NAME', 'profitos')
 # vraie URL Postgres, on retombe sur SQLite avec un avertissement clair au
 # lieu de planter avec une erreur de connexion cryptique.
 if DATABASE_URL and not DATABASE_URL.startswith(('postgres://', 'postgresql://')):
-    print(f"[ProfitOS] ATTENTION : DATABASE_URL définie mais invalide ({DATABASE_URL[:30]}...) — retombe sur SQLite.")
+    print(f"[Veqalio] ATTENTION : DATABASE_URL définie mais invalide ({DATABASE_URL[:30]}...) — retombe sur SQLite.")
     DATABASE_URL = None
 USE_POSTGRES = bool(DATABASE_URL)
 
@@ -215,7 +215,7 @@ class PGCursorResult:
     def lastrowid(self):
         """Compatibilité sqlite3.Cursor.lastrowid pour PostgreSQL.
 
-        Les tables ProfitOS à identifiant auto-incrémenté utilisent des séquences
+        Les tables Veqalio à identifiant auto-incrémenté utilisent des séquences
         PostgreSQL. Juste après l'INSERT, lastval() renvoie l'identifiant produit
         par la dernière séquence utilisée dans cette session.
         """
@@ -526,6 +526,78 @@ class SQLiteCursorResult:
         return self._cur.lastrowid
 
 
+
+
+def _quote_sqlite_left(sql):
+    """Quote LEFT function calls outside SQL literals and comments."""
+    out = []
+    i = 0
+    n = len(sql)
+    state = "normal"
+
+    while i < n:
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < n else ""
+
+        if state == "normal":
+            if ch == "'":
+                state = "single"
+            elif ch == '"':
+                state = "double"
+            elif ch == "`":
+                state = "backtick"
+            elif ch == "[":
+                state = "bracket"
+            elif ch == "-" and nxt == "-":
+                state = "line_comment"
+                out.append("--")
+                i += 2
+                continue
+            elif ch == "/" and nxt == "*":
+                state = "block_comment"
+                out.append("/*")
+                i += 2
+                continue
+            elif sql[i:i + 4].upper() == "LEFT":
+                before = sql[i - 1] if i else ""
+                after = sql[i + 4:i + 5]
+                if not (before.isalnum() or before in "_.") and not (
+                    after and (after.isalnum() or after == "_")
+                ):
+                    j = i + 4
+                    while j < n and sql[j].isspace():
+                        j += 1
+                    if j < n and sql[j] == "(":
+                        out.append('"LEFT"')
+                        i += 4
+                        continue
+
+        elif state in ("single", "double", "backtick"):
+            delimiter = {"single": "'", "double": '"', "backtick": "`"}[state]
+            if ch == delimiter:
+                if nxt == delimiter:
+                    out.append(ch + nxt)
+                    i += 2
+                    continue
+                state = "normal"
+
+        elif state == "bracket" and ch == "]":
+            state = "normal"
+
+        elif state == "line_comment" and ch == "\n":
+            state = "normal"
+
+        elif state == "block_comment" and ch == "*" and nxt == "/":
+            out.append("*/")
+            i += 2
+            state = "normal"
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
+
 class SQLiteConnection:
     def __init__(self, path):
         self._conn = sqlite3.connect(path)
@@ -538,6 +610,7 @@ class SQLiteConnection:
 
     def execute(self, sql, params=()):
         cur = self._conn.cursor()
+        sql = _quote_sqlite_left(sql)
         cur.execute(sql, params)
         return SQLiteCursorResult(cur)
 
