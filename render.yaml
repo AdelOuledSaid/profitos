@@ -17,6 +17,9 @@ envVarGroups:
         generateValue: true
       - key: APP_BASE_URL
         value: https://veqalio.com
+      # Ancien domaine redirigé (301) vers APP_BASE_URL pour les pages consultées (v493.4).
+      - key: LEGACY_HOSTS
+        value: app.profitos.fr
       - key: RESEND_FROM_EMAIL
         value: Veqalio <contact@veqalio.com>
       # Jeton du déclenchement interne des tâches « disque » (cron -> web).

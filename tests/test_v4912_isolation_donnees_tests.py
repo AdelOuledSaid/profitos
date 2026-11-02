@@ -76,3 +76,24 @@ def test_retour_powens_suit_le_domaine_public(monkeypatch):
     assert bank_sync._callback_url() == 'https://veqalio.com/banking/callback'
     monkeypatch.setenv('POWENS_REDIRECT_URI', 'https://autre.exemple/retour')
     assert bank_sync._callback_url() == 'https://autre.exemple/retour'
+
+
+def test_ancien_domaine_redirige_vers_le_nouveau(monkeypatch):
+    """v493.4 — LEGACY_HOSTS : les pages consultées sur l'ancien domaine sont redirigées (301)
+    vers APP_BASE_URL ; webhooks, API et sondes de santé restent servis sur place."""
+    from profitos import create_app
+    from profitos.config import DevelopmentConfig
+    monkeypatch.setenv('APP_BASE_URL', 'https://veqalio.com')
+    monkeypatch.setenv('LEGACY_HOSTS', 'app.profitos.fr')
+    app = create_app(DevelopmentConfig)
+    app.config.update(TESTING=True)
+    cl = app.test_client()
+    r = cl.get('/login?next=/x', base_url='https://app.profitos.fr')
+    assert r.status_code == 301 and r.headers['Location'] == 'https://veqalio.com/login?next=/x'
+    assert cl.get('/facture/abc', base_url='https://app.profitos.fr').headers['Location'] == 'https://veqalio.com/facture/abc'
+    assert cl.get('/healthz', base_url='https://app.profitos.fr').status_code == 200
+    assert cl.post('/webhooks/resend', data='{}', base_url='https://app.profitos.fr').status_code != 301
+    assert cl.post('/billing/webhook', data='{}', base_url='https://app.profitos.fr').status_code != 301
+    assert cl.get('/login', base_url='https://veqalio.com').status_code == 200          # nouveau domaine servi
+    monkeypatch.delenv('LEGACY_HOSTS')
+    assert cl.get('/login', base_url='https://app.profitos.fr').status_code == 200      # désactivé par défaut

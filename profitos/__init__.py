@@ -254,6 +254,28 @@ def create_app(config_object=None):
         g.request_id = incoming[:80] if incoming and re_safe_request_id(incoming) else secrets.token_hex(12)
         g.request_started_at = time.monotonic()
 
+    # Ancien domaine -> domaine public (v493.4). LEGACY_HOSTS=app.profitos.fr : les visiteurs
+    # qui arrivent par l'ancienne adresse sont redirigés (301) vers APP_BASE_URL, même chemin.
+    # Seules les pages consultées (GET/HEAD) sont redirigées : les webhooks (Stripe, WeInvoice,
+    # Resend, Swan) et l'API continuent de fonctionner sur l'ancien domaine tant qu'ils n'ont
+    # pas été mis à jour chez les prestataires, et les sondes de santé ne bougent pas.
+    _LEGACY_EXEMPT = ('/webhooks/', '/billing/webhook', '/api/', '/healthz', '/readyz', '/ops/', '/static/')
+
+    @app.before_request
+    def legacy_host_redirect():
+        legacy = {h.strip().lower() for h in (os.environ.get('LEGACY_HOSTS') or '').split(',') if h.strip()}
+        if not legacy or request.method not in ('GET', 'HEAD'):
+            return None
+        host = (request.host or '').split(':')[0].lower()
+        base = (os.environ.get('APP_BASE_URL') or '').strip().rstrip('/')
+        if host not in legacy or not base.startswith('https://') or request.path.startswith(_LEGACY_EXEMPT):
+            return None
+        if base.split('://', 1)[1].split('/')[0].lower() == host:
+            return None
+        from flask import redirect
+        target = base + request.full_path if request.query_string else base + request.path
+        return redirect(target, code=301)
+
     @app.after_request
     def security_headers(response):
         response.headers['X-Request-ID'] = getattr(g, 'request_id', '')

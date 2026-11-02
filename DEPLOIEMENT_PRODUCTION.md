@@ -194,7 +194,10 @@ Domaine **veqalio.com** (v493) : `APP_BASE_URL=https://veqalio.com` et
 `RESEND_FROM_EMAIL=Veqalio <contact@veqalio.com>` (render.yaml). Au basculement : domaine
 personnalisé `veqalio.com` sur Render, domaine `veqalio.com` vérifié dans Resend (SPF, DKIM,
 DMARC), URL des webhooks Stripe, WeInvoice et Resend mises à jour, et une redirection 301 de
-`app.profitos.fr` vers `veqalio.com` pour les liens déjà envoyés (factures, relances).
+`app.profitos.fr` vers `veqalio.com` pour les liens déjà envoyés (factures, relances) :
+`LEGACY_HOSTS=app.profitos.fr` (groupe `profitos-shared`). Seules les pages consultées (GET)
+sont redirigées ; webhooks, API et sondes de santé restent servis sur l'ancien domaine tant que
+les prestataires n'ont pas été mis à jour.
 
 ## 5 ter. Webhook Resend (v492)
 
