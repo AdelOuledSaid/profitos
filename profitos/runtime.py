@@ -1620,6 +1620,17 @@ def _migrate_tenant_schema(org_id=None):
         matched_at TEXT NOT NULL,
         UNIQUE(entity_id,idempotency_key)
     );
+    CREATE TABLE IF NOT EXISTS bank_imported_allocations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_id INTEGER,
+        bank_transaction_id INTEGER NOT NULL,
+        imported_invoice_id INTEGER NOT NULL,
+        invoice_number TEXT,
+        matched_amount REAL NOT NULL,
+        matched_at TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        UNIQUE(entity_id,idempotency_key)
+    );
     CREATE TABLE IF NOT EXISTS outgoing_invoices(id INTEGER PRIMARY KEY AUTOINCREMENT,invoice_number TEXT,client_name TEXT,client_address TEXT,client_email TEXT,issue_date TEXT,due_date TEXT,line_items TEXT,subtotal REAL,vat_amount REAL,total REAL,notes TEXT,status TEXT DEFAULT 'draft',public_token TEXT,created_at TEXT,sent_at TEXT,paid_at TEXT,client_siren TEXT,operation_nature TEXT DEFAULT 'services',vat_on_debits INTEGER DEFAULT 0,delivery_address TEXT,entity_id INTEGER,invoice_kind TEXT DEFAULT 'standard',source_quote_id INTEGER,deposit_percent REAL,deposit_applied_subtotal REAL DEFAULT 0,deposit_applied_vat REAL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS outgoing_invoice_payments(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3771,6 +3782,8 @@ def reward_referrer_if_any(acx, referred_org_id):
         current_app.logger.exception('Referral reward failed for referred_org_id=%s', referred_org_id)
 
 CHANGELOG_ENTRIES=[
+    {'date':'2026-11-07','title':"Banque : les virements de vos factures importées sont rapprochés comme les autres, et chaque prélèvement est relié à la dépense importée qui l'explique"},
+    {'date':'2026-11-07','title':"Reprise par FEC : taux de TVA, liquidations et acomptes d'IS reconnus ; facture au mauvais taux et facture fournisseur saisie deux fois signalées"},
     {'date':'2026-11-02','title':"Imports de factures entièrement sécurisés (tout ou rien), quotas réservés sans dépassement possible, adresse veqalio.com"},
     {'date':'2026-10-27','title':"E-mails non distribués : chaque facture et relance suivie jusqu'à la boîte du client, adresse rejetée signalée et corrigée en une fois"},
     {'date':'2026-10-27','title':"ProfitOS devient Veqalio : nouveau nom et nouveau logo, rien ne change pour vos données, vos accès ni vos intégrations"},

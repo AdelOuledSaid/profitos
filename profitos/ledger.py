@@ -390,6 +390,47 @@ def _ensure_accounts_and_journals(conn, parsed):
     return created_accounts
 
 
+# Taux de TVA français (métropole, Corse, DOM) reconnus dans un FEC repris (v494).
+FEC_VAT_RATES = (20.0, 13.0, 10.0, 8.5, 5.5, 2.1, 1.75, 1.05, 0.9)
+VAT_ACCOUNT_PREFIXES = ('4455', '4456', '4457', '4458')
+
+
+def _snap_rate(rate):
+    """Taux légal le plus proche, s'il est assez proche (19,6 % → 20 %) ; sinon None."""
+    best = min(FEC_VAT_RATES, key=lambda r: abs(r - rate))
+    return best if abs(best - rate) <= min(0.75, 0.15 * best) else None
+
+
+def annotate_fec_entry(e):
+    """Complète une écriture lue dans un FEC avec ce que le FEC ne transporte pas (v494) :
+
+    - le taux et la base de la TVA collectée (445710), déduits de l'écriture elle-même quand
+      elle porte une seule ligne de TVA collectée et des produits (classe 70) : base = produits,
+      taux = TVA / base ramené au taux légal le plus proche. Le montant de TVA n'est jamais
+      modifié : une facture comptée à 19,6 % est rattachée au taux de 20 % et le contrôle
+      « base × taux » signale l'écart ;
+    - la nature « liquidation de TVA » d'une écriture qui ne mouvemente que des comptes de TVA
+      et solde la TVA collectée : elle sort alors des montants de la période, comme une
+      liquidation passée dans Veqalio.
+
+    Retourne (source_type, source_id) pour l'écriture, ou (None, None)."""
+    lines = e['lines']
+    collected = [l for l in lines if l['account_code'].startswith('44571')]
+    if collected and all(l['account_code'].startswith(VAT_ACCOUNT_PREFIXES) for l in lines) \
+            and any(l['debit'] for l in collected) and len({l['account_code'][:4] for l in lines}) > 1:
+        return 'vat_liquidation', int(e['date'].strftime('%Y%m%d'))
+    if len(collected) == 1:
+        vat_line = collected[0]
+        vat = vat_line['credit'] - vat_line['debit']
+        base = round(sum(l['credit'] - l['debit'] for l in lines if l['account_code'].startswith('70')), 2)
+        if vat and base and (vat > 0) == (base > 0):
+            rate = _snap_rate(abs(vat) / abs(base) * 100)
+            if rate is not None:
+                vat_line['vat_rate'] = rate
+                vat_line['vat_base'] = abs(base)
+    return None, None
+
+
 def import_fec(conn, data, filename, mode='ecritures', entity_id=None, created_by=None, opening_date=None):
     """Importe un FEC. mode='ecritures' : toutes les écritures, journal par journal ;
     mode='soldes' : une seule écriture d'à-nouveaux (journal AN) reprenant les soldes des
@@ -432,8 +473,19 @@ def import_fec(conn, data, filename, mode='ecritures', entity_id=None, created_b
                          piece_ref=f"FEC-{sha[:8]}")
             count = 1
         else:
+            from profitos.accounting import _entry_already_exists
+            claimed = set()
             for e in parsed['entries']:
+                source_type, source_id = annotate_fec_entry(e)
+                # Une seule liquidation par date : un doublon (ou une liquidation déjà passée dans
+                # Veqalio à cette date) reste une écriture ordinaire plutôt que de bloquer l'import.
+                if source_type and ((source_type, source_id) in claimed
+                                    or _entry_already_exists(conn, source_type, source_id, entity_id)):
+                    source_type = source_id = None
+                elif source_type:
+                    claimed.add((source_type, source_id))
                 create_entry(conn, e['journal'], e['date'], e['label'][:250], e['lines'],
+                             source_type=source_type, source_id=source_id,
                              created_by=created_by, entity_id=entity_id, commit=False,
                              piece_ref=e['piece_ref'][:120])
                 count += 1

@@ -225,6 +225,16 @@ def register(app):
                 if current_role() == 'LECTURE' or not can_access('invoicing'):
                     flash("Votre rôle ne permet pas de rapprocher des mouvements.")
                     return redirect(url_for('mission_control_bank'))
+                choice = (request.form.get('choice') or '').strip()
+                if choice:
+                    try:
+                        amount, ch = MC.apply_bank_choice(c, eid, today, choice)
+                    except Exception as exc:        # rapprochement annulé seul, message clair
+                        flash(f"Rapprochement non exécuté : {str(exc) or type(exc).__name__}.")
+                    else:
+                        log_activity('MISSION_CONTROL_BANK', f"Rapprochement choisi : {ch['number']} ({amount:.2f} €)")
+                        flash(f"{fr_number(amount, 2)} € rapprochés avec la facture {ch['number']}.")
+                    return redirect(url_for('mission_control_bank'))
                 selected = [x for x in request.form.getlist('proposal') if x][:200]
                 if not selected:
                     flash('Cochez au moins une proposition à valider.')

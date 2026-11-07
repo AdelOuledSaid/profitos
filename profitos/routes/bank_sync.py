@@ -451,6 +451,7 @@ def _bank_tx_is_used(c, tx_id, entity_id):
     """Vrai si un rapprochement ou une écriture comptable s'appuie sur ce mouvement."""
     for sql in ("SELECT 1 FROM bank_invoice_allocations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",
                 "SELECT 1 FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",
+                "SELECT 1 FROM bank_imported_allocations WHERE entity_id IS ? AND bank_transaction_id=? LIMIT 1",
                 "SELECT 1 FROM accounting_entries WHERE entity_id IS ? AND source_type IN ('bank_fee','bank_categorization') AND source_id=? LIMIT 1"):
         if c.execute(sql, (entity_id, tx_id)).fetchone():
             return True
@@ -515,8 +516,10 @@ def _token_typo_match(a, b):
 
 def _name_similarity(client_name, bank_label):
     """Conservative lexical score with one-edit tolerance on long tokens."""
+    # v494 : les civilités (« M. et Mme Garnier ») ne distinguent pas un client d'un autre.
     ignore = {"sas","sasu","sarl","eurl","sa","sc","sci","societe","entreprise",
-              "company","ltd","limited","inc","gmbh","bv","the","de","du","des","et"}
+              "company","ltd","limited","inc","gmbh","bv","the","de","du","des","et",
+              "mme","mmes","mlle","monsieur","madame","mademoiselle","messieurs","famille"}
     client_tokens = [t for t in _norm_text(client_name).split() if len(t) >= 3 and t not in ignore]
     label_tokens = [t for t in _norm_text(bank_label).split() if len(t) >= 3 and t not in ignore]
     if not client_tokens:
@@ -607,8 +610,10 @@ def _purchase_reconciliation_suggestions(c, tx):
     return out
 
 def _bank_allocated_total(c, transaction_id, entity_id):
+    """Montant d'un encaissement déjà affecté : factures émises et factures importées (v494)."""
+    from profitos.bank_imported import allocated_on_transaction
     row=c.execute("SELECT COALESCE(SUM(matched_amount),0) n FROM bank_invoice_allocations WHERE bank_transaction_id=? AND entity_id IS ?",(transaction_id,entity_id)).fetchone()
-    return round(float(row['n'] or 0),2)
+    return round(float(row['n'] or 0)+allocated_on_transaction(c,transaction_id,entity_id),2)
 
 def _invoice_bank_balance(c, invoice):
     row=c.execute("SELECT COALESCE(SUM(amount),0) n FROM outgoing_invoice_payments WHERE invoice_id=? AND entity_id IS ?",(invoice['id'],invoice['entity_id'])).fetchone()
@@ -845,10 +850,7 @@ def register(app):
                 "SELECT state FROM bank_transaction_workflow WHERE entity_id IS ? AND bank_transaction_id=?",
                 (eid,tx['id'])
             ).fetchone()
-            customer=c.execute(
-                "SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_invoice_allocations WHERE entity_id IS ? AND bank_transaction_id=?",
-                (eid,tx['id'])
-            ).fetchone()['x'] or 0
+            customer=_bank_allocated_total(c,tx['id'],eid)
             supplier=c.execute(
                 "SELECT COALESCE(SUM(matched_amount),0) AS x FROM bank_purchase_allocations WHERE entity_id IS ? AND bank_transaction_id=?",
                 (eid,tx['id'])

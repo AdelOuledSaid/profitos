@@ -70,20 +70,40 @@ def bank_status(c, eid, today):
 
 
 def _invoice_numbers(c, eid):
-    """Numéros normalisés de toutes les factures émises de l'entité."""
+    """Numéros normalisés de toutes les factures clients de l'entité, émises dans Veqalio
+    ou importées (v494), indexés par (source, id) : les deux tables ont leurs propres id."""
     from profitos.routes.bank_sync import _norm_text
-    return {r['id']: _norm_text(r['invoice_number'] or '') for r in
-            c.execute('SELECT id, invoice_number FROM outgoing_invoices WHERE entity_id IS ?', (eid,)).fetchall()
-            if (r['invoice_number'] or '').strip()}
+    out = {('outgoing', r['id']): _norm_text(r['invoice_number'] or '') for r in
+           c.execute('SELECT id, invoice_number FROM outgoing_invoices WHERE entity_id IS ?', (eid,)).fetchall()
+           if (r['invoice_number'] or '').strip()}
+    try:
+        out.update({('imported', r['id']): _norm_text(r['invoice_number'] or '') for r in
+                    c.execute('SELECT id, invoice_number FROM invoices WHERE entity_id IS ?', (eid,)).fetchall()
+                    if (r['invoice_number'] or '').strip()})
+    except Exception:
+        try:
+            c.rollback()
+        except Exception:
+            pass
+    return out
 
 
-def names_other_invoice(label, invoice_id, numbers):
+def invoice_key(inv):
+    """Clé (source, id) d'une facture : émise dans Veqalio ou importée."""
+    src = inv.get('source') if isinstance(inv, dict) else None
+    return ('imported' if src == 'imported' else 'outgoing', inv['id'])
+
+
+def names_other_invoice(label, key, numbers):
     """Le libellé bancaire cite-t-il le numéro d'une AUTRE facture de l'entreprise ?
-    Un tel virement ne peut pas être proposé pour celle-ci."""
+    Un tel virement ne peut pas être proposé pour celle-ci. ``key`` : (source, id), ou l'id
+    d'une facture émise (compatibilité)."""
     from profitos.routes.bank_sync import _norm_text
+    if not isinstance(key, tuple):
+        key = ('outgoing', key)
     low = _norm_text(label or '')
-    own = numbers.get(invoice_id)
-    return any(n and n in low and n != own and not (own and n in own) for i, n in numbers.items() if i != invoice_id)
+    own = numbers.get(key)
+    return any(n and n in low and n != own and not (own and n in own) for k, n in numbers.items() if k != key)
 
 
 def probable_bank_payment(c, inv, balance):
@@ -100,7 +120,7 @@ def probable_bank_payment(c, inv, balance):
     best = None
     for t in txs:
         available = round(float(t['amount'] or 0) - _bank_allocated_total(c, t['id'], inv['entity_id']), 2)
-        if available <= 0.005 or names_other_invoice(t['label'], inv['id'], numbers):
+        if available <= 0.005 or names_other_invoice(t['label'], invoice_key(inv), numbers):
             continue
         score, reasons = _bank_match_score(inv, t, balance, available)
         if score >= PAYMENT_MATCH_SCORE and (best is None or score > best[1]):
@@ -122,7 +142,8 @@ def _bank_check(c, inv, balance, bank, today):
     candidate = probable_bank_payment(c, inv, balance)
     if candidate:
         t, score, reasons = candidate
-        return V.check(label, None,
+        # v494 : le libellé dit ce qui a été trouvé (avant : « Aucun paiement… » suivi d'un « ? »).
+        return V.check('Paiement possible trouvé en banque', None,
                        f"Un virement de {_fr_money(t['amount'])} du {_fr_date(t['transaction_date'])} "
                        f"(« {(t['label'] or '')[:60]} », {', '.join(reasons)}) pourrait régler cette facture.", 'Banque',
                        fix="S'il correspond, rapprochez-le (la facture sera soldée) ; sinon, écartez la proposition "
@@ -207,7 +228,7 @@ def detect_receivables(c, eid, today):
         outgoing = r['source'] == 'outgoing'
         inv = c.execute('SELECT * FROM outgoing_invoices WHERE id=? AND entity_id IS ?', (r['id'], eid)).fetchone() \
             if outgoing else None
-        probe = inv or {'id': r['id'], 'entity_id': eid, 'issue_date': r['issue_date'],
+        probe = inv or {'id': r['id'], 'entity_id': eid, 'issue_date': r['issue_date'], 'source': 'imported',
                         'invoice_number': r['invoice_number'], 'client_name': r['customer']}
         dec = decision(c, eid, r['source'], r['id'])
         checks = [V.check('Solde restant dû recalculé', True,
@@ -384,9 +405,10 @@ def pending_transactions(c, eid, today):
                WHERE a.entity_id IS ? AND {_tx_filter()} AND t.transaction_date>=? AND t.transaction_date<=?
                  AND NOT EXISTS (SELECT 1 FROM bank_invoice_allocations x WHERE x.entity_id IS ? AND x.bank_transaction_id=t.id)
                  AND NOT EXISTS (SELECT 1 FROM bank_purchase_allocations y WHERE y.entity_id IS ? AND y.bank_transaction_id=t.id)
+                 AND NOT EXISTS (SELECT 1 FROM bank_imported_allocations z WHERE z.entity_id IS ? AND z.bank_transaction_id=t.id)
                  AND NOT EXISTS (SELECT 1 FROM accounting_entries e WHERE e.entity_id IS ?
                                  AND e.source_type IN ('bank_fee','bank_categorization') AND e.source_id=t.id)"""
-    params = [eid, since, limit, eid, eid, eid]
+    params = [eid, since, limit, eid, eid, eid, eid]
     try:
         rows = c.execute(f"""SELECT t.*, a.entity_id AS entity_id {base}
                              AND NOT EXISTS (SELECT 1 FROM bank_transaction_workflow w WHERE w.entity_id IS ?
@@ -401,6 +423,35 @@ def pending_transactions(c, eid, today):
     return [dict(r) for r in rows]
 
 
+EXPENSE_DATE_WINDOW = 10       # jours d'écart toléré entre une dépense importée et son paiement
+
+
+def matching_expense(c, eid, tx):
+    """Dépense importée (table ``expenses``) de même montant, datée à quelques jours du
+    paiement, ou None (v494). Sert à expliquer un débit bancaire, jamais à le comptabiliser
+    sans validation : la dépense importée ne porte ni compte de charge ni taux de TVA."""
+    from profitos.routes.bank_sync import _name_similarity
+    amount = abs(float(tx['amount'] or 0))
+    when = _d(tx['transaction_date'])
+    if amount <= .005 or not when:
+        return None
+    lo, hi = (when - timedelta(days=EXPENSE_DATE_WINDOW)).isoformat(), (when + timedelta(days=EXPENSE_DATE_WINDOW)).isoformat()
+    try:
+        rows = c.execute("SELECT * FROM expenses WHERE entity_id IS ? AND ABS(amount - ?) <= 0.01 "
+                         "AND expense_date>=? AND expense_date<=?", (eid, amount, lo, hi)).fetchall()
+    except Exception:
+        try:
+            c.rollback()
+        except Exception:
+            pass
+        return None
+    if not rows:
+        return None
+    # Le fournisseur cité dans le libellé départage ; à défaut, la date la plus proche.
+    return max(rows, key=lambda r: (_name_similarity(r['vendor'] or '', tx['label'] or ''),
+                                    -abs(((_d(r['expense_date']) or when) - when).days)))
+
+
 PROPOSAL_MIN_SCORE = 60        # même seuil que pour bloquer une relance
 PROPOSAL_AMBIGUITY = 15        # écart minimal avec la 2e meilleure correspondance (sinon : ambigu)
 
@@ -412,8 +463,10 @@ def bank_proposals(c, eid, today):
     from profitos.routes.bank_sync import (_bank_allocated_total, _bank_match_score, _invoice_bank_balance,
                                            _purchase_reconciliation_suggestions)
     txs = pending_transactions(c, eid, today)
+    from profitos.bank_imported import open_imported
     invoices = c.execute("SELECT * FROM outgoing_invoices WHERE entity_id IS ? AND status IN ('sent','partially_paid') AND total>0 "
                          "ORDER BY issue_date, id", (eid,)).fetchall()
+    imported = open_imported(c, eid)       # v494 : factures en cours importées depuis un fichier
     numbers = _invoice_numbers(c, eid)
     proposals, unmatched = [], []
     for t in txs:
@@ -425,24 +478,46 @@ def bank_proposals(c, eid, today):
                 balance = _invoice_bank_balance(c, inv)
                 if balance <= .005 or available <= .005:
                     continue
-                if names_other_invoice(t['label'], inv['id'], numbers):
+                if names_other_invoice(t['label'], ('outgoing', inv['id']), numbers):
                     continue
                 score, reasons = _bank_match_score(inv, t, balance, available)
                 if score >= 30:
                     cands.append((score, 'facture', inv, min(balance, available), reasons))
+            for inv in imported:
+                if inv['balance'] <= .005 or available <= .005:
+                    continue
+                if names_other_invoice(t['label'], ('imported', inv['id']), numbers):
+                    continue
+                score, reasons = _bank_match_score(inv, t, inv['balance'], available)
+                if score >= 30:
+                    cands.append((score, 'importee', inv, min(inv['balance'], available), reasons))
         elif amount < 0:
             for sug in _purchase_reconciliation_suggestions(c, t):
                 cands.append((sug['score'], 'achat', sug['purchase'], sug['amount'], sug['reasons'].split(', ')))
         cands.sort(key=lambda x: -x[0])
         if not cands or cands[0][0] < PROPOSAL_MIN_SCORE:
-            unmatched.append({'tx': t, 'reason': ("Aucune facture client ouverte ne correspond (montant, n° de facture, client)."
-                                                  if amount > 0 else
-                                                  "Aucune facture fournisseur ouverte ne correspond : frais, abonnement ou "
-                                                  "dépense à comptabiliser.")})
+            expense = matching_expense(c, eid, t) if amount < 0 else None
+            if expense:
+                reason = (f"Correspond à la dépense importée « {expense['description'] or expense['category'] or 'sans libellé'} » "
+                          f"({expense['vendor'] or 'fournisseur inconnu'}, {_fr_date(expense['expense_date'])}) : "
+                          "comptabilisez-le sur la page Banque"
+                          + (f" (catégorie {expense['category']})." if expense['category'] else '.'))
+            elif amount > 0:
+                reason = "Aucune facture client ouverte ne correspond (montant, n° de facture, client)."
+            else:
+                reason = ("Aucune facture fournisseur ouverte ne correspond : frais, abonnement ou "
+                          "dépense à comptabiliser.")
+            unmatched.append({'tx': t, 'reason': reason})
             continue
         if len(cands) > 1 and cands[0][0] < 80 and cands[0][0] - cands[1][0] < PROPOSAL_AMBIGUITY:
-            unmatched.append({'tx': t, 'reason': f"Plusieurs factures possibles ({cands[0][2]['invoice_number']}, "
-                                                 f"{cands[1][2]['invoice_number']}…) : choix à faire sur la page Banque."})
+            # v494 : Veqalio ne choisit pas, mais propose de choisir ici même parmi les factures possibles.
+            choices = [{'id': f"{t['id']}:{kind}:{target['id']}", 'kind': kind, 'number': target['invoice_number'],
+                        'name': target['supplier_name'] if kind == 'achat' else target['client_name'],
+                        'amount': round(alloc, 2)}
+                       for _score, kind, target, alloc, _r in cands[:3]]
+            unmatched.append({'tx': t, 'choices': choices,
+                              'reason': f"Plusieurs factures possibles ({cands[0][2]['invoice_number']}, "
+                                        f"{cands[1][2]['invoice_number']}…) : choisissez celle que ce mouvement règle."})
             continue
         score, kind, target, alloc, reasons = cands[0]
         proposals.append({'id': f"{t['id']}:{kind}:{target['id']}", 'tx': t, 'target_kind': kind, 'target': dict(target),
@@ -465,6 +540,7 @@ def bank_proposals(c, eid, today):
 def apply_bank_proposals(c, eid, today, selected_ids):
     """Exécute les rapprochements choisis APRÈS les avoir recalculés : un rapprochement qui
     n'est plus proposé (situation changée) n'est pas exécuté. Retourne (faits, refusés)."""
+    from profitos.bank_imported import reconcile_imported
     from profitos.routes.bank_sync import reconcile_invoice, reconcile_purchase
     proposals, _u = bank_proposals(c, eid, today)
     by_id = {p['id']: p for p in proposals}
@@ -477,12 +553,29 @@ def apply_bank_proposals(c, eid, today, selected_ids):
         try:
             if p['target_kind'] == 'facture':
                 amount, _inv = reconcile_invoice(c, eid, p['tx']['id'], p['target']['id'], p['amount'])
+            elif p['target_kind'] == 'importee':
+                amount, _inv = reconcile_imported(c, eid, p['tx']['id'], p['target']['id'], p['amount'])
             else:
                 amount, _p = reconcile_purchase(c, eid, p['tx']['id'], p['target']['id'], p['amount'])
             done.append((p, amount))
         except Exception as exc:                        # chaque rapprochement est annulé seul en cas d'erreur
             refused.append((pid, str(exc) or type(exc).__name__))
     return done, refused
+
+
+def apply_bank_choice(c, eid, today, choice_id):
+    """Exécute le rapprochement choisi à la main parmi plusieurs factures possibles, après
+    avoir vérifié qu'il fait toujours partie des choix recalculés. Retourne le montant."""
+    from profitos.bank_imported import reconcile_imported
+    from profitos.routes.bank_sync import reconcile_invoice, reconcile_purchase
+    _p, unmatched = bank_proposals(c, eid, today)
+    choice = next((ch for u in unmatched for ch in u.get('choices') or [] if ch['id'] == choice_id), None)
+    if not choice:
+        raise ValueError("ce choix n'est plus proposé (déjà traité ou situation changée)")
+    tx_id, kind, target_id = choice_id.split(':')
+    run = {'facture': reconcile_invoice, 'importee': reconcile_imported, 'achat': reconcile_purchase}[kind]
+    amount, _t = run(c, eid, int(tx_id), int(target_id), choice['amount'])
+    return amount, choice
 
 
 def detect_bank_pending(c, eid, today):

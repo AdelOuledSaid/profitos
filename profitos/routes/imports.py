@@ -845,6 +845,9 @@ def register(app):
                         finally:
                             ac_cleanup.close()
                         raise
+                # v494 : les encaissements déjà rapprochés en banque restent acquis après un nouvel import.
+                from profitos.bank_imported import restore_after_reimport
+                restore_after_reimport(c, entity_id)
                 # Factures et statistiques DSO : une seule validation.
                 snap=c.execute(f"SELECT AVG(days_overdue) avg_d,COALESCE(SUM(MAX(amount-paid_amount,0)),0) total,COUNT(*) n FROM invoices WHERE LOWER(COALESCE(status,''))!='paid' AND days_overdue>0 AND {entity_filter}",entity_params).fetchone()
                 today_iso=today.isoformat()

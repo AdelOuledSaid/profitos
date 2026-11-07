@@ -127,6 +127,24 @@ def vat_rates(c, eid, start, end):
         expected = r['base'] * r['rate'] / 100
         if abs(r['vat'] - expected) > max(1.0, 0.01 * abs(expected)):
             bad.append(f"{r['label']} : base {_eur(r['base'])} × {r['rate']:g} % = {_eur(expected)}, TVA comptabilisée {_eur(r['vat'])}")
+    # v494 : écritures une par une. Sur un total annuel, la tolérance de 1 % masquait une facture
+    # isolée calculée au mauvais taux (4 500 € HT à 19,6 % : 18 € d'écart sur 60 000 € de TVA).
+    ef, ep = _ef(eid)
+    lines = c.execute(f"""SELECT e.entry_date, e.piece_ref, l.vat_rate, l.vat_base, l.credit, l.debit
+                          FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+                          WHERE l.account_code='445710' AND l.vat_rate IS NOT NULL AND COALESCE(l.vat_base,0)<>0
+                            AND COALESCE(e.source_type,'')<>'vat_liquidation'
+                            AND e.entry_date BETWEEN ? AND ? AND {ef} ORDER BY e.entry_date, e.id""",
+                      (str(start), str(end), *ep)).fetchall()
+    wrong = [l for l in lines
+             if abs(abs(float(l['credit'] or 0) - float(l['debit'] or 0)) - float(l['vat_base']) * float(l['vat_rate']) / 100) > 1.0]
+    for l in wrong[:5]:
+        vat = abs(float(l['credit'] or 0) - float(l['debit'] or 0))
+        expected = float(l['vat_base']) * float(l['vat_rate']) / 100
+        bad.append(f"pièce {l['piece_ref'] or '—'} du {_fr(l['entry_date'])} : base {_eur(l['vat_base'])} × {float(l['vat_rate']):g} % "
+                   f"= {_eur(expected)}, TVA comptabilisée {_eur(vat)}")
+    if len(wrong) > 5:
+        bad.append(f"et {len(wrong) - 5} autre(s) écriture(s)")
     src = 'Compte 445710, base et taux mémorisés par ligne'
     if rates:
         out.append(_ck('tva_taux', 'TVA collectée cohérente avec base × taux', None if bad else True, ' ; '.join(bad), src,
@@ -195,6 +213,40 @@ def vat_turnover(c, eid, start, end):
                   "chiffre d'affaires comptabilisé sur un autre compte ou TVA collectée en double.")
     return [_ck('tva_ca', "Chiffre d'affaires rapproché de la base taxée", None, detail, src,
                 "Documentez l'écart (une ligne par cause) dans le dossier de l'expert-comptable.", amount=abs(gap))]
+
+
+def purchase_duplicates(c, eid, start, end):
+    """Factures fournisseurs comptabilisées deux fois (v494) : même pièce, même fournisseur,
+    même montant au crédit du 401. Le doublon gonfle les charges, la dette fournisseur et la
+    TVA déductible."""
+    ef, ep = _ef(eid)
+    rows = c.execute(f"""SELECT e.piece_ref AS piece, COALESCE(l.auxiliary_name,'') AS supplier, l.credit AS amount,
+                                COUNT(*) AS n, MIN(e.entry_date) AS first_date
+                         FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+                         WHERE l.account_code LIKE ? AND l.credit>0 AND e.journal_code<>'AN'
+                           AND COALESCE(e.piece_ref,'')<>'' AND e.entry_date BETWEEN ? AND ? AND {ef}
+                         GROUP BY e.piece_ref, COALESCE(l.auxiliary_name,''), l.credit
+                         HAVING COUNT(*)>1 ORDER BY MIN(e.entry_date)""",
+                     ('401%', str(start), str(end), *ep)).fetchall()
+    src = f"Compte 401 (fournisseurs), du {_fr(start)} au {_fr(end)}"
+    if not rows:
+        return [_ck('achat_doublon', 'Aucune facture fournisseur comptabilisée en double', True, '', src)]
+    extra = _r(sum(float(r['amount']) * (int(r['n']) - 1) for r in rows))
+    detail = ' ; '.join(f"{r['piece']}{' — ' + r['supplier'] if r['supplier'] else ''} : {_eur(r['amount'])} "
+                        f"comptabilisée {r['n']} fois (le {_fr(r['first_date'])})" for r in rows[:5])
+    if len(rows) > 5:
+        detail += f" ; et {len(rows) - 5} autre(s)"
+    return [_ck('achat_doublon', 'Factures fournisseurs comptabilisées en double', None, detail, src,
+                "Vérifiez chaque pièce : si c'est bien la même facture, contre-passez l'écriture en trop (charges, TVA "
+                "déductible et dette fournisseur seront corrigées).", amount=extra)]
+
+
+def _tagged(checks):
+    """Distingue les contrôles de l'exercice en cours (clé stable d'un jour à l'autre)."""
+    for ck in checks:
+        ck['code'] = f"{ck['code']}:en_cours"
+        ck['label'] = f"{ck['label']} (exercice en cours)"
+    return checks
 
 
 # ------------------------------------------------------------------------------- IS
@@ -302,8 +354,15 @@ def review(c, eid, today):
     sections = []
     vat = (vat_declared_vs_books(c, eid, closed['start']) + vat_unliquidated(c, eid, today) + vat_payable_unpaid(c, eid, today))
     period = (closed['start'], closed['end']) if closed_active else (current['start'], min(today, current['end']))
-    vat += vat_rates(c, eid, *period) + vat_turnover(c, eid, *period)
-    sections.append(_section('tva', 'TVA', vat, f"Rapprochements sur l'exercice du {_fr(period[0])} au {_fr(period[1])}."))
+    vat += vat_rates(c, eid, *period) + vat_turnover(c, eid, *period) + purchase_duplicates(c, eid, *period)
+    note = f"Rapprochements sur l'exercice du {_fr(period[0])} au {_fr(period[1])}."
+    # v494 : l'exercice en cours est aussi contrôlé (une erreur de cette année ne doit pas attendre la clôture).
+    if closed_active and _has_entries(c, eid, current['start'], min(today, current['end'])):
+        cur = (current['start'], min(today, current['end']))
+        vat += _tagged(vat_rates(c, eid, *cur) + vat_turnover(c, eid, *cur) + purchase_duplicates(c, eid, *cur))
+        note = (f"Rapprochements sur l'exercice clos ({_fr(period[0])} → {_fr(period[1])}) et sur l'exercice en cours "
+                f"({_fr(cur[0])} → {_fr(cur[1])}).")
+    sections.append(_section('tva', 'TVA', vat, note))
     closed_is, liasse = None, None
     if closed_active:
         try:
@@ -330,7 +389,7 @@ def review(c, eid, today):
 
 # ----------------------------------------------------------------- Mission Control
 DETECTED = {'tva_decl': 'important', 'tva_impayee': 'important', 'is_acomptes': 'important', 'tva_liquidation': 'info',
-            'is_excedent': 'info'}
+            'is_excedent': 'info', 'achat_doublon': 'important'}
 
 
 def detect(c, eid, today):

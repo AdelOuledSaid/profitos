@@ -252,14 +252,26 @@ def compute_cvae(turnover, valeur_ajoutee, start, end, previous_cvae=None):
 
 # ------------------------------------------------------------------- comptabilité
 def acomptes_from_ledger(conn, start, end, entity_id=None):
-    """Acomptes d'IS versés pendant l'exercice : débits du compte 444 (hors à-nouveaux)."""
+    """Acomptes d'IS versés pendant l'exercice : débits du compte 444 (hors à-nouveaux),
+    diminués du solde d'IS de l'exercice précédent encore dû à l'ouverture (v494).
+
+    Le solde de l'IS N-1, payé en mai de l'exercice N, passe lui aussi au débit du 444 : sans
+    cette déduction, il était compté comme un acompte de N, et un acompte réellement manquant
+    passait inaperçu (ou l'IS restant dû de l'exercice était sous-estimé)."""
     ef = 'e.entity_id=?' if entity_id else 'e.entity_id IS NULL'
     ep = (entity_id,) if entity_id else ()
     row = conn.execute(
         f"""SELECT COALESCE(SUM(l.debit),0) d FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
             WHERE l.account_code LIKE ? AND e.journal_code<>'AN' AND e.entry_date BETWEEN ? AND ? AND {ef}""",
         ('444%', start.isoformat(), end.isoformat(), *ep)).fetchone()
-    return _r(row['d'] if row else 0)
+    paid = _r(row['d'] if row else 0)
+    opening = conn.execute(
+        f"""SELECT COALESCE(SUM(l.credit-l.debit),0) n FROM accounting_entry_lines l JOIN accounting_entries e ON e.id=l.entry_id
+            WHERE l.account_code LIKE ? AND {ef}
+              AND (e.entry_date<? OR (e.journal_code='AN' AND e.entry_date<=?))""",
+        ('444%', *ep, start.isoformat(), start.isoformat())).fetchone()
+    owed = max(0.0, _r(opening['n'] if opening else 0))       # IS N-1 restant dû à l'ouverture
+    return _r(max(0.0, paid - owed))
 
 
 def generate_is_entry(conn, end, amount, entity_id=None, created_by=None):

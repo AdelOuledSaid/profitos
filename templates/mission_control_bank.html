@@ -28,7 +28,7 @@
       <tr>
         <td><input type="checkbox" name="proposal" value="{{ p.id }}" aria-label="Valider ce rapprochement" {{ 'checked' if p.confidence == 'Élevée' }}></td>
         <td>{{ p.tx.transaction_date|fr_date }} — {{ p.tx.label }}<br><strong>{{ p.tx.amount|fr_number(2) }} €</strong></td>
-        <td>{{ 'Facture client' if p.target_kind == 'facture' else 'Facture fournisseur' }} {{ p.target.invoice_number }}<br><span class="purchase-muted">{{ p.target.client_name if p.target_kind == 'facture' else p.target.supplier_name }}</span></td>
+        <td>{{ {'facture': 'Facture client', 'importee': 'Facture client importée'}.get(p.target_kind, 'Facture fournisseur') }} {{ p.target.invoice_number }}<br><span class="purchase-muted">{{ p.target.supplier_name if p.target_kind == 'achat' else p.target.client_name }}</span></td>
         <td class="num">{{ p.amount|fr_number(2) }} €</td>
         <td>Confiance {{ p.confidence|lower }} : {{ p.reasons|join(', ') }}</td>
       </tr>{% endfor %}</tbody>
@@ -43,7 +43,14 @@
   <h2>À traiter manuellement ({{ unmatched|length }})</h2>
   <div class="purchase-table-wrap"><table class="purchase-table">
     <thead><tr><th>Date</th><th>Libellé</th><th class="num">Montant</th><th>Pourquoi Veqalio ne propose rien</th></tr></thead>
-    <tbody>{% for u in unmatched %}<tr><td>{{ u.tx.transaction_date|fr_date }}</td><td>{{ u.tx.label }}</td><td class="num">{{ u.tx.amount|fr_number(2) }} €</td><td>{{ u.reason }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for u in unmatched %}<tr><td>{{ u.tx.transaction_date|fr_date }}</td><td>{{ u.tx.label }}</td><td class="num">{{ u.tx.amount|fr_number(2) }} €</td><td>{{ u.reason }}{% if u.choices and can_validate %}
+      <form method="post" class="mc-choice" style="margin-top:6px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="choice" required aria-label="Facture réglée par ce mouvement">
+          {% for ch in u.choices %}<option value="{{ ch.id }}">{{ ch.number }} — {{ ch.name }} ({{ ch.amount|fr_number(2) }} €)</option>{% endfor %}
+        </select>
+        <button type="submit" class="purchase-primary-btn secondary">Rapprocher</button>
+      </form>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   <p class="purchase-muted" style="font-size:12px;">Sur la page Banque : comptabilisez (frais, abonnements, dépenses), rapprochez à la main ou ignorez chaque mouvement.</p>
 </section>
