@@ -709,9 +709,22 @@ def register(app):
             row=c.execute('SELECT * FROM invoices WHERE id=? AND entity_id IS ?',(iid,eid)).fetchone()
             if not row or norm(row['status'] or '')=='paid': c.close(); continue
             old=row['status']
-            c.execute("UPDATE invoices SET status='paid' WHERE id=? AND entity_id IS ?",(iid,eid))
-            c.commit(); c.close()  # commité avant log_status_change : évite un verrou SQLite
-                                     # entre cette connexion et celle ouverte par log_status_change.
+            # v494.1 : le virement du relevé (déjà enregistré dans le module Banque) est rapproché
+            # pour de bon — règlement, écriture 512/411, mouvement retiré des « à traiter ».
+            from profitos.bank_imported import find_bank_transaction, reconcile_imported
+            tx=find_bank_transaction(c,eid,row)
+            try:
+                if tx:
+                    reconcile_imported(c,eid,tx['id'],iid)
+                else:
+                    c.execute("UPDATE invoices SET status='paid', paid_amount=amount WHERE id=? AND entity_id IS ?",(iid,eid))
+                    c.commit()
+            except Exception as exc:
+                c.rollback(); c.close()
+                flash(f"Facture {row['invoice_number'] or iid} non rapprochée : {exc}")
+                continue
+            c.close()  # commité avant log_status_change : évite un verrou SQLite
+                       # entre cette connexion et celle ouverte par log_status_change.
             count+=1
             log_status_change('INVOICE',iid,'RECOVER',old,'paid',note='Rapprochement bancaire')
         log_activity('BANK_RECONCILIATION',f'{count} facture(s) rapprochée(s) et marquée(s) payée(s)')

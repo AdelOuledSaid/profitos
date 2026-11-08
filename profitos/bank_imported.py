@@ -140,6 +140,24 @@ def restore_after_reimport(c, eid):
     return restored
 
 
+def find_bank_transaction(c, eid, inv):
+    """Mouvement bancaire enregistré qui paie exactement le solde d'une facture importée et
+    n'est encore utilisé par aucun rapprochement ni écriture (v494.1). Le libellé qui cite le
+    numéro de facture départage ; à défaut, le plus ancien. None si aucun."""
+    from profitos.routes.bank_sync import _bank_tx_is_used, _norm_text
+    due = balance(inv)
+    if due <= .005:
+        return None
+    rows = c.execute("""SELECT t.* FROM bank_transactions t JOIN bank_accounts a
+                        ON a.provider=t.provider AND a.provider_account_id=t.provider_account_id
+                        WHERE a.entity_id IS ? AND ABS(t.amount - ?) < 0.01
+                        ORDER BY t.transaction_date, t.id""", (eid, due)).fetchall()
+    free = [t for t in rows if not _bank_tx_is_used(c, t['id'], eid)]
+    number = _norm_text(inv['invoice_number'] or '')
+    cited = [t for t in free if number and number in _norm_text(t['label'] or '')]
+    return (cited or free or [None])[0]
+
+
 def reconcile_imported(c, eid, tx_id, inv_id, amount=None):
     """Rapprochement atomique d'un encaissement et d'une facture importée : toute erreur annule
     l'ensemble (rollback) avant d'être relayée. Retourne (montant, facture)."""

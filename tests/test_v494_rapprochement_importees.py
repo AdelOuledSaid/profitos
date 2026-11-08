@@ -171,3 +171,42 @@ def test_acompte_ambigu_choisi_a_la_main(app):
     # un choix périmé (mouvement déjà rapproché) est refusé sans rien exécuter
     post(cl, '/mission-control/banque', {'choice': choice['id']})
     assert any("n'est plus proposé" in m for m in flashes(cl))
+
+
+def test_ecran_de_l_import_de_releve_rapproche_pour_de_bon(app):
+    """v494.1 — L'écran affiché juste après l'import du relevé (« 5/7 lignes rapprochées
+    automatiquement ») marquait seulement la facture payée : le virement restait « à traiter »
+    sans écriture. Il passe désormais par le vrai rapprochement."""
+    cl, org, today = setup_dossier(app)
+    c = rt.tenant_cx_direct(org)
+    inv = c.execute("SELECT id FROM invoices WHERE invoice_number='FA-T-101'").fetchone()['id']
+    before = len(MC.pending_transactions(c, None, today))
+    c.close()
+    post(cl, '/reconcile/confirm', {'confirm_invoice_id': str(inv)})
+    msgs = flashes(cl)
+    assert any('marquée comme payée' in m for m in msgs), msgs
+    c = rt.tenant_cx_direct(org)
+    row = c.execute("SELECT * FROM invoices WHERE id=?", (inv,)).fetchone()
+    assert row['status'] == 'paid' and row['paid_amount'] == 7068.0
+    alloc = c.execute("SELECT * FROM bank_imported_allocations").fetchall()
+    assert len(alloc) == 1 and alloc[0]['imported_invoice_id'] == inv and alloc[0]['matched_amount'] == 7068.0
+    assert len(MC.pending_transactions(c, None, today)) == before - 1
+    assert c.execute("SELECT COUNT(*) n FROM accounting_entries WHERE source_type='imported_invoice_payment'").fetchone()['n'] == 1
+    c.close()
+
+
+def test_ecran_import_sans_mouvement_correspondant_solde_la_facture(app):
+    cl, org = signup(app)
+    today = paris_today()
+    csv_upload(cl, '/upload/invoices', [
+        ['Numéro', 'Client', 'Montant TTC', 'Montant payé', 'Date facture', 'Échéance'],
+        ['FA-X-1', 'Client X', '500,00', '0,00', fr(today - timedelta(days=40)), fr(today - timedelta(days=10))],
+    ])
+    c = rt.tenant_cx_direct(org)
+    inv = c.execute("SELECT id FROM invoices").fetchone()['id']
+    c.close()
+    post(cl, '/reconcile/confirm', {'confirm_invoice_id': str(inv)})
+    c = rt.tenant_cx_direct(org)
+    row = c.execute("SELECT * FROM invoices WHERE id=?", (inv,)).fetchone()
+    assert row['status'] == 'paid' and row['paid_amount'] == 500.0
+    c.close()
