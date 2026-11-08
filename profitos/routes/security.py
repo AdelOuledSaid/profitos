@@ -258,6 +258,16 @@ def register(app):
             c.execute('UPDATE users SET totp_secret=?,totp_enabled=0,totp_last_step=NULL WHERE id=?',
                       (acsec.encrypt_totp_secret(user, secret), user['id']))
             c.commit()
+        if request.method == 'POST' and request.form.get('action') == 'regenerate':
+            # v494.2 : nouvelle clé à la demande (clé montrée par erreur, téléphone changé…).
+            secret = totp_mod.new_secret()
+            c.execute('UPDATE users SET totp_secret=?,totp_enabled=0,totp_last_step=NULL WHERE id=?',
+                      (acsec.encrypt_totp_secret(user, secret), user['id']))
+            c.commit(); c.close()
+            log_security_event('2FA_SECRET_REGENERATED', 'SUCCESS', target='account')
+            flash("Nouvelle clé générée : l'ancienne ne fonctionnera pas. Supprimez-la de votre application "
+                  "si vous l'aviez déjà ajoutée, puis scannez le nouveau QR code.")
+            return redirect(url_for('two_factor_setup'))
         if request.method == 'POST':
             step = totp_mod.verify(secret, request.form.get('code', ''))
             if step is None:
@@ -274,8 +284,9 @@ def register(app):
                               "La double authentification est désormais active sur votre compte Veqalio.")
             return render_template('two_factor_codes.html', codes=codes)
         c.close()
+        uri = totp_mod.provisioning_uri(secret, user['email'])
         return render_template('two_factor_setup.html', secret_grouped=totp_mod.grouped(secret),
-                               otpauth_uri=totp_mod.provisioning_uri(secret, user['email']))
+                               otpauth_uri=uri, qr_svg=totp_mod.qr_svg(uri))
 
     @app.route('/compte/2fa/desactiver', methods=['POST'])
     @login_required

@@ -3,8 +3,10 @@ implémentés avec la bibliothèque standard (hmac, hashlib, base64, struct).
 
 Compatible avec les applications d'authentification usuelles (Google
 Authenticator, Microsoft Authenticator, 1Password, Aegis...) : SHA-1, 6 chiffres,
-pas de 30 secondes. Pas de QR code (aucune dépendance) : l'URI ``otpauth://`` et la
-clé en groupes de 4 caractères sont affichées pour une saisie manuelle.
+pas de 30 secondes. Le QR code (v494.2) est dessiné sur le serveur par le générateur
+interne de Veqalio (profitos.qr), sans service extérieur : la clé secrète ne quitte
+jamais Veqalio. La clé en groupes de
+4 caractères reste affichée pour une saisie manuelle.
 """
 import base64
 import hashlib
@@ -60,6 +62,16 @@ def verify(secret_b32, code, at=None, window=1, last_step=None):
         if hmac.compare_digest(hotp(secret_b32, candidate), code):
             return candidate
     return None
+
+
+def qr_svg(uri):
+    """QR code SVG de l'URI ``otpauth://``, dessiné par le générateur interne (aucun service
+    extérieur, aucune dépendance), ou None en cas d'échec : la saisie manuelle reste possible."""
+    from profitos import qr
+    try:
+        return qr.svg(uri, module=5, border=3, label='QR code de la double authentification Veqalio')
+    except Exception:
+        return None
 
 
 def provisioning_uri(secret_b32, account_name, issuer='Veqalio'):

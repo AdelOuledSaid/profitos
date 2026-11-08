@@ -6,17 +6,35 @@
 <section class="purchase-panel">
   <ol>
     <li>Ouvrez votre application d'authentification (Google Authenticator, Microsoft Authenticator, 1Password, Aegis…).</li>
+    {% if qr_svg %}
+    <li>Ajoutez un compte en <strong>scannant ce QR code</strong> avec l'application (bouton « + », puis « Scanner un QR code ») :
+      <div class="totp-qr" style="background:#fff;display:inline-block;padding:4px;margin:12px 0;border-radius:8px;line-height:0;">{{ qr_svg|safe }}</div>
+      <details><summary>Impossible de scanner ? Saisir la clé à la main</summary>
+        <p style="font-family:monospace;font-size:18px;letter-spacing:1px;color:#fff;">{{ secret_grouped }}</p>
+        ou, si votre application le permet, collez ce lien :
+        <p style="font-family:monospace;word-break:break-all;font-size:12px;">{{ otpauth_uri }}</p>
+      </details>
+    </li>
+    {% else %}
     <li>Ajoutez un compte en saisissant manuellement cette clé :
       <p style="font-family:monospace;font-size:18px;letter-spacing:1px;color:#fff;">{{ secret_grouped }}</p>
       ou, si votre application le permet, en collant ce lien :
       <p style="font-family:monospace;word-break:break-all;font-size:12px;">{{ otpauth_uri }}</p>
     </li>
+    {% endif %}
     <li>Saisissez le code à 6 chiffres affiché pour confirmer.</li>
   </ol>
   <form method="post" class="stack" style="max-width:320px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Code à 6 chiffres<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
     <button class="purchase-primary-btn primary">Activer</button>
+  </form>
+  <form method="post" style="margin-top:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="regenerate">
+    <p class="purchase-muted">Ce QR code ou cette clé a été vu par quelqu'un d'autre (capture d'écran partagée…) ?
+      Générez-en un nouveau avant d'activer : l'ancien ne fonctionnera plus.</p>
+    <button class="purchase-primary-btn secondary">Générer une nouvelle clé</button>
   </form>
 </section>
 </div>
