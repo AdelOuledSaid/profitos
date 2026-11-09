@@ -596,6 +596,30 @@ def einvoice_inbound_sync(org, ctx):
         c.close()
 
 
+@job('einvoice_status_sync', 'hourly',
+     description="Statuts des factures transmises à la plateforme agréée SUPER PDP (toutes les heures).")
+def einvoice_status_sync(org, ctx):
+    _require_paid(org)
+    from profitos import einvoice_superpdp as ES
+    if not ES.is_active():
+        raise Skip('SUPER PDP non configuré')
+    from profitos.runtime import tenant_cx_direct
+    c = tenant_cx_direct(org['id'])
+    try:
+        try:
+            pending = c.execute("SELECT COUNT(*) n FROM outgoing_invoices WHERE einvoice_provider='superpdp'").fetchone()['n']
+        except Exception:
+            pending = 0
+        if not pending:
+            raise Skip('aucune facture transmise')
+        done, errors = ES.sync_pending(c, org['id'])
+        if errors:
+            raise RuntimeError(f"{len(errors)} erreur(s) : " + ' ; '.join(errors[:3]))
+        return f'{done} facture(s) actualisée(s)'
+    finally:
+        c.close()
+
+
 @job('bank_sync', 'daily', hour=5,
      description='Synchronisation quotidienne des comptes bancaires Powens.')
 def bank_sync(org, ctx):

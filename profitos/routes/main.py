@@ -212,9 +212,13 @@ def register(app):
             p=merged
         from profitos.entities import current_entity_id
         settings_row=weinvoice_entity_settings(c,current_entity_id())
+        from profitos import einvoice_superpdp as _es, superpdp as _sp
+        superpdp_row=_es.connection(c,current_entity_id()) if _es.is_active() else None
         c.close()
         return render_template('company.html',p=p or {},weinvoice=settings_row,errors=errors,legal_forms=LEGAL_FORMS,
-                               weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV), (400 if errors else 200)
+                               weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV,
+                               einvoice_provider=_es.provider(),superpdp=superpdp_row,
+                               superpdp_configured=_sp.is_configured()), (400 if errors else 200)
 
     @app.route('/company/weinvoice/test',methods=['POST'])
     @login_required

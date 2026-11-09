@@ -221,6 +221,8 @@ def create_app(config_object=None):
     copilot_routes.register(app)
     resend_webhook_routes.register(app)
     email_failures_routes.register(app)
+    from .routes import superpdp as superpdp_routes
+    superpdp_routes.register(app)
     cash_intelligence.register(app)
     decision_simulator.register(app)
     invoicing.register(app)

@@ -1620,6 +1620,20 @@ def _migrate_tenant_schema(org_id=None):
         matched_at TEXT NOT NULL,
         UNIQUE(entity_id,idempotency_key)
     );
+    CREATE TABLE IF NOT EXISTS superpdp_connections(
+        entity_key INTEGER PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'disconnected',
+        company_number TEXT,
+        company_name TEXT,
+        access_token TEXT,
+        refresh_token TEXT,
+        expires_at INTEGER,
+        verified INTEGER NOT NULL DEFAULT 0,
+        connected_at TEXT,
+        last_check_at TEXT,
+        last_error TEXT,
+        inbound_cursor INTEGER
+    );
     CREATE TABLE IF NOT EXISTS bank_imported_allocations(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_id INTEGER,
@@ -2439,6 +2453,7 @@ def _migrate_tenant_schema(org_id=None):
                        ('outgoing_invoices','weinvoice_sent_at'),('outgoing_invoices','weinvoice_last_error'),
                        ('outgoing_invoices','weinvoice_idempotency_key'),
                        ('outgoing_invoices','weinvoice_regulatory_code'),('outgoing_invoices','weinvoice_last_sync_at'),
+                       ('outgoing_invoices','einvoice_provider'),
                        ('invoicing_clients','siren'),
                        ('app_settings','weinvoice_status'),('app_settings','weinvoice_last_check_at'),
                        ('app_settings','weinvoice_last_error'),

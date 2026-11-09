@@ -3696,10 +3696,18 @@ def register(app):
             if 'weinvoice_invoice_id' in inv.keys() and inv['weinvoice_invoice_id']:
                 flash(f"Facture déjà transmise à WeInvoice — identifiant {inv['weinvoice_invoice_id']}.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            if not settings or not settings['weinvoice_company_id']:
+            from profitos import einvoice_superpdp as _es
+            if _es.is_active():
+                # v495 : plateforme agréée SUPER PDP (raccordement depuis le profil entreprise).
+                pdp = _es.connection(c, inv['entity_id'])
+                if not pdp or pdp['status'] != 'connected' or not pdp['verified']:
+                    flash("Facture électronique non reliée ou entreprise pas encore vérifiée : terminez le raccordement "
+                          "depuis le profil entreprise.")
+                    return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            elif not settings or not settings['weinvoice_company_id']:
                 flash("WeInvoice n'est pas encore onboardé pour cette entreprise.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
-            if (settings['weinvoice_kyb_status'] or '').upper() != 'VALIDATED':
+            elif (settings['weinvoice_kyb_status'] or '').upper() != 'VALIDATED':
                 flash(f"Onboarding WeInvoice non validé (statut : {settings['weinvoice_kyb_status'] or 'inconnu'}).")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             _, missing = _check_mandatory_mentions(inv, company_row)
@@ -3717,7 +3725,20 @@ def register(app):
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             pdf_bytes = render_facturx_pdf(inv, company_row)
             if pdf_bytes is None:
-                flash("Impossible de générer le Factur-X PDF/A-3 — transmission WeInvoice annulée.")
+                flash("Impossible de générer le Factur-X PDF/A-3 — transmission annulée.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if _es.is_active():
+                from profitos.superpdp import SuperPdpError
+                try:
+                    remote_id, remote_status = _es.send(c, inv, session.get('org_id'), pdf_bytes)
+                except SuperPdpError as e:
+                    flash(f"Transmission refusée par la plateforme : {e}")
+                    return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+                _stage_ereporting_record(c, inv, 'transaction')
+                c.commit()
+                log_activity('INVOICE_EINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à SUPER PDP ({remote_id})")
+                flash(f"Facture transmise à la plateforme agréée (identifiant {remote_id}). Son statut sera mis à jour "
+                      "automatiquement.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             idem = (inv['weinvoice_idempotency_key'] if 'weinvoice_idempotency_key' in inv.keys() else None) or f"profitos-{session.get('org_id')}-{invoice_id}"
             c.execute('UPDATE outgoing_invoices SET weinvoice_idempotency_key=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (idem, invoice_id, inv['entity_id']))
@@ -3762,6 +3783,18 @@ def register(app):
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
                 flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if 'einvoice_provider' in inv.keys() and inv['einvoice_provider'] == 'superpdp':
+                from profitos import einvoice_superpdp as _es
+                from profitos.superpdp import STATUS_LABELS, SuperPdpError
+                try:
+                    status, code, reason = _es.sync(c, inv, session.get('org_id'))
+                except SuperPdpError as e:
+                    c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=?', (str(e)[:1500], invoice_id))
+                    c.commit(); flash(str(e))
+                    return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+                flash(f"Statut actualisé : {STATUS_LABELS.get(code, 'en attente de traitement')}"
+                      + (f" — motif : {reason}" if reason else '') + '.')
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if not settings or not settings['weinvoice_company_id']:
                 flash("Organisation WeInvoice absente — synchronisation impossible.")

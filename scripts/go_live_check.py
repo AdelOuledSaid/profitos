@@ -35,6 +35,31 @@ def _item(section, level, label, detail=''):
 
 
 # ------------------------------------------------------------------ configuration
+def check_superpdp(env):
+    s = 'Facture électronique (SUPER PDP)'
+    if not (_v(env, 'SUPERPDP_CLIENT_ID') and _v(env, 'SUPERPDP_CLIENT_SECRET')):
+        return [_item(s, WARN, 'Non configurée', "SUPERPDP_CLIENT_ID / SUPERPDP_CLIENT_SECRET absents : "
+                                                 "la transmission par plateforme agréée est indisponible.")]
+    base = _v(env, 'APP_BASE_URL').rstrip('/')
+    redirect = _v(env, 'SUPERPDP_REDIRECT_URI') or (base + '/facture-electronique/superpdp/retour' if base else '')
+    good = bool(base and redirect.startswith(base + '/'))
+    return [_item(s, OK, "Identifiants de l'application OAuth"),
+            _item(s, OK if good else FAIL, 'Adresse de retour du raccordement',
+                  redirect + ' — à déclarer à l\'identique dans l\'application SUPER PDP.' if good
+                  else 'SUPERPDP_REDIRECT_URI doit commencer par APP_BASE_URL.'),
+            _item(s, INFO, 'Environnement', "SUPER PDP utilise la même adresse en test et en production : "
+                                            "ce sont les identifiants qui décident. Utilisez ceux de production.")]
+
+
+def check_einvoice(env):
+    """Plateforme agréée choisie : SUPER PDP par défaut dès que ses identifiants sont là (v495)."""
+    chosen = _v(env, 'EINVOICE_PROVIDER').lower()
+    if chosen == 'weinvoice' or (chosen != 'superpdp' and not _v(env, 'SUPERPDP_CLIENT_ID')
+                                 and _v(env, 'WEINVOICE_CLIENT_ID')):
+        return check_weinvoice(env)
+    return check_superpdp(env)
+
+
 def check_weinvoice(env):
     s = 'Facture électronique (WeInvoice)'
     out = []
@@ -170,7 +195,7 @@ def check_legal_and_launch(env):
 
 
 def configuration_checks(env):
-    return (check_weinvoice(env) + check_banking(env) + check_stripe(env) + check_email(env) + check_backups(env)
+    return (check_einvoice(env) + check_banking(env) + check_stripe(env) + check_email(env) + check_backups(env)
             + check_legal_and_launch(env))
 
 

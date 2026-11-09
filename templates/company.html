@@ -55,6 +55,42 @@
   </form>
 </section>
 
+{% if einvoice_provider == 'superpdp' %}
+<section class="purchase-panel" style="margin-top:20px;" id="facture-electronique">
+  <h2 style="margin:0 0 4px;font-size:18px;color:#fff;">Facturation électronique</h2>
+  <p class="purchase-muted" style="font-size:13px;margin-bottom:14px;">Plateforme agréée : SUPER PDP. Vos factures sont transmises et vos factures fournisseurs reçues par cette plateforme, immatriculée par l'administration fiscale.</p>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <span class="purchase-muted">Statut :</span>
+    {% if superpdp and superpdp.status == 'connected' and superpdp.verified %}
+      <strong class="purchase-ok-text">✅ Reliée et vérifiée</strong>
+    {% elif superpdp and superpdp.status == 'connected' %}
+      <strong class="purchase-status-warn" style="display:inline-block;padding:2px 8px;border-radius:999px;">🟡 Reliée — vérification en cours chez SUPER PDP</strong>
+    {% else %}
+      <strong class="purchase-muted">⚪ Non reliée</strong>
+    {% endif %}
+  </div>
+  {% if superpdp and superpdp.company_name %}<p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Entreprise : {{ superpdp.company_name }}{% if superpdp.company_number %} (SIREN {{ superpdp.company_number }}){% endif %}{% if superpdp.last_check_at %} · vérifié le {{ superpdp.last_check_at|fr_date(true) }}{% endif %}</p>{% endif %}
+  {% if superpdp and superpdp.last_error %}<p class="purchase-alert-text" style="font-size:12px;margin-bottom:10px;">{{ superpdp.last_error }}</p>{% endif %}
+  {% if not superpdp_configured %}
+  <p class="purchase-muted" style="font-size:12px;">La facture électronique n'est pas encore disponible sur cette installation.</p>
+  {% elif not superpdp or superpdp.status != 'connected' %}
+  <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Vous serez redirigé vers SUPER PDP pour vérifier l'identité de l'entreprise et du dirigeant, puis donner votre accord ; vous reviendrez ensuite automatiquement ici. Le SIRET du profil ci-dessus est utilisé.</p>
+  <form method="post" action="{{ url_for('superpdp_connect') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="purchase-primary-btn primary">Relier la facture électronique</button>
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('superpdp_refresh') }}" style="display:inline-block;margin-right:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="purchase-primary-btn secondary">Actualiser le statut</button>
+  </form>
+  <form method="post" action="{{ url_for('superpdp_disconnect') }}" style="display:inline-block;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="purchase-primary-btn secondary">Déconnecter</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
 <section class="purchase-panel" style="margin-top:20px;">
   <h2 style="margin:0 0 4px;font-size:18px;color:#fff;">Facturation électronique</h2>
   <p class="purchase-muted" style="font-size:13px;margin-bottom:14px;">Service de facturation électronique · Environnement : {{ "Test" if (weinvoice_env or "")|lower == "sandbox" else "Production" }}</p>
@@ -112,5 +148,6 @@
     {% if weinvoice.weinvoice_status != 'connected' %}<p class="purchase-muted" style="font-size:11px;margin-top:8px;">Testez d’abord la connexion ci-dessus.</p>{% endif %}
   </div>
 </section>
+{% endif %}
 </div>
 {% endblock %}
