@@ -616,6 +616,33 @@ def einvoice_inbound_sync(org, ctx):
         c.close()
 
 
+@job('einvoice_b2c_reporting', 'daily', hour=6,
+     description="E-reporting : ventes aux particuliers et encaissements déclarés à la plateforme agréée SUPER PDP.")
+def einvoice_b2c_reporting(org, ctx):
+    _require_paid(org)
+    from profitos import einvoice_superpdp as ES
+    if not ES.is_active():
+        raise Skip('SUPER PDP non configuré')
+    from profitos import einvoice_superpdp_ereporting as ESE
+    from profitos.runtime import tenant_cx_direct
+    c = tenant_cx_direct(org['id'])
+    try:
+        ES.ensure_table(c)
+        linked = c.execute("SELECT entity_key FROM superpdp_connections WHERE status='connected' AND verified=1").fetchall()
+        if not linked:
+            raise Skip('facture électronique non reliée')
+        total = {'submitted': 0, 'error': 0, 'unknown': 0}
+        for r in linked:
+            res = ESE.declare_pending(c, int(r['entity_key'] or 0) or None, org['id'])
+            for k in total:
+                total[k] += res[k]
+        if total['error'] or total['unknown']:
+            raise RuntimeError(f"{total['submitted']} déclarée(s), {total['error']} refusée(s), {total['unknown']} sans réponse")
+        return f"{total['submitted']} opération(s) déclarée(s)"
+    finally:
+        c.close()
+
+
 @job('einvoice_status_sync', 'hourly',
      description="Statuts des factures transmises à la plateforme agréée SUPER PDP (toutes les heures).")
 def einvoice_status_sync(org, ctx):

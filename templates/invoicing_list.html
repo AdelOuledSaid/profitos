@@ -73,6 +73,33 @@
     </div>
   </section>
 
+  {% if b2c_reporting %}
+  <section class="purchase-panel" style="margin-top:18px;" id="e-reporting">
+    <div class="purchase-panel-head">
+      <h2>Ventes aux particuliers (e-reporting)</h2>
+      <form method="post" action="{{ url_for('invoicing_ereporting_declare') }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="purchase-nav-btn" type="submit">Déclarer maintenant</button>
+      </form>
+    </div>
+    <p class="purchase-subtitle" style="margin:0 0 10px;">Vos ventes aux particuliers et les encaissements de prestations sont déclarés chaque jour à la plateforme agréée, qui les transmet à l'administration selon votre régime de TVA.</p>
+    <p><strong>{{ b2c_reporting.counts.get('submitted', 0) }}</strong> déclarée(s) · <strong>{{ b2c_reporting.counts.get('pending', 0) }}</strong> en attente{% if b2c_reporting.counts.get('manual') %} · <strong>{{ b2c_reporting.counts.get('manual') }}</strong> hors déclaration automatique{% endif %}</p>
+    {% if b2c_reporting.blocked %}
+    <div class="purchase-table-wrap"><table class="purchase-table">
+      <thead><tr><th>Opération</th><th>Date</th><th>Montant</th><th>Problème</th><th>Action</th></tr></thead>
+      <tbody>{% for r in b2c_reporting.blocked %}
+        <tr><td>{{ 'Encaissement' if r.record_type == 'payment' else 'Facture' }}</td><td>{{ r.period_date|fr_date }}</td>
+          <td>{{ (r.payment_amount if r.record_type == 'payment' else r.amount_ttc)|fr_number(2) }}&nbsp;€</td>
+          <td><small>{{ r.last_error }}</small></td>
+          <td>{% if r.status == 'unknown' %}
+            <form method="post" action="{{ url_for('invoicing_ereporting_declare') }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="record_id" value="{{ r.id }}"><input type="hidden" name="action" value="confirmer"><button class="purchase-nav-btn" type="submit">Déjà déclarée</button></form>
+            <form method="post" action="{{ url_for('invoicing_ereporting_declare') }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="record_id" value="{{ r.id }}"><input type="hidden" name="action" value="renvoyer"><button class="purchase-nav-btn" type="submit">Renvoyer</button></form>
+          {% else %}<small>Corrigez puis « Déclarer maintenant »</small>{% endif %}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="purchase-panel" style="margin-top:18px;">
     <div class="purchase-panel-head">
       <h2>Déclarations électroniques</h2>

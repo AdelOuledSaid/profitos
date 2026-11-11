@@ -234,10 +234,31 @@ class Client:
     def company(self):
         return self.request('GET', 'companies/me')
 
-    def update_vat_regime(self, regime):
+    def update_vat_regime(self, regime, has_vat_on_debits=None):
         """``monthly``, ``quarterly``, ``simplified`` ou ``vat_exemption`` : fixe le calendrier
-        de l'e-reporting."""
-        return self.request('PATCH', 'companies', json={'vat_regime': regime})
+        selon lequel la plateforme transmet l'e-reporting à l'administration."""
+        body = {'vat_regime': regime}
+        if has_vat_on_debits is not None:
+            body['has_vat_on_debits'] = bool(has_vat_on_debits)
+        return self.request('PATCH', 'companies', json=body)
+
+    # -- e-reporting (ventes aux particuliers)
+    def create_b2c_transactions(self, transactions):
+        """Déclare des ventes aux particuliers. La plateforme les enregistre aussitôt, puis les
+        agrège et les transmet à l'administration selon le régime de TVA. L'API n'a pas de clé
+        d'idempotence : l'appelant ne doit jamais renvoyer une vente déjà acceptée."""
+        body = self.request('POST', 'b2c_transactions', json={'data': list(transactions)})
+        return (body or {}).get('data') or [] if isinstance(body, dict) else (body or [])
+
+    def create_b2c_payments(self, payments):
+        """Déclare des encaissements de ventes aux particuliers (prestations de services)."""
+        body = self.request('POST', 'b2c_payments', json={'data': list(payments)})
+        return (body or {}).get('data') or [] if isinstance(body, dict) else (body or [])
+
+    def ereportings(self, starting_after_id=None, limit=50):
+        """Déclarations agrégées réellement transmises à l'administration, avec leur statut."""
+        return self.request('GET', 'ereportings', params={'starting_after_id': starting_after_id, 'limit': limit,
+                                                           'order': 'desc'})
 
     # -- émission
     def send_invoice(self, content, external_id, content_type='application/pdf'):

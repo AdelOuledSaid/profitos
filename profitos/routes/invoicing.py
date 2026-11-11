@@ -3326,6 +3326,14 @@ def register(app):
         ereporting_rows=c.execute("""SELECT id,transmission_number,flow_type,anchor_date,type_code,provider_reference,status,
             late_deposit,flux_status,rejection_motifs_json,last_error,submitted_at,last_checked_at,created_at
             FROM ereporting_transmissions WHERE entity_id IS ? ORDER BY id DESC LIMIT 25""",(eid,)).fetchall()
+        # v497 : e-reporting des ventes aux particuliers par SUPER PDP.
+        from profitos import einvoice_superpdp as _es
+        b2c_reporting=None
+        if _es.is_active():
+            from profitos import einvoice_superpdp_ereporting as _ese
+            counts,blocked=_ese.summary(c,eid)
+            if counts.get('pending') or counts.get('submitted') or blocked or counts.get('manual'):
+                b2c_reporting={'counts':counts,'blocked':blocked}
         # Tuiles « à encaisser » / « en retard » : reste dû réel (règlements et avoirs
         # déduits), factures importées comprises — mêmes chiffres que Créances et l'accueil.
         from profitos.receivables import open_receivables, summarize
@@ -3342,7 +3350,8 @@ def register(app):
         totals['overdue']=recv['overdue_due']
         totals['sent']=round(recv['total_due']-recv['overdue_due'],2)
         totals['imported_due']=recv['imported_not_due']; totals['imported_overdue']=recv['imported_overdue']
-        return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses,ereporting_rows=ereporting_rows)
+        return render_template('invoicing_list.html',rows=rows,totals=totals,display_statuses=display_statuses,
+                               ereporting_rows=ereporting_rows,b2c_reporting=b2c_reporting)
 
     @app.route('/facturation/nouvelle',methods=['GET','POST'])
     @login_required
@@ -4357,6 +4366,35 @@ def register(app):
         if not credit: abort(404)
         items=json.loads(credit['line_items'] or '[]')
         return render_template('invoicing_credit_detail.html',credit=credit,items=items)
+
+    @app.post('/facturation/e-reporting/declarer')
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_ereporting_declare():
+        """v497 — Déclare maintenant à SUPER PDP les ventes aux particuliers en attente."""
+        from profitos.entities import current_entity_id
+        from profitos import einvoice_superpdp_ereporting as _ese
+        from profitos.superpdp import SuperPdpError
+        eid=current_entity_id(); c=cx()
+        try:
+            action=(request.form.get('action') or '').strip(); record_id=request.form.get('record_id',type=int)
+            if action=='renvoyer' and record_id:
+                _ese.release_unknown(c,eid,record_id)
+            elif action=='confirmer' and record_id:
+                _ese.confirm_unknown(c,eid,record_id)
+                flash("Opération notée comme déjà déclarée."); return redirect(url_for('invoicing_list'))
+            try: res=_ese.declare_pending(c,eid,session['org_id'])
+            except SuperPdpError as exc:
+                flash(str(exc)); return redirect(url_for('invoicing_list'))
+            log_activity('EREPORTING_SUBMITTED',f"E-reporting SUPER PDP : {res['submitted']} déclarée(s), {res['error']} refusée(s)")
+            msg=f"{res['submitted']} opération(s) déclarée(s) à la plateforme agréée."
+            if res['error']: msg+=f" {res['error']} refusée(s) : voir le détail ci-dessous."
+            if res['unknown']: msg+=f" {res['unknown']} sans réponse : à vérifier avant renvoi."
+            if res['manual']: msg+=f" {res['manual']} encaissement(s) d'opération mixte à traiter avec votre expert-comptable."
+            flash(msg); return redirect(url_for('invoicing_list'))
+        finally: c.close()
 
     @app.post('/facturation/e-reporting/transmettre')
     @login_required
