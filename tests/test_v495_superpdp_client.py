@@ -42,6 +42,8 @@ class FakeHttp:
         path = urlparse(url).path
         self.calls.append((method, path, {'params': params, 'json': json, 'data': data, 'headers': headers}))
         queue = self.routes.get((method, path)) or [Resp(404, {'message': 'introuvable'})]
+        if callable(queue):                      # réponse calculée d'après la requête (paramètres…)
+            return queue(self.calls[-1][2])
         return queue.pop(0) if len(queue) > 1 else queue[0]
 
 
@@ -131,11 +133,14 @@ def test_factures_recues_telechargement_et_statut_pousse():
     http.routes[('POST', '/v1.beta/invoice_events')] = [Resp(201, {'id': 1, 'status_code': 'fr:204'})]
     client = SP.Client(fresh(), http=http)
     assert client.received(starting_after_id=5)['data'][0]['id'] == 9
-    assert http.calls[-1][2]['params'] == {'direction': 'in', 'limit': 50, 'starting_after_id': 5, 'order': 'asc'}
+    assert http.calls[-1][2]['params'] == {'direction': 'in', 'limit': 50, 'starting_after_id': 5, 'order': 'asc',
+                                           'expand[]': 'en_invoice'}
     content, ctype = client.download(9)
     assert content.startswith(b'%PDF') and ctype == 'application/pdf'
     client.push_status(9, 'fr:204')
     assert http.calls[-1][2]['json'] == {'invoice_id': 9, 'status_code': 'fr:204'}
+    client.push_status(9, 'fr:210', reason_code='NON_CONFORME', notes='Prix différent du devis')
+    assert http.calls[-1][2]['json']['details'] == [{'reason': 'NON_CONFORME', 'notes': 'Prix différent du devis'}]
     with pytest.raises(ValueError):
         client.push_status(9, 'fr:202')                    # statut réservé aux plateformes
 

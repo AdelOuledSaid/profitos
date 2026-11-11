@@ -2454,6 +2454,7 @@ def _migrate_tenant_schema(org_id=None):
                        ('outgoing_invoices','weinvoice_idempotency_key'),
                        ('outgoing_invoices','weinvoice_regulatory_code'),('outgoing_invoices','weinvoice_last_sync_at'),
                        ('outgoing_invoices','einvoice_provider'),
+                       ('purchase_invoices','einvoice_provider'),('purchase_credit_notes','einvoice_provider'),
                        ('invoicing_clients','siren'),
                        ('app_settings','weinvoice_status'),('app_settings','weinvoice_last_check_at'),
                        ('app_settings','weinvoice_last_error'),

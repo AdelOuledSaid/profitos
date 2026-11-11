@@ -253,22 +253,26 @@ class Client:
         """Octets du fichier (``original`` : exactement ce qui a été déposé) et son type."""
         return self.request('GET', f'invoices/{int(invoice_id)}', params={'format': fmt}, raw=True)
 
-    def list_invoices(self, direction=None, starting_after_id=None, limit=50):
+    def list_invoices(self, direction=None, starting_after_id=None, limit=50, expand=None):
         return self.request('GET', 'invoices', params={'direction': direction, 'limit': limit,
                                                         'starting_after_id': starting_after_id,
-                                                        'order': 'asc'})
+                                                        'order': 'asc', 'expand[]': expand})
 
-    def received(self, starting_after_id=None, limit=50):
-        return self.list_invoices('in', starting_after_id, limit)
+    def received(self, starting_after_id=None, limit=50, expand='en_invoice'):
+        """Factures reçues, avec leur contenu structuré EN 16931 (``en_invoice``)."""
+        return self.list_invoices('in', starting_after_id, limit, expand)
 
-    def push_status(self, invoice_id, status_code, reason=None):
+    def push_status(self, invoice_id, status_code, reason_code=None, notes=None):
         """Statut du cycle de vie poussé par Veqalio (prise en charge, approbation, refus,
-        encaissement…)."""
+        paiement…). ``reason_code`` est un code motif réglementaire (liste AFNOR XP Z12-012,
+        par exemple ``NON_CONFORME`` pour un refus) : un texte libre y est refusé par l'API.
+        La phrase de l'utilisateur voyage dans ``notes``."""
         if status_code not in PUSHABLE:
             raise ValueError(f'statut non transmissible : {status_code}')
         body = {'invoice_id': int(invoice_id), 'status_code': status_code}
-        if reason:
-            body['details'] = [{'reason': reason}]
+        detail = {k: v for k, v in (('reason', reason_code), ('notes', (notes or '').strip()[:2000] or None)) if v}
+        if detail:
+            body['details'] = [detail]
         return self.request('POST', 'invoice_events', json=body)
 
     # -- annuaire

@@ -2322,7 +2322,19 @@ def register(app):
         c=cx()
         try:
             try:
-                result=sync_weinvoice_inbound(c,eid,session['org_id'],max_items=WEINVOICE_MANUAL_SYNC_MAX)
+                from profitos import einvoice_superpdp as _es, einvoice_superpdp_inbound as _esi
+                from profitos.superpdp import SuperPdpError
+                if _es.is_active():          # v496 : réception par SUPER PDP
+                    try:
+                        result=_esi.sync_inbound(c,eid,session['org_id'],_purchase_pdf_dir_for_org(session['org_id']),
+                                                 max_items=WEINVOICE_MANUAL_SYNC_MAX)
+                    except _esi.NotConnected:
+                        flash("Facture électronique non reliée : reliez l'entreprise depuis le profil entreprise.")
+                        return redirect(url_for('purchase_list'))
+                    except SuperPdpError as exc:
+                        flash(str(exc)); return redirect(url_for('purchase_list'))
+                else:
+                    result=sync_weinvoice_inbound(c,eid,session['org_id'],max_items=WEINVOICE_MANUAL_SYNC_MAX)
             except WeInvoiceInboundNotConfigured:
                 flash("Plateforme de facturation électronique non configurée pour cette entité.")
                 return redirect(url_for('purchase_list'))
@@ -2350,12 +2362,21 @@ def register(app):
             remote_id=p['weinvoice_invoice_id']
             if not remote_id:
                 flash("Cette facture ne dispose pas de transmission électronique."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
-            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
-            if not settings or not settings['weinvoice_company_id']:
-                flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             action=str(request.form.get('action') or '').strip()
             reason_code=str(request.form.get('reason_code') or '').strip()
             reason_label=str(request.form.get('reason_label') or '').strip()
+            if 'einvoice_provider' in p.keys() and p['einvoice_provider']=='superpdp':      # v496
+                from profitos import einvoice_superpdp_inbound as _esi
+                from profitos.superpdp import SuperPdpError
+                note=' — '.join(x for x in (reason_code if reason_code.upper()!='AUTRE' else '',reason_label) if x)
+                try: _esi.buyer_action(c,p,session['org_id'],action,note=note)
+                except SuperPdpError as exc:
+                    flash(str(exc)); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Statut réglementaire de la facture fournisseur mis à jour.")
+                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
+            if not settings or not settings['weinvoice_company_id']:
+                flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             # WeInvoice n'accepte pas un motif libre comme reasonCode pour un refus ou un litige :
             # le code doit provenir du catalogue réglementaire (Annexe 7 / Annexe A).
             # Tant que Veqalio n'expose pas ce catalogue dans l'UI, un motif libre est
@@ -2392,6 +2413,14 @@ def register(app):
             if not p: abort(404)
             if not p['weinvoice_invoice_id']:
                 flash("Cette facture ne dispose pas de transmission électronique."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+            if 'einvoice_provider' in p.keys() and p['einvoice_provider']=='superpdp':      # v496
+                from profitos import einvoice_superpdp_inbound as _esi
+                from profitos.superpdp import SuperPdpError
+                try: _esi.sync_purchase_status(c,p,session['org_id'])
+                except SuperPdpError as exc:
+                    flash(str(exc)); return redirect(url_for('purchase_detail',purchase_id=purchase_id))
+                flash("Statut de la facture électronique actualisé.")
+                return redirect(url_for('purchase_detail',purchase_id=purchase_id))
             settings=c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?',(eid or 0,)).fetchone()
             if not settings or not settings['weinvoice_company_id']:
                 flash("Plateforme de facturation électronique non configurée pour cette entité."); return redirect(url_for('purchase_detail',purchase_id=purchase_id))

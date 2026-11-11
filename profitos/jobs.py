@@ -565,13 +565,33 @@ def teledeclaration_status(org, ctx):
 
 
 @job('einvoice_inbound_sync', 'hourly', needs_disk=True,
-     description="Réception des factures électroniques fournisseurs WeInvoice (toutes les heures).")
+     description="Réception des factures électroniques fournisseurs par la plateforme agréée (toutes les heures).")
 def einvoice_inbound_sync(org, ctx):
     _require_paid(org)
     from profitos.runtime import tenant_cx_direct
     from profitos.routes.invoicing import sync_weinvoice_inbound, WeInvoiceInboundNotConfigured
+    from profitos import einvoice_superpdp as ES
     c = tenant_cx_direct(org['id'])
     try:
+        if ES.is_active():                       # v496 : réception par SUPER PDP
+            from profitos import einvoice_superpdp_inbound as ESI
+            from profitos.routes.invoicing import _purchase_pdf_dir_for_org
+            ES.ensure_table(c)
+            linked = c.execute("SELECT entity_key FROM superpdp_connections WHERE status='connected' AND verified=1").fetchall()
+            if not linked:
+                raise Skip('facture électronique non reliée')
+            created = failed = 0
+            errors = []
+            for r in linked:
+                eid = int(r['entity_key'] or 0) or None
+                try:
+                    res = ESI.sync_inbound(c, eid, org['id'], _purchase_pdf_dir_for_org(org['id']))
+                    created += res['created']; failed += len(res['failed'])
+                except Exception as exc:
+                    errors.append(f'entité {eid or 0}: {type(exc).__name__}')
+            if errors:
+                raise RuntimeError('; '.join(errors))
+            return f"{created} importée(s), {failed} échec(s)"
         try:
             rows = c.execute("SELECT entity_key FROM weinvoice_entity_settings WHERE COALESCE(weinvoice_company_id,'')!=''").fetchall()
         except Exception:
