@@ -25,6 +25,7 @@ Références : client Ruby ``lgaroche/super_pdp`` (validé sur le bac à sable) 
 import base64
 import hashlib
 import os
+import re
 import secrets
 import time
 from urllib.parse import urlencode
@@ -110,9 +111,17 @@ def pkce_pair():
     return verifier, challenge
 
 
+def company_number():
+    """Numéro d'entreprise imposé à toutes les connexions (v497.1). Sert au bac à sable, où
+    l'application est restreinte à une entreprise de test dont le numéro (000000001) n'est pas
+    un SIREN valide : il ne peut donc pas venir du profil entreprise."""
+    return re.sub(r'\D', '', os.environ.get('SUPERPDP_COMPANY_NUMBER') or '') or None
+
+
 def authorize_url(state, code_challenge, siren=None, login_hint=None):
     """Adresse où envoyer le dirigeant : tunnel KYC/KYB et consentement hébergés par SUPER PDP.
-    Le SIREN pré-remplit l'entreprise à relier."""
+    Le SIREN ne fait que pré-remplir l'entreprise à relier ; sans lui, SUPER PDP la demande."""
+    siren = company_number() or siren
     client_id, _secret = _credentials()
     params = {'response_type': 'code', 'client_id': client_id, 'redirect_uri': redirect_uri(),
               'code_challenge': code_challenge, 'code_challenge_method': 'S256', 'state': state}

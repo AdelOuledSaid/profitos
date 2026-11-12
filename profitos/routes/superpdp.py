@@ -35,12 +35,16 @@ def register(app):
             siren = _siren(c)
         finally:
             c.close()
-        if not siren:
-            flash("Renseignez d'abord le SIRET de l'entreprise dans le profil : SUPER PDP en a besoin pour la vérification.")
-            return redirect(url_for('company'))
+        # v497.1 : le SIREN ne fait que pré-remplir le formulaire de SUPER PDP. Il ne bloque plus
+        # le raccordement : sans lui (ou avec un numéro de bac à sable), SUPER PDP le demande.
         user = current_user()
-        log_activity('EINVOICE_CONNECT_STARTED', 'Raccordement SUPER PDP démarré')
-        return redirect(ES.start_url(session, siren=siren, login_hint=(user['email'] if user else None)))
+        try:
+            target = ES.start_url(session, siren=siren, login_hint=(user['email'] if user else None))
+        except SP.SuperPdpError as exc:
+            flash(str(exc))
+            return redirect(url_for('company'))
+        log_activity('EINVOICE_CONNECT_STARTED', f"Raccordement SUPER PDP démarré (entreprise {SP.company_number() or siren or 'à choisir'})")
+        return redirect(target)
 
     @app.route('/facture-electronique/superpdp/retour')
     @login_required

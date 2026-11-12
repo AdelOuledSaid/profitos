@@ -218,7 +218,8 @@ def register(app):
         return render_template('company.html',p=p or {},weinvoice=settings_row,errors=errors,legal_forms=LEGAL_FORMS,
                                weinvoice_configured=weinvoice_is_configured(),weinvoice_env=WEINVOICE_ENV,
                                einvoice_provider=_es.provider(),superpdp=superpdp_row,
-                               superpdp_configured=_sp.is_configured()), (400 if errors else 200)
+                               superpdp_configured=_sp.is_configured(),
+                               superpdp_company_number=_sp.company_number()), (400 if errors else 200)
 
     @app.route('/company/weinvoice/test',methods=['POST'])
     @login_required

@@ -195,3 +195,23 @@ def test_controle_de_mise_en_ligne_suit_la_plateforme_choisie():
                              'SUPERPDP_REDIRECT_URI': 'https://ailleurs.example/retour'})
     assert [i for i in bad if i['level'] == gl.FAIL]
     assert gl.check_einvoice({'APP_BASE_URL': 'https://veqalio.com'})[0]['level'] == gl.WARN
+
+
+def test_raccordement_sans_siret_et_entreprise_imposee(app, pdp, monkeypatch):
+    """v497.1 — Le SIREN ne fait que pré-remplir : son absence ne bloque plus le raccordement,
+    et SUPERPDP_COMPANY_NUMBER impose l'entreprise (bac à sable, dont le numéro de test n'est
+    pas un SIREN valide)."""
+    from urllib.parse import parse_qs, urlparse
+    client, org_id = _signup(app)
+    _post(client, '/company', {**FULL_PROFILE, 'siret': ''})          # profil sans SIRET
+    r = _post(client, '/facture-electronique/superpdp/relier')
+    assert r.status_code == 302 and 'api.superpdp.tech' in r.headers['Location']
+    q = {k: v[0] for k, v in parse_qs(urlparse(r.headers['Location']).query).items()}
+    assert 'superpdp_company_number' not in q                          # SUPER PDP demandera l'entreprise
+    monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '000000001')
+    _post(client, '/company', FULL_PROFILE)                            # SIRET renseigné
+    r = _post(client, '/facture-electronique/superpdp/relier')
+    q = {k: v[0] for k, v in parse_qs(urlparse(r.headers['Location']).query).items()}
+    assert q['superpdp_company_number'] == '000000001'                 # la configuration l'emporte
+    page = client.get('/company').get_data(as_text=True)
+    assert 'Entreprise imposée par la configuration : 000000001' in page
