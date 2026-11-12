@@ -139,6 +139,25 @@ def _configure_logging(app):
             app.logger.addHandler(handler)
 
 
+def _app_origins():
+    """Origines de l'application à autoriser dans form-action, séparées et suivies d'une espace
+    (v497.2).
+
+    `'self'` ne couvre que l'origine exacte de la page. Veqalio répond sur plusieurs domaines
+    (APP_BASE_URL et les LEGACY_HOSTS) : un formulaire dont l'action est une adresse — seuls
+    ceux-là sont concernés, pas les formulaires sans action — était bloqué par le navigateur
+    dès que la page venait d'un autre de ces domaines. Aucun domaine tiers ici."""
+    origins = []
+    base = (os.environ.get('APP_BASE_URL') or '').strip().rstrip('/')
+    if base.startswith('https://'):
+        origins.append('https://' + base.split('://', 1)[1].split('/')[0])
+    for host in (os.environ.get('LEGACY_HOSTS') or '').split(','):
+        host = host.strip().lower().split('/')[0]
+        if host and '.' in host and ' ' not in host:
+            origins.append(f'https://{host}')
+    return ''.join(f'{o} ' for o in dict.fromkeys(origins))
+
+
 def create_app(config_object=None):
     app = Flask(
         __name__,
@@ -298,7 +317,8 @@ def create_app(config_object=None):
             "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
             "img-src 'self' data:; font-src 'self' data:; "
             "style-src-elem 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; script-src-attr 'none'; "
-            "connect-src 'self'; form-action 'self' https://checkout.stripe.com https://billing.stripe.com"
+            f"connect-src 'self'; form-action 'self' {_app_origins()}"
+            "https://checkout.stripe.com https://billing.stripe.com"
         )
         if is_production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
