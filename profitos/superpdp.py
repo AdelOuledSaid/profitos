@@ -118,16 +118,27 @@ def company_number():
     return re.sub(r'\D', '', os.environ.get('SUPERPDP_COMPANY_NUMBER') or '') or None
 
 
+def company_number_scheme(number):
+    """Format du numéro d'entreprise attendu par SUPER PDP : ``fr_siren`` pour un vrai SIREN,
+    ``sandbox`` pour les entreprises de test du bac à sable, dont le numéro (000000001) n'a pas
+    de clé de contrôle valide. SUPERPDP_COMPANY_NUMBER_SCHEME permet de l'imposer."""
+    from profitos.fr_identifiers import siren_is_valid
+    forced = (os.environ.get('SUPERPDP_COMPANY_NUMBER_SCHEME') or '').strip().lower()
+    if forced:
+        return forced
+    return 'fr_siren' if siren_is_valid(number) else 'sandbox'
+
+
 def authorize_url(state, code_challenge, siren=None, login_hint=None):
     """Adresse où envoyer le dirigeant : tunnel KYC/KYB et consentement hébergés par SUPER PDP.
-    Le SIREN ne fait que pré-remplir l'entreprise à relier ; sans lui, SUPER PDP la demande."""
+    Le numéro d'entreprise ne fait que pré-remplir le formulaire ; sans lui, SUPER PDP le demande."""
     siren = company_number() or siren
     client_id, _secret = _credentials()
     params = {'response_type': 'code', 'client_id': client_id, 'redirect_uri': redirect_uri(),
               'code_challenge': code_challenge, 'code_challenge_method': 'S256', 'state': state}
     if siren:
         params['superpdp_company_number'] = siren
-        params['superpdp_company_number_scheme'] = 'fr_siren'
+        params['superpdp_company_number_scheme'] = company_number_scheme(siren)
     if login_hint:
         params['login_hint'] = login_hint
     return f'{base_url()}/oauth2/authorize?{urlencode(params)}'

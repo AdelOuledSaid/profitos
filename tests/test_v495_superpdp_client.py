@@ -64,13 +64,13 @@ def test_pkce_et_adresse_d_autorisation():
     verifier, challenge = SP.pkce_pair()
     assert 43 <= len(verifier) <= 128
     assert challenge == base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
-    url = SP.authorize_url('etat-123', challenge, siren='123456789')
+    url = SP.authorize_url('etat-123', challenge, siren='732829320')      # SIREN réellement valide
     u = urlparse(url)
     q = {k: v[0] for k, v in parse_qs(u.query).items()}
     assert u.netloc == 'api.superpdp.tech' and u.path == '/oauth2/authorize'
     assert q['client_id'] == 'veqalio-app' and q['code_challenge_method'] == 'S256' and q['state'] == 'etat-123'
     assert q['redirect_uri'] == 'https://veqalio.com/facture-electronique/superpdp/retour'
-    assert q['superpdp_company_number'] == '123456789' and q['superpdp_company_number_scheme'] == 'fr_siren'
+    assert q['superpdp_company_number'] == '732829320' and q['superpdp_company_number_scheme'] == 'fr_siren'
     assert 'secret-app' not in url                        # le secret ne passe jamais par le navigateur
 
 
@@ -156,3 +156,21 @@ def test_sans_identifiants_erreur_claire(monkeypatch):
     assert not SP.is_configured()
     with pytest.raises(SP.SuperPdpConfigError):
         SP.authorize_url('s', 'c')
+
+
+def test_format_du_numero_d_entreprise(monkeypatch):
+    """v497.4 — Les entreprises de test du bac à sable (numéro sans clé de contrôle valide)
+    relèvent du format « sandbox » ; un vrai SIREN relève de « fr_siren »."""
+    monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER_SCHEME', raising=False)
+    assert SP.company_number_scheme('732829320') == 'fr_siren'
+    assert SP.company_number_scheme('000000001') == 'sandbox'
+    assert SP.company_number_scheme('123456789') == 'sandbox'          # clé de Luhn fausse
+    monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER_SCHEME', 'be_numero_entreprise')
+    assert SP.company_number_scheme('732829320') == 'be_numero_entreprise'
+
+
+def test_l_adresse_d_autorisation_porte_le_bon_format(monkeypatch):
+    monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '000000001')
+    _v, challenge = SP.pkce_pair()
+    q = {k: v[0] for k, v in parse_qs(urlparse(SP.authorize_url('etat', challenge, siren='732829320')).query).items()}
+    assert q['superpdp_company_number'] == '000000001' and q['superpdp_company_number_scheme'] == 'sandbox'
