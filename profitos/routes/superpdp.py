@@ -24,7 +24,11 @@ def register(app):
             return redirect(url_for('company'))
         return None
 
-    @app.route('/facture-electronique/superpdp/relier', methods=['POST'])
+    # GET autorisé en plus de POST : le départ vers SUPER PDP ne modifie rien de durable (il
+    # prépare l'état PKCE en session puis redirige), et un lien échappe à la règle de sécurité
+    # « form-action » du navigateur, qui bloquait l'envoi quand Veqalio répond sur plusieurs
+    # domaines. C'est le schéma habituel des connexions OAuth.
+    @app.route('/facture-electronique/superpdp/relier', methods=['GET', 'POST'])
     @login_required
     def superpdp_connect():
         blocked = _guard()

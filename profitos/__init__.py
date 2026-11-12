@@ -148,6 +148,13 @@ def _app_origins():
     ceux-là sont concernés, pas les formulaires sans action — était bloqué par le navigateur
     dès que la page venait d'un autre de ces domaines. Aucun domaine tiers ici."""
     origins = []
+    # Domaine par lequel la page a été demandée : il couvre le cas d'un domaine servi mais non
+    # déclaré dans la configuration.
+    try:
+        if request.host and '.' in request.host:
+            origins.append(f'https://{request.host.lower()}')
+    except Exception:
+        pass
     base = (os.environ.get('APP_BASE_URL') or '').strip().rstrip('/')
     if base.startswith('https://'):
         origins.append('https://' + base.split('://', 1)[1].split('/')[0])

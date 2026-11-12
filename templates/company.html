@@ -75,10 +75,7 @@
   <p class="purchase-muted" style="font-size:12px;">La facture électronique n'est pas encore disponible sur cette installation.</p>
   {% elif not superpdp or superpdp.status != 'connected' %}
   <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">Vous serez redirigé vers SUPER PDP pour vérifier l'identité de l'entreprise et du dirigeant, puis donner votre accord ; vous reviendrez ensuite automatiquement ici. {% if superpdp_company_number %}Entreprise imposée par la configuration : {{ superpdp_company_number }}.{% else %}Le SIRET du profil ci-dessus pré-remplit le formulaire ; s'il est absent, SUPER PDP vous demandera l'entreprise.{% endif %}</p>
-  <form method="post" action="{{ url_for('superpdp_connect') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="purchase-primary-btn primary">Relier la facture électronique</button>
-  </form>
+  <a class="purchase-primary-btn primary" href="{{ url_for('superpdp_connect') }}" role="button">Relier la facture électronique</a>
   {% else %}
   <form method="post" action="{{ url_for('superpdp_refresh') }}" style="display:inline-block;margin-right:8px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

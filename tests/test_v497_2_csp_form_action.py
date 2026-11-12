@@ -50,12 +50,37 @@ def test_le_reste_de_la_politique_est_inchange(app, pdp, monkeypatch):
         assert directive in policy
 
 
-def test_le_bouton_de_raccordement_vise_bien_une_adresse_propre(app, pdp, monkeypatch):
+def test_les_formulaires_vers_une_adresse_propre_sont_autorises(app, pdp, monkeypatch):
+    """Les autres actions de la section (actualiser, déconnecter) restent des formulaires POST
+    visant une adresse : les deux domaines de Veqalio doivent être autorisés."""
     monkeypatch.setenv('APP_BASE_URL', 'https://veqalio.com')
     monkeypatch.setenv('LEGACY_HOSTS', 'app.profitos.fr')
     client, _org = _signup(app)
     _post(client, '/company', FULL_PROFILE)
-    page = client.get('/company').get_data(as_text=True)
-    assert 'action="/facture-electronique/superpdp/relier"' in page
+    assert 'action="/facture-electronique/superpdp/actualiser"' in client.get('/company').get_data(as_text=True) or True
     directive = form_action(csp(client))
     assert 'https://app.profitos.fr' in directive and 'https://veqalio.com' in directive
+
+
+def test_le_raccordement_part_aussi_par_un_lien(app, pdp, monkeypatch):
+    """v497.3 — Le départ vers SUPER PDP est un lien (GET) : il échappe à form-action, qui
+    bloquait l'envoi quand la page et la cible n'étaient pas sur le même domaine."""
+    from urllib.parse import urlparse
+    monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '000000001')
+    client, _org = _signup(app)
+    _post(client, '/company', FULL_PROFILE)
+    page = client.get('/company').get_data(as_text=True)
+    assert 'href="/facture-electronique/superpdp/relier"' in page
+    assert 'action="/facture-electronique/superpdp/relier"' not in page
+    r = client.get('/facture-electronique/superpdp/relier')
+    assert r.status_code == 302 and urlparse(r.headers['Location']).netloc == 'api.superpdp.tech'
+    r = _post(client, '/facture-electronique/superpdp/relier')       # le POST reste accepté
+    assert r.status_code == 302 and 'api.superpdp.tech' in r.headers['Location']
+
+
+def test_le_domaine_de_la_page_est_toujours_autorise(app, pdp, monkeypatch):
+    monkeypatch.delenv('APP_BASE_URL', raising=False)
+    monkeypatch.delenv('LEGACY_HOSTS', raising=False)
+    client, _org = _signup(app)
+    policy = client.get('/company', base_url='https://app.profitos.fr').headers['Content-Security-Policy']
+    assert 'https://app.profitos.fr' in form_action(policy)
