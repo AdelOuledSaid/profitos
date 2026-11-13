@@ -493,16 +493,25 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
     if _g(company, 'legal_form'):
         _cii_el(seller, 'Description', legal_info)
     seller_siret = re.sub(r'\D', '', str(_g(company, 'siret', '') or ''))
-    if len(seller_siret) == 14:
+    seller_id = seller_siret[:9] if len(seller_siret) == 14 else None
+    if not seller_id and _sandbox_mentions():
+        # v498 — En bac à sable l'émetteur n'est pas immatriculé, alors qu'EN16931 exige un
+        # identifiant légal du vendeur (BT-30). On reprend le numéro de l'entreprise de test
+        # chez la plateforme agréée : c'est exactement l'identité sous laquelle le dépôt est
+        # effectué, le document est donc cohérent avec son dépôt. Hors bac à sable, aucun
+        # identifiant n'est inventé : l'absence de SIRET bloque bien avant ce point.
+        from profitos import superpdp as _sp
+        seller_id = _sp.company_number()
+    if seller_id:
         org = _cii_el(seller, 'SpecifiedLegalOrganization')
-        _cii_el(org, 'ID', seller_siret[:9], schemeID='0002')
+        _cii_el(org, 'ID', seller_id, schemeID='0002')
     _cii_address(seller, _g(company, 'address', ''), _g(company, 'country', 'FR') or 'FR',
                  postal_code=re.sub(r'\s', '', str(_g(company, 'postal_code', '') or '')) or None,
                  city=_g(company, 'city') or None)
-    if len(seller_siret) == 14:
+    if seller_id:
         # BT-34 — adresse électronique de routage « bare-SIREN » : schemeID 0225
         # (confirmé par WeInvoice, erreur BR-FR-21).
-        _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', seller_siret[:9], schemeID='0225')
+        _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', seller_id, schemeID='0225')
     if _g(company, 'vat_number'):
         _cii_el(_cii_el(seller, 'SpecifiedTaxRegistration'), 'ID', _g(company, 'vat_number'), schemeID='VA')
 

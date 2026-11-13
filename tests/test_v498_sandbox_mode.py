@@ -116,3 +116,27 @@ def test_le_filigrane_brouillon_ou_annulee_reste_prioritaire(sandbox):
 
 def test_hors_bac_a_sable_aucun_filigrane(production):
     assert I._invoice_watermark(invoice()) is None
+
+
+# ------------------------------------------------------------------ Factur-X
+
+def test_le_vendeur_porte_l_identifiant_du_bac_a_sable(sandbox):
+    """EN16931 exige un identifiant légal du vendeur (BT-30). Faute de SIRET, le XML reprend
+    le numéro de l'entreprise de test : l'identité du document correspond à celle du dépôt."""
+    xml = I.generate_facturx_xml(invoice(), ITEMS, UNREGISTERED)
+    assert b'<ram:ID schemeID="0002">000000001</ram:ID>' in xml
+    assert b'<ram:URIID schemeID="0225">000000001</ram:URIID>' in xml
+
+
+def test_hors_bac_a_sable_aucun_identifiant_n_est_invente(production):
+    xml = I.generate_facturx_xml(invoice(), ITEMS, UNREGISTERED)
+    assert b'SpecifiedLegalOrganization' not in xml
+    assert b'732829320' not in xml
+
+
+def test_un_vrai_siret_prime_sur_le_bac_a_sable(sandbox):
+    complete = {**UNREGISTERED, 'siret': '73282932000074', 'vat_number': 'FR44732829320',
+                'rcs_city': 'Paris'}
+    xml = I.generate_facturx_xml(invoice(client_siren='732829320'), ITEMS, complete)
+    assert b'<ram:ID schemeID="0002">732829320</ram:ID>' in xml
+    assert b'000000001' not in xml
