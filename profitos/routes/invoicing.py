@@ -233,8 +233,30 @@ def _is_french_b2b(inv):
     return _client_country(inv) == 'FR' and (_g(inv, 'ereporting_scope', '') or '') != 'b2c'
 
 
-def _mention(checks, label, ok, scope):
-    checks.append({'label': label, 'ok': bool(ok), 'scope': scope})
+def _mention(checks, label, ok, scope, waived=False):
+    """Un contrôle de mention obligatoire. ``waived`` ne s'emploie qu'en mode bac à sable
+    (v498) : la mention manquante cesse de bloquer, le libellé le dit, et la clé 'waived'
+    permet d'avertir à l'écran que la facture n'est pas conforme."""
+    ok = bool(ok)
+    if not ok and waived:
+        checks.append({'label': label + ' — non exigé en bac à sable', 'ok': True,
+                       'scope': scope, 'waived': True})
+        return
+    checks.append({'label': label, 'ok': ok, 'scope': scope, 'waived': False})
+
+
+def _sandbox_mentions():
+    """v498 — Les mentions qui supposent une entreprise immatriculée cessent-elles de bloquer ?
+
+    Uniquement quand le raccordement à la plateforme agréée pointe sur le bac à sable (voir
+    superpdp.is_sandbox). C'est l'unique cas où une facture ne peut de toute façon pas partir
+    vers un vrai destinataire. Dès qu'un véritable SIREN est configuré, cette fonction renvoie
+    False et tous les contrôles redeviennent bloquants."""
+    try:
+        from profitos import superpdp as _sp
+        return _sp.is_sandbox()
+    except Exception:
+        return False
 
 
 def _check_mandatory_mentions(inv,company):
@@ -244,8 +266,15 @@ def _check_mandatory_mentions(inv,company):
     Chaque contrôle porte un « scope » : 'seller' (profil entreprise), 'buyer' (fiche
     client / facture) ou 'invoice'. Le numéro et la date d'émission sont attribués
     automatiquement à l'émission : ils ne bloquent jamais un brouillon. Cette liste est
-    BLOQUANTE à l'émission, à l'envoi et à la transmission électronique."""
+    BLOQUANTE à l'émission, à l'envoi et à la transmission électronique.
+
+    v498 — Seule exception : en bac à sable, les quatre mentions qui exigent une
+    immatriculation (SIRET, RCS, TVA intracommunautaire de l'émetteur, SIREN du client) ne
+    bloquent plus, afin de pouvoir démontrer et tester le produit avant immatriculation. Les
+    mentions qui n'en dépendent pas — dénomination, adresse, forme juridique, lignes,
+    montants — restent exigées dans tous les cas."""
     checks=[]
+    sandbox = _sandbox_mentions()
     is_draft = (_g(inv, 'status', 'draft') == 'draft')
     legal_form = _g(company, 'legal_form', '')
     _mention(checks, "Nom (dénomination) de l'émetteur", _g(company, 'name'), 'seller')
@@ -255,20 +284,20 @@ def _check_mandatory_mentions(inv,company):
     postal_ok = bool(re.fullmatch(r'\d{5}', postal)) if seller_country == 'FR' else bool(postal)
     _mention(checks, "Code postal et ville de l'émetteur", postal_ok and _g(company, 'city'), 'seller')
     siret=re.sub(r'\D','',str(_g(company, 'siret', '') or ''))
-    _mention(checks, "SIRET de l'émetteur (14 chiffres)", re.fullmatch(r'\d{14}', siret) and siret_is_valid(siret), 'seller')
+    _mention(checks, "SIRET de l'émetteur (14 chiffres)", re.fullmatch(r'\d{14}', siret) and siret_is_valid(siret), 'seller', waived=sandbox)
     _mention(checks, "Forme juridique de l'émetteur", legal_form, 'seller')
     if legal_form in LEGAL_FORMS_WITH_CAPITAL:
         _mention(checks, "Capital social de l'émetteur", _g(company, 'share_capital'), 'seller')
     if legal_form not in LEGAL_FORMS_WITHOUT_REGISTRY:
         _mention(checks, "Immatriculation (RCS + ville, ou répertoire des métiers)",
-                 _g(company, 'rcs_city') or _g(company, 'rm_number'), 'seller')
+                 _g(company, 'rcs_city') or _g(company, 'rm_number'), 'seller', waived=sandbox)
     if not _seller_vat_franchise(company):
-        _mention(checks, "N° TVA intracommunautaire de l'émetteur", _g(company, 'vat_number'), 'seller')
+        _mention(checks, "N° TVA intracommunautaire de l'émetteur", _g(company, 'vat_number'), 'seller', waived=sandbox)
     _mention(checks, 'Nom du client', _g(inv, 'client_name'), 'buyer')
     _mention(checks, 'Adresse du client', _g(inv, 'client_address'), 'buyer')
     if _is_french_b2b(inv):
         siren=str(_g(inv, 'client_siren', '') or '')
-        _mention(checks, 'SIREN du client (9 chiffres)', re.fullmatch(r'\d{9}', siren) and siren_is_valid(siren), 'buyer')
+        _mention(checks, 'SIREN du client (9 chiffres)', re.fullmatch(r'\d{9}', siren) and siren_is_valid(siren), 'buyer', waived=sandbox)
     treatment = _invoice_vat_treatment(inv, company)
     if treatment in ('intra_eu_goods', 'intra_eu_services', 'reverse_charge_fr'):
         _mention(checks, "N° TVA intracommunautaire du client (autoliquidation / opération intracommunautaire)",
@@ -3460,6 +3489,7 @@ def register(app):
                                creditable_total=max(0,float(inv['total'] or 0)-credited_total),
                                mention_checks=mention_checks,missing_mentions=missing_mentions,
                                emitter_missing_count=emitter_missing_count,einvoice_events=einvoice_events,
+                               einvoice_sandbox=_sandbox_mentions(),
                                vat_breakdown=amounts.vat_breakdown(items),public_url=public_url,
                                is_public_buyer=_is_public_buyer(inv),today=paris_today().isoformat(),
                                vat_treatment_label=VAT_TREATMENT_LABELS.get(_invoice_vat_treatment(inv,company_row)))
@@ -4852,6 +4882,10 @@ from profitos import invoice_pdf as _pdf
 
 DRAFT_WATERMARK = "BROUILLON — document sans valeur de facture"
 CANCELLED_WATERMARK = "ANNULÉE"
+# v498 — Une facture émise en bac à sable l'a été sans contrôle complet des mentions
+# obligatoires : elle doit être reconnaissable comme un document de démonstration, y compris
+# imprimée ou transférée hors de Veqalio.
+SANDBOX_WATERMARK = "BAC À SABLE — document de test sans valeur de facture"
 
 
 def _pdf_rows(items):
@@ -5027,6 +5061,10 @@ def _invoice_watermark(inv):
         return DRAFT_WATERMARK
     if status == 'cancelled':
         return CANCELLED_WATERMARK
+    # v498 : le bac à sable prime sur l'absence de filigrane, jamais sur « BROUILLON » ni
+    # « ANNULÉE », qui portent une information plus forte.
+    if _sandbox_mentions():
+        return SANDBOX_WATERMARK
     return None
 
 

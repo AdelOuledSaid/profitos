@@ -125,6 +125,14 @@
 
   <section class="purchase-panel" style="margin-top:20px;">
     <div class="purchase-panel-head"><h2>Facturation électronique</h2></div>
+    {% if einvoice_sandbox %}
+    <p class="purchase-status-warn" style="font-size:13px;font-weight:700;margin:0 0 4px;">🧪 Mode bac à sable</p>
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:12px;">La plateforme agréée est raccordée à son
+      environnement de test. Les mentions qui supposent une entreprise immatriculée (SIRET, immatriculation, TVA
+      intracommunautaire, SIREN du client) ne bloquent pas l'émission, et les factures portent le filigrane
+      « document de test ». Aucune facture émise ici n'est conforme ni opposable : renseignez votre numéro
+      d'entreprise pour rétablir tous les contrôles.</p>
+    {% endif %}
     {% if missing_mentions %}
     <p style="font-size:14px;font-weight:700;" class="purchase-status-warn" >⚠️ Informations manquantes</p>
     <p class="purchase-muted" style="font-size:12px;margin-bottom:10px;">{{ missing_mentions|length }} élément{{ 's' if missing_mentions|length > 1 else '' }} à compléter :</p>

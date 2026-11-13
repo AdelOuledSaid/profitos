@@ -129,6 +129,20 @@ def company_number_scheme(number):
     return 'fr_siren' if siren_is_valid(number) else 'sandbox'
 
 
+def is_sandbox():
+    """v498 — Vrai quand Veqalio dialogue avec le bac à sable de SUPER PDP : un numéro
+    d'entreprise est imposé et il ne relève pas d'un vrai SIREN.
+
+    Ce seul indicateur gouverne les assouplissements de démonstration (factures de test sans
+    immatriculation). Il ne s'agit pas d'un réglage d'utilisateur : il découle de la
+    configuration serveur du raccordement. Conséquence voulue : dès qu'un véritable SIREN est
+    configuré, le mode s'éteint de lui-même et les contrôles redeviennent bloquants, sans
+    qu'aucune intervention ne soit nécessaire. On ne peut donc pas être en production et en
+    bac à sable à la fois."""
+    number = company_number()
+    return bool(number) and company_number_scheme(number) == 'sandbox'
+
+
 def authorize_url(state, code_challenge, siren=None, login_hint=None):
     """Adresse où envoyer le dirigeant : tunnel KYC/KYB et consentement hébergés par SUPER PDP.
     Le numéro d'entreprise ne fait que pré-remplir le formulaire ; sans lui, SUPER PDP le demande."""
