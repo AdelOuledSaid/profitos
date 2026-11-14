@@ -13,6 +13,7 @@ Choix de la plateforme : ``EINVOICE_PROVIDER`` (``superpdp`` ou ``weinvoice``) ;
 SUPER PDP dès que ses identifiants sont présents, sinon WeInvoice.
 """
 import os
+import re
 import secrets
 import time
 
@@ -168,6 +169,56 @@ def _event(c, inv, event_type, *, remote_id=None, status=None, code=None, key=No
                  regulatory_code,idempotency_key,detail,occurred_at) VALUES(?,?,?,?,?,?,?,?,?,?)""",
               (inv['entity_id'], inv['id'], PROVIDER, event_type, remote_id, status,
                code.split(':')[-1] if code else None, key, (detail or '')[:2000], _now()))
+
+
+_ADDRESS_RE = re.compile(r'^[0-9A-Za-z]{4}:[0-9A-Za-z._\-]{3,60}$')
+
+
+def _address_in(value, seen=None):
+    """Première chaîne ressemblant à une adresse d'annuaire (« 0225:315143296_121168 ») dans
+    une entrée de l'annuaire, quelle que soit la clé qui la porte.
+
+    La forme exacte des entrées n'est pas documentée publiquement et peut varier ; on
+    reconnaît donc la valeur à son motif plutôt qu'à son nom de champ, ce qui évite de
+    dépendre d'un vocabulaire supposé."""
+    if isinstance(value, str):
+        return value.strip() if _ADDRESS_RE.match(value.strip()) else None
+    if isinstance(value, dict):
+        for key in ('electronic_address', 'address', 'identifier', 'value'):   # d'abord les plus probables
+            found = _address_in(value.get(key))
+            if found:
+                return found
+        for item in value.values():
+            found = _address_in(item)
+            if found:
+                return found
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            found = _address_in(item)
+            if found:
+                return found
+    return None
+
+
+def directory_address(c, eid, org_id, number, http=None):
+    """Adresse sous laquelle un destinataire est inscrit à l'annuaire, ou None.
+
+    Veqalio tenait l'adresse électronique d'un destinataire pour son SIREN. C'est la
+    convention la plus répandue en France, pas une règle : l'annuaire fait seul foi, et une
+    adresse peut porter un suffixe de service. Un document adressé à un identifiant qui n'y
+    figure pas est refusé avant tout acheminement.
+
+    L'annuaire est consulté au mieux : une panne, une entreprise absente ou une réponse
+    inattendue renvoient None et laissent l'émission suivre son cours avec le SIREN. Mieux
+    vaut une transmission refusée par la plateforme qu'une émission empêchée par une
+    recherche d'adresse."""
+    number = re.sub(r'[^0-9A-Za-z]', '', str(number or ''))
+    if not number:
+        return None
+    try:
+        return _address_in(client_for(c, eid, org_id, http=http).directory(number))
+    except Exception:
+        return None
 
 
 def send(c, inv, org_id, pdf_bytes, http=None):

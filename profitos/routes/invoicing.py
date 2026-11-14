@@ -3831,6 +3831,19 @@ def register(app):
             if validation_errors:
                 flash("Transmission bloquée : " + " ".join(validation_errors))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            # v501 — L'adresse du destinataire est cherchée dans l'annuaire plutôt que déduite
+            # de son SIREN : un identifiant absent de l'annuaire est refusé avant tout
+            # acheminement. Une adresse saisie à la main reste prioritaire, et une recherche
+            # infructueuse laisse le SIREN servir comme avant.
+            if _es.is_active() and not (_g(inv, 'client_electronic_address', '') or '').strip():
+                found = _es.directory_address(c, inv['entity_id'], session.get('org_id'),
+                                              _g(inv, 'client_siren', ''))
+                if found:
+                    c.execute('UPDATE outgoing_invoices SET client_electronic_address=? WHERE id=?',
+                              (found, invoice_id))
+                    c.commit()
+                    inv = _current_invoice(c, invoice_id)
+                    flash(f"Destinataire trouvé dans l'annuaire sous l'identifiant {found}.")
             pdf_bytes = render_facturx_pdf(inv, company_row)
             if pdf_bytes is None:
                 flash("Impossible de générer le Factur-X PDF/A-3 — transmission annulée.")
@@ -3840,7 +3853,14 @@ def register(app):
                 try:
                     remote_id, remote_status = _es.send(c, inv, session.get('org_id'), pdf_bytes)
                 except SuperPdpError as e:
-                    flash(f"Transmission refusée par la plateforme : {e}")
+                    # Le message de la plateforme est technique et en anglais : on dit en clair
+                    # ce qu'il implique, faute de quoi on ne sait pas quoi corriger.
+                    hint = ''
+                    if 'receiver address' in str(e).lower():
+                        hint = (" — autrement dit, le destinataire n'est pas inscrit à l'annuaire sous cet "
+                                "identifiant, ou n'y accepte pas le format Factur-X. Demandez-lui son identifiant "
+                                "d'annuaire et renseignez-le sur la facture.")
+                    flash(f"Transmission refusée par la plateforme : {e}{hint}")
                     return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
                 _stage_ereporting_record(c, inv, 'transaction')
                 c.commit()
