@@ -123,7 +123,8 @@ from profitos.invoice_compliance import (VAT_TREATMENTS, VAT_TREATMENT_LABELS, O
 
 INVOICE_HEADER_COLUMNS = ('client_name','client_address','client_email','client_siren','client_vat_number',
     'counterparty_country','client_is_public','due_date','service_date','operation_nature','vat_treatment',
-    'vat_exemption_reason','delivery_address','vat_on_debits','ereporting_scope','ereporting_category')
+    'vat_exemption_reason','delivery_address','vat_on_debits','ereporting_scope','ereporting_category',
+    'client_electronic_address')
 
 
 def _parse_invoice_header(form, issue_date=None):
@@ -135,6 +136,11 @@ def _parse_invoice_header(form, issue_date=None):
     v['client_address']=(form.get('client_address') or '').strip().replace('\r\n','\n')
     v['client_email']=(form.get('client_email') or '').strip()
     v['client_siren']=re.sub(r'\D','',form.get('client_siren') or '')[:9] or None
+    # v499 — Adresse électronique dans l'annuaire (BT-49). Laissée vide, elle se déduit du
+    # SIREN, convention française courante. Renseignée, elle prime : certaines adresses
+    # portent un suffixe de service ou un identifiant propre à la plateforme destinataire,
+    # et le SIREN seul ne permet alors pas de router le document.
+    v['client_electronic_address']=re.sub(r'[^0-9A-Za-z:_.\-]','',form.get('client_electronic_address') or '')[:80] or None
     v['client_vat_number']=re.sub(r'[\s.\-]','',form.get('client_vat_number') or '').upper() or None
     v['counterparty_country']=(form.get('counterparty_country') or '').strip().upper() or None
     v['client_is_public']='1' if form.get('client_is_public') in ('on','1') else None
@@ -539,7 +545,16 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
         _cii_el(org, 'ID', client_siren, schemeID='0002')
     buyer_country = (_g(inv, 'counterparty_country', '') or 'FR').upper()
     _cii_address(buyer, _g(inv, 'client_address', ''), buyer_country)
-    if len(client_siren) == 9:
+    # BT-49 — adresse électronique du destinataire. v499 : l'adresse saisie prime sur le SIREN,
+    # dont elle ne se déduit pas toujours (suffixe de service, identifiant propre à la
+    # plateforme). Elle peut être préfixée du schéma, « 0225:315143296_121167 » par exemple ;
+    # à défaut de préfixe, 0225 (SIREN nu) reste la convention française.
+    buyer_address = str(_g(inv, 'client_electronic_address', '') or '').strip()
+    if buyer_address:
+        scheme, _sep, value = buyer_address.rpartition(':')
+        _cii_el(_cii_el(buyer, 'URIUniversalCommunication'), 'URIID', value or buyer_address,
+                schemeID=scheme or '0225')
+    elif len(client_siren) == 9:
         _cii_el(_cii_el(buyer, 'URIUniversalCommunication'), 'URIID', client_siren, schemeID='0225')
     if _g(inv, 'client_vat_number'):
         _cii_el(_cii_el(buyer, 'SpecifiedTaxRegistration'), 'ID', _g(inv, 'client_vat_number'), schemeID='VA')

@@ -188,6 +188,32 @@ def test_l_acheteur_de_test_donne_une_adresse_electronique(sandbox):
     assert siren_check['ok'] and not siren_check['waived']       # satisfaite, non pas tolérée
 
 
+def test_adresse_electronique_du_destinataire(sandbox):
+    """v499 — L'adresse d'annuaire ne se déduit pas toujours du SIREN : celles du bac à sable
+    portent un suffixe de service (0225:315143296_121167). Saisie, elle prime ; le schéma
+    qu'elle préfixe est repris tel quel, et 0225 reste le défaut."""
+    xml = I.generate_facturx_xml(
+        invoice(client_siren='000000001', client_electronic_address='0225:315143296_121167'),
+        ITEMS, UNREGISTERED)
+    buyer = xml.split(b'BuyerTradeParty>', 1)[1]          # le vendeur porte aussi une URIID
+    assert b'<ram:URIID schemeID="0225">315143296_121167</ram:URIID>' in buyer
+    assert b'<ram:URIID schemeID="0225">000000001</ram:URIID>' not in buyer
+    # sans préfixe de schéma, la convention française s'applique
+    xml = I.generate_facturx_xml(
+        invoice(client_siren='000000001', client_electronic_address='315143296_121167'),
+        ITEMS, UNREGISTERED)
+    assert b'<ram:URIID schemeID="0225">315143296_121167</ram:URIID>' in xml
+    # l'identité légale de l'acheteur reste celle de son numéro d'entreprise
+    assert b'<ram:ID schemeID="0002">000000001</ram:ID>' in xml
+
+
+def test_sans_adresse_saisie_le_siren_continue_de_servir(production):
+    xml = I.generate_facturx_xml(invoice(client_siren='732829320'), ITEMS,
+                                 {**UNREGISTERED, 'siret': '73282932000074', 'rcs_city': 'Paris',
+                                  'vat_number': 'FR44732829320'})
+    assert b'<ram:URIID schemeID="0225">732829320</ram:URIID>' in xml
+
+
 def test_hors_bac_a_sable_un_numero_sans_cle_reste_refuse(production):
     _checks, missing = I._check_mandatory_mentions(invoice(client_siren='000000001'), UNREGISTERED)
     assert 'SIREN du client (9 chiffres)' in missing

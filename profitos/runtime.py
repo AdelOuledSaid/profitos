@@ -2602,6 +2602,17 @@ def _migrate_tenant_schema(org_id=None):
                 c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}'); c.commit()
         except Exception as e:
             _migration_warn(f"[Veqalio] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
+    # v499 — Adresse électronique du destinataire dans l'annuaire (BT-49).
+    # Veqalio la déduisait du seul SIREN, ce qui est la convention française courante mais pas
+    # une règle : une adresse d'annuaire peut porter un suffixe de service ou un identifiant
+    # propre à la plateforme. Sans ce champ, un tel destinataire est inadressable.
+    for col, decl in (('client_electronic_address', 'TEXT'),):
+        try:
+            cols=[r['name'] for r in c.execute('PRAGMA table_info(outgoing_invoices)').fetchall()]
+            if col not in cols:
+                c.execute(f'ALTER TABLE outgoing_invoices ADD COLUMN {col} {decl}'); c.commit()
+        except Exception as e:
+            _migration_warn(f"[Veqalio] ATTENTION : migration colonne outgoing_invoices.{col} ignorée ({e})")
     # WeInvoice multi-entités : entity_key=0 représente la société mère.
     # L'ancienne configuration globale est reprise seulement pour la société mère.
     try:
