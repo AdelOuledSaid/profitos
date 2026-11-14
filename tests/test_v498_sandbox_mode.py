@@ -176,6 +176,23 @@ def test_en_bac_a_sable_le_numero_de_test_prime_sur_le_profil(sandbox):
     assert b'<ram:ID schemeID="0002">123456782</ram:ID>' not in xml
 
 
+def test_l_acheteur_de_test_donne_une_adresse_electronique(sandbox):
+    """v498.4 — Constaté chez SUPER PDP : « missing buyer electronic address ». Tout dépôt
+    exige l'adresse électronique de l'acheteur (BT-49), que Veqalio dérive du numéro du
+    client. Un numéro d'entreprise de test doit donc être acceptable comme destinataire."""
+    xml = I.generate_facturx_xml(invoice(client_siren='000000001'), ITEMS, UNREGISTERED)
+    assert b'<ram:URIID schemeID="0225">000000001</ram:URIID>' in xml
+    checks, missing = I._check_mandatory_mentions(invoice(client_siren='000000001'), UNREGISTERED)
+    assert missing == []
+    siren_check = next(c for c in checks if c['label'].startswith('SIREN du client'))
+    assert siren_check['ok'] and not siren_check['waived']       # satisfaite, non pas tolérée
+
+
+def test_hors_bac_a_sable_un_numero_sans_cle_reste_refuse(production):
+    _checks, missing = I._check_mandatory_mentions(invoice(client_siren='000000001'), UNREGISTERED)
+    assert 'SIREN du client (9 chiffres)' in missing
+
+
 def test_hors_bac_a_sable_le_profil_fait_seul_foi(production):
     complete = {**UNREGISTERED, 'siret': '73282932000074', 'vat_number': 'FR44732829320',
                 'rcs_city': 'Paris'}

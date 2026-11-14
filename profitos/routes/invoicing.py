@@ -149,7 +149,13 @@ def _parse_invoice_header(form, issue_date=None):
     v['vat_on_debits']=1 if form.get('vat_on_debits') in ('on','1') else 0
     v['ereporting_scope']=(form.get('ereporting_scope') or '').strip() or None
     v['ereporting_category']=(form.get('ereporting_category') or '').strip() or None
-    if v['client_siren'] and not siren_is_valid(v['client_siren']):
+    # v498.4 — En bac à sable, les entreprises de la plateforme portent des numéros à 9 chiffres
+    # sans clé de contrôle valide (000000001…). Les refuser interdirait de désigner un
+    # destinataire, donc de produire l'adresse électronique de l'acheteur (BT-49) qu'exige tout
+    # dépôt : « missing buyer electronic address ». Le format reste contrôlé, seule la clé est
+    # tolérée, et uniquement là où aucune facture ne peut atteindre un vrai destinataire.
+    if v['client_siren'] and not siren_is_valid(v['client_siren']) and not (
+            _sandbox_mentions() and re.fullmatch(r'\d{9}', v['client_siren'])):
         return v,"SIREN client invalide : 9 chiffres avec une clé de contrôle correcte (laissez vide si inconnu)."
     if v['client_vat_number'] and not fr_vat_is_valid(v['client_vat_number'], v['client_siren'] if (v['client_vat_number'] or '').startswith('FR') else None):
         return v,"N° de TVA intracommunautaire du client invalide (vérifiez le préfixe pays et la clé)."
@@ -297,7 +303,11 @@ def _check_mandatory_mentions(inv,company):
     _mention(checks, 'Adresse du client', _g(inv, 'client_address'), 'buyer')
     if _is_french_b2b(inv):
         siren=str(_g(inv, 'client_siren', '') or '')
-        _mention(checks, 'SIREN du client (9 chiffres)', re.fullmatch(r'\d{9}', siren) and siren_is_valid(siren), 'buyer', waived=sandbox)
+        # v498.4 — En bac à sable, un numéro d'entreprise de test à 9 chiffres satisfait la
+        # mention : il désigne un destinataire réel de l'annuaire de test. Absent, elle reste
+        # simplement levée comme les autres.
+        _mention(checks, 'SIREN du client (9 chiffres)',
+                 re.fullmatch(r'\d{9}', siren) and (siren_is_valid(siren) or sandbox), 'buyer', waived=sandbox)
     treatment = _invoice_vat_treatment(inv, company)
     if treatment in ('intra_eu_goods', 'intra_eu_services', 'reverse_charge_fr'):
         _mention(checks, "N° TVA intracommunautaire du client (autoliquidation / opération intracommunautaire)",
