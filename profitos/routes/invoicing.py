@@ -494,14 +494,20 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
         _cii_el(seller, 'Description', legal_info)
     seller_siret = re.sub(r'\D', '', str(_g(company, 'siret', '') or ''))
     seller_id = seller_siret[:9] if len(seller_siret) == 14 else None
-    if not seller_id and _sandbox_mentions():
+    if _sandbox_mentions():
         # v498 — En bac à sable l'émetteur n'est pas immatriculé, alors qu'EN16931 exige un
         # identifiant légal du vendeur (BT-30). On reprend le numéro de l'entreprise de test
-        # chez la plateforme agréée : c'est exactement l'identité sous laquelle le dépôt est
-        # effectué, le document est donc cohérent avec son dépôt. Hors bac à sable, aucun
-        # identifiant n'est inventé : l'absence de SIRET bloque bien avant ce point.
+        # chez la plateforme agréée : c'est l'identité sous laquelle le dépôt est effectué.
+        #
+        # v498.3 — Ce numéro prime désormais sur le SIRET du profil, même renseigné : la
+        # plateforme rejette tout document dont le vendeur diffère de l'entreprise liée à la
+        # session (« L'entreprise (000000001) liée à cette session ne correspond pas au
+        # vendeur de la facture »). En bac à sable, l'identité du déposant est imposée par la
+        # configuration, le profil ne peut pas la contredire. Hors bac à sable, aucun
+        # identifiant n'est inventé ni substitué : l'absence de SIRET bloque bien avant ce
+        # point, et le profil fait seul foi.
         from profitos import superpdp as _sp
-        seller_id = _sp.company_number()
+        seller_id = _sp.company_number() or seller_id
     if seller_id:
         org = _cii_el(seller, 'SpecifiedLegalOrganization')
         _cii_el(org, 'ID', seller_id, schemeID='0002')

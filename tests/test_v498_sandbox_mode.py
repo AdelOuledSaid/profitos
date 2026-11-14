@@ -164,7 +164,19 @@ def test_hors_bac_a_sable_aucun_identifiant_n_est_invente(production):
     assert b'732829320' not in xml
 
 
-def test_un_vrai_siret_prime_sur_le_bac_a_sable(sandbox):
+def test_en_bac_a_sable_le_numero_de_test_prime_sur_le_profil(sandbox):
+    """v498.3 — Constaté chez SUPER PDP : « L'entreprise (000000001) liée à cette session ne
+    correspond pas au vendeur de la facture (123456782) ». En bac à sable, l'identité du
+    déposant est imposée par la configuration ; un SIRET saisi au profil ne peut pas la
+    contredire, sans quoi tout dépôt est refusé."""
+    complete = {**UNREGISTERED, 'siret': '12345678200019', 'vat_number': 'FR32123456782',
+                'rcs_city': 'Paris'}
+    xml = I.generate_facturx_xml(invoice(), ITEMS, complete)
+    assert b'<ram:ID schemeID="0002">000000001</ram:ID>' in xml
+    assert b'<ram:ID schemeID="0002">123456782</ram:ID>' not in xml
+
+
+def test_hors_bac_a_sable_le_profil_fait_seul_foi(production):
     complete = {**UNREGISTERED, 'siret': '73282932000074', 'vat_number': 'FR44732829320',
                 'rcs_city': 'Paris'}
     xml = I.generate_facturx_xml(invoice(client_siren='732829320'), ITEMS, complete)
