@@ -4,15 +4,16 @@
   <h4>Client</h4>
   <div class="formgrid">
     <label>Nom du client<input id="invoice-client-name" name="client_name" required value="{{ f.client_name or '' }}"></label>
-    <label>E-mail du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi" value="{{ f.client_email or '' }}"></label>
+    <label>E-mail du client<input type="email" id="invoice-client-email" name="client_email" placeholder="pour l'envoi du PDF" value="{{ f.client_email or '' }}"></label>
     <label class="wide">Adresse du client (une ligne par élément : rue, code postal et ville)<textarea id="invoice-client-address" name="client_address" rows="3" placeholder="12 rue de la Paix&#10;75002 Paris">{{ f.client_address or '' }}</textarea></label>
     <label>SIREN du client<input id="invoice-client-siren" name="client_siren" maxlength="11" placeholder="9 chiffres (obligatoire en B2B France)" value="{{ f.client_siren or '' }}"></label>
+    <label>Identifiant d'annuaire du destinataire<input name="client_electronic_address" maxlength="80"
+      placeholder="par défaut, le SIREN du client" value="{{ f.client_electronic_address or '' }}">
+      <small class="purchase-muted">Ce n'est pas une adresse e-mail : c'est l'identifiant sous lequel le
+        destinataire est inscrit à l'annuaire de la facturation électronique. À remplir uniquement s'il diffère
+        du SIREN, par exemple 0225:315143296_121168.</small></label>
     <label>N° TVA intracommunautaire du client<input name="client_vat_number" maxlength="40" placeholder="FR… / DE… (autoliquidation)" value="{{ f.client_vat_number or '' }}"></label>
     <label>Pays du client (code ISO à 2 lettres)<input name="counterparty_country" maxlength="2" placeholder="FR, DE, BE…" value="{{ f.counterparty_country or '' }}"></label>
-    <label>Adresse électronique du destinataire (annuaire)<input name="client_electronic_address" maxlength="80"
-      placeholder="par défaut, le SIREN" value="{{ f.client_electronic_address or '' }}">
-      <small class="purchase-muted">À renseigner seulement si le destinataire vous a communiqué une adresse
-        différente de son SIREN, éventuellement préfixée du schéma (0225:…).</small></label>
     <label class="checkbox-label"><input type="checkbox" name="client_is_public" {% if (f.client_is_public or '')|string in ('1','on') %}checked{% endif %}> Acheteur public (État, collectivité, établissement public — dépôt sur Chorus Pro)</label>
   </div>
 </div>
