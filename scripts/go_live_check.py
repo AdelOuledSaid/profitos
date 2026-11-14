@@ -14,6 +14,7 @@ Code de sortie : 0 si aucun point bloquant, 1 sinon.
 """
 import argparse
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -43,12 +44,24 @@ def check_superpdp(env):
     base = _v(env, 'APP_BASE_URL').rstrip('/')
     redirect = _v(env, 'SUPERPDP_REDIRECT_URI') or (base + '/facture-electronique/superpdp/retour' if base else '')
     good = bool(base and redirect.startswith(base + '/'))
-    return [_item(s, OK, "Identifiants de l'application OAuth"),
-            _item(s, OK if good else FAIL, 'Adresse de retour du raccordement',
-                  redirect + ' — à déclarer à l\'identique dans l\'application SUPER PDP.' if good
-                  else 'SUPERPDP_REDIRECT_URI doit commencer par APP_BASE_URL.'),
-            _item(s, INFO, 'Environnement', "SUPER PDP utilise la même adresse en test et en production : "
-                                            "ce sont les identifiants qui décident. Utilisez ceux de production.")]
+    items = [_item(s, OK, "Identifiants de l'application OAuth"),
+             _item(s, OK if good else FAIL, 'Adresse de retour du raccordement',
+                   redirect + ' — à déclarer à l\'identique dans l\'application SUPER PDP.' if good
+                   else 'SUPERPDP_REDIRECT_URI doit commencer par APP_BASE_URL.'),
+             _item(s, INFO, 'Environnement', "SUPER PDP utilise la même adresse en test et en production : "
+                                             "ce sont les identifiants qui décident. Utilisez ceux de production.")]
+    # v498.2 — Un numéro de bac à sable resté en place à l'ouverture commerciale ferait émettre
+    # à TOUTES les organisations des factures non conformes (mentions obligatoires assouplies,
+    # identité d'émetteur empruntée à l'entreprise de test). Le code s'en protège déjà — le mode
+    # exige le pré-lancement — mais la configuration doit être corrigée, pas seulement neutralisée.
+    from profitos.superpdp import company_number_scheme
+    number = re.sub(r'\D', '', _v(env, 'SUPERPDP_COMPANY_NUMBER'))
+    if number and company_number_scheme(number) == 'sandbox':
+        items.append(_item(s, FAIL, "Numéro d'entreprise de test encore configuré",
+                           f"SUPERPDP_COMPANY_NUMBER={number} désigne une entreprise du bac à sable. "
+                           "Remplacez-le par le SIREN de votre société immatriculée, ou supprimez la "
+                           "variable pour que chaque organisation utilise le sien."))
+    return items
 
 
 def check_einvoice(env):

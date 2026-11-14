@@ -130,17 +130,25 @@ def company_number_scheme(number):
 
 
 def is_sandbox():
-    """v498 — Vrai quand Veqalio dialogue avec le bac à sable de SUPER PDP : un numéro
-    d'entreprise est imposé et il ne relève pas d'un vrai SIREN.
+    """v498 — Vrai quand Veqalio dialogue avec le bac à sable de SUPER PDP et peut donc
+    assouplir les mentions obligatoires (factures de démonstration sans immatriculation).
 
-    Ce seul indicateur gouverne les assouplissements de démonstration (factures de test sans
-    immatriculation). Il ne s'agit pas d'un réglage d'utilisateur : il découle de la
-    configuration serveur du raccordement. Conséquence voulue : dès qu'un véritable SIREN est
-    configuré, le mode s'éteint de lui-même et les contrôles redeviennent bloquants, sans
-    qu'aucune intervention ne soit nécessaire. On ne peut donc pas être en production et en
-    bac à sable à la fois."""
+    DEUX conditions cumulatives, car l'assouplissement vaut pour toutes les organisations
+    hébergées : un seul oubli de configuration exposerait de vrais clients à émettre des
+    factures non conformes.
+
+      1. le numéro d'entreprise imposé au raccordement ne relève pas d'un vrai SIREN ;
+      2. l'instance est en pré-lancement (v498.2), c'est-à-dire fermée à la vente et aux
+         inscriptions libres — la situation où l'éditeur est seul utilisateur.
+
+    L'ouverture commerciale (PROFITOS_PRELAUNCH=0) éteint donc le mode à elle seule, même si
+    le numéro de test est resté configuré. Aucune de ces conditions n'est un réglage
+    d'utilisateur : toutes deux viennent de la configuration serveur."""
     number = company_number()
-    return bool(number) and company_number_scheme(number) == 'sandbox'
+    if not number or company_number_scheme(number) != 'sandbox':
+        return False
+    from profitos.legal import is_prelaunch
+    return is_prelaunch()
 
 
 def authorize_url(state, code_challenge, siren=None, login_hint=None):

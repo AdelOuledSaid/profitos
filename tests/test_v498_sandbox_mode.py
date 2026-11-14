@@ -37,18 +37,21 @@ def invoice(**extra):
 @pytest.fixture()
 def sandbox(monkeypatch):
     monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '000000001')
+    monkeypatch.setenv('PROFITOS_PRELAUNCH', '1')
     monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER_SCHEME', raising=False)
 
 
 @pytest.fixture()
 def production(monkeypatch):
     monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '732829320')        # SIREN réellement valide
+    monkeypatch.setenv('PROFITOS_PRELAUNCH', '0')
     monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER_SCHEME', raising=False)
 
 
 # ------------------------------------------------------------------ détection du mode
 
 def test_le_mode_suit_le_numero_configure(monkeypatch):
+    monkeypatch.setenv('PROFITOS_PRELAUNCH', '1')
     monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER', raising=False)
     monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER_SCHEME', raising=False)
     assert SP.is_sandbox() is False                  # aucun numéro imposé : production
@@ -56,6 +59,33 @@ def test_le_mode_suit_le_numero_configure(monkeypatch):
     assert SP.is_sandbox() is True
     monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '732829320')
     assert SP.is_sandbox() is False                  # vrai SIREN : le mode s'éteint seul
+
+
+def test_l_ouverture_commerciale_eteint_le_mode_a_elle_seule(monkeypatch):
+    """v498.2 — Le garde-fou qui compte : même avec le numéro de test resté configuré, la
+    sortie du pré-lancement suffit à rétablir tous les contrôles pour toutes les
+    organisations. Un oubli de configuration ne peut donc pas exposer de vrais clients."""
+    monkeypatch.setenv('SUPERPDP_COMPANY_NUMBER', '000000001')
+    monkeypatch.delenv('SUPERPDP_COMPANY_NUMBER_SCHEME', raising=False)
+    monkeypatch.setenv('PROFITOS_PRELAUNCH', '1')
+    assert SP.is_sandbox() is True
+    monkeypatch.setenv('PROFITOS_PRELAUNCH', '0')
+    assert SP.is_sandbox() is False
+    _checks, missing = I._check_mandatory_mentions(invoice(), UNREGISTERED)
+    assert "SIRET de l'émetteur (14 chiffres)" in missing          # redevenu bloquant
+    assert b'000000001' not in I.generate_facturx_xml(invoice(), ITEMS, UNREGISTERED)
+
+
+def test_la_verification_d_ouverture_signale_le_numero_de_test():
+    """Le code se protège, mais la configuration doit être corrigée : go_live_check doit le
+    dire, et comme point bloquant."""
+    from scripts import go_live_check as G
+    env = {'SUPERPDP_CLIENT_ID': 'x', 'SUPERPDP_CLIENT_SECRET': 'y',
+           'APP_BASE_URL': 'https://veqalio.com', 'SUPERPDP_COMPANY_NUMBER': '000000001'}
+    faults = [it for it in G.check_superpdp(env) if it['level'] == G.FAIL]
+    assert any('bac à sable' in it['detail'] for it in faults)
+    env['SUPERPDP_COMPANY_NUMBER'] = '732829320'
+    assert [it for it in G.check_superpdp(env) if it['level'] == G.FAIL] == []
 
 
 def test_le_mode_ne_depend_pas_de_la_facture(sandbox):
