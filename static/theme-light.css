@@ -250,3 +250,16 @@
 [data-theme="light"] .decision-verdict.danger{border-left-color:#d33a4a}
 
 [data-theme="light"] .brand-mark rect{fill:#0f8a52}
+[data-theme="light"] .pf-more{border-color:#e4eaf4;background:#fafbfe}
+[data-theme="light"] .pf-more>summary{color:#2b3a52}
+[data-theme="light"] .pf-more>summary:hover{color:#0d1626}
+[data-theme="light"] .pf-hint,[data-theme="light"] .pf-more-hint{color:#7b8bab}
+[data-theme="light"] .pf-req{color:#0f7a4d}
+[data-theme="light"] .purchase-page input:-webkit-autofill,
+[data-theme="light"] .purchase-page textarea:-webkit-autofill,
+[data-theme="light"] .purchase-page select:-webkit-autofill{
+  -webkit-text-fill-color:#1a2436;
+  -webkit-box-shadow:0 0 0 1000px #fff inset;
+  box-shadow:0 0 0 1000px #fff inset;
+  caret-color:#1a2436;
+}

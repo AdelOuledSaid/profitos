@@ -427,3 +427,41 @@ document.addEventListener('DOMContentLoaded', function () {
     a.addEventListener('click', function (e) { e.preventDefault(); });
   });
 });
+
+/* v500 — Lignes de facture : huit lignes vides donnaient au formulaire un air de brouillon.
+   On ne montre que les lignes remplies, plus une vide pour la saisie suivante ; le bouton en
+   révèle une de plus. Les champs restent dans le document et sont soumis comme avant, donc
+   sans JavaScript la page fonctionne à l'identique — c'est pourquoi le bouton est masqué
+   dans le HTML et révélé ici. */
+document.addEventListener('DOMContentLoaded', function () {
+  var table = document.getElementById('invoice-lines');
+  var addButton = document.getElementById('invoice-add-line');
+  if (!table || !addButton) return;
+  var rows = Array.prototype.slice.call(table.querySelectorAll('tr[data-line-row]'));
+  if (rows.length < 2) return;
+
+  function hasContent(row) {
+    if (row.hasAttribute('data-line-filled')) return true;
+    var label = row.querySelector('input[name^="label_"]');
+    var price = row.querySelector('input[name^="price_"]');
+    return !!((label && label.value.trim()) || (price && price.value.trim()));
+  }
+
+  var shown = 0;
+  rows.forEach(function (row) { if (hasContent(row)) shown = rows.indexOf(row) + 1; });
+  shown = Math.min(rows.length, shown + 1);
+
+  function render() {
+    rows.forEach(function (row, index) { row.hidden = index >= shown; });
+    addButton.hidden = shown >= rows.length;
+  }
+
+  addButton.addEventListener('click', function () {
+    if (shown < rows.length) shown += 1;
+    render();
+    var next = rows[shown - 1].querySelector('input[name^="label_"]');
+    if (next) next.focus();
+  });
+
+  render();
+});

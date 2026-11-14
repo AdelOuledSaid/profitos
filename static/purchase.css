@@ -533,3 +533,66 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
 .ef-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;flex:1 1 240px;min-width:0}
 .ef-status a,.purchase-page .pp-list a{color:#3ddc84}
 [data-theme="light"] .ef-status a,[data-theme="light"] .purchase-page .pp-list a{color:#0f7a48}
+
+/* v500 — Formulaire de facture : l'essentiel visible, le reste à la demande.
+   Les mentions fiscales et l'acheminement électronique ne concernent qu'une minorité de
+   factures ; exposés au même niveau que le nom du client, ils noient ce qui compte. */
+.pf-more{
+  margin-top:18px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.015);
+}
+.pf-more>summary{
+  cursor:pointer;
+  padding:13px 16px;
+  font-weight:800;
+  font-size:13px;
+  color:#cfd8dd;
+  list-style:none;
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:4px 10px;
+}
+.pf-more>summary::-webkit-details-marker{display:none}
+.pf-more>summary::before{
+  content:"\203A";
+  color:#39e58c;
+  font-size:17px;
+  line-height:1;
+  transition:transform .15s ease;
+}
+.pf-more[open]>summary::before{transform:rotate(90deg)}
+.pf-more>summary:hover{color:#fff}
+.pf-more-hint{font-weight:600;color:#8fa0a8;font-size:12px}
+.pf-more>.formgrid{padding:2px 16px 18px}
+.pf-hint{font-weight:500;font-size:12px;color:#8fa0a8;line-height:1.45}
+.pf-req{color:#39e58c;font-weight:900}
+#invoice-add-line{margin-top:12px}
+
+/* L'autocomplétion du navigateur impose son propre fond clair, qui trouait le thème sombre
+   d'un champ à l'autre selon ce qu'il avait mémorisé. */
+.purchase-page input:-webkit-autofill,
+.purchase-page textarea:-webkit-autofill,
+.purchase-page select:-webkit-autofill{
+  -webkit-text-fill-color:#fff;
+  -webkit-box-shadow:0 0 0 1000px #0a0a0a inset;
+  box-shadow:0 0 0 1000px #0a0a0a inset;
+  caret-color:#fff;
+}
+
+/* Une case à cocher appartient à la même ligne que son libellé. Dans une étiquette en
+   colonne elle se retrouvait au-dessus, centrée, sans lien visible avec son texte — défaut
+   partagé par les quatre formulaires qui en comportent. */
+.formgrid label.checkbox-label{
+  flex-direction:row;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+}
+.formgrid label.checkbox-label input[type=checkbox]{
+  width:auto;
+  flex:0 0 auto;
+  margin:0;
+}
