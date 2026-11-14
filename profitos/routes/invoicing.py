@@ -536,6 +536,18 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
         _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', seller_id, schemeID='0225')
     if _g(company, 'vat_number'):
         _cii_el(_cii_el(seller, 'SpecifiedTaxRegistration'), 'ID', _g(company, 'vat_number'), schemeID='VA')
+    elif seller_id:
+        # BT-32 — identifiant d'enregistrement fiscal du vendeur, à défaut de numéro de TVA
+        # intracommunautaire (BT-31). v504 : BR-S-02 et BR-E-02 exigent l'un ou l'autre dès
+        # qu'une ligne porte un taux normal ou une exonération, et le document est rejeté
+        # sinon — « [BR-S-02] An Invoice that contains an Invoice line where the VAT category
+        # code is "Standard rated" shall contain the Seller VAT Identifier, the Seller tax
+        # registration identifier and/or the Seller tax representative VAT identifier ».
+        #
+        # Cela ne concerne pas que le bac à sable : une entreprise en franchise de TVA, qui
+        # n'a pas de numéro intracommunautaire, ne pouvait émettre aucune facture
+        # électronique acceptée. C'est le cas de la plupart des micro-entrepreneurs.
+        _cii_el(_cii_el(seller, 'SpecifiedTaxRegistration'), 'ID', seller_id, schemeID='FC')
 
     buyer = _cii_el(agreement, 'BuyerTradeParty')
     _cii_el(buyer, 'Name', _g(inv, 'client_name', '') or '')
@@ -3779,6 +3791,46 @@ def register(app):
         log_activity('INVOICE_FACTURX_GENERATED',f"Factur-X généré pour la facture {inv['invoice_number']}")
         return Response(pdf_bytes,mimetype='application/pdf',
             headers={'Content-Disposition':f'attachment; filename="{inv["invoice_number"]}_facturx.pdf"'})
+
+    @app.route('/facturation/<int:invoice_id>/annuaire', methods=['POST'])
+    @login_required
+    @requires_active_plan
+    @requires_paid_plan
+    @require_area('invoicing')
+    def invoicing_routing(invoice_id):
+        """v503 — Corrige l'adresse d'acheminement d'une facture déjà émise.
+
+        Une facture émise n'est plus modifiable, et c'est justifié : son contenu est figé,
+        numéro et écriture compris. Mais l'identifiant d'annuaire n'est pas une mention de la
+        facture : c'est l'adresse à laquelle on la remet, hors du document. Le refuser après
+        émission obligeait, dès qu'un dépôt échouait pour adresse inconnue, à annuler la
+        facture et à la refaire — alors que rien dans la facture n'était en cause.
+
+        La correction s'arrête au dépôt : une fois le document accepté par la plateforme, il
+        est parti, et changer son adresse n'aurait plus de sens."""
+        c = cx()
+        try:
+            inv = _current_invoice(c, invoice_id)
+            if not inv:
+                abort(404)
+            if 'weinvoice_invoice_id' in inv.keys() and inv['weinvoice_invoice_id']:
+                flash("Facture déjà déposée sur la plateforme : son adresse d'acheminement ne peut plus changer.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            if inv['status'] == 'cancelled':
+                flash("Une facture annulée ne peut plus être transmise.")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            address = re.sub(r'[^0-9A-Za-z:_.\-]', '', request.form.get('client_electronic_address') or '')[:80]
+            c.execute('UPDATE outgoing_invoices SET client_electronic_address=? WHERE id=? AND entity_id IS ?',
+                      (address or None, invoice_id, inv['entity_id']))
+            c.commit()
+            log_activity('INVOICE_ROUTING_UPDATED',
+                         f"Adresse d'acheminement de la facture {inv['invoice_number'] or invoice_id} : "
+                         f"{address or 'SIREN du client'}")
+            flash(f"Adresse d'acheminement enregistrée : {address}. Relancez la transmission." if address
+                  else "Adresse d'acheminement effacée : le SIREN du client sera utilisé.")
+        finally:
+            c.close()
+        return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
 
     @app.route('/facturation/<int:invoice_id>/weinvoice', methods=['POST'])
     @login_required
