@@ -134,16 +134,27 @@ def embedded_xml(pdf_bytes):
 
 
 def read_invoice(item, content, ctype):
-    """Contenu d'une facture reçue : ``en_invoice`` d'abord, sinon le fichier d'origine."""
+    """Contenu d'une facture reçue : le résumé normalisé de la plateforme, complété par le
+    document d'origine.
+
+    v505 — Le résumé (``en_invoice``) porte des montants fiables mais pas toujours le nom du
+    vendeur. S'y arrêter donnait des factures intitulées « Fournisseur électronique » : toutes
+    les factures reçues portaient le même libellé, et les achats devenaient illisibles. Le
+    document, lui, nomme toujours son émetteur. Les deux sources sont donc combinées, le
+    résumé gardant la priorité sur ce qu'il renseigne."""
     data = from_en_invoice((item or {}).get('en_invoice'))
-    if data:
-        return data
-    if not content:
-        return None
-    if content[:4] == b'%PDF' or 'pdf' in (ctype or ''):
-        xml = embedded_xml(content)
-        return from_xml(xml) if xml else None
-    return from_xml(content)
+    document = None
+    if content:
+        if content[:4] == b'%PDF' or 'pdf' in (ctype or ''):
+            xml = embedded_xml(content)
+            document = from_xml(xml) if xml else None
+        else:
+            document = from_xml(content)
+    if data and document:
+        for key, value in document.items():
+            if data.get(key) in (None, '') and value not in (None, ''):
+                data[key] = value
+    return data or document
 
 
 def _complete(data):
