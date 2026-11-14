@@ -4219,6 +4219,18 @@ def fr_number(value, decimals=0):
     return formatted.replace(',', '\u00a0').replace('.', ',')
 
 
+def _paris_iso(s):
+    """Ramène à l'heure de Paris un horodatage ISO qui porte un fuseau ; rend la chaîne
+    inchangée sinon, y compris si elle est illisible — l'affichage d'une date ne doit jamais
+    faire échouer une page."""
+    if not (s.endswith('Z') or s.endswith('z') or re.search(r'[+-]\d{2}:?\d{2}$', s[10:])):
+        return s
+    try:
+        return datetime.fromisoformat(s[:-1] + '+00:00' if s[-1] in 'Zz' else s).astimezone(PARIS).isoformat()
+    except (ValueError, TypeError):
+        return s
+
+
 def fr_date(value, with_time=False):
     """Formate une date ISO (AAAA-MM-JJ ou AAAA-MM-JJTHH:MM:SS) au format français
     JJ/MM/AAAA — ou JJ/MM/AAAA HH:MM si with_time. Retourne la valeur telle quelle
@@ -4226,10 +4238,16 @@ def fr_date(value, with_time=False):
 
     ATTENTION : ne jamais appliquer ce filtre à la valeur d'un <input type="date">
     ou type="datetime-local"> — ces champs exigent le format ISO brut pour que le
-    sélecteur de date du navigateur fonctionne. Réservé à l'affichage seul."""
+    sélecteur de date du navigateur fonctionne. Réservé à l'affichage seul.
+
+    v502 — Les horodatages techniques sont enregistrés en UTC (runtime.now) et s'affichaient
+    tels quels : une transmission de 19 h 05 apparaissait à 18 h 05, et une opération de
+    23 h 30 à la date de la veille. Un horodatage qui porte un fuseau est donc ramené à
+    l'heure de Paris. Celui qui n'en porte pas est déjà une date ou une heure locale — y
+    toucher la décalerait une seconde fois."""
     if not value:
         return value
-    s = str(value)
+    s = _paris_iso(str(value))
     if len(s) < 10:
         return value
     year, month, day = s[0:4], s[5:7], s[8:10]
