@@ -2697,7 +2697,9 @@ def _migrate_tenant_schema(org_id=None):
         + [('finance_leases', 'vat_rate', 'REAL'), ('purchase_invoices', 'duplicate_ack', 'TEXT')]
         # v510 — Numéro d'entreprise du fournisseur, relevé sur la facture électronique : un
         # nom se décline d'un document à l'autre, un SIREN non.
-        + [('purchase_invoices', 'supplier_siren', 'TEXT')]
+        # v511 — Ventilation de la TVA par taux, telle que la porte la facture reçue : sans
+        # elle, les contrôles base × taux sont impossibles sur ces factures.
+        + [('purchase_invoices', 'supplier_siren', 'TEXT'), ('purchase_invoices', 'vat_breakdown_json', 'TEXT')]
         + [('fixed_assets', 'disposal_price', 'REAL'), ('fixed_assets', 'disposal_vat', 'REAL'),
            ('fixed_assets', 'disposal_entry_id', 'INTEGER'), ('fixed_assets', 'disposal_date', 'TEXT'),
            ('teledeclarations', 'due_date', 'TEXT'), ('teledeclarations', 'receipt_stored', 'TEXT'),

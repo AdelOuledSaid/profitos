@@ -782,6 +782,27 @@ def generate_sale_partial_payment_entry(conn, invoice, payment, commit=True, ban
     return entry_id
 
 
+def _purchase_vat_parts(purchase):
+    """Ventilation de TVA d'une facture fournisseur, ou [] si elle n'en porte pas.
+
+    v511 — La somme des parts doit retrouver la TVA de la facture au centime près : une
+    ventilation incomplète donnerait une écriture déséquilibrée, donc une comptabilité fausse.
+    Au moindre doute, l'appelant retombe sur une ligne unique, comme avant."""
+    if 'vat_breakdown_json' not in purchase.keys():
+        return []
+    try:
+        parts = json.loads(purchase['vat_breakdown_json'] or '[]')
+    except (ValueError, TypeError):
+        return []
+    parts = [p for p in parts if round(float(p.get('vat') or 0), 2)]
+    if not parts:
+        return []
+    if abs(sum(float(p['vat']) for p in parts) - float(purchase['vat_amount'] or 0)) > 0.01:
+        return []
+    return [{'rate': float(p['rate']), 'base': round(float(p['base']), 2),
+             'vat': round(float(p['vat']), 2)} for p in parts]
+
+
 def generate_purchase_entry(conn, purchase, commit=True):
     """Génère l'écriture d'achat (journal AC) pour une facture fournisseur
     enregistrée : compte de charge (selon la catégorie) + TVA déductible
@@ -791,7 +812,14 @@ def generate_purchase_entry(conn, purchase, commit=True):
         return None
     charge_account = _category_account(conn, purchase['category'])
     lines = [{'account_code': charge_account, 'debit': purchase['subtotal']}]
-    if purchase['vat_amount']:
+    # v511 — Une ligne de TVA déductible par taux lorsque la facture reçue en porte la
+    # ventilation, comme le font déjà les écritures de vente. Base et taux accompagnent chaque
+    # ligne : sans eux, les contrôles fiscaux ne peuvent pas vérifier base × taux, et une
+    # facture à plusieurs taux — là où l'erreur est la plus probable — échappait au contrôle.
+    for part in _purchase_vat_parts(purchase):
+        lines.append({'account_code': '445660', 'debit': part['vat'],
+                      'vat_rate': part['rate'], 'vat_base': part['base']})
+    if not any(l['account_code'] == '445660' for l in lines) and purchase['vat_amount']:
         lines.append({'account_code': '445660', 'debit': purchase['vat_amount']})
     lines.append({
         'account_code': '401000', 'credit': purchase['total'],

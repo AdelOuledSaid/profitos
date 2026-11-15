@@ -14,6 +14,7 @@ est absent, il est lu dans le fichier d'origine (XML CII/UBL, ou XML embarqué d
 """
 import hashlib
 import io
+import json
 import math
 import re
 import xml.etree.ElementTree as ET
@@ -99,6 +100,40 @@ def _siren(value):
     return digits[:9] if len(digits) in (9, 14) else None
 
 
+def _nodes(root, name):
+    return [el for el in root.iter() if _local(el) == name]
+
+
+def _child(el, name):
+    for child in el.iter():
+        if child is not el and _local(child) == name:
+            return (child.text or '').strip() or None
+    return None
+
+
+def _vat_breakdown(root, kind):
+    """Ventilation de la TVA par taux : [{'rate', 'base', 'vat'}], ou [] si absente.
+
+    v511 — Seul le total de TVA était retenu. Pour le montant déductible, cela suffit ; mais
+    les contrôles fiscaux de Veqalio vérifient base × taux ligne par ligne, et cette
+    vérification était impossible sur toute facture reçue par voie électronique — y compris
+    celles à plusieurs taux, où une erreur de ventilation est précisément la plus probable."""
+    out = []
+    if kind == 'CrossIndustryInvoice':
+        for tax in _nodes(root, 'ApplicableTradeTax'):
+            rate, base, vat = (_num(_child(tax, 'RateApplicablePercent')), _num(_child(tax, 'BasisAmount')),
+                               _num(_child(tax, 'CalculatedAmount')))
+            if rate is not None and base is not None and vat is not None:
+                out.append({'rate': rate, 'base': base, 'vat': vat})
+    else:
+        for sub in _nodes(root, 'TaxSubtotal'):
+            rate, base, vat = (_num(_child(sub, 'Percent')), _num(_child(sub, 'TaxableAmount')),
+                               _num(_child(sub, 'TaxAmount')))
+            if rate is not None and base is not None and vat is not None:
+                out.append({'rate': rate, 'base': base, 'vat': vat})
+    return out
+
+
 def from_xml(raw):
     """Champs utiles d'une facture XML CII (Factur-X) ou UBL. None si illisible."""
     try:
@@ -117,7 +152,8 @@ def from_xml(raw):
                 'subtotal': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'TaxBasisTotalAmount')),
                 'vat': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'TaxTotalAmount')),
                 'total': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'GrandTotalAmount')),
-                'original_number': _first(root, 'InvoiceReferencedDocument', 'IssuerAssignedID')}
+                'original_number': _first(root, 'InvoiceReferencedDocument', 'IssuerAssignedID'),
+                'vat_breakdown': _vat_breakdown(root, kind)}
     elif kind in ('Invoice', 'CreditNote'):
         ids = [c for c in root if _local(c) == 'ID']
         data = {'number': (ids[0].text or '').strip() if ids else None,
@@ -130,7 +166,8 @@ def from_xml(raw):
                 'subtotal': _num(_first(root, 'LegalMonetaryTotal', 'TaxExclusiveAmount')),
                 'vat': _num(next(((a.text or '') for t in root if _local(t) == 'TaxTotal' for a in t if _local(a) == 'TaxAmount'), None)),
                 'total': _num(_first(root, 'LegalMonetaryTotal', 'TaxInclusiveAmount')),
-                'original_number': _first(root, 'BillingReference', 'ID')}
+                'original_number': _first(root, 'BillingReference', 'ID'),
+                'vat_breakdown': _vat_breakdown(root, kind)}
     else:
         return None
     if not data['number'] or (data['subtotal'] is None and data['total'] is None):
@@ -174,6 +211,24 @@ def read_invoice(item, content, ctype):
             if data.get(key) in (None, '') and value not in (None, ''):
                 data[key] = value
     return data or document
+
+
+def _breakdown_json(data, subtotal, vat):
+    """Ventilation de TVA à conserver, ou None.
+
+    v511 — Elle n'est retenue que si elle rend compte de la facture entière : bases et taxes
+    doivent retrouver le total hors taxes et la TVA, au centime près. Une ventilation
+    partielle produirait une écriture déséquilibrée ou des contrôles fiscaux faussés, ce qui
+    serait pire que l'absence de ventilation — on retombe alors sur le total seul."""
+    lines = [b for b in (data.get('vat_breakdown') or []) if b.get('vat') is not None]
+    if not lines:
+        return None
+    if abs(sum(b['base'] for b in lines) - (subtotal or 0)) > 0.01:
+        return None
+    if abs(sum(b['vat'] for b in lines) - (vat or 0)) > 0.01:
+        return None
+    return json.dumps([{'rate': round(b['rate'], 2), 'base': round(b['base'], 2),
+                        'vat': round(b['vat'], 2)} for b in lines], ensure_ascii=False)
 
 
 def _known_supplier_name(c, eid, siren, name):
@@ -299,11 +354,12 @@ def sync_inbound(c, eid, org_id, pdf_dir, max_items=None, http=None):
                     setting = c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
                     validation = 'pending' if (setting and setting['require_purchase_validation']) else 'approved'
                     cur = c.execute("""INSERT INTO purchase_invoices(
-                        supplier_name,supplier_siren,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
+                        supplier_name,supplier_siren,vat_breakdown_json,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
                         notes,created_at,document_path,category,validation_status,entity_id,
                         weinvoice_invoice_id,weinvoice_status,weinvoice_regulatory_code,weinvoice_last_sync_at,einvoice_provider)
-                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (supplier, data.get('supplier_siren'), number, data['issue_date'], data['due_date'], subtotal, vat, total, 'unpaid',
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (supplier, data.get('supplier_siren'), _breakdown_json(data, subtotal, vat),
+                         number, data['issue_date'], data['due_date'], subtotal, vat, total, 'unpaid',
                          'Reçue par facturation électronique SUPER PDP', now(), stored, 'autre', validation, eid,
                          remote_id, status, reg, now(), ES.PROVIDER))
                     if validation == 'approved':
