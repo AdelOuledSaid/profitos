@@ -2680,10 +2680,15 @@ def _migrate_tenant_schema(org_id=None):
     # v4xx — mentions légales des factures, numérotation à l'émission, TVA par taux,
     # TVA sur encaissements, FEC (référence de pièce, lettrage daté, auxiliaires).
     _v4_columns = (
+        # v509 — electronic_address : identifiant d'annuaire de l'entreprise elle-même. Veqalio
+        # le déduisait du SIREN, ce qui empêchait la plateforme de lui renvoyer les statuts du
+        # cycle de vie quand l'adresse réelle en diffère.
         [('company', col, 'TEXT') for col in ('legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
-                                              'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country')]
+                                              'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms',
+                                              'country', 'electronic_address')]
         + [('entities', col, 'TEXT') for col in ('city', 'legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
-                                                 'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country')]
+                                                 'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms',
+                                                 'country', 'electronic_address')]
         + [('outgoing_invoices', col, 'TEXT') for col in ('vat_pending_json', 'service_date', 'vat_treatment',
                                                           'vat_exemption_reason', 'client_is_public', 'payment_terms')]
         + [('outgoing_quotes', col, 'TEXT') for col in ('client_siren', 'operation_nature', 'delivery_address',

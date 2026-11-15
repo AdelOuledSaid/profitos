@@ -106,7 +106,7 @@ def register(app):
                 # factures (forme, capital, RCS, régime de TVA, conditions de paiement).
                 cols = ('name', 'siret', 'vat_number', 'address', 'postal_code', 'city', 'iban', 'bic', 'legal_form',
                         'share_capital', 'rcs_city', 'rm_number', 'vat_regime', 'vat_on_debits', 'late_penalty_rate',
-                        'escompte_text', 'payment_terms', 'country')
+                        'escompte_text', 'payment_terms', 'country', 'electronic_address')
                 c.execute(f"UPDATE entities SET {','.join(f'{k}=?' for k in cols)} WHERE id=?",
                           [values[k] for k in cols] + [entity_id])
                 c.commit()

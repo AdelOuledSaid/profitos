@@ -27,6 +27,11 @@
     <label>Capital social (€)<input name="share_capital" value="{{ p.share_capital or '' }}" placeholder="10 000" inputmode="decimal"></label>
     <label>Ville du greffe (RCS)<input name="rcs_city" value="{{ p.rcs_city or '' }}" placeholder="Lyon"></label>
     <label>N° au répertoire des métiers (artisans)<input name="rm_number" value="{{ p.rm_number or '' }}" placeholder="RM 123 456 789 69"></label>
+    <label class="wide">Votre identifiant d'annuaire (facturation électronique)<input name="electronic_address"
+      maxlength="80" value="{{ p.electronic_address or '' }}" placeholder="par défaut, votre SIREN">
+      <small class="pf-hint">Ce n'est pas une adresse e-mail : c'est l'identifiant sous lequel votre entreprise est
+        inscrite à l'annuaire, et auquel la plateforme vous renvoie les statuts de vos factures. À remplir seulement
+        s'il diffère de votre SIREN, par exemple 0225:315143296_121167.</small></label>
     <label class="wide">Adresse (figurant sur vos factures)<textarea name="address" rows="2" placeholder="12 rue Example">{{ p.address or '' }}</textarea></label>
     <label>Code postal<input name="postal_code" value="{{ p.postal_code or '' }}" placeholder="75001" inputmode="numeric"></label>
     <label>Ville<input name="city" value="{{ p.city or '' }}"></label>

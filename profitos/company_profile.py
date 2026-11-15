@@ -22,7 +22,10 @@ DEFAULT_ESCOMPTE = "Pas d'escompte pour paiement anticipé."
 TEXT_FIELDS = ('name', 'city', 'department', 'allowed_departments', 'activities', 'certifications',
                'address', 'postal_code', 'siret', 'vat_number', 'iban', 'bic', 'legal_form',
                'share_capital', 'rcs_city', 'rm_number', 'vat_regime', 'late_penalty_rate',
-               'escompte_text', 'payment_terms', 'country')
+               'escompte_text', 'payment_terms', 'country',
+               # v509 — identifiant d'annuaire de l'entreprise, à laquelle la plateforme
+               # renvoie les statuts du cycle de vie. Vide, le SIREN s'applique.
+               'electronic_address')
 PROFILE_FIELDS = TEXT_FIELDS + ('vat_on_debits',)
 
 
@@ -40,6 +43,7 @@ def parse_company_form(form):
     v['iban'] = re.sub(r'\s', '', v['iban']).upper()
     v['bic'] = re.sub(r'\s', '', v['bic']).upper()
     v['postal_code'] = re.sub(r'\s', '', v['postal_code'])
+    v['electronic_address'] = re.sub(r'[^0-9A-Za-z:_.\-]', '', v['electronic_address'])[:80]
     # Colonne TEXT (migration tolérante) : '1' / '0'.
     v['vat_on_debits'] = '1' if form.get('vat_on_debits') in ('on', '1', 'true') else '0'
     if v['vat_regime'] not in VAT_REGIMES:

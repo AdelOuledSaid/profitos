@@ -537,9 +537,21 @@ def generate_facturx_xml(inv, items, company, type_code='380', referenced=None, 
     _cii_address(seller, _g(company, 'address', ''), _g(company, 'country', 'FR') or 'FR',
                  postal_code=re.sub(r'\s', '', str(_g(company, 'postal_code', '') or '')) or None,
                  city=_g(company, 'city') or None)
-    if seller_id:
-        # BT-34 — adresse électronique de routage « bare-SIREN » : schemeID 0225
-        # (confirmé par WeInvoice, erreur BR-FR-21).
+    # BT-34 — adresse électronique de l'émetteur, celle à laquelle la plateforme lui renvoie
+    # les statuts du cycle de vie. Par défaut le SIREN nu, schemeID 0225 (convention
+    # française, confirmée par WeInvoice, erreur BR-FR-21).
+    #
+    # v509 — L'identifiant d'annuaire saisi au profil prime, car cette adresse ne se déduit
+    # pas toujours du SIREN : elle peut porter un suffixe de service. Déclarer une adresse
+    # qui n'existe pas dans l'annuaire laisse passer le dépôt, mais rend l'émetteur
+    # injoignable — « L'adresse électronique (MDT-73) est invalide » dès qu'un destinataire
+    # tente de répondre, donc aucun statut en retour.
+    own_address = str(_g(company, 'electronic_address', '') or '').strip()
+    if own_address:
+        scheme, _sep, value = own_address.rpartition(':')
+        _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', value or own_address,
+                schemeID=scheme or '0225')
+    elif seller_id:
         _cii_el(_cii_el(seller, 'URIUniversalCommunication'), 'URIID', seller_id, schemeID='0225')
     if _g(company, 'vat_number'):
         _cii_el(_cii_el(seller, 'SpecifiedTaxRegistration'), 'ID', _g(company, 'vat_number'), schemeID='VA')
