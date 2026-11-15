@@ -3451,7 +3451,10 @@ def register(app):
         company_row=c.execute('SELECT * FROM company WHERE id=1').fetchone()
         if not company_row or not company_row['name']:
             c.close()
-            flash("Complétez d'abord votre profil entreprise (nom, adresse, SIRET) avant de créer une facture.")
+            # Le contrôle ne porte que sur la dénomination : annoncer l'adresse et le SIRET
+            # envoyait chercher des champs qui ne bloquent pas ici, et laissait croire à un
+            # refus plus large qu'il ne l'est.
+            flash("Renseignez la dénomination de votre entreprise avant de créer une facture.")
             return redirect(url_for('company'))
         clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
         from profitos.entities import list_all_entities
