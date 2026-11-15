@@ -253,6 +253,8 @@ def init_auth_db():
         ('last_seen_changelog',"ALTER TABLE users ADD COLUMN last_seen_changelog TEXT"),
         # Menu simplifié par défaut : les modules experts restent accessibles via « Afficher toutes les fonctionnalités ».
         ('ui_mode',"ALTER TABLE users ADD COLUMN ui_mode TEXT DEFAULT 'simple'"),
+        # v508 — Dernière organisation ouverte, pour y revenir à la connexion suivante.
+        ('last_org_id',"ALTER TABLE users ADD COLUMN last_org_id INTEGER"),
     ):
         if col not in cols: c.execute(ddl)
     demo_cols=[r['name'] for r in c.execute('PRAGMA table_info(demo_requests)').fetchall()]

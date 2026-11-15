@@ -312,6 +312,50 @@ def _digest(value):
 DEVICE_COOKIE = 'profitos_device'
 
 
+def preferred_membership(c, user_id):
+    """Appartenance à ouvrir pour cet utilisateur : la dernière organisation qu'il a
+    consultée, à défaut la plus ancienne.
+
+    v508 — La connexion ouvrait invariablement la première organisation du compte. Qui n'en
+    a qu'une ne le voyait pas ; qui en suit plusieurs — un cabinet et ses dossiers, soit le
+    cœur de la clientèle visée — retrouvait à chaque fois un autre espace que celui qu'il
+    venait de quitter, avec ni ses factures ni son profil : l'application donnait l'image
+    d'une perte totale de données alors que rien n'avait bougé.
+
+    Les organisations supprimées passent en dernier, et une préférence devenue caduque
+    (organisation quittée ou supprimée) est simplement ignorée."""
+    row = c.execute('SELECT last_org_id FROM users WHERE id=?', (user_id,)).fetchone()
+    last = row['last_org_id'] if row and 'last_org_id' in row.keys() else None
+    if last:
+        m = c.execute('SELECT memberships.* FROM memberships JOIN organizations o '
+                      'ON o.id=memberships.organization_id WHERE memberships.user_id=? '
+                      'AND memberships.organization_id=? AND o.deleted_at IS NULL',
+                      (user_id, last)).fetchone()
+        if m:
+            return m
+    return c.execute('SELECT memberships.* FROM memberships JOIN organizations o '
+                     'ON o.id=memberships.organization_id WHERE memberships.user_id=? '
+                     'ORDER BY (o.deleted_at IS NOT NULL), memberships.id LIMIT 1',
+                     (user_id,)).fetchone()
+
+
+def remember_org(user_id, org_id):
+    """Retient l'organisation ouverte. Un échec n'interrompt jamais la navigation : cette
+    mémoire est un confort, pas une donnée dont dépend l'accès."""
+    from profitos.runtime import auth_cx
+    if not (user_id and org_id):
+        return
+    try:
+        c = auth_cx()
+        try:
+            c.execute('UPDATE users SET last_org_id=? WHERE id=?', (org_id, user_id))
+            c.commit()
+        finally:
+            c.close()
+    except Exception:
+        pass
+
+
 def start_user_session(user, org_id, role):
     """Ouvre une session authentifiée (après mot de passe et, le cas échéant,
     second facteur). Remplace entièrement la session précédente."""
@@ -330,6 +374,7 @@ def start_user_session(user, org_id, role):
     session['sid'] = sid
     session['login_at'] = ts
     session['last_seen'] = ts
+    remember_org(user['id'], org_id)          # v508 — y revenir à la prochaine connexion
     c = auth_cx()
     try:
         c.execute('INSERT INTO user_sessions(user_id,sid_hash,user_agent,created_at,last_seen_at) VALUES(?,?,?,?,?)',

@@ -72,6 +72,7 @@ def register(app):
             flash("Vous n'appartenez pas à cette organisation.")
             return redirect(request.referrer or url_for('home'))
         session['org_id']=org_id; session['role']=m['role']; session.pop('current_entity_id',None); init_tenant_db()
+        acsec.remember_org(session['user_id'],org_id)      # v508 — retrouvée à la prochaine connexion
         log_activity('ORG_SWITCH','Changement d\'organisation active')
         return redirect(url_for('home'))
 
@@ -182,8 +183,7 @@ def register(app):
                 flash('E-mail ou mot de passe incorrect.')
                 session['login_email']=email[:254]  # l'adresse reste saisie après une erreur
                 return redirect(request.url)
-            m=c.execute('SELECT memberships.* FROM memberships JOIN organizations o ON o.id=memberships.organization_id '
-                        'WHERE memberships.user_id=? ORDER BY (o.deleted_at IS NOT NULL), memberships.id LIMIT 1',(u['id'],)).fetchone(); c.close()
+            m=acsec.preferred_membership(c,u['id']); c.close()     # v508 — la dernière organisation ouverte
             if not m: flash('Aucune organisation associée.'); return redirect(request.url)
             next_url=safe_next_url(request.args.get('next'))
             if acsec.user_has_2fa(u):
