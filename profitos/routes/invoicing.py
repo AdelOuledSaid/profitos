@@ -218,8 +218,12 @@ def _seller_identity(c, entity_id):
         row = c.execute(f'SELECT * FROM {table} WHERE id=?', (key,)).fetchone()
     except Exception:
         row = None
+    # v509.1 — electronic_address en fait partie : omis de cette liste, l'identifiant
+    # d'annuaire saisi au profil était bien enregistré, puis perdu ici — le document repartait
+    # avec le SIREN comme adresse de l'émetteur, et la plateforme ne pouvait pas y répondre.
     for field in ('city', 'legal_form', 'share_capital', 'rcs_city', 'rm_number', 'vat_regime',
-                  'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country'):
+                  'vat_on_debits', 'late_penalty_rate', 'escompte_text', 'payment_terms', 'country',
+                  'electronic_address'):
         ident[field] = str(_g(row, field, '') or '')
     ident['country'] = (ident['country'] or 'FR').upper()
     return ident

@@ -75,3 +75,41 @@ def test_le_champ_reste_facultatif():
     v, errors = parse_company_form({'name': 'Tricatel'})
     assert v['electronic_address'] == ''
     assert not [e for e in errors if 'annuaire' in e.lower()]
+
+
+def test_l_identite_de_l_emetteur_transporte_l_adresse(tmp_path, monkeypatch):
+    """v509.1 — L'identité de l'émetteur est reconstruite champ par champ avant de fabriquer
+    le document. Un champ absent de cette liste est silencieusement perdu : l'adresse était
+    enregistrée, puis remplacée par le SIREN au moment de générer le XML."""
+    import profitos.runtime as rt
+    from profitos import create_app, storage
+    from profitos.config import DevelopmentConfig
+    monkeypatch.setattr(rt, 'AUTH_DB', tmp_path / 'auth.db')
+    monkeypatch.setattr(rt, 'TENANTS', tmp_path)
+    monkeypatch.setattr(storage, 'UPLOAD_ROOT', tmp_path / 'uploads')
+    app = create_app(DevelopmentConfig)
+    app.config.update(TESTING=True)
+    import uuid as _uuid
+    cl = app.test_client()
+    with cl.session_transaction() as s:
+        s['csrf_token'] = 'c' * 64
+    cl.post('/signup', data={'csrf_token': 'c' * 64, 'accept_terms': '1', 'first_name': 'A',
+                             'last_name': 'M', 'email': f'{_uuid.uuid4().hex[:10]}@example.com',
+                             'password': 'Brume-Cactus-Velo-48', 'company_name': 'Tricatel'})
+    with cl.session_transaction() as s:
+        org = s['org_id']
+        s['csrf_token'] = 'c' * 64                 # la session est régénérée à l'inscription
+    # par le formulaire : c'est toute la chaîne saisie → base → identité qui est éprouvée
+    cl.post('/company', data={'csrf_token': 'c' * 64, 'name': 'Tricatel', 'legal_form': 'SAS',
+                              'siret': '73282932000074', 'address': 'Avenue de la République',
+                              'postal_code': '37170', 'city': 'Chambray-lès-Tours',
+                              'share_capital': '1000', 'rcs_city': 'Tours',
+                              'payment_terms': '30 jours', 'late_penalty_rate': '10',
+                              'electronic_address': '0225:315143296_121167'})
+    import profitos.db as dbmod
+    c = dbmod.connect_tenant(org, rt.tenant_db(org))
+    stored = c.execute('SELECT electronic_address FROM company WHERE id=1').fetchone()
+    ident = I._seller_identity(c, None)
+    c.close()
+    assert stored['electronic_address'] == '0225:315143296_121167'     # bien enregistré…
+    assert ident['electronic_address'] == '0225:315143296_121167'      # …et bien transporté
