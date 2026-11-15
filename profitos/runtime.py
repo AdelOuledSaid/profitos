@@ -2695,6 +2695,9 @@ def _migrate_tenant_schema(org_id=None):
                                                         'client_vat_number', 'counterparty_country')]
         + [('delivery_notes', col, 'TEXT') for col in ('client_siren', 'operation_nature', 'billing_address', 'due_date')]
         + [('finance_leases', 'vat_rate', 'REAL'), ('purchase_invoices', 'duplicate_ack', 'TEXT')]
+        # v510 — Numéro d'entreprise du fournisseur, relevé sur la facture électronique : un
+        # nom se décline d'un document à l'autre, un SIREN non.
+        + [('purchase_invoices', 'supplier_siren', 'TEXT')]
         + [('fixed_assets', 'disposal_price', 'REAL'), ('fixed_assets', 'disposal_vat', 'REAL'),
            ('fixed_assets', 'disposal_entry_id', 'INTEGER'), ('fixed_assets', 'disposal_date', 'TEXT'),
            ('teledeclarations', 'due_date', 'TEXT'), ('teledeclarations', 'receipt_stored', 'TEXT'),

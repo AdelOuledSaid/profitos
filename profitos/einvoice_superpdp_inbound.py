@@ -15,6 +15,7 @@ est absent, il est lu dans le fichier d'origine (XML CII/UBL, ou XML embarqué d
 import hashlib
 import io
 import math
+import re
 import xml.etree.ElementTree as ET
 
 from profitos import superpdp as SP
@@ -66,6 +67,8 @@ def from_en_invoice(en):
     return {'number': str(en['number']), 'type_code': str(en.get('type_code') or '380'),
             'issue_date': _date(en.get('issue_date')), 'due_date': _date(en.get('payment_due_date')),
             'supplier': seller.get('name') or seller.get('trading_name'),
+            'supplier_siren': _siren(seller.get('company_number') or seller.get('siren')
+                                     or seller.get('legal_registration_identifier')),
             'subtotal': ht, 'vat': vat, 'total': ttc,
             'original_number': (refs[0] or {}).get('reference') if refs else None}
 
@@ -84,6 +87,18 @@ def _first(root, *path):
     return (nodes[0].text or '').strip() or None
 
 
+def _siren(value):
+    """Les neuf chiffres d'un identifiant d'entreprise français, ou None.
+
+    v510 — L'identifiant peut arriver préfixé du schéma (« 0002:732829320 »), espacé, ou
+    porter les quatorze chiffres du SIRET : on ne retient que le SIREN, seule forme commune
+    à tous les documents, pour que deux factures du même fournisseur se rejoignent."""
+    # le schéma éventuel précède un « : » et porte lui-même des chiffres (0002, 0225) :
+    # il faut l'écarter avant de compter, sans quoi ils se collent à ceux du numéro
+    digits = re.sub(r'\D', '', str(value or '').rpartition(':')[2])
+    return digits[:9] if len(digits) in (9, 14) else None
+
+
 def from_xml(raw):
     """Champs utiles d'une facture XML CII (Factur-X) ou UBL. None si illisible."""
     try:
@@ -96,6 +111,9 @@ def from_xml(raw):
                 'issue_date': _date(_first(root, 'ExchangedDocument', 'IssueDateTime', 'DateTimeString')),
                 'due_date': _date(_first(root, 'SpecifiedTradePaymentTerms', 'DueDateDateTime', 'DateTimeString')),
                 'supplier': _first(root, 'SellerTradeParty', 'Name'),
+                # BT-30 — identifiant légal du vendeur. v510 : un nom se décline (« Burger
+                # Queen », « BURGER QUEEN SAS »), un numéro d'entreprise non.
+                'supplier_siren': _siren(_first(root, 'SellerTradeParty', 'SpecifiedLegalOrganization', 'ID')),
                 'subtotal': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'TaxBasisTotalAmount')),
                 'vat': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'TaxTotalAmount')),
                 'total': _num(_first(root, 'SpecifiedTradeSettlementHeaderMonetarySummation', 'GrandTotalAmount')),
@@ -108,6 +126,7 @@ def from_xml(raw):
                 'issue_date': _date(next(((c.text or '') for c in root if _local(c) == 'IssueDate'), None)),
                 'due_date': _date(next(((c.text or '') for c in root if _local(c) == 'DueDate'), None)),
                 'supplier': _first(root, 'AccountingSupplierParty', 'RegistrationName') or _first(root, 'AccountingSupplierParty', 'Name'),
+                'supplier_siren': _siren(_first(root, 'AccountingSupplierParty', 'PartyLegalEntity', 'CompanyID')),
                 'subtotal': _num(_first(root, 'LegalMonetaryTotal', 'TaxExclusiveAmount')),
                 'vat': _num(next(((a.text or '') for t in root if _local(t) == 'TaxTotal' for a in t if _local(a) == 'TaxAmount'), None)),
                 'total': _num(_first(root, 'LegalMonetaryTotal', 'TaxInclusiveAmount')),
@@ -155,6 +174,28 @@ def read_invoice(item, content, ctype):
             if data.get(key) in (None, '') and value not in (None, ''):
                 data[key] = value
     return data or document
+
+
+def _known_supplier_name(c, eid, siren, name):
+    """Nom sous lequel ce fournisseur est déjà connu, à défaut celui du document.
+
+    v510 — Le rapprochement se faisait sur le nom seul : « Burger Queen », « BURGER QUEEN SAS »
+    et « Burger Queen SARL » devenaient trois fournisseurs pour une même entreprise, faussant
+    les totaux par fournisseur, les relances et le lettrage. Le numéro d'entreprise, lui, ne
+    varie pas : quand il est connu, le nom déjà enregistré l'emporte, et les factures d'un même
+    émetteur se rejoignent quelle que soit la façon dont il s'est nommé.
+
+    Le premier nom reçu fait donc référence. Renommer un fournisseur reste du ressort de
+    l'utilisateur ; ce n'est pas à l'import de réécrire un libellé qu'il a peut-être choisi."""
+    if not siren:
+        return name
+    try:
+        row = c.execute('SELECT supplier_name FROM purchase_invoices WHERE entity_id IS ? '
+                        "AND supplier_siren=? AND COALESCE(supplier_name,'')<>'' "
+                        'ORDER BY id LIMIT 1', (eid, siren)).fetchone()
+    except Exception:
+        return name                      # colonne absente : comportement d'avant
+    return (row['supplier_name'] if row else name) or name
 
 
 def _complete(data):
@@ -227,7 +268,8 @@ def sync_inbound(c, eid, org_id, pdf_dir, max_items=None, http=None):
                     raise ValueError('contenu de la facture illisible')
                 subtotal, vat, total = _complete(data)
                 number = data['number'][:100]
-                supplier = (data['supplier'] or 'Fournisseur électronique')[:255]
+                supplier = _known_supplier_name(c, eid, data.get('supplier_siren'),
+                                                data['supplier'] or 'Fournisseur électronique')[:255]
                 status = ES.STATUS_BY_CODE.get(code, 'RECEIVED')
                 reg = code.split(':')[-1] if code else None
                 ext = 'pdf' if content[:4] == b'%PDF' else 'xml'
@@ -257,11 +299,11 @@ def sync_inbound(c, eid, org_id, pdf_dir, max_items=None, http=None):
                     setting = c.execute('SELECT require_purchase_validation FROM app_settings WHERE id=1').fetchone()
                     validation = 'pending' if (setting and setting['require_purchase_validation']) else 'approved'
                     cur = c.execute("""INSERT INTO purchase_invoices(
-                        supplier_name,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
+                        supplier_name,supplier_siren,invoice_number,issue_date,due_date,subtotal,vat_amount,total,status,
                         notes,created_at,document_path,category,validation_status,entity_id,
                         weinvoice_invoice_id,weinvoice_status,weinvoice_regulatory_code,weinvoice_last_sync_at,einvoice_provider)
-                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (supplier, number, data['issue_date'], data['due_date'], subtotal, vat, total, 'unpaid',
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (supplier, data.get('supplier_siren'), number, data['issue_date'], data['due_date'], subtotal, vat, total, 'unpaid',
                          'Reçue par facturation électronique SUPER PDP', now(), stored, 'autre', validation, eid,
                          remote_id, status, reg, now(), ES.PROVIDER))
                     if validation == 'approved':
