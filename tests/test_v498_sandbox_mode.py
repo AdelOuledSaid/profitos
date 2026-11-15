@@ -103,12 +103,32 @@ def test_sans_bac_a_sable_l_immatriculation_bloque(production):
     assert 'SIREN du client (9 chiffres)' in missing
 
 
-def test_en_bac_a_sable_ces_quatre_mentions_ne_bloquent_plus(sandbox):
-    checks, missing = I._check_mandatory_mentions(invoice(), UNREGISTERED)
+def test_en_bac_a_sable_les_mentions_de_l_emetteur_ne_bloquent_plus(sandbox):
+    """Trois mentions, pas quatre : le SIREN du client reste exigé (v506)."""
+    checks, missing = I._check_mandatory_mentions(invoice(client_siren='000000002'), UNREGISTERED)
     assert missing == []                                   # la facture peut être émise
     waived = {c['label'] for c in checks if c.get('waived')}
-    assert len(waived) == 4
+    assert len(waived) == 3
     assert all('non exigé en bac à sable' in label for label in waived)
+    assert not any(label.startswith('SIREN du client') for label in waived)
+
+
+def test_le_siren_du_client_reste_exige_en_bac_a_sable(sandbox):
+    """Sans lui, le document part sans identifiant légal d'acheteur (BT-47) : la plateforme
+    l'achemine mais ne peut traiter aucun statut — « missing LegalRegistrationIdentifier of
+    buyer ». Une tolérance qui produit des documents inexploitables ne sert personne."""
+    _checks, missing = I._check_mandatory_mentions(invoice(), UNREGISTERED)
+    assert 'SIREN du client (9 chiffres)' in missing
+    # et le document correspondant serait effectivement muet sur l'identité de l'acheteur
+    xml = I.generate_facturx_xml(invoice(), ITEMS, UNREGISTERED)
+    buyer = xml.split(b'BuyerTradeParty>', 1)[1].split(b'</ram:BuyerTradeParty>', 1)[0]
+    assert b'SpecifiedLegalOrganization' not in buyer
+
+
+def test_avec_le_numero_de_test_l_acheteur_est_identifie(sandbox):
+    xml = I.generate_facturx_xml(invoice(client_siren='000000002'), ITEMS, UNREGISTERED)
+    buyer = xml.split(b'BuyerTradeParty>', 1)[1].split(b'</ram:BuyerTradeParty>', 1)[0]
+    assert b'<ram:ID schemeID="0002">000000002</ram:ID>' in buyer
 
 
 def test_en_bac_a_sable_les_autres_mentions_restent_exigees(sandbox):

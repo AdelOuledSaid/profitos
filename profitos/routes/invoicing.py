@@ -310,10 +310,17 @@ def _check_mandatory_mentions(inv,company):
     if _is_french_b2b(inv):
         siren=str(_g(inv, 'client_siren', '') or '')
         # v498.4 — En bac à sable, un numéro d'entreprise de test à 9 chiffres satisfait la
-        # mention : il désigne un destinataire réel de l'annuaire de test. Absent, elle reste
-        # simplement levée comme les autres.
+        # mention : il désigne un destinataire réel de l'annuaire de test.
+        #
+        # v506 — Et il reste exigé, lui. La dispense accordée aux autres mentions ne vaut pas
+        # ici : elle datait du moment où un numéro de test était refusé à la saisie, et n'a
+        # plus de raison d'être depuis qu'il est accepté. Sans ce numéro, le document part
+        # sans identifiant légal d'acheteur (BT-47) : la plateforme l'achemine grâce à
+        # l'adresse d'annuaire, mais ne peut plus traiter aucun statut du cycle de vie —
+        # « missing LegalRegistrationIdentifier of buyer ». Une tolérance qui produit des
+        # documents inexploitables ne rend service à personne.
         _mention(checks, 'SIREN du client (9 chiffres)',
-                 re.fullmatch(r'\d{9}', siren) and (siren_is_valid(siren) or sandbox), 'buyer', waived=sandbox)
+                 re.fullmatch(r'\d{9}', siren) and (siren_is_valid(siren) or sandbox), 'buyer')
     treatment = _invoice_vat_treatment(inv, company)
     if treatment in ('intra_eu_goods', 'intra_eu_services', 'reverse_charge_fr'):
         _mention(checks, "N° TVA intracommunautaire du client (autoliquidation / opération intracommunautaire)",
