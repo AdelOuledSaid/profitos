@@ -3874,6 +3874,14 @@ def register(app):
             if inv['status'] == 'cancelled':
                 flash("Une facture annulée ne peut pas être transmise à la plateforme de facturation électronique.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
+            # v513 — Une vente à un particulier ne se transmet pas : il n'est inscrit à aucun
+            # annuaire, et l'opération relève de l'e-reporting, qui déclare des montants et non
+            # des documents. Le contrôle est ici et pas seulement à l'écran : masquer un bouton
+            # n'empêche pas d'atteindre la route.
+            if (_g(inv, 'ereporting_scope', '') or '') == 'b2c':
+                flash("Vente à un particulier : elle ne se transmet pas par la plateforme agréée, "
+                      "elle se déclare en e-reporting depuis « Déclarations électroniques ».")
+                return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if inv['status'] not in ('sent','partially_paid','paid'):
                 # Seule une facture émise (numéro légal, date d'émission, écriture) peut
                 # être transmise : un brouillon n'a pas de numéro définitif.

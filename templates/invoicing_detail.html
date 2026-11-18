@@ -168,6 +168,12 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="purchase-primary-btn secondary">Actualiser le statut</button>
     </form>
+    {% elif inv.ereporting_scope == 'b2c' %}
+    {# v513 — Vente à un particulier : rien à transmettre, le destinataire n'est dans aucun
+       annuaire. L'obligation est de déclarer les montants, pas d'acheminer un document. #}
+    <p class="purchase-muted" style="font-size:12px;margin-bottom:14px;">Vente à un particulier : cette facture ne
+      se transmet pas par la plateforme agréée. Elle relève de l'e-reporting, qui déclare les montants et non le
+      document — <a href="{{ url_for('invoicing_list') }}">voir les déclarations électroniques</a>.</p>
     {% else %}
     <form method="post" action="{{ url_for('invoicing_send_weinvoice',invoice_id=inv.id) }}" style="display:inline-block;margin-bottom:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
