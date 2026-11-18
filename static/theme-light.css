@@ -263,3 +263,7 @@
   box-shadow:0 0 0 1000px #fff inset;
   caret-color:#1a2436;
 }
+[data-theme="light"] .pf-more{border-color:#bfe6d2;background:#f6fbf8}
+[data-theme="light"] .pf-more>summary{color:#142033}
+[data-theme="light"] .pf-more>summary::after{color:#0f7a4d;border-color:#9ddcbd}
+[data-theme="light"] .pf-more>summary:hover{background:#eaf7f0}
