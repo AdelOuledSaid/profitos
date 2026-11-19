@@ -76,6 +76,13 @@ def _months(start, end):
     while anniversary(k + 1) - timedelta(days=1) <= end:
         k += 1
     rest = (end - anniversary(k)).days + 1
+    # v523 — Quand le quantième de départ n'existe pas dans le mois d'arrivée (un exercice
+    # ouvert un 31 et clos fin février, par exemple), l'anniversaire est ramené au dernier
+    # jour du mois : ce jour clôt le mois entier et ne doit pas être recompté en jours
+    # résiduels, sans quoi la durée gagne un trentième de mois et le plafond du taux
+    # réduit avec elle.
+    if rest > 0 and start.day > calendar.monthrange(anniversary(k).year, anniversary(k).month)[1]:
+        rest -= 1
     return max(1 / 30, k + rest / 30)
 
 
