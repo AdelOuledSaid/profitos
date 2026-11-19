@@ -3888,7 +3888,7 @@ def register(app):
                 flash("Seule une facture émise peut être transmise : émettez d'abord la facture (« Marquer comme émise » ou « Envoyer »).")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if 'weinvoice_invoice_id' in inv.keys() and inv['weinvoice_invoice_id']:
-                flash(f"Facture déjà transmise à WeInvoice — identifiant {inv['weinvoice_invoice_id']}.")
+                flash(f"Facture déjà transmise à la plateforme agréée (identifiant {inv['weinvoice_invoice_id']}).")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             from profitos import einvoice_superpdp as _es
             if _es.is_active():
@@ -3899,10 +3899,10 @@ def register(app):
                           "depuis le profil entreprise.")
                     return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             elif not settings or not settings['weinvoice_company_id']:
-                flash("WeInvoice n'est pas encore onboardé pour cette entreprise.")
+                flash("Votre entreprise n'est pas encore reliée à la plateforme agréée : terminez le raccordement depuis le profil entreprise.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             elif (settings['weinvoice_kyb_status'] or '').upper() != 'VALIDATED':
-                flash(f"Onboarding WeInvoice non validé (statut : {settings['weinvoice_kyb_status'] or 'inconnu'}).")
+                flash("La plateforme agréée n'a pas encore validé votre entreprise. Actualisez le statut dans quelques minutes.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             _, missing = _check_mandatory_mentions(inv, company_row)
             if missing:
@@ -3911,7 +3911,7 @@ def register(app):
             items = json.loads(inv['line_items'] or '[]')
             _, rule_failures = validate_facturx_business_rules(inv, items, company_row)
             if rule_failures:
-                flash("Facture EN16931 invalide — corrigez les règles métier avant transmission WeInvoice.")
+                flash("La facture ne respecte pas les règles de la facturation électronique : corrigez les points signalés avant de la transmettre.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             validation_errors = validate_outgoing_invoice(inv)
             if validation_errors:
@@ -3970,14 +3970,14 @@ def register(app):
                 missing_remote_id_error = "WeInvoice a accepté la facture mais aucun identifiant distant exploitable n'a été renvoyé."
                 c.execute('UPDATE outgoing_invoices SET weinvoice_last_error=? WHERE id=? AND entity_id IS ?', (missing_remote_id_error, invoice_id, inv['entity_id']))
                 _record_einvoice_event(c,inv,'submission_failed',idempotency_key=idem,detail=missing_remote_id_error)
-                c.commit(); flash("WeInvoice a accepté la facture, mais l'identifiant distant est absent — vérifiez le journal des événements avant tout nouvel envoi.")
+                c.commit(); flash("La plateforme agréée a accepté la facture sans renvoyer son identifiant. Vérifiez l'historique ci-dessous avant de la transmettre à nouveau.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             c.execute('UPDATE outgoing_invoices SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_sent_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?', (remote_id, remote_status, now(), invoice_id, inv['entity_id']))
             _record_einvoice_event(c,inv,'submitted',remote_id=remote_id,status=remote_status,idempotency_key=idem)
             _stage_ereporting_record(c,inv,'transaction')
             c.commit()
             log_activity('INVOICE_WEINVOICE_SUBMITTED', f"Facture {inv['invoice_number']} transmise à WeInvoice ({remote_id}, {remote_status})")
-            flash(f"Facture transmise à WeInvoice — identifiant {remote_id}, statut : {remote_status}.")
+            flash(f"Facture transmise à la plateforme agréée (identifiant {remote_id}). Son statut sera mis à jour automatiquement.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()
@@ -3996,7 +3996,7 @@ def register(app):
             settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
-                flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
+                flash("Cette facture n'a pas encore été transmise à la plateforme agréée.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if 'einvoice_provider' in inv.keys() and inv['einvoice_provider'] == 'superpdp':
                 from profitos import einvoice_superpdp as _es
@@ -4011,7 +4011,7 @@ def register(app):
                       + (f" — motif : {reason}" if reason else '') + '.')
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente — synchronisation impossible.")
+                flash("Entreprise non reliée à la plateforme agréée : impossible d'actualiser le statut.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             try:
                 data = get_invoice_timeline(settings['weinvoice_company_id'], remote_id)
@@ -4056,7 +4056,7 @@ def register(app):
             c.commit()
             log_activity('INVOICE_WEINVOICE_SYNCED', f"Facture {inv['invoice_number']} synchronisée WeInvoice ({remote_id}, {status})")
             code_text = f" · code réglementaire {regulatory_code}" if regulatory_code is not None else ''
-            flash(f"Statut WeInvoice synchronisé : {status}{code_text}.")
+            flash(f"Statut actualisé : {status}{code_text}.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()
@@ -4075,10 +4075,10 @@ def register(app):
             settings = c.execute('SELECT weinvoice_company_id FROM weinvoice_entity_settings WHERE entity_key=?', (inv['entity_id'] or 0,)).fetchone()
             remote_id = inv['weinvoice_invoice_id'] if 'weinvoice_invoice_id' in inv.keys() else None
             if not remote_id:
-                flash("Cette facture n'a pas encore d'identifiant WeInvoice.")
+                flash("Cette facture n'a pas encore été transmise à la plateforme agréée.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             if not settings or not settings['weinvoice_company_id']:
-                flash("Organisation WeInvoice absente — test impossible.")
+                flash("Entreprise non reliée à la plateforme agréée : test impossible.")
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             try:
                 sandbox_force_invoice_status(remote_id, status=request.form.get('sandbox_status','213'), organization_id=settings['weinvoice_company_id'])
@@ -4086,7 +4086,7 @@ def register(app):
                 flash(str(e))
                 return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
             log_activity('INVOICE_WEINVOICE_SANDBOX_WEBHOOK_TEST', f"Test webhook sandbox demandé pour {inv['invoice_number']} ({remote_id}, CDV {request.form.get('sandbox_status','213')})")
-            flash("Test Sandbox envoyé à WeInvoice. Attendez quelques secondes : le webhook doit mettre à jour Veqalio automatiquement. N'utilisez « Actualiser le statut WeInvoice » qu'en diagnostic.")
+            flash("Test envoyé à la plateforme agréée. Patientez quelques secondes : le statut se met à jour tout seul.")
             return redirect(url_for('invoicing_detail', invoice_id=invoice_id))
         finally:
             c.close()
@@ -4742,7 +4742,7 @@ def register(app):
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             remote=str(data.get('eInvoicingId') or '').strip()
             if not remote:
-                flash("WeInvoice n'a pas retourné d'identifiant électronique.")
+                flash("La plateforme agréée n'a pas renvoyé d'identifiant pour cette facture.")
                 return redirect(url_for('invoicing_credit_detail',credit_id=credit_id))
             c.execute('UPDATE outgoing_credit_notes SET weinvoice_invoice_id=?,weinvoice_status=?,weinvoice_regulatory_code=?,weinvoice_last_sync_at=?,weinvoice_last_error=NULL WHERE id=? AND entity_id IS ?',
                       (remote,str(data.get('status') or 'SUBMITTED'),str(data.get('regulatoryStatusCode') or ''),now(),credit_id,credit['entity_id']))

@@ -100,11 +100,21 @@
   </section>
   {% endif %}
 
+  {# v514 — Ce tableau n'est alimenté que par l'intégration WeInvoice. Depuis SUPER PDP, rien
+     ne l'écrit : il resterait vide en permanence tout en affirmant suivre les transmissions,
+     ce qui laisse croire qu'aucune facture n'est partie. On ne l'affiche donc que s'il a
+     quelque chose à montrer, ou sur une instance encore raccordée à WeInvoice. Le diagnostic,
+     lui, reste accessible dans tous les cas : c'est ce qu'on vient y chercher. #}
   <section class="purchase-panel" style="margin-top:18px;">
     <div class="purchase-panel-head">
-      <h2>Déclarations électroniques</h2>
+      <h2>{{ 'Déclarations électroniques' if ereporting_rows else 'Facturation électronique' }}</h2>
       <a class="purchase-nav-btn" href="{{ url_for('invoicing_electronic_diagnostic') }}">Diagnostic facturation électronique</a>
     </div>
+    {% if not ereporting_rows %}
+    <p class="purchase-subtitle" style="margin:0;">Le suivi de chaque facture transmise se consulte sur la facture
+      elle-même, dans son bloc « Facturation électronique ». Le diagnostic ci-contre vérifie votre raccordement à la
+      plateforme agréée.</p>
+    {% else %}
     <p class="purchase-subtitle" style="margin:0 0 14px;">Dernières transmissions à la plateforme agréée. Suivez ici les transmissions réglementaires et leur état de traitement par la plateforme agréée.</p>
     <div class="purchase-table-wrap">
       <table class="purchase-table">
@@ -134,12 +144,11 @@
               {% else %}<small>Non transmise</small>{% endif %}
             </td>
           </tr>
-        {% else %}
-          <tr><td colspan="6" class="purchase-empty">Aucune déclaration électronique enregistrée.</td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
+    {% endif %}
   </section>
 </div>
 {% endblock %}
