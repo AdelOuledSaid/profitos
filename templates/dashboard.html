@@ -25,9 +25,23 @@
     <span class="db-onboard-count">{{ onboarding_done }} sur {{ onboarding_steps|length }}</span>
   </div>
   <div class="db-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ onboarding_steps|length }}" aria-valuenow="{{ onboarding_done }}"><span style="width:{{ (onboarding_done / onboarding_steps|length * 100)|round|int }}%"></span></div>
+  {% if onboarding_next %}
+  {# v524 — Une seule chose à faire maintenant, et pourquoi : sept pastilles de même
+     apparence laissaient le choix du point de départ à quelqu'un qui ne l'a pas. #}
+  <div class="db-next">
+    <div>
+      <div class="db-next-eyebrow">Commencez par</div>
+      <div class="db-next-label">{{ onboarding_next.label }}</div>
+      {% if onboarding_next.why %}<p class="db-next-why">{{ onboarding_next.why }}</p>{% endif %}
+    </div>
+    <a class="db-next-btn" href="{{ onboarding_next.url }}">{{ onboarding_next.action or 'Continuer' }} →</a>
+  </div>
+  {% endif %}
   <ul class="db-steps">
     {% for s in onboarding_steps %}
-    <li class="{{ 'done' if s.done }}">{% if s.done %}<span class="db-step-mark" aria-hidden="true">✓</span>{{ s.label }}{% else %}<a href="{{ s.url }}"><span class="db-step-mark" aria-hidden="true"></span>{{ s.label }}</a>{% endif %}</li>
+    {% if not (onboarding_next and s.label == onboarding_next.label) %}
+    <li class="{{ 'done' if s.done }}">{% if s.done %}<span class="db-step-mark" aria-hidden="true">✓</span>{{ s.label }}{% else %}<a href="{{ s.url }}" title="{{ s.why }}"><span class="db-step-mark" aria-hidden="true"></span>{{ s.label }}</a>{% endif %}</li>
+    {% endif %}
     {% endfor %}
   </ul>
 </section>

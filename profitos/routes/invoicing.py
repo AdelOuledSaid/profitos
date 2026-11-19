@@ -293,7 +293,7 @@ def _check_mandatory_mentions(inv,company):
     sandbox = _sandbox_mentions()
     is_draft = (_g(inv, 'status', 'draft') == 'draft')
     legal_form = _g(company, 'legal_form', '')
-    _mention(checks, "Nom (dénomination) de l'émetteur", _g(company, 'name'), 'seller')
+    _mention(checks, "Nom de votre entreprise", _g(company, 'name'), 'seller')
     _mention(checks, "Adresse de l'émetteur", _g(company, 'address'), 'seller')
     postal = re.sub(r'\s', '', str(_g(company, 'postal_code', '') or ''))
     seller_country = (_g(company, 'country', '') or 'FR').upper()
@@ -3474,7 +3474,7 @@ def register(app):
             # Le contrôle ne porte que sur la dénomination : annoncer l'adresse et le SIRET
             # envoyait chercher des champs qui ne bloquent pas ici, et laissait croire à un
             # refus plus large qu'il ne l'est.
-            flash("Renseignez la dénomination de votre entreprise avant de créer une facture.")
+            flash("Indiquez le nom de votre entreprise avant de créer une facture.")
             return redirect(url_for('company'))
         clients=c.execute("SELECT * FROM invoicing_clients ORDER BY lower(name)").fetchall()
         from profitos.entities import list_all_entities
@@ -4142,7 +4142,7 @@ def register(app):
             result={'sent':False,'error':'exception'}
         prefix=f"Facture {inv['invoice_number']} émise. " if was_draft else ''
         if result.get('dry_run'):
-            flash(prefix+f"Service e-mail non configuré : la facture n'a pas été réellement envoyée à {inv['client_email']} (mode simulation).")
+            flash(prefix+f"La facture n'a pas été envoyée à {inv['client_email']} : l'envoi d'e-mails n'est pas configuré. Téléchargez son PDF pour la transmettre vous-même.")
         elif result.get('sent'):
             c.execute("UPDATE outgoing_invoices SET sent_at=? WHERE id=? AND entity_id IS ?",(now(),invoice_id,inv['entity_id']))
             c.commit()
@@ -4266,7 +4266,7 @@ def register(app):
         org=current_org()
         result=send_invoice_reminder(c,inv,org)
         if result.get('dry_run'):
-            flash(f"Service e-mail non configuré — relance non envoyée réellement (mode simulation) à {inv['client_email']}.")
+            flash(f"La relance n'a pas été envoyée à {inv['client_email']} : l'envoi d'e-mails n'est pas configuré.")
         elif result.get('sent'):
             n=result.get('reminder_number')
             log_activity('INVOICE_REMINDER_SENT',f"Relance n°{n} pour {inv['invoice_number']} envoyée à {inv['client_email']}")

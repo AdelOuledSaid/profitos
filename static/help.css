@@ -43,3 +43,16 @@
 .help-cycle .hc-sub{fill:var(--h-muted);font-size:11.5px}
 .help-back{margin:40px 0 0}
 @media(max-width:900px){.help-layout{grid-template-columns:1fr;padding:16px;gap:16px}.help-toc-desktop{display:none}.help-toc-mobile{display:block}.help-top-actions{gap:10px}.help-top-actions .button{padding:9px 14px}.help-hide-sm{display:none}.help-top{padding:14px 16px}.help-main h1{font-size:30px}}
+
+/* v524 — Recherche et raccourcis en tête du guide : quarante écrans d'affilée ne se
+   parcourent pas, ils se cherchent. */
+.help-search{margin:22px 0 10px;padding:16px 18px;border:1px solid var(--h-line);border-radius:14px;background:var(--h-panel)}
+.help-search-label{display:block;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--h-muted);margin-bottom:8px}
+.help-search-input{width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;font-family:inherit;
+  color:var(--h-ink);background:var(--h-bg);border:1px solid var(--h-line);border-radius:10px}
+.help-search-input:focus{outline:none;border-color:var(--h-accent)}
+.help-search-count{margin:8px 0 0;font-size:13px;color:var(--h-muted);min-height:1.2em}
+.help-search-shortcuts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--h-muted)}
+.help-chip{font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:6px 12px;border-radius:999px;
+  color:var(--h-ink);background:transparent;border:1px solid var(--h-line)}
+.help-chip:hover{border-color:var(--h-accent);color:var(--h-accent)}

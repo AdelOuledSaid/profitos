@@ -320,7 +320,7 @@ def build_declaration(conn, decl_type, period_start, period_end, entity_id=None,
     if not siren or not luhn_ok(siren):
         errors.append("SIREN de l'entreprise absent ou invalide : complétez le profil entreprise.")
     if not identity.get('name'):
-        errors.append("Dénomination de l'entreprise absente : complétez le profil entreprise.")
+        errors.append("Nom de l'entreprise absent : complétez le profil entreprise.")
     from profitos.accounting import paris_today
     if due_date and due_date <= end:
         errors.append("L'échéance de l'acompte doit suivre l'exercice de référence.")

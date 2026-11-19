@@ -14,6 +14,19 @@
 .db-onboard-count{color:var(--db-muted);font-size:13px}
 .db-progress{height:6px;border-radius:6px;background:#1a1a1a;margin:12px 0 14px;overflow:hidden}
 .db-progress span{display:block;height:100%;background:var(--db-green);border-radius:6px}
+/* v524 — La prochaine étape, détachée du reste : ce qu'il faut faire maintenant, pourquoi,
+   et le bouton qui y mène. Les autres étapes restent visibles mais au second plan. */
+.db-next{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;
+  padding:16px 18px;margin:0 0 16px;border-radius:14px;border:1px solid #2c5a3f;
+  background:linear-gradient(135deg,rgba(57,229,140,.10),rgba(57,229,140,.03))}
+.db-next-eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--db-green)}
+.db-next-label{font-size:17px;font-weight:800;color:var(--db-ink);margin-top:3px}
+.db-next-why{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--db-muted);max-width:60ch}
+.db-next-btn{flex:0 0 auto;display:inline-block;padding:11px 18px;border-radius:999px;font-weight:800;font-size:14px;
+  text-decoration:none;background:var(--db-green);color:#03210f;border:1px solid var(--db-green)}
+.db-next-btn:hover{filter:brightness(1.08)}
+@media (max-width:620px){.db-next{flex-direction:column;align-items:flex-start}.db-next-btn{width:100%;text-align:center}}
+
 .db-steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
 .db-steps li{font-size:13px}
 .db-steps li.done{color:var(--db-muted);padding:7px 12px;border-radius:999px;border:1px solid var(--db-line)}

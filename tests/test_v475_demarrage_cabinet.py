@@ -15,20 +15,34 @@ def entry(org):
 
 
 def test_premiers_pas(app):
+    """v524 — Ce contrôle figeait les libellés des étapes, réécrits depuis pour être
+    compris d'un non-comptable. Il porte désormais sur ce qui compte : toutes les étapes
+    sont proposées avec le lien qui y mène, une seule est mise en avant comme prochaine
+    action, et chacune se coche dès que le travail correspondant est fait."""
+    import re
     cl, org = signup(app)
     page = cl.get('/').get_data(as_text=True)
-    for label in ('Banque connectée ou relevé importé', 'Comptabilité reprise (FEC ou à-nouveaux)',
-                  'IBAN et relances automatiques réglés', 'Secteur de la veille confirmé',
-                  'Un collègue ou votre expert-comptable invité'):
-        assert label in page, label
+    # chaque étape mène quelque part : c'est le lien, non le libellé, qui fait l'étape
+    for cible in ('/company', '/banking', '/comptabilite/reprise', '/facturation/encaissement',
+                  '/veille', '/team'):
+        assert cible in page, cible
+    # une seule action est mise en avant, avec sa raison d'être et le bouton qui y mène
+    assert page.count('class="db-next"') == 1, 'une seule prochaine étape doit être proposée'
+    bloc = page.split('class="db-next"', 1)[1].split('</div>\n  </div>', 1)[0]
+    libelle = bloc.split('db-next-label">', 1)[1].split('<', 1)[0].strip()
+    assert libelle, 'la prochaine étape doit être nommée'
+    assert 'db-next-why' in bloc, 'la prochaine étape doit dire à quoi elle sert'
+    assert 'db-next-btn' in bloc, 'la prochaine étape doit porter son bouton'
+    # et elle n'est pas répétée parmi les pastilles du dessous
+    pastilles = page.split('class="db-steps"', 1)[1].split('</ul>', 1)[0]
+    assert libelle not in pastilles, 'la prochaine étape est répétée dans la liste'
+
     post(cl, '/facturation/encaissement', {'qr': '1', 'auto_reminders': '1', 'step_1': '3', 'step_2': '15', 'step_3': '30'})
     post(cl, '/veille', {'action': 'settings', 'sector': 'commerce', 'alert_12m': '5', 'alert_1p': '2'})
     entry(org)
     page = cl.get('/').get_data(as_text=True)
-    import re
-    done = re.findall(r'<li class="done">.*?</li>', page)
-    labels = ' '.join(done)
-    assert 'IBAN et relances' in labels and 'Secteur de la veille' in labels and 'Comptabilité reprise' in labels
+    faites = ' '.join(re.findall(r'<li class="done">.*?</li>', page)).lower()
+    assert 'iban' in faites and 'secteur' in faites and 'comptabilité' in faites, faites
 
 
 def test_pieces_demandees(app):

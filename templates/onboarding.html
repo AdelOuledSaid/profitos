@@ -11,7 +11,7 @@
   <section class="purchase-panel" style="margin-top:18px;">
     <h2>1. Identité de l'entreprise</h2>
     <div class="lot-form">
-      <label>Dénomination<input name="company_name" value="{{ pf.name or (org.name if org else '') }}" autocomplete="organization" required></label>
+      <label>Nom de l'entreprise<input name="company_name" value="{{ pf.name or (org.name if org else '') }}" autocomplete="organization" required></label>
       <label>Forme juridique<select name="legal_form"><option value="">Choisir…</option>{% for lf in legal_forms %}<option value="{{ lf }}" {% if pf.legal_form == lf %}selected{% endif %}>{{ lf }}</option>{% endfor %}</select></label>
       <label>SIRET<input name="siret" value="{{ pf.siret or '' }}" inputmode="numeric" placeholder="ex. : 732 829 320 00074"><span class="lot-hint">14 chiffres, figurant sur votre extrait Kbis ou l'avis de situation Insee.</span></label>
       <label>N° de TVA intracommunautaire<input name="vat_number" value="{{ pf.vat_number or '' }}" placeholder="ex. : FR44 732829320"><span class="lot-hint">Laissez vide si vous êtes en franchise de TVA.</span></label>

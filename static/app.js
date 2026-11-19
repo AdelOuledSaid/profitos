@@ -64,12 +64,16 @@ document.addEventListener('submit', function (event) {
 // à la première visite du dashboard, rejouable depuis Settings.
 // ---------------------------------------------------------------------------
 (function () {
+  // v524 — La visite présentait cinq fonctionnalités, toutes vides sur un compte neuf :
+  // elle commençait par les relances d'un client qui n'a encore aucune facture. Elle suit
+  // désormais l'ordre dans lequel on démarre vraiment, des informations qu'exige la loi
+  // jusqu'à l'encaissement, et ne montre le reste qu'une fois ce chemin parcouru.
   var STEPS = [
-    { selector: '[data-tour="recover"]', title: 'Relances clients', text: "Toutes vos créances échues et retenues de garantie, classées par urgence." },
-    { selector: '[data-tour="save"]', title: 'Économies', text: "Économies détectées automatiquement : doublons, hausses fournisseurs, contrats dormants." },
-    { selector: '[data-tour="grow"]', title: 'Marchés publics', text: "Appels d'offres publics correspondant à votre profil, mis à jour depuis le BOAMP." },
-    { selector: '[data-tour="actions"]', title: "Centre d'actions", text: "Préparez, approuvez puis envoyez vos relances — rien ne part sans votre validation." },
-    { selector: '[data-tour="uploads"]', title: 'Importer vos données', text: "Importez vos factures et dépenses (Excel/CSV) pour lancer votre première analyse." }
+    { selector: '[data-tour="company"]', title: '1. Vos informations', text: "Commencez ici : nom, adresse, SIRET, TVA. Ces mentions sont obligatoires sur une facture — sans elles, Veqalio ne peut pas en créer." },
+    { selector: '[data-tour="invoicing"]', title: '2. Votre première facture', text: "Créez-la, puis émettez-la : Veqalio lui donne son numéro légal, l'écriture comptable et la TVA, sans rien d'autre à saisir." },
+    { selector: '[data-tour="uploads"]', title: '3. Vos factures existantes', text: "Vous avez déjà des factures et des dépenses ailleurs ? Importez-les (Excel ou CSV) pour repartir de votre situation réelle." },
+    { selector: '[data-tour="recover"]', title: '4. Les impayés', text: "Dès qu'une facture dépasse sa date d'échéance, elle apparaît ici, classée par urgence." },
+    { selector: '[data-tour="actions"]', title: "5. Ce qu'il y a à faire", text: "Les relances se préparent ici et ne partent jamais sans votre accord." }
   ];
   var STORAGE_KEY = 'profitos_tour_seen';
   function markSeen() { try { localStorage.setItem(STORAGE_KEY, '1'); } catch (e) {} }

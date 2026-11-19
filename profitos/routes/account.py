@@ -147,7 +147,7 @@ def register(app):
             if result.get('sent'):
                 flash('Compte créé. Un e-mail de confirmation a été envoyé.')
             elif result.get('dry_run'):
-                flash("Compte créé. Vérification e-mail : service e-mail non configuré, aucun e-mail envoyé (mode simulation).")
+                flash("Compte créé. L'e-mail de confirmation n'a pas pu partir : l'envoi d'e-mails n'est pas encore configuré. Vous pouvez utiliser Veqalio normalement.")
             else:
                 current_app.logger.error('Verification email failed after signup: %s', result.get('error','unknown error'))
                 flash("Compte créé, mais l'email de confirmation n'a pas pu être envoyé. Utilisez « Renvoyer l'email de vérification » dans votre compte.")

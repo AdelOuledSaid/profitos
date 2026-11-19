@@ -123,18 +123,36 @@ def register(app):
         ac2=auth_cx(); team_count=ac2.execute('SELECT COUNT(*) c FROM memberships WHERE organization_id=?',(session['org_id'],)).fetchone()['c']; ac2.close()
         _org=current_org()
         _accounting=bool(_org) and feature_enabled(_org['plan'],'accounting_core')
+        # v524 — Chaque étape porte sa raison d'être et son action. Sept pastilles de même
+        # apparence ne disent pas par où commencer : le gabarit met en avant la première
+        # non faite, avec ce qu'elle apporte et le bouton qui y mène.
         onboarding_steps=[
-            {'label':'Profil entreprise complété','done':has_company,'url':url_for('company')},
-            {'label':'Banque connectée ou relevé importé','done':has_bank,'url':url_for('banking')},
-            {'label':'Factures en cours importées ou première facture émise','done':has_invoices,'url':url_for('upload_invoices')},
+            {'label':'Vos informations d\'entreprise','done':has_company,'url':url_for('company'),
+             'why':"Nom, adresse, SIRET, TVA : ces mentions sont obligatoires sur une facture. Sans elles, Veqalio ne peut pas en créer.",
+             'action':'Renseigner mon entreprise'},
+            {'label':'Vos factures en cours','done':has_invoices,'url':url_for('upload_invoices'),
+             'why':"Importez vos factures existantes, ou créez-en une : Veqalio calcule alors la TVA et les écritures tout seul.",
+             'action':'Importer ou créer une facture'},
+            {'label':'Votre banque','done':has_bank,'url':url_for('banking'),
+             'why':"Connectée ou par relevé, elle permet de rapprocher chaque encaissement de la facture correspondante.",
+             'action':'Connecter ma banque'},
         ]
         if _accounting:
-            onboarding_steps.append({'label':'Comptabilité reprise (FEC ou à-nouveaux)','done':has_books,'url':url_for('accounting_fec_import')})
+            onboarding_steps.append({'label':'Votre comptabilité existante','done':has_books,'url':url_for('accounting_fec_import'),
+                                     'why':"Si vous teniez déjà une comptabilité, reprenez-la (fichier FEC ou à-nouveaux) pour repartir de vos vrais soldes.",
+                                     'action':'Reprendre ma comptabilité'})
         if can_access('invoicing'):
-            onboarding_steps.append({'label':'IBAN et relances automatiques réglés','done':has_iban and bool(_collect.get('auto_reminders')),'url':url_for('invoicing_collection_settings')})
+            onboarding_steps.append({'label':'Votre IBAN et vos relances','done':has_iban and bool(_collect.get('auto_reminders')),'url':url_for('invoicing_collection_settings'),
+                                     'why':"Votre IBAN apparaît sur vos factures, et les relances partent toutes seules quand une échéance est dépassée.",
+                                     'action':'Régler mes relances'})
         if can_access('pilotage') and current_plan_is_paid():
-            onboarding_steps.append({'label':'Secteur de la veille confirmé','done':bool(_watch.get('sector') or _watch.get('naf')),'url':url_for('market_watch')})
-        onboarding_steps.append({'label':'Un collègue ou votre expert-comptable invité','done':team_count>1,'url':url_for('team')})
+            onboarding_steps.append({'label':'Votre secteur d\'activité','done':bool(_watch.get('sector') or _watch.get('naf')),'url':url_for('market_watch'),
+                                     'why':"Il sert à repérer les appels d'offres et les tendances qui vous concernent.",
+                                     'action':'Indiquer mon secteur'})
+        onboarding_steps.append({'label':'Votre expert-comptable ou un collègue','done':team_count>1,'url':url_for('team'),
+                                 'why':"Invitez-le : il travaille sur le même dossier, sans échange de fichiers.",
+                                 'action':'Inviter quelqu\'un'})
+        onboarding_next=next((s for s in onboarding_steps if not s['done']), None)
         onboarding_done=sum(1 for s in onboarding_steps if s['done'])
         # Liste de démarrage = configuration du compte : réservée aux rôles qui peuvent la mener à bien.
         show_onboarding=onboarding_done<len(onboarding_steps) and can_access('settings') and can_access('team')
@@ -175,6 +193,7 @@ def register(app):
             dso_svg=dso_svg if can_access('recover') else None,dso_current=dso_current,dso_delta=dso_delta,dso_period=dso_period,
             sector_benchmark=sector_benchmark if can_access('recover') else None,
             onboarding_steps=onboarding_steps,onboarding_done=onboarding_done,show_onboarding=show_onboarding,
+            onboarding_next=onboarding_next,
             cash_pulse=cash_pulse,today_label=today_label,urgent_count=urgent_count,first_name=first_name)
 
     @app.route('/company',methods=['GET','POST'])

@@ -28,11 +28,28 @@
     <div class="help-eyebrow">CENTRE D'AIDE</div>
     <h1>Guide utilisateur Veqalio</h1>
     <p class="help-lead">Comment utiliser Veqalio au quotidien, module par module. Une question qui n'est pas traitée ici ? Écrivez-nous à <a href="mailto:{{ support_email() }}">{{ support_email() }}</a>.</p>
+    {# v524 — Le guide fait une quarantaine d'écrans : sans recherche ni raccourcis, il
+       fallait le parcourir en entier pour trouver une réponse. #}
+    <div class="help-search">
+      <label class="help-search-label" for="help-search">Rechercher dans le guide</label>
+      <input type="search" id="help-search" class="help-search-input" autocomplete="off"
+             placeholder="Par exemple : première facture, TVA, relance…">
+      <p class="help-search-count" id="help-search-count" role="status" aria-live="polite"></p>
+      <p class="help-search-shortcuts">
+        <span>Questions fréquentes :</span>
+        <button type="button" class="help-chip" data-help-query="première facture">Faire ma première facture</button>
+        <button type="button" class="help-chip" data-help-query="TVA">Déclarer ma TVA</button>
+        <button type="button" class="help-chip" data-help-query="facture électronique">Facture électronique</button>
+        <button type="button" class="help-chip" data-help-query="importer">Importer mes données</button>
+        <button type="button" class="help-chip" data-help-query="relance">Relancer un impayé</button>
+      </p>
+    </div>
     <article class="help-content">
       {% include "help_content.html" %}
     </article>
     <p class="help-back"><a href="#contenu">↑ Revenir en haut</a></p>
   </main>
 </div>
+<script src="{{ asset_url('help-search.js') }}" defer></script>
 </body>
 </html>

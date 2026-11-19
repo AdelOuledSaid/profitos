@@ -136,7 +136,8 @@ def test_en_bac_a_sable_les_autres_mentions_restent_exigees(sandbox):
     à émettre n'importe quoi."""
     _checks, missing = I._check_mandatory_mentions(
         invoice(client_name='', line_items='[]'), {**UNREGISTERED, 'name': '', 'address': ''})
-    assert "Nom (dénomination) de l'émetteur" in missing
+    # v524 — « dénomination » a disparu des libellés visibles : le mot n'était pas compris.
+    assert "Nom de votre entreprise" in missing
     assert "Adresse de l'émetteur" in missing
     assert 'Nom du client' in missing
     assert 'Au moins une ligne avec désignation, quantité, prix unitaire et taux de TVA' in missing

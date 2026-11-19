@@ -56,7 +56,7 @@ def parse_company_form(form):
         v['allowed_departments'] = v['department']
     errors = []
     if not v['name']:
-        errors.append("La dénomination de l'entreprise est obligatoire.")
+        errors.append("Le nom de l'entreprise est obligatoire.")
     if v['siret'] and not siret_is_valid(v['siret']):
         errors.append("SIRET invalide : il doit comporter 14 chiffres et respecter la clé de contrôle (vérifiez la saisie).")
     if v['vat_number'] and not fr_vat_is_valid(v['vat_number'], v['siret'][:9] or None):
@@ -97,10 +97,10 @@ def missing_mandatory_fields(p):
     """Champs indispensables pour émettre une facture conforme, encore vides (libellés français).
     Sert à la case « Profil entreprise complété » du tableau de bord et au démarrage."""
     if not p:
-        return ['dénomination', 'forme juridique', 'SIRET', 'adresse', 'code postal', 'ville', 'n° de TVA']
+        return ['nom', 'forme juridique', 'SIRET', 'adresse', 'code postal', 'ville', 'n° de TVA']
     get = (lambda k: (p.get(k) if hasattr(p, 'get') else p[k]) or '')
     missing = []
-    for key, label in (('name', 'dénomination'), ('legal_form', 'forme juridique'), ('siret', 'SIRET'),
+    for key, label in (('name', 'nom'), ('legal_form', 'forme juridique'), ('siret', 'SIRET'),
                        ('address', 'adresse'), ('postal_code', 'code postal'), ('city', 'ville')):
         if not str(get(key)).strip():
             missing.append(label)
