@@ -1015,7 +1015,17 @@ def backup(org, ctx):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     result = mod.run_backup()
-    return ', '.join(result.get('files', []))[:400]
+    # v520 — Le journal doit dire si la copie hors site a réellement eu lieu : sans cette
+    # mention, une sauvegarde restée sur le seul disque du serveur se lit comme une
+    # sauvegarde complète, et la différence n'apparaît que le jour où le disque est perdu.
+    files = ', '.join(result.get('files', []))
+    if result.get('s3_configured'):
+        offsite = f"copie hors site : {result.get('uploaded', 0)} fichier(s)"
+        if result.get('s3_pruned'):
+            offsite += f", {len(result['s3_pruned'])} ancienne(s) supprimée(s)"
+    else:
+        offsite = 'copie hors site : non configurée'
+    return f'{files} — {offsite}'[:400]
 
 
 # ---------------------------------------------------------------------------

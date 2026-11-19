@@ -19,7 +19,8 @@ Usage :
 Variables : BACKUP_PASSPHRASE (obligatoire), BACKUP_DIR, BACKUP_KEEP (7),
 BACKUP_KEEP_LOCAL_WITH_S3 (2), BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT,
 BACKUP_S3_REGION, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY,
-BACKUP_S3_PREFIX. Restauration : scripts/restore.py et RESTORE.md.
+BACKUP_S3_PREFIX, BACKUP_S3_KEEP (0 = ne jamais supprimer dans le bucket).
+Restauration : scripts/restore.py et RESTORE.md.
 """
 import argparse
 import hashlib
@@ -239,6 +240,73 @@ def s3_put(path, cfg, name=None):
     return url
 
 
+def s3_list(cfg):
+    """Noms des objets présents sous le préfixe (ListObjectsV2, pagination incluse)."""
+    import requests
+    from xml.etree import ElementTree
+    names, token = [], None
+    while True:
+        params = [('list-type', '2'), ('max-keys', '1000'), ('prefix', cfg['prefix'])]
+        if token:
+            params.append(('continuation-token', token))
+        # SigV4 : la chaîne de requête canonique est triée par nom de paramètre
+        query = '&'.join(f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in sorted(params))
+        url = f"{cfg['endpoint']}/{cfg['bucket']}?{query}"
+        empty = hashlib.sha256(b'').hexdigest()
+        resp = requests.get(url, headers=sigv4_headers('GET', url, cfg, empty), timeout=(10, 120))
+        if resp.status_code != 200:
+            raise BackupError(f'Listage S3 refusé (HTTP {resp.status_code}).')
+        root = ElementTree.fromstring(resp.content)
+        ns = {'s3': root.tag.split('}')[0].strip('{')} if '}' in root.tag else {}
+        find = (lambda p: root.findall('s3:' + p, ns)) if ns else (lambda p: root.findall(p))
+        for item in find('Contents'):
+            key = item.find('s3:Key', ns) if ns else item.find('Key')
+            if key is not None and key.text and key.text.startswith(cfg['prefix']):
+                names.append(key.text[len(cfg['prefix']):])
+        trunc = (root.find('s3:IsTruncated', ns) if ns else root.find('IsTruncated'))
+        if trunc is None or (trunc.text or '').lower() != 'true':
+            return names
+        nxt = (root.find('s3:NextContinuationToken', ns) if ns else root.find('NextContinuationToken'))
+        token = nxt.text if nxt is not None else None
+        if not token:
+            return names
+
+
+def s3_delete(cfg, name):
+    import requests
+    url = s3_object_url(cfg, name)
+    empty = hashlib.sha256(b'').hexdigest()
+    resp = requests.delete(url, headers=sigv4_headers('DELETE', url, cfg, empty), timeout=(10, 120))
+    if resp.status_code not in (200, 204):
+        raise BackupError(f'Suppression S3 refusée (HTTP {resp.status_code}).')
+    return name
+
+
+def prune_s3(cfg, keep, protect=()):
+    """Supprime les sauvegardes les plus anciennes du bucket, au-delà des `keep` dernières.
+
+    Prudence volontaire : la purge ne part que des manifestes, qui ne sont écrits qu'en
+    toute fin de sauvegarde réussie ; une sauvegarde incomplète n'a pas de manifeste et
+    n'est donc jamais comptée comme l'une des `keep` conservées. Seuls les objets dont le
+    nom commence exactement par `profitos_<horodatage>.` sont effacés, jamais un objet
+    étranger partageant le bucket. `keep` inférieur à 1 désactive toute suppression : il
+    vaut mieux payer un bucket qui grossit que d'effacer une sauvegarde de trop.
+    """
+    if not keep or keep < 1:
+        return []
+    names = s3_list(cfg)
+    suffix = '.manifest.json'
+    stamps = sorted(n[len(PREFIX):-len(suffix)] for n in names
+                    if n.startswith(PREFIX) and n.endswith(suffix))
+    doomed = [s for s in stamps[:-keep] if s not in protect]
+    removed = []
+    for stamp in doomed:
+        for name in sorted(n for n in names if n.startswith(f'{PREFIX}{stamp}.')):
+            s3_delete(cfg, name)
+        removed.append(stamp)
+    return removed
+
+
 def s3_get(cfg, name, dest):
     import requests
     url = s3_object_url(cfg, name)
@@ -306,13 +374,19 @@ def run_backup(include_db=True, include_uploads=True, backup_dir=None, keep=None
     }
     manifest_path = backup_dir / f'{PREFIX}{stamp}.manifest.json'
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
-    uploaded = []
+    uploaded, s3_removed = [], []
     if s3:
+        # Le manifeste part en dernier : il fait office de marqueur de complétude, et une
+        # sauvegarde interrompue reste ainsi invisible à la restauration comme à la purge.
         for p in files + [manifest_path]:
             uploaded.append(s3_put(p, cfg=s3))
+        s3_keep = int(env.get('BACKUP_S3_KEEP', 0) or 0)
+        if s3_keep >= 1:
+            s3_removed = prune_s3(s3, s3_keep, protect=(stamp,))
     removed = prune_local(backup_dir, keep)
     return {'stamp': stamp, 'files': [p.name for p in files], 'manifest': str(manifest_path),
-            'uploaded': len(uploaded), 'pruned': removed}
+            'uploaded': len(uploaded), 'pruned': removed,
+            's3_configured': bool(s3), 's3_pruned': s3_removed}
 
 
 def main(argv=None):

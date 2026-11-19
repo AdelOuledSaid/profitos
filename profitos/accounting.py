@@ -1430,8 +1430,15 @@ def compute_depreciation_for_year(conn, asset, calendar_year):
         theoretical = degressive_schedule(asset['purchase_amount'], asset['useful_life_years'],
                                           asset['purchase_date']).get(calendar_year, 0.0)
     elif calendar_year == purchase_date_obj.year:
+        # v522 — Le prorata rapporte les jours restants au nombre de jours de l'année
+        # considérée, 366 les années bissextiles. Divisé par 365 en toutes circonstances,
+        # un bien acquis le 1er janvier d'une année bissextile recevait 366/365 de son
+        # annuité, soit une dotation supérieure à l'annuité pleine (5,48 € de trop la
+        # première année sur un bien de 10 000 € amorti en cinq ans) : un écart qu'un
+        # contrôle de l'amortissement relève immédiatement.
+        days_in_year = (date(calendar_year, 12, 31) - date(calendar_year, 1, 1)).days + 1
         days_remaining = (date(calendar_year, 12, 31) - purchase_date_obj).days + 1
-        theoretical = annual_rate * days_remaining / 365
+        theoretical = annual_rate * days_remaining / days_in_year
     else:
         theoretical = annual_rate
     already_posted = conn.execute(
