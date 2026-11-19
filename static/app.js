@@ -465,3 +465,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
   render();
 });
+
+/* v517 — Total TTC recalculé pendant la saisie d'une dépense. Le formulaire demande le hors
+   taxes et la TVA, alors que la facture sous les yeux affiche surtout son total TTC : montrer
+   la somme permet de vérifier d'un regard qu'on a bien recopié, sans sortir une calculatrice.
+   Purement indicatif — rien n'est envoyé, le serveur garde les deux montants saisis. */
+document.addEventListener('DOMContentLoaded', function () {
+  var ht = document.getElementById('purchase-subtotal');
+  var vat = document.getElementById('purchase-vat');
+  var out = document.getElementById('purchase-total');
+  if (!ht || !vat || !out) return;
+
+  function money(value) {
+    try {
+      return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    } catch (e) {
+      return value.toFixed(2) + ' €';
+    }
+  }
+
+  function render() {
+    var a = parseFloat((ht.value || '').replace(',', '.'));
+    var b = parseFloat((vat.value || '').replace(',', '.'));
+    if (isNaN(a) && isNaN(b)) { out.textContent = '—'; return; }
+    out.textContent = money((isNaN(a) ? 0 : a) + (isNaN(b) ? 0 : b));
+  }
+
+  ht.addEventListener('input', render);
+  vat.addEventListener('input', render);
+  render();
+});

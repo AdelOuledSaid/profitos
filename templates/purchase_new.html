@@ -71,12 +71,13 @@
           Facture
         </h4>
         <div class="formgrid">
-          <label>N° facture fournisseur<input name="invoice_number" required value="{{ detected.invoice_number if detected else '' }}"></label>
+          <label>N° de la facture<input name="invoice_number" required value="{{ detected.invoice_number if detected else '' }}">
+            <small class="pf-hint">Le numéro inscrit sur la facture de votre fournisseur.</small></label>
           <label>Catégorie
             <select name="category">{% for key, label in categories %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
           </label>
           {% if entities and entities|length > 1 %}
-          <label>Entité (comptabilité)
+          <label>Société concernée
             <select name="entity_id">
               {% for e in entities %}<option value="{{ e.id or '' }}" {% if (active_entity and active_entity.id)==e.id %}selected{% endif %}>{{ e.name }}{% if e.id is none %} (société mère){% endif %}</option>{% endfor %}
             </select>
@@ -90,8 +91,9 @@
             </select>
           </label>
           {% endif %}
-          <label>Date de facture<input name="issue_date" type="date" required value="{{ detected.issue_date if detected else '' }}"></label>
-          <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}"></label>
+          <label>Date de la facture<input name="issue_date" type="date" required value="{{ detected.issue_date if detected else '' }}"></label>
+          <label>Date d'échéance<input name="due_date" type="date" value="{{ detected.due_date if detected else '' }}">
+            <small class="pf-hint">La date à laquelle vous devez payer. Sert aux rappels et à la trésorerie.</small></label>
         </div>
       </div>
 
@@ -101,15 +103,20 @@
           Montants
         </h4>
         <div class="formgrid">
-          <label>Montant HT<input name="subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected and detected.subtotal is not none else '' }}"></label>
-          <label>TVA<input name="vat_amount" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected and detected.vat_amount is not none else '0' }}"></label>
+          {# v517 — Sur la facture qu'on a sous les yeux, c'est le total TTC qui saute aux yeux ;
+             le hors taxes se cherche. D'où les deux repères : où lire chaque montant, et le TTC
+             recalculé en direct, qui permet de vérifier d'un regard qu'on a bien recopié. #}
+          <label>Montant hors taxes (HT)<input name="subtotal" id="purchase-subtotal" type="number" step="0.01" min="0" required value="{{ '%.2f'|format(detected.subtotal) if detected and detected.subtotal is not none else '' }}">
+            <small class="pf-hint">Le total avant TVA, tel qu'il figure sur la facture.</small></label>
+          <label>Montant de la TVA<input name="vat_amount" id="purchase-vat" type="number" step="0.01" min="0" value="{{ '%.2f'|format(detected.vat_amount) if detected and detected.vat_amount is not none else '0' }}">
+            <small class="pf-hint">0 si la facture n'en comporte pas (franchise, auto-entrepreneur).</small></label>
         </div>
-        {% if detected %}
-        <div class="purchase-total-line">
-          <span class="muted">Total TTC détecté</span>
-          <strong>{{ (detected.total)|fr_number(2) }}&nbsp;€</strong>
+        <div class="purchase-total-line" id="purchase-total-line">
+          <span class="muted">Total TTC</span>
+          <strong id="purchase-total">{% if detected %}{{ (detected.total)|fr_number(2) }}&nbsp;€{% else %}—{% endif %}</strong>
         </div>
-        {% endif %}
+        <p class="pf-hint" style="margin:6px 0 0;">Ce total doit correspondre à celui de votre facture. S'il diffère,
+          c'est qu'un des deux montants ci-dessus est inexact.</p>
       </div>
 
       <div class="purchase-field-group">
