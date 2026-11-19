@@ -17,43 +17,86 @@
   <form method="post" class="formgrid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset {% if not can_edit_company %}disabled{% endif %} style="display:contents;border:0;">
-    <label>Dénomination<input name="name" value="{{ p.name or '' }}" required></label>
+    {# v516 — Vingt champs se suivaient sans ordre : identité, immatriculation, TVA,
+       conditions de règlement et marchés publics mêlés. Ne reste visible que ce qu'il faut
+       pour émettre une facture ; le reste attend dans des sections nommées, ouvertes d'office
+       dès qu'elles portent une valeur. Les libellés juridiques sont expliqués : « Dénomination »
+       ou « Ville du greffe » ne disent rien à un micro-entrepreneur. #}
+    <label><span>Nom de l'entreprise <span class="pf-req" title="obligatoire">*</span></span><input name="name" value="{{ p.name or '' }}" required>
+      <small class="pf-hint">Le nom qui figurera sur vos factures. Pour un micro-entrepreneur, vos nom et prénom.</small></label>
     <label>Forme juridique
       <select name="legal_form">
         <option value="">— Choisir —</option>
         {% for f in legal_forms %}<option value="{{ f }}" {% if p.legal_form == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
       </select>
     </label>
-    <label>Capital social (€)<input name="share_capital" value="{{ p.share_capital or '' }}" placeholder="10 000" inputmode="decimal"></label>
-    <label>Ville du greffe (RCS)<input name="rcs_city" value="{{ p.rcs_city or '' }}" placeholder="Lyon"></label>
-    <label>N° au répertoire des métiers (artisans)<input name="rm_number" value="{{ p.rm_number or '' }}" placeholder="RM 123 456 789 69"></label>
-    <label class="wide">Votre identifiant d'annuaire (facturation électronique)<input name="electronic_address"
-      maxlength="80" value="{{ p.electronic_address or '' }}" placeholder="par défaut, votre SIREN">
-      <small class="pf-hint">Ce n'est pas une adresse e-mail : c'est l'identifiant sous lequel votre entreprise est
-        inscrite à l'annuaire, et auquel la plateforme vous renvoie les statuts de vos factures. À remplir seulement
-        s'il diffère de votre SIREN, par exemple 0225:315143296_121167.</small></label>
-    <label class="wide">Adresse (figurant sur vos factures)<textarea name="address" rows="2" placeholder="12 rue Example">{{ p.address or '' }}</textarea></label>
+    <label class="wide">Adresse<textarea name="address" rows="2" placeholder="12 rue de la Paix">{{ p.address or '' }}</textarea>
+      <small class="pf-hint">Celle qui figurera sur vos factures.</small></label>
     <label>Code postal<input name="postal_code" value="{{ p.postal_code or '' }}" placeholder="75001" inputmode="numeric"></label>
     <label>Ville<input name="city" value="{{ p.city or '' }}"></label>
-    <label>SIRET<input name="siret" value="{{ p.siret or '' }}" placeholder="123 456 789 00012"></label>
-    <label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number or '' }}" placeholder="FR12345678900"></label>
-    <label>Régime de TVA
+    <label>SIRET<input name="siret" value="{{ p.siret or '' }}" placeholder="123 456 789 00012">
+      <small class="pf-hint">14 chiffres, sur votre avis de situation Insee. Obligatoire pour facturer.</small></label>
+    <label>N° TVA intracommunautaire<input name="vat_number" value="{{ p.vat_number or '' }}" placeholder="FR12345678900">
+      <small class="pf-hint">Laissez vide si vous êtes en franchise de TVA.</small></label>
+    <label class="wide">Régime de TVA
       <select name="vat_regime">
         <option value="normal" {% if (p.vat_regime or 'normal') == 'normal' %}selected{% endif %}>Assujetti à la TVA (régime réel)</option>
         <option value="franchise_293B" {% if p.vat_regime == 'franchise_293B' %}selected{% endif %}>Franchise en base (art. 293 B du CGI)</option>
       </select>
     </label>
-    <label class="checkbox-label"><input type="checkbox" name="vat_on_debits" {% if (p.vat_on_debits or '0')|string in ('1','on') %}checked{% endif %}> Option pour le paiement de la TVA d'après les débits (prestations de services)</label>
-    <label class="wide">Conditions de paiement (mention sur vos factures)<input name="payment_terms" value="{{ p.payment_terms or '' }}" placeholder="Paiement à 30 jours date de facture, par virement"></label>
-    <label>Taux des pénalités de retard<input name="late_penalty_rate" value="{{ p.late_penalty_rate or '' }}" placeholder="trois fois le taux d'intérêt légal"></label>
-    <label>Escompte pour paiement anticipé<input name="escompte_text" value="{{ p.escompte_text or '' }}" placeholder="Pas d'escompte pour paiement anticipé."></label>
-    <label>Département principal<input name="department" value="{{ p.department or '' }}" placeholder="14"></label>
-    <label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments or '' }}" placeholder="14, 50, 61, 27"></label>
-    <label class="wide">Activités<textarea name="activities" rows="3">{{ p.activities or '' }}</textarea></label>
-    <label class="wide">Certifications<input name="certifications" value="{{ p.certifications or '' }}"></label>
+
+    <details class="pf-more wide" {% if p.share_capital or p.rcs_city or p.rm_number or (p.vat_on_debits or '0')|string in ('1','on') %}open{% endif %}>
+      <summary>Mentions légales complémentaires <span class="pf-more-hint">capital, immatriculation, option de TVA</span></summary>
+      <div class="formgrid">
+        <label>Capital social (€)<input name="share_capital" value="{{ p.share_capital or '' }}" placeholder="10 000" inputmode="decimal">
+          <small class="pf-hint">Pour les sociétés. Vide pour une entreprise individuelle.</small></label>
+        <label>Ville du greffe (RCS)<input name="rcs_city" value="{{ p.rcs_city or '' }}" placeholder="Lyon">
+          <small class="pf-hint">La ville où votre société est immatriculée, indiquée sur votre Kbis.</small></label>
+        <label>N° au répertoire des métiers<input name="rm_number" value="{{ p.rm_number or '' }}" placeholder="RM 123 456 789 69">
+          <small class="pf-hint">Pour les artisans inscrits à la Chambre de métiers.</small></label>
+        <label class="checkbox-label wide"><input type="checkbox" name="vat_on_debits" {% if (p.vat_on_debits or '0')|string in ('1','on') %}checked{% endif %}> Option pour le paiement de la TVA d'après les débits</label>
+      </div>
+    </details>
+
+    <details class="pf-more wide" {% if p.payment_terms or p.late_penalty_rate or p.escompte_text %}open{% endif %}>
+      <summary>Conditions de règlement <span class="pf-more-hint">délai, pénalités, escompte — mentions obligatoires</span></summary>
+      <div class="formgrid">
+        <label class="wide">Conditions de paiement<input name="payment_terms" value="{{ p.payment_terms or '' }}" placeholder="Paiement à 30 jours date de facture"></label>
+        <label>Taux des pénalités de retard<input name="late_penalty_rate" value="{{ p.late_penalty_rate or '' }}" placeholder="trois fois le taux d'intérêt légal"></label>
+        <label>Escompte pour paiement anticipé<input name="escompte_text" value="{{ p.escompte_text or '' }}" placeholder="Pas d'escompte pour paiement anticipé."></label>
+      </div>
+    </details>
+
+    <details class="pf-more wide" {% if p.electronic_address %}open{% endif %}>
+      <summary>Facturation électronique <span class="pf-more-hint">votre identifiant d'annuaire</span></summary>
+      <div class="formgrid">
+        <label class="wide">Identifiant d'annuaire<input name="electronic_address" maxlength="80"
+          value="{{ p.electronic_address or '' }}" placeholder="par défaut, votre SIREN">
+          <small class="pf-hint">Ce n'est pas une adresse e-mail : c'est l'identifiant sous lequel votre entreprise est
+            inscrite à l'annuaire, et auquel la plateforme vous renvoie les statuts de vos factures. À remplir seulement
+            s'il diffère de votre SIREN, par exemple 0225:315143296_121167.</small></label>
+      </div>
+    </details>
+
+    <details class="pf-more wide" {% if p.department or p.allowed_departments or p.activities or p.certifications %}open{% endif %}>
+      <summary>Marchés publics <span class="pf-more-hint">zone d'intervention, activités, certifications</span></summary>
+      <div class="formgrid">
+        <label>Département principal<input name="department" value="{{ p.department or '' }}" placeholder="14"></label>
+        <label>Départements d'intervention<input name="allowed_departments" value="{{ p.allowed_departments or '' }}" placeholder="14, 50, 61, 27"></label>
+        <label class="wide">Activités<textarea name="activities" rows="3">{{ p.activities or '' }}</textarea></label>
+        <label class="wide">Certifications<input name="certifications" value="{{ p.certifications or '' }}"></label>
+      </div>
+    </details>
+
     {% if can_edit_company %}
-    <label>IBAN (factures et virements groupés)<input name="iban" value="{{ p.iban or '' }}" placeholder="FR76 1234 5678 ..."></label>
-    <label>BIC<input name="bic" value="{{ p.bic or '' }}" placeholder="ex : BNPAFRPP"></label>
+    <details class="pf-more wide" {% if p.iban or p.bic %}open{% endif %}>
+      <summary>Coordonnées bancaires <span class="pf-more-hint">pour être payé par virement</span></summary>
+      <div class="formgrid">
+        <label>IBAN<input name="iban" value="{{ p.iban or '' }}" placeholder="FR76 1234 5678 ...">
+          <small class="pf-hint">Figure sur vos factures et sert aux virements groupés.</small></label>
+        <label>BIC<input name="bic" value="{{ p.bic or '' }}" placeholder="ex : BNPAFRPP"></label>
+      </div>
+    </details>
     <div class="wide"><button class="purchase-primary-btn primary">Enregistrer le profil</button></div>
     {% endif %}
     </fieldset>
