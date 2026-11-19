@@ -17,7 +17,10 @@ def test_review_queue_exists_and_prioritizes_pending_operations():
 
 
 def test_ui_exposes_accounting_review_queue_and_human_control():
-    assert "File de traitement comptable" in T
+    # v518 — ce qui doit tenir, c'est la file et la promesse de contrôle humain, pas leur
+    # formulation : un libellé figé par un test est un libellé qu'on n'ose plus améliorer.
+    assert "accounting_review_queue.stable" in T and "accounting_review_queue.confirm" in T
     assert "Habitudes stables :" in T
     assert "À confirmer :" in T
-    assert "aucune écriture n'est créée sans votre validation" in T
+    promesse = [l for l in T.split("\n") if "criture" in l and "sans votre" in l]
+    assert promesse, "l'écran doit affirmer qu'aucune écriture n'est enregistrée sans l'accord de l'utilisateur"

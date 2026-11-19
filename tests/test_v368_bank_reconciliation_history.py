@@ -4,7 +4,9 @@ BANK=(ROOT/"profitos/routes/bank_sync.py").read_text(encoding="utf-8")
 TPL=(ROOT/"templates/banking.html").read_text(encoding="utf-8")
 
 def test_v368_customer_history_is_explicit():
-    assert "Rapprochements clients confirmés" in TPL
+    # v518 — on vérifie que l'historique client existe et montre ses colonnes d'audit, non
+    # le libellé exact de son titre : figer les mots de l'interface interdit de les améliorer.
+    assert "{% if reconciliations %}" in TPL
     assert "invoice_number" in TPL
     assert "client_name" in TPL
     assert "matched_amount" in TPL
@@ -20,7 +22,7 @@ def test_v368_supplier_history_is_passed_to_template():
     assert "purchase_reconciliations=purchase_reconciliations" in BANK
 
 def test_v368_supplier_history_ui_has_audit_fields():
-    assert "Rapprochements fournisseurs confirmés" in TPL
+    assert "{% if purchase_reconciliations %}" in TPL
     assert "Fournisseur" in TPL
     assert "Montant affecté" in TPL
     assert "r.transaction_date" in TPL

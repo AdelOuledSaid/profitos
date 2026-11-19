@@ -611,3 +611,14 @@ button.purchase-primary-btn{font:inherit;font-weight:800;cursor:pointer}
   flex:0 0 auto;
   margin:0;
 }
+
+/* v518 — Un panneau entier qui se replie : les historiques du rapprochement bancaire
+   occupaient autant de place que les opérations restant à traiter. */
+details.purchase-panel.pf-more{padding-top:0;padding-bottom:0}
+details.purchase-panel.pf-more>summary{
+  padding:16px 0;
+  font-size:16px;
+  color:#fff;
+}
+details.purchase-panel.pf-more[open]>summary{margin-bottom:4px}
+details.purchase-panel.pf-more>summary:hover{background:transparent}

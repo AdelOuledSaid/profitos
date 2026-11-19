@@ -3,7 +3,10 @@
 <div class="purchase-page">
 <div class="purchase-eyebrow">BANQUES CONNECTÉES</div>
 <h1 class="purchase-title">Banques</h1>
-<p class="purchase-subtitle">Connectez vos comptes pour synchroniser automatiquement soldes et transactions avec Veqalio.</p>
+{# v518 — « Rapprocher » ne dit rien à qui n'est pas comptable : la page expliquait comment
+   brancher sa banque, jamais ce qu'on y fait ensuite. #}
+<p class="purchase-subtitle">Vos comptes bancaires, et le rattachement de chaque mouvement à la facture qui lui
+  correspond — c'est ce qui permet de savoir ce qui est réellement payé, et ce qui ne l'est pas.</p>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
   <a class="purchase-nav-btn" href="{{ url_for('banking_reconciliation_statement') }}">État de rapprochement →</a>
   <a class="purchase-nav-btn" href="{{ url_for('upload_bank_statement') }}">Importer un relevé (CSV, Excel, PDF) →</a>
@@ -95,7 +98,9 @@
 {% if reconciliation_suggestions %}
 <section class="purchase-panel" style="margin-top:20px;">
   <div class="purchase-eyebrow">RAPPROCHEMENT</div>
-  <h2 style="color:#fff;">Paiements à rapprocher</h2>
+  <h2 style="color:#fff;">Paiements reçus à rattacher</h2>
+  <p class="purchase-muted" style="font-size:13px;margin:0 0 10px;">Ces sommes sont arrivées sur votre compte.
+    Indiquez à quelle facture chacune correspond : la facture passera alors en payée.</p>
   <p class="purchase-muted">Veqalio compare le solde restant, le numéro de facture et le client. Un même virement peut être réparti sur plusieurs factures et une facture peut recevoir plusieurs virements. La validation reste toujours manuelle.</p>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
@@ -124,8 +129,8 @@
 {% endif %}
 
 {% if reconciliations %}
-<section class="purchase-panel" style="margin-top:20px;">
-  <h2 style="color:#fff;">Rapprochements clients confirmés</h2>
+<details class="purchase-panel pf-more pf-more" style="margin-top:20px;">
+  <summary>Paiements clients déjà rattachés <span class="pf-more-hint">les virements reçus déjà associés à une facture</span></summary>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
       <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
@@ -142,12 +147,12 @@
       </tbody>
     </table>
   </div>
-</section>
+</details>
 {% endif %}
 
 {% if purchase_reconciliations %}
-<section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.5">
-  <h2>Rapprochements fournisseurs confirmés</h2>
+<details class="purchase-panel pf-more pf-more" style="margin-top:20px;" data-profitos-lot="14.5">
+  <summary>Paiements fournisseurs déjà rattachés <span class="pf-more-hint">les règlements envoyés déjà associés à une facture</span></summary>
   <p class="purchase-muted">Historique des affectations bancaires fournisseurs, y compris les paiements partiels et groupés.</p>
   <div class="purchase-table-wrap">
     <table class="purchase-table">
@@ -165,13 +170,13 @@
       </tbody>
     </table>
   </div>
-</section>
+</details>
 {% endif %}
 
 
 {% if reconciliations or purchase_reconciliations %}
-<section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.5">
-  <h2 style="color:#fff;margin-bottom:6px;">Historique des rapprochements</h2>
+<details class="purchase-panel pf-more pf-more" style="margin-top:20px;" data-profitos-lot="14.5">
+  <summary>Historique des rattachements <span class="pf-more-hint">le détail complet, clients et fournisseurs</span></summary>
   <p class="purchase-muted" style="margin-top:0;">Affectations bancaires déjà confirmées pour les factures clients et fournisseurs.</p>
 
   {% if reconciliations %}
@@ -213,11 +218,13 @@
     </table>
   </div>
   {% endif %}
-</section>
+</details>
 {% endif %}
 
 <section class="purchase-panel" style="margin-top:20px;" data-profitos-lot="14.4">
-  <h2 style="color:#fff;margin-bottom:6px;">Paiements fournisseurs à rapprocher</h2>
+  <h2 style="color:#fff;margin-bottom:6px;">Paiements envoyés à rattacher</h2>
+  <p class="purchase-muted" style="font-size:13px;margin:0 0 10px;">Ces sommes sont parties de votre compte.
+    Indiquez quelle facture fournisseur chacune règle.</p>
   <p class="purchase-muted" style="margin-top:0;">Suggestions nécessitant un montant exact ou un indice fournisseur/facture. Confirmation manuelle obligatoire.</p>
 
   {% set ns = namespace(found=false) %}
@@ -263,8 +270,9 @@
 
 {% if accounting_review_queue %}
 <section class="purchase-panel" style="margin-top:20px;">
-  <h2 style="color:#fff;">File de traitement comptable</h2>
-  <p class="purchase-muted">Priorisation des opérations à traiter — aucune écriture n'est créée sans votre validation.</p>
+  <h2 style="color:#fff;">Opérations à vérifier</h2>
+  <p class="purchase-muted">Les opérations que Veqalio a classées pour vous, de la plus sûre à la plus douteuse.
+    Aucune écriture comptable n'est enregistrée sans votre accord.</p>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
     <span class="btn btn-secondary" style="pointer-events:none;">Habitudes stables : {{ accounting_review_queue.stable|length }}</span>
     <span class="btn btn-secondary" style="pointer-events:none;">À confirmer : {{ accounting_review_queue.confirm|length }}</span>

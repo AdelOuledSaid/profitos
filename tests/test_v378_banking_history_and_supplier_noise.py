@@ -8,7 +8,9 @@ def test_v378_template_parses():
     Environment().parse(TPL)
 
 def test_v378_history_is_visible_and_combined():
-    assert "Historique des rapprochements" in TPL
+    # v518 — l'historique combiné reste présent et distingue clients et fournisseurs ;
+    # son intitulé, lui, doit pouvoir évoluer sans casser ce contrôle.
+    assert "{% if reconciliations or purchase_reconciliations %}" in TPL
     assert ">Clients<" in TPL
     assert ">Fournisseurs<" in TPL
     assert "purchase_reconciliations" in TPL
