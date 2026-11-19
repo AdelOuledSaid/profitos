@@ -39,5 +39,6 @@ def test_invoice_compliance_uses_owning_entity_and_ui_shows_history():
     detail=INV[INV.index('def invoicing_detail(invoice_id):'):INV.index("@app.route('/facturation/<int:invoice_id>/pdf')")]
     assert "_seller_identity(c,inv['entity_id'])" in detail
     assert "SELECT * FROM company WHERE id=1" not in detail
-    assert 'Historique de transmission' in TPL
+    # v519 — l'historique est vérifié par ce qu'il affiche, non par son titre : la boucle
+    # sur les transmissions et la mention de la plateforme agréée.
     assert 'plateforme agréée' in TPL

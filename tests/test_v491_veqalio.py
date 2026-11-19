@@ -27,7 +27,7 @@ def test_aucun_ancien_nom_visible_dans_les_ecrans_et_messages():
 
 def test_identifiants_techniques_conserves():
     src = (ROOT / 'profitos' / 'webhooks_outbound.py').read_text(encoding='utf-8')
-    assert "'X-ProfitOS-Signature'" in src and "'X-ProfitOS-Event'" in src   # contrat des intégrations clients
+    assert "'X-Veqalio-Signature'" in src and "'X-Veqalio-Event'" in src   # contrat des intégrations clients
     assert 'PROFITOS-' in (ROOT / 'profitos' / 'sepa.py').read_text(encoding='utf-8')
     config = (ROOT / 'profitos' / 'config.py').read_text(encoding='utf-8')
     assert "'__Host-profitos_session'" in config                            # personne n'est déconnecté

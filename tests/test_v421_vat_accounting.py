@@ -43,7 +43,10 @@ def test_services_vat_pending_until_payment_and_ca3_by_rate(app):
     _post(client, f'/facturation/{inv_id}/reglement', {'amount': '600,00', 'payment_date': today})
     assert _balance(org_id, '445740') == 100.0 and _balance(org_id, '445710') == 100.0
     page = client.get(f'/comptabilite/tva?date_from={today[:4]}-01-01&date_to={today}').get_data(as_text=True)
-    assert 'TVA collectée par taux (CA3)' in page and '500,00' in page and '100,00' in page
+    # v519 — le titre de la section a été réécrit pour être compréhensible sans être
+    # comptable ; ce qui est vérifié ici est la ventilation elle-même : le taux affiché,
+    # la base encaissée (500,00 €) et la TVA devenue exigible (100,00 €).
+    assert 'Taux normal 20 %' in page and '500,00' in page and '100,00' in page
     _post(client, f'/facturation/{inv_id}/reglement', {'amount': '600', 'payment_date': today})
     assert _balance(org_id, '445740') == 0 and _balance(org_id, '445710') == 200.0
     from profitos.accounting import ca3_collected_by_rate

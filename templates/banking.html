@@ -128,55 +128,9 @@
 </section>
 {% endif %}
 
-{% if reconciliations %}
-<details class="purchase-panel pf-more pf-more" style="margin-top:20px;">
-  <summary>Paiements clients déjà rattachés <span class="pf-more-hint">les virements reçus déjà associés à une facture</span></summary>
-  <div class="purchase-table-wrap">
-    <table class="purchase-table">
-      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Client</th><th>Montant</th></tr></thead>
-      <tbody>
-      {% for r in reconciliations %}
-        <tr>
-          <td>{{ r.transaction_date|fr_date or '—' }}</td>
-          <td>{{ r.label or '—' }}</td>
-          <td>{{ r.invoice_number }}</td>
-          <td>{{ r.client_name }}</td>
-          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</details>
-{% endif %}
-
-{% if purchase_reconciliations %}
-<details class="purchase-panel pf-more pf-more" style="margin-top:20px;" data-profitos-lot="14.5">
-  <summary>Paiements fournisseurs déjà rattachés <span class="pf-more-hint">les règlements envoyés déjà associés à une facture</span></summary>
-  <p class="purchase-muted">Historique des affectations bancaires fournisseurs, y compris les paiements partiels et groupés.</p>
-  <div class="purchase-table-wrap">
-    <table class="purchase-table">
-      <thead><tr><th>Date</th><th>Transaction</th><th>Facture</th><th>Fournisseur</th><th>Montant affecté</th></tr></thead>
-      <tbody>
-      {% for r in purchase_reconciliations %}
-        <tr>
-          <td>{{ r.transaction_date|fr_date or '—' }}</td>
-          <td>{{ r.label or '—' }}</td>
-          <td>{{ r.invoice_number }}</td>
-          <td>{{ r.supplier_name }}</td>
-          <td><strong>{{ (r.matched_amount or 0)|fr_number(2) }}&nbsp;€</strong></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</details>
-{% endif %}
-
-
 {% if reconciliations or purchase_reconciliations %}
-<details class="purchase-panel pf-more pf-more" style="margin-top:20px;" data-profitos-lot="14.5">
-  <summary>Historique des rattachements <span class="pf-more-hint">le détail complet, clients et fournisseurs</span></summary>
+<details class="purchase-panel pf-more" style="margin-top:20px;" data-profitos-lot="14.5">
+  <summary>Paiements déjà rattachés <span class="pf-more-hint">les virements déjà associés à une facture, clients et fournisseurs</span></summary>
   <p class="purchase-muted" style="margin-top:0;">Affectations bancaires déjà confirmées pour les factures clients et fournisseurs.</p>
 
   {% if reconciliations %}

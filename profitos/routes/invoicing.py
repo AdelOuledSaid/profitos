@@ -2322,7 +2322,11 @@ def register(app):
         if os.environ.get('SUPPLIER_INBOX_WEBHOOK_ENABLED', '').strip().lower() not in ('1','true','yes','on'):
             return jsonify({'error': 'supplier inbox disabled'}), 503
         expected_secret = os.environ.get('SUPPLIER_INBOX_WEBHOOK_SECRET', '')
-        supplied_secret = request.headers.get('X-ProfitOS-Inbox-Secret', '')
+        # v519 — En-tête renommé avec le produit. L'ancien nom reste accepté : il est posé
+        # par le prestataire d'e-mail entrant, dont la configuration ne change pas au même
+        # moment que le déploiement.
+        supplied_secret = (request.headers.get('X-Veqalio-Inbox-Secret')
+                           or request.headers.get('X-ProfitOS-Inbox-Secret', ''))
         if len(expected_secret) < 32 or not supplied_secret or not secrets.compare_digest(expected_secret, supplied_secret):
             return jsonify({'error': 'webhook authentication failed'}), 401
 

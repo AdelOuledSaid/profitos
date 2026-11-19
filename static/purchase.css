@@ -137,6 +137,15 @@
   font-variant-numeric:tabular-nums;
   font-weight:900;
 }
+/* v519 — Un montant de TVA ne se lit pas seul : « collectée » et « déductible » ne disent
+   rien à qui n'est pas comptable. La note dit en une ligne de quoi il s'agit. */
+.purchase-stat-note{
+  color:#8fa0a8;
+  font-size:12px;
+  font-weight:500;
+  line-height:1.4;
+  margin-top:6px;
+}
 
 .purchase-panel{
   margin-top:20px;

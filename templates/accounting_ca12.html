@@ -8,7 +8,7 @@
     <p class="purchase-subtitle">Exercice du {{ fy.start|fr_date }} au {{ fy.end|fr_date }}{% if choice=='courant' %} — exercice en cours, montants provisoires{% endif %}. Calcul à partir des écritures des comptes de TVA.</p>
   </div>
   <div class="actionbuttons">
-    <a class="purchase-nav-btn" href="{{ url_for('vat_summary') }}">Synthèse TVA</a>
+    <a class="purchase-nav-btn" href="{{ url_for('vat_summary') }}">TVA &amp; déclaration</a>
     <a class="purchase-nav-btn" href="{{ url_for('fiscal_profile') }}">Profil fiscal</a>
   </div>
 </div>

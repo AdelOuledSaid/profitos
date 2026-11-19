@@ -183,7 +183,7 @@ PAGE_TITLES = {
     'supplier_detail': 'Fournisseur', 'supplier_new': 'Nouveau fournisseur', 'supplier_payment_forecast': 'Prévision des paiements fournisseurs',
     'swan_settings': 'Compte professionnel', 'team': 'Équipe', 'team_entity_access': 'Accès par société', 'team_invitation': 'Invitation',
     'team_performance': "Performance de l'équipe", 'upload_bank_statement': 'Importer un relevé bancaire',
-    'upload_expenses': 'Importer des dépenses', 'upload_invoices': 'Importer des factures', 'vat_summary': 'Synthèse TVA',
+    'upload_expenses': 'Importer des dépenses', 'upload_invoices': 'Importer des factures', 'vat_summary': 'TVA',
     'demo_requests_admin': 'Demandes de démo', 'banking_reconciliation_statement': 'État de rapprochement bancaire',
     'accountant_invite_accept': 'Invitation du cabinet', 'company_weinvoice_onboard': 'Facturation électronique',
     'accounting_trial_balance': 'Balance', 'accounting_entry_detail': 'Écriture comptable', 'accounting_entry_new': 'Saisir une écriture',

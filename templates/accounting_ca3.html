@@ -7,7 +7,7 @@
     <h1 class="purchase-title">Déclaration CA3 pré-remplie</h1>
     <p class="purchase-subtitle">Période du {{ date_from|fr_date }} au {{ date_to|fr_date }}. Reportez ces montants case par case dans votre espace professionnel sur impots.gouv.fr, ou transmettez-les à votre expert-comptable.</p>
   </div>
-  <a class="purchase-nav-btn" href="{{ url_for('vat_summary', date_from=date_from, date_to=date_to) }}">← Synthèse TVA</a>
+  <a class="purchase-nav-btn" href="{{ url_for('vat_summary', date_from=date_from, date_to=date_to) }}">← TVA</a>
 </div>
 
 <form method="get" class="purchase-panel ledger-filters">

@@ -31,8 +31,16 @@ def test_vat_lock_requires_consistency_checks_and_detects_stale_snapshot():
     assert 'Factures fournisseurs validées comptabilisées' in ACC
 
 def test_vat_ui_exposes_controls_status_and_staleness_warning():
-    assert 'TVA & dossier déclaratif' in TPL
-    assert 'Contrôles de cohérence' in TPL
-    assert 'Verrouiller pour contrôle' in TPL
-    assert 'Marquer déclarée' in TPL
-    assert 'À recontrôler' in TPL
+    """v519 — Ce contrôle cherchait des titres affichés (« TVA & dossier déclaratif »,
+    « Contrôles de cohérence ») : il cassait dès qu'un libellé était rendu compréhensible
+    à un non-comptable, sans rien protéger. Ce qui compte est que l'écran expose bien les
+    quatre actions du cycle de déclaration, la liste des contrôles et l'avertissement de
+    péremption — c'est donc cela qui est vérifié."""
+    # les quatre actions du cycle restent déclenchables depuis la page
+    for action in ('value="prepare"', 'value="lock"', 'value="file"', 'value="reopen"'):
+        assert action in TPL
+    # les contrôles de cohérence sont affichés, avec leur verdict
+    assert 'for x in checks' in TPL and "'OK' if x.ok" in TPL
+    # l'état de la période et l'avertissement quand l'instantané n'est plus à jour
+    assert 'declaration.status' in TPL
+    assert '{% if stale %}' in TPL and 'alert-warning' in TPL

@@ -68,7 +68,8 @@ def test_ca3_page_and_liquidation_route(app):
     html = client.get('/comptabilite/tva/ca3?date_from=2026-02-01&date_to=2026-02-28').get_data(as_text=True)
     assert 'déjà liquidée' in html
     summary = client.get('/comptabilite/tva?date_from=2026-02-01&date_to=2026-02-28').get_data(as_text=True)
-    assert 'Déclaration CA3 case par case' in summary
+    # v519 — libellé du lien réécrit ; c'est l'accès à la CA3 détaillée qui compte.
+    assert '/comptabilite/tva/ca3' in summary
 
 
 def test_nothing_to_liquidate(app):

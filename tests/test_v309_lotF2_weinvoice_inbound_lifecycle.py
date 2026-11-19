@@ -38,8 +38,14 @@ def test_purchase_routes_are_entity_scoped_and_ui_exposes_lifecycle():
     tpl=(root/'templates/purchase_detail.html').read_text(encoding='utf-8')
     assert "WHERE id=? AND entity_id IS ?" in route
     assert 'purchase_weinvoice_action' in route and 'purchase_weinvoice_status_sync' in route
-    for code in ('204','205','206','207','208','210','211'):
-        assert code in tpl
+    # v519 — Ce contrôle cherchait les codes réglementaires « 204 … 211 » dans le gabarit.
+    # Ils en ont été retirés en v326 parce qu'ils ne disent rien à un utilisateur, et un
+    # commentaire Jinja avait été ajouté à seule fin de garder ce test vert. Ce qui doit
+    # être vérifié est que chaque étape du cycle de vie reste déclenchable : c'est la
+    # valeur postée, et non le code affiché, qui porte le mécanisme.
+    for action in ('take-in-charge', 'approve', 'approve-partially',
+                   'dispute', 'suspend', 'refuse', 'payment-sent'):
+        assert 'value="%s"' % action in tpl or '"%s"' % action in tpl
 
 
 def test_webhook_lookup_supports_purchase_invoice():

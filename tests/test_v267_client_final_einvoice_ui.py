@@ -7,4 +7,5 @@ def test_customer_ui_hides_sandbox_controls():
     assert "/v1/_sandbox/einvoicing/" not in T
     assert "Actualiser le statut" in T
     assert "Historique de facturation électronique" in T
-    assert "Historique de transmission" in T
+    # v519 — « Historique de transmission » n'existait plus que dans un commentaire Jinja
+    # ajouté pour ce contrôle ; l'historique est déjà vérifié par la ligne au-dessus.

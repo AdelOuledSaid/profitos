@@ -36,8 +36,8 @@ def test_v204_api_has_audit_and_idempotency_registry():
 
 def test_v204_webhooks_are_signed_ssrf_protected_and_entity_scoped():
     assert "hmac.new" in WH
-    assert "X-ProfitOS-Signature" in WH
-    assert "X-ProfitOS-Event-Id" in WH
+    assert "X-Veqalio-Signature" in WH
+    assert "X-Veqalio-Event-Id" in WH
     # v4xx : envoi via profitos/safe_http.py (IP épinglée, aucune redirection suivie).
     SAFE = (ROOT / 'profitos/safe_http.py').read_text(encoding='utf-8')
     assert "safe_request(" in WH and "redirect=False" in SAFE

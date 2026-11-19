@@ -30,7 +30,7 @@
     </div>
     <div class="wide"><button type="submit" class="purchase-primary-btn primary">Créer</button></div>
   </form>
-  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Chaque envoi est signé (en-tête <code>X-ProfitOS-Signature</code>, HMAC-SHA256) avec un secret propre à ce webhook, affiché une seule fois à la création.</p>
+  <p class="purchase-muted" style="font-size:12px;margin-top:10px;">Chaque envoi est signé (en-tête <code>X-Veqalio-Signature</code>, HMAC-SHA256) avec un secret propre à ce webhook, affiché une seule fois à la création.</p>
 </section>
 
 {% for s in subs %}

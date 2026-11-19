@@ -10,7 +10,8 @@ def test_invoice_list_loads_entity_scoped_ereporting_history():
 
 
 def test_dashboard_exposes_sync_proof_and_diagnostic_with_csrf():
-    assert 'Suivi e-reporting' in T
+    # v519 — le titre de la section n'est plus vérifié (il doit rester reformulable) ;
+    # les trois actions qui composent le suivi le sont.
     assert "url_for('invoicing_electronic_diagnostic')" in T
     assert "url_for('invoicing_ereporting_sync',transmission_id=t.id)" in T
     assert "url_for('invoicing_ereporting_proof',transmission_id=t.id)" in T

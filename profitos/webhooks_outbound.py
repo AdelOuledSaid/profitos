@@ -54,7 +54,7 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None, entity_id
     organisation (conn = connexion tenant déjà ouverte) — ou à un seul
     abonnement précis si only_subscription_id est fourni (utilisé par le
     bouton « Tester », pour ne jamais notifier les autres abonnés à tort).
-    Signe chaque envoi avec HMAC-SHA256 (en-tête X-ProfitOS-Signature, format
+    Signe chaque envoi avec HMAC-SHA256 (en-tête X-Veqalio-Signature, format
     "t=<timestamp>,v1=<signature>" — même principe que Stripe) pour que le
     client puisse vérifier l'authenticité. N'échoue jamais bruyamment : une
     erreur de livraison est journalisée dans webhook_deliveries, jamais levée
@@ -106,9 +106,9 @@ def deliver_webhook(conn, event_type, data, only_subscription_id=None, entity_id
         signature = _sign(sub['secret'], timestamp, body)
         headers = {
             'Content-Type': 'application/json',
-            'X-ProfitOS-Signature': f"t={timestamp},v1={signature}",
-            'X-ProfitOS-Event': event_type,
-            'X-ProfitOS-Event-Id': event_id,
+            'X-Veqalio-Signature': f"t={timestamp},v1={signature}",
+            'X-Veqalio-Event': event_type,
+            'X-Veqalio-Event-Id': event_id,
         }
         try:
             # Résolution unique + connexion à l'adresse validée (anti DNS rebinding),
